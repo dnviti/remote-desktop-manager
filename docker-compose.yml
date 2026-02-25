@@ -1,0 +1,56 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: rdm
+      POSTGRES_PASSWORD: rdm_password
+      POSTGRES_DB: remote_desktop_manager
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rdm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  guacd:
+    image: guacamole/guacd
+    restart: unless-stopped
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    ports:
+      - "3001:3001"
+      - "3002:3002"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://rdm:rdm_password@postgres:5432/remote_desktop_manager
+      GUACD_HOST: guacd
+      GUACD_PORT: 4822
+      JWT_SECRET: change-me-in-production
+      GUACAMOLE_SECRET: change-me-guacamole-secret
+      NODE_ENV: production
+      PORT: 3001
+      GUACAMOLE_WS_PORT: 3002
+      VAULT_TTL_MINUTES: 30
+    restart: unless-stopped
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - server
+    restart: unless-stopped
+
+volumes:
+  pgdata:

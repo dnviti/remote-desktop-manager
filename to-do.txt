@@ -1,0 +1,573 @@
+================================================================================
+  REMOTE DESKTOP MANAGER — TASK LIST
+  Generato: 2026-02-25
+  Formato: [CODICE] [STATO] — Titolo
+  Stati: [ ] Da fare | [~] In corso | [x] Completato | [!] Bloccato
+================================================================================
+
+
+================================================================================
+  SEZIONE A — TASK RICHIESTI (Core Features)
+================================================================================
+
+------------------------------------------------------------------------------
+[~] FOLD-001 — Gestione cartelle per organizzare le connessioni
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  Stato backend: COMPLETO (API CRUD gia' implementata)
+  Stato frontend: PARZIALE (visualizzazione cartelle OK, manca CRUD UI)
+
+  DESCRIZIONE:
+  Permettere agli utenti di creare, rinominare ed eliminare cartelle
+  direttamente dalla sidebar per organizzare le connessioni in modo
+  gerarchico. Il backend supporta gia' nesting illimitato e sortOrder.
+
+  DETTAGLI TECNICI:
+  Backend (gia' esistente):
+    - GET    /api/folders       → Lista cartelle (ordinate per sortOrder, nome)
+    - POST   /api/folders       → Crea cartella (name, parentId?)
+    - PUT    /api/folders/:id   → Aggiorna (name?, parentId?)
+    - DELETE /api/folders/:id   → Elimina (orfanizza figli e connessioni)
+    Modello Prisma: Folder { id, name, parentId, userId, sortOrder }
+
+  Frontend DA IMPLEMENTARE:
+    1. Creare client/src/api/folders.api.ts
+       - createFolder(name, parentId?), updateFolder(id, data),
+         deleteFolder(id), listFolders()
+    2. Creare client/src/components/Dialogs/FolderDialog.tsx
+       - Campo nome (obbligatorio)
+       - Select cartella padre (opzionale, lista cartelle esistenti)
+       - Modalita' crea/modifica
+    3. Modificare client/src/components/Sidebar/ConnectionTree.tsx
+       - Aggiungere bottone "+" accanto a "My Connections" per nuova cartella
+       - Context menu su cartelle: Rinomina, Elimina, Nuova sottocartella
+    4. Aggiornare client/src/store/connectionsStore.ts
+       - Aggiungere azioni: createFolder, updateFolder, deleteFolder
+       - Refresh automatico della lista dopo ogni operazione
+
+  FILE COINVOLTI:
+    CREARE:  client/src/api/folders.api.ts
+    CREARE:  client/src/components/Dialogs/FolderDialog.tsx
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+    MODIFICARE: client/src/store/connectionsStore.ts
+
+
+------------------------------------------------------------------------------
+[ ] UI-002 — Spostare bottone "Nuova connessione" sopra la lista connessioni
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Attualmente il bottone "+" per creare una nuova connessione si trova
+  nella AppBar in alto a destra. Va spostato nella sidebar, sopra la
+  lista delle connessioni, per essere piu' intuitivo e accessibile.
+
+  DETTAGLI TECNICI:
+  Stato attuale:
+    - MainLayout.tsx riga 65-71: IconButton con AddIcon nella Toolbar
+    - Apre ConnectionDialog al click
+
+  Modifiche richieste:
+    1. Rimuovere l'IconButton dalla Toolbar in MainLayout.tsx
+    2. In ConnectionTree.tsx, nella sezione header "My Connections":
+       - Aggiungere un bottone "+" o un Button pieno "New Connection"
+       - Il bottone deve chiamare una callback passata come prop
+         (onNewConnection) che apra il ConnectionDialog nel parent
+    3. Opzionale: aggiungere anche un bottone "Nuova cartella" accanto
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx
+                (rimuovere IconButton AddIcon dalla Toolbar, passare callback)
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+                (aggiungere bottone nella sezione header, ricevere prop)
+
+
+------------------------------------------------------------------------------
+[x] CTX-003 — Menu contestuale (tasto destro) sulle connessioni
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Context menu implementato in ConnectionTree.tsx
+
+  DESCRIZIONE:
+  Menu contestuale che appare al click destro su una connessione nella
+  sidebar, con azioni rapide senza dover navigare in altri menu.
+
+  STATO IMPLEMENTAZIONE:
+  - Context menu con anchorPosition basato su coordinate mouse: OK
+  - Voci implementate: Connect, Open in New Window, Edit, Delete
+  - Edit e Delete disabilitati per connessioni non possedute (isOwner)
+  - Dialog conferma eliminazione: OK
+
+  DA AGGIUNGERE (nelle prossime task):
+  - Voce "Share" (SHR-005)
+  - Voce "Connect As..." (CRED-006)
+
+
+------------------------------------------------------------------------------
+[x] DEL-004 — Eliminazione connessioni dal menu contestuale
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: CTX-003 (completato)
+  COMPLETATO: Eliminazione con dialog di conferma implementata
+
+  DESCRIZIONE:
+  Permettere l'eliminazione di connessioni dal context menu del tasto
+  destro con dialog di conferma per evitare cancellazioni accidentali.
+
+  STATO IMPLEMENTAZIONE:
+  - Voce "Delete" nel context menu: OK
+  - Disabilitata per connessioni non possedute (isOwner check): OK
+  - Dialog di conferma con nome connessione: OK
+  - Chiamata API deleteConnection + refresh lista: OK
+  - Icona rossa per indicare azione distruttiva: OK
+
+
+------------------------------------------------------------------------------
+[ ] SHR-005 — Condivisione connessioni dal menu contestuale (view/edit)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: CTX-003 (completato)
+  Stato backend: COMPLETO (API sharing con re-cifratura credenziali)
+  Stato frontend: PARZIALE (ShareDialog.tsx esiste ma non collegato)
+
+  DESCRIZIONE:
+  Aggiungere voce "Share" nel context menu per condividere connessioni
+  con altri utenti. Due livelli di permesso:
+    - READ_ONLY (View): il destinatario puo' solo aprire la connessione,
+      NON vede la password ne' puo' modificare le impostazioni
+    - FULL_ACCESS (Edit): il destinatario puo' anche modificare la
+      connessione e visualizzare le credenziali decifrate
+
+  DETTAGLI TECNICI:
+  Backend (gia' esistente):
+    - POST   /api/connections/:id/share         → Condividi (email, permission)
+    - DELETE /api/connections/:id/share/:userId  → Revoca condivisione
+    - PUT    /api/connections/:id/share/:userId  → Aggiorna permesso
+    - GET    /api/connections/:id/shares         → Lista condivisioni
+    Nota: entrambi i vault (owner + target) devono essere sbloccati per
+    condividere, perche' le credenziali vengono ri-cifrate con la chiave
+    del destinatario.
+
+  Frontend DA IMPLEMENTARE:
+    1. Aggiungere voce "Share" nel context menu (ConnectionTree.tsx)
+       - Icona ShareIcon, disabilitata se !isOwner
+    2. Collegare ShareDialog.tsx all'apertura dal context menu
+       - Passare connectionId come prop
+       - ShareDialog gia' ha: input email, select permesso, lista share
+    3. In MainLayout.tsx: gestire stato apertura ShareDialog
+       - Nuovo state: shareTarget (ConnectionData | null)
+       - Prop onShare passata a ConnectionTree
+    4. Migliorare ShareDialog:
+       - Mostrare descrizione chiara dei permessi (tooltip/help text)
+       - READ_ONLY: "L'utente potra' solo connettersi"
+       - FULL_ACCESS: "L'utente potra' connettersi e modificare"
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+                (aggiungere voce Share nel context menu)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx
+                (aggiungere ShareDialog e stato gestione)
+    MODIFICARE: client/src/components/Dialogs/ShareDialog.tsx
+                (collegare a ConnectionTree, migliorare UX permessi)
+
+
+------------------------------------------------------------------------------
+[ ] CRED-006 — Connessione con credenziali alternative (tasto destro)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: CTX-003 (completato), USER-007 (per opzione "account utente")
+
+  DESCRIZIONE:
+  Aggiungere voce "Connect As..." nel context menu che permette di
+  scegliere con quali credenziali connettersi:
+    1. Usa account configurato nel profilo utente
+    2. Inserisci username e password manualmente
+    3. Usa credenziali salvate nella connessione (default)
+
+  DETTAGLI TECNICI:
+  Frontend DA IMPLEMENTARE:
+    1. Creare client/src/components/Dialogs/ConnectAsDialog.tsx
+       - Radio group con le 3 opzioni
+       - Opzione 1: usa username/password dal profilo utente
+         (richiede USER-007 per avere username nel profilo)
+       - Opzione 2: mostra campi username + password da compilare
+       - Opzione 3: "Usa credenziali salvate" (selezionato di default)
+       - Bottone "Connect" che apre il tab con le credenziali scelte
+    2. Aggiungere voce "Connect As..." nel context menu
+    3. Modificare tabsStore.ts per supportare credenziali override:
+       - Tab.credentials?: { username: string, password: string }
+    4. Modificare SshTerminal.tsx e RdpViewer.tsx:
+       - Passare credenziali override alla sessione
+    5. Backend: modificare POST /api/sessions/rdp e /api/sessions/ssh
+       - Accettare parametri opzionali username/password override
+       - Se forniti, usare quelli invece di decifrare dalla connessione
+
+  FILE COINVOLTI:
+    CREARE:  client/src/components/Dialogs/ConnectAsDialog.tsx
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+    MODIFICARE: client/src/store/tabsStore.ts
+    MODIFICARE: client/src/components/Terminal/SshTerminal.tsx
+    MODIFICARE: client/src/components/RDP/RdpViewer.tsx
+    MODIFICARE: server/src/services/ssh.service.ts
+    MODIFICARE: server/src/services/rdp.service.ts
+    MODIFICARE: server/src/controllers/session.controller.ts (o equivalente)
+
+
+------------------------------------------------------------------------------
+[ ] USER-007 — Pannello amministrazione utente
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Creare una pagina completa di impostazioni utente accessibile dal menu
+  account in alto a destra. Include modifica profilo (username, email,
+  avatar) e cambio password con ri-cifratura vault.
+
+  DETTAGLI TECNICI:
+  Backend DA CREARE:
+    1. server/src/routes/user.routes.ts
+       - GET  /api/user/profile    → Dati profilo (username, email, avatar)
+       - PUT  /api/user/profile    → Aggiorna profilo
+       - PUT  /api/user/password   → Cambio password
+       - POST /api/user/avatar     → Upload avatar (multipart/form-data)
+    2. server/src/controllers/user.controller.ts
+       - Validazione Zod per ogni endpoint
+    3. server/src/services/user.service.ts
+       - getProfile(): Ritorna dati utente
+       - updateProfile(): Aggiorna username/email
+         - Verifica unicita' email se cambiata
+       - changePassword(): CRITICO per sicurezza
+         - Verifica password attuale (bcrypt compare)
+         - Hash nuova password (bcrypt 12 rounds)
+         - Ri-deriva chiave da nuova password (Argon2)
+         - Decifra vault key con vecchia chiave derivata
+         - Ri-cifra vault key con nuova chiave derivata
+         - Aggiorna vaultSalt, encryptedVaultKey, vaultKeyIV, vaultKeyTag
+         - Aggiorna sessione vault in memoria
+       - uploadAvatar(): Salva immagine (filesystem o base64 nel DB)
+    4. Aggiornare server/prisma/schema.prisma:
+       - Aggiungere a User: username String?, avatarUrl String?
+
+  Frontend DA CREARE:
+    1. client/src/pages/SettingsPage.tsx
+       Sezione Profilo:
+         - Campo username (TextField)
+         - Campo email (TextField, con validazione)
+         - Upload avatar (input file + preview circolare)
+         - Bottone "Salva modifiche"
+       Sezione Sicurezza:
+         - Campo password attuale (obbligatorio)
+         - Campo nuova password (min 8 caratteri)
+         - Campo conferma nuova password
+         - Bottone "Cambia password"
+    2. client/src/api/user.api.ts
+       - getProfile(), updateProfile(), changePassword(), uploadAvatar()
+    3. Aggiornare client/src/App.tsx (o router)
+       - Aggiungere rotta /settings → SettingsPage
+    4. Aggiornare MainLayout.tsx menu utente:
+       - Aggiungere voce "Settings" / "Impostazioni" con icona
+       - Navigate a /settings al click
+    5. Aggiornare authStore.ts:
+       - Estendere user con username e avatarUrl
+       - Mostrare avatar nell'AppBar se presente
+
+  FILE COINVOLTI:
+    CREARE:  server/src/routes/user.routes.ts
+    CREARE:  server/src/controllers/user.controller.ts
+    CREARE:  server/src/services/user.service.ts
+    CREARE:  client/src/pages/SettingsPage.tsx
+    CREARE:  client/src/api/user.api.ts
+    MODIFICARE: server/prisma/schema.prisma (campi username, avatarUrl)
+    MODIFICARE: server/src/app.ts (montare nuove routes)
+    MODIFICARE: client/src/App.tsx (aggiungere rotta /settings)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx (voce menu)
+    MODIFICARE: client/src/store/authStore.ts (estendere user type)
+
+
+================================================================================
+  SEZIONE B — TASK AGGIUNTIVI SUGGERITI
+================================================================================
+
+------------------------------------------------------------------------------
+[~] EDIT-008 — Modifica connessioni esistenti (UI)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: CTX-003 (completato)
+  Stato: PARZIALE — voce Edit nel context menu + callback handleEditConnection
+         implementati, ConnectionDialog gia' riceve prop connection per edit
+
+  DESCRIZIONE:
+  Permettere la modifica di connessioni esistenti tramite il context menu.
+  Il backend PUT /api/connections/:id esiste gia'.
+
+  DA VERIFICARE/COMPLETARE:
+    - ConnectionDialog.tsx supporta modalita' edit (prop connection)?
+    - I campi vengono pre-popolati con i dati della connessione?
+    - Le credenziali (username/password) sono gestite correttamente in edit?
+    - Dopo il salvataggio, la lista si aggiorna?
+
+
+------------------------------------------------------------------------------
+[ ] SEARCH-009 — Barra di ricerca connessioni nella sidebar
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Campo di ricerca nella sidebar che filtra connessioni in tempo reale
+  per nome, host o tipo. Utile quando si hanno molte connessioni.
+
+  DETTAGLI TECNICI:
+    1. In ConnectionTree.tsx, aggiungere un TextField con icona Search
+       sopra la lista (sotto il bottone nuova connessione)
+    2. Stato locale searchQuery con filtro su ownConnections e
+       sharedConnections
+    3. Filtrare per: nome (case-insensitive), host, tipo (RDP/SSH)
+    4. Mostrare badge con conteggio risultati
+    5. Tasto ESC o "X" per pulire la ricerca
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+
+
+------------------------------------------------------------------------------
+[ ] DND-010 — Drag and Drop connessioni tra cartelle
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: FOLD-001
+
+  DESCRIZIONE:
+  Trascinare connessioni tra cartelle e verso la root usando drag & drop.
+
+  DETTAGLI TECNICI:
+    1. Installare @hello-pangea/dnd (fork mantenuto di react-beautiful-dnd)
+    2. Wrappare la lista connessioni con DragDropContext
+    3. Ogni ConnectionItem diventa Draggable
+    4. Ogni FolderItem e la root diventano Droppable
+    5. onDragEnd: chiamare PUT /api/connections/:id con nuovo folderId
+    6. Feedback visivo durante il drag (highlight cartella target)
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+    MODIFICARE: package.json (aggiungere dipendenza)
+
+
+------------------------------------------------------------------------------
+[ ] THEME-011 — Toggle tema scuro/chiaro
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Permettere all'utente di scegliere tra tema scuro e chiaro.
+
+  DETTAGLI TECNICI:
+    1. Creare un ThemeContext o usare un themeStore (Zustand)
+    2. Definire due temi MUI (light e dark) con createTheme
+    3. Wrappare App con ThemeProvider dinamico
+    4. Toggle nell'AppBar o nelle impostazioni utente
+    5. Persistere preferenza in localStorage
+    6. Opzionale: rispettare prefers-color-scheme del sistema
+
+  FILE COINVOLTI:
+    CREARE:  client/src/store/themeStore.ts (o context)
+    CREARE:  client/src/theme.ts (definizioni temi light/dark)
+    MODIFICARE: client/src/App.tsx (ThemeProvider dinamico)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx (toggle button)
+
+
+------------------------------------------------------------------------------
+[ ] 2FA-012 — Autenticazione a due fattori (TOTP)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: USER-007 (pagina impostazioni necessaria per setup)
+
+  DESCRIZIONE:
+  Aggiungere supporto TOTP per aumentare la sicurezza dell'accesso.
+  Compatibile con Google Authenticator, Authy, ecc.
+
+  DETTAGLI TECNICI:
+  Backend:
+    1. Installare otplib e qrcode
+    2. Aggiungere a schema.prisma User: totpSecret String?,
+       totpEnabled Boolean @default(false)
+    3. Endpoint POST /api/user/2fa/setup → Genera secret + QR code URI
+    4. Endpoint POST /api/user/2fa/verify → Verifica codice e abilita
+    5. Endpoint POST /api/user/2fa/disable → Disabilita (richiede password)
+    6. Modificare login: se totpEnabled, richiedere codice TOTP dopo email/password
+  Frontend:
+    1. Sezione 2FA nella SettingsPage
+    2. Mostrare QR code durante setup (libreria qrcode.react)
+    3. Input codice 6 cifre per verifica
+    4. Step aggiuntivo nel LoginPage se 2FA abilitato
+
+  FILE COINVOLTI:
+    CREARE:  server/src/routes/twofa.routes.ts
+    CREARE:  server/src/services/twofa.service.ts
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/services/auth.service.ts (login con TOTP)
+    MODIFICARE: client/src/pages/SettingsPage.tsx (sezione 2FA)
+    MODIFICARE: client/src/pages/LoginPage.tsx (step codice TOTP)
+
+
+------------------------------------------------------------------------------
+[ ] AUDIT-013 — Log attivita' e audit trail
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: USER-007
+
+  DESCRIZIONE:
+  Registrare le azioni importanti degli utenti per sicurezza e debug.
+
+  DETTAGLI TECNICI:
+    1. Nuovo modello Prisma:
+       AuditLog { id, userId, action (enum), targetType, targetId,
+                  details (Json?), ipAddress, createdAt }
+       Azioni: LOGIN, LOGOUT, CREATE_CONNECTION, DELETE_CONNECTION,
+               SHARE_CONNECTION, UNSHARE, VAULT_UNLOCK, VAULT_LOCK,
+               PASSWORD_CHANGE, PROFILE_UPDATE
+    2. Service audit.service.ts con metodo log(userId, action, details)
+    3. Integrare nei service esistenti (auth, connection, sharing, vault)
+    4. Endpoint GET /api/audit?page=1&limit=50 con paginazione
+    5. Frontend: pagina/sezione log nella SettingsPage o pagina dedicata
+       con tabella filtrable (per azione, data, target)
+
+  FILE COINVOLTI:
+    CREARE:  server/src/services/audit.service.ts
+    CREARE:  server/src/routes/audit.routes.ts
+    CREARE:  client/src/pages/AuditLogPage.tsx (o sezione in Settings)
+    MODIFICARE: server/prisma/schema.prisma (modello AuditLog)
+    MODIFICARE: Tutti i service esistenti (aggiungere chiamate audit.log)
+
+
+------------------------------------------------------------------------------
+[ ] FAVS-014 — Connessioni preferite e recenti
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Sezione "Preferiti" e "Recenti" nella sidebar per accesso rapido
+  alle connessioni piu' usate.
+
+  DETTAGLI TECNICI:
+    1. Opzione A — Campo nel modello:
+       Aggiungere isFavorite Boolean @default(false) a Connection
+       Endpoint PUT /api/connections/:id/favorite (toggle)
+    2. Opzione B — Tabella separata:
+       Modello Favorite { id, userId, connectionId, createdAt }
+       Piu' flessibile per ordinamento e gestione
+    3. Recenti: salvare in localStorage gli ultimi 10 connectionId aperti
+       oppure modello ConnectionHistory { userId, connectionId, openedAt }
+    4. Frontend: due nuove sezioni nella sidebar ConnectionTree
+       - "Favorites" con stella/pin icon
+       - "Recent" con icona orologio
+    5. Toggle preferito: doppio-click su stella o voce nel context menu
+
+  FILE COINVOLTI:
+    MODIFICARE: server/prisma/schema.prisma
+    CREARE:  server/src/routes/favorites.routes.ts (se tabella separata)
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+    MODIFICARE: client/src/store/connectionsStore.ts
+
+
+------------------------------------------------------------------------------
+[ ] NOTIF-015 — Notifiche in-app per condivisioni
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: SHR-005
+
+  DESCRIZIONE:
+  Notificare l'utente quando qualcuno condivide una connessione con lui.
+
+  DETTAGLI TECNICI:
+    1. Modello Prisma:
+       Notification { id, userId, type (enum), message, read Boolean,
+                      relatedId, createdAt }
+    2. Creare notifica quando shareConnection() viene chiamata
+    3. Real-time: emettere evento Socket.IO "notification:new" al target
+    4. Frontend:
+       - Badge con conteggio notifiche non lette nell'AppBar
+       - Popover/drawer con lista notifiche
+       - Click su notifica naviga al contesto (es. connessione condivisa)
+       - Endpoint: GET /api/notifications, PUT /api/notifications/:id/read
+
+  FILE COINVOLTI:
+    CREARE:  server/src/services/notification.service.ts
+    CREARE:  server/src/routes/notification.routes.ts
+    CREARE:  client/src/components/Layout/NotificationBell.tsx
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/services/sharing.service.ts (trigger notifica)
+    MODIFICARE: server/src/socket/index.ts (namespace notifiche)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx (badge)
+
+
+------------------------------------------------------------------------------
+[ ] KEYS-016 — Scorciatoie da tastiera
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Scorciatoie da tastiera per azioni frequenti.
+
+  DETTAGLI TECNICI:
+    1. Installare react-hotkeys-hook (o implementare con useEffect)
+    2. Scorciatoie globali:
+       - Ctrl+N → Nuova connessione
+       - Ctrl+W → Chiudi tab attivo
+       - Ctrl+Tab / Ctrl+Shift+Tab → Prossimo/precedente tab
+       - Ctrl+L → Lock vault
+       - Ctrl+F → Focus barra ricerca (richiede SEARCH-009)
+       - Ctrl+, → Apri impostazioni (richiede USER-007)
+    3. Creare hook useKeyboardShortcuts()
+    4. Opzionale: pagina configurazione shortcut nelle impostazioni
+
+  FILE COINVOLTI:
+    CREARE:  client/src/hooks/useKeyboardShortcuts.ts
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx (attivare hook)
+    MODIFICARE: package.json (dipendenza react-hotkeys-hook)
+
+
+================================================================================
+  ORDINE DI IMPLEMENTAZIONE CONSIGLIATO
+================================================================================
+
+  Fase 1 — Quick wins e prerequisiti:
+    1. UI-002   Spostare bottone nuova connessione
+    2. FOLD-001 Gestione cartelle UI (backend gia' pronto)
+    3. EDIT-008 Verificare/completare modifica connessioni
+
+  Fase 2 — Context menu completo:
+    4. SHR-005  Condivisione dal context menu
+    5. USER-007 Pannello utente (necessario per CRED-006)
+    6. CRED-006 Connessione con credenziali alternative
+
+  Fase 3 — Miglioramenti UX:
+    7. SEARCH-009  Barra di ricerca
+    8. THEME-011   Tema scuro/chiaro
+    9. FAVS-014    Preferiti e recenti
+   10. KEYS-016    Scorciatoie tastiera
+
+  Fase 4 — Sicurezza e amministrazione:
+   11. 2FA-012     Autenticazione due fattori
+   12. AUDIT-013   Log attivita'
+   13. NOTIF-015   Notifiche condivisione
+   14. DND-010     Drag and drop
+
+
+================================================================================
+  NOTE
+================================================================================
+  - Task CTX-003 e DEL-004 sono gia' completati
+  - EDIT-008 e' parzialmente implementato (verificare funzionamento)
+  - FOLD-001 ha il backend completo, manca solo il frontend
+  - SHR-005 ha ShareDialog.tsx gia' creato ma non collegato alla UI
+  - CRED-006 richiede modifiche sia frontend che backend
+  - USER-007 e' il task piu' grande: richiede nuovo layer backend completo
+  - Il cambio password (USER-007) e' critico: deve ri-cifrare la vault key
+================================================================================

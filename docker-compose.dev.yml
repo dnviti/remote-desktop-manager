@@ -1,0 +1,6 @@
+services:
+  guacd:
+    image: guacamole/guacd
+    ports:
+      - "4822:4822"
+    restart: unless-stopped

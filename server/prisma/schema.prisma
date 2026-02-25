@@ -1,0 +1,105 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String   @id @default(uuid())
+  email             String   @unique
+  passwordHash      String
+  vaultSalt         String
+  encryptedVaultKey String
+  vaultKeyIV        String
+  vaultKeyTag       String
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  connections  Connection[]
+  folders      Folder[]
+  sharedWithMe SharedConnection[] @relation("SharedWith")
+  sharedByMe   SharedConnection[] @relation("SharedBy")
+  refreshTokens RefreshToken[]
+}
+
+model Folder {
+  id        String   @id @default(uuid())
+  name      String
+  parentId  String?
+  userId    String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent      Folder?      @relation("FolderTree", fields: [parentId], references: [id])
+  children    Folder[]     @relation("FolderTree")
+  user        User         @relation(fields: [userId], references: [id])
+  connections Connection[]
+}
+
+model Connection {
+  id                String         @id @default(uuid())
+  name              String
+  type              ConnectionType
+  host              String
+  port              Int
+  folderId          String?
+  encryptedUsername  String
+  usernameIV        String
+  usernameTag       String
+  encryptedPassword String
+  passwordIV        String
+  passwordTag       String
+  description       String?
+  userId            String
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  user   User    @relation(fields: [userId], references: [id])
+  shares SharedConnection[]
+}
+
+enum ConnectionType {
+  RDP
+  SSH
+}
+
+model SharedConnection {
+  id               String     @id @default(uuid())
+  connectionId     String
+  sharedWithUserId String
+  sharedByUserId   String
+  permission       Permission
+  encryptedUsername String?
+  usernameIV       String?
+  usernameTag      String?
+  encryptedPassword String?
+  passwordIV       String?
+  passwordTag      String?
+  createdAt        DateTime   @default(now())
+
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+  sharedWith User       @relation("SharedWith", fields: [sharedWithUserId], references: [id])
+  sharedBy   User       @relation("SharedBy", fields: [sharedByUserId], references: [id])
+
+  @@unique([connectionId, sharedWithUserId])
+}
+
+enum Permission {
+  READ_ONLY
+  FULL_ACCESS
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
