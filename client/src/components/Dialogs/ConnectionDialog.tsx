@@ -72,7 +72,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId }
           type,
           host,
           port: parseInt(port, 10),
-          description: description || undefined,
+          description: description || null,
         };
         if (username) data.username = username;
         if (password) data.password = password;

@@ -48,7 +48,7 @@ export interface ConnectionUpdate {
   port?: number;
   username?: string;
   password?: string;
-  description?: string;
+  description?: string | null;
   folderId?: string | null;
 }
 

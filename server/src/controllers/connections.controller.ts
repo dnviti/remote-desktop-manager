@@ -22,7 +22,7 @@ const updateSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   username: z.string().optional(),
   password: z.string().optional(),
-  description: z.string().optional(),
+  description: z.string().nullable().optional(),
   folderId: z.string().uuid().nullable().optional(),
 });
 
