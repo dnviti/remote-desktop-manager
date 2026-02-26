@@ -81,6 +81,32 @@ All connection credentials are encrypted at rest using AES-256-GCM. Each user ha
 
 JWT-based with access tokens (short-lived) and refresh tokens (stored in DB). The Axios client interceptor automatically refreshes expired access tokens. Socket.IO connections authenticate via JWT middleware.
 
+### UI Preferences Persistence
+
+All user-facing UI layout state **must** be persisted via the centralized `uiPreferencesStore` (`client/src/store/uiPreferencesStore.ts`), which uses Zustand's `persist` middleware with localStorage key `rdm-ui-preferences`.
+
+**What must be persisted:** panel open/closed states, sidebar section collapse/expand, drawer states, view mode toggles (compact, list/grid), positions and sizes of movable/resizable elements, folder expand/collapse states, and any user-configurable layout preference.
+
+**Rules for any new feature:**
+- Import from `useUiPreferencesStore` — never use raw `localStorage.getItem/setItem` for UI preferences
+- Provide sensible defaults so the app works without any stored preferences
+- Namespace by userId (the store handles this internally)
+- Key naming: `camelCase` with component area prefix (e.g., `sidebarCompact`, `sidebarFavoritesOpen`, `rdpFileBrowserOpen`)
+- Add new preference keys and their defaults to the store's type and initial state
+- Exclude transient state (dialogs, menus, loading flags) — only persist what the user would expect to survive a page reload
+
+### Task Files
+
+Tasks are split across three files by status:
+
+| File | Status | Symbol |
+|------|--------|--------|
+| `to-do.txt` | Pending tasks | `[ ]` |
+| `progressing.txt` | In-progress tasks | `[~]` |
+| `done.txt` | Completed tasks | `[x]` |
+
+When a task changes status, move it to the corresponding file.
+
 ### File Naming Conventions
 
 | Layer | Pattern | Example |

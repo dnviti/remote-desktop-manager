@@ -1,0 +1,303 @@
+================================================================================
+  REMOTE DESKTOP MANAGER — IN-PROGRESS TASKS
+  Formato: [CODICE] [STATO] — Titolo
+  Stati: [~] In corso
+================================================================================
+
+
+================================================================================
+  SEZIONE A — TASK RICHIESTI (Core Features)
+================================================================================
+
+------------------------------------------------------------------------------
+[~] SHR-005 — Condivisione connessioni dal menu contestuale (view/edit)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: CTX-003 (completato)
+  Stato backend: COMPLETO (API sharing con re-cifratura credenziali)
+  Stato frontend: PARZIALE (ShareDialog.tsx esiste ma non collegato)
+
+  DESCRIZIONE:
+  Aggiungere voce "Share" nel context menu per condividere connessioni
+  con altri utenti. Due livelli di permesso:
+    - READ_ONLY (View): il destinatario puo' solo aprire la connessione,
+      NON vede la password ne' puo' modificare le impostazioni
+    - FULL_ACCESS (Edit): il destinatario puo' anche modificare la
+      connessione e visualizzare le credenziali decifrate
+
+  DETTAGLI TECNICI:
+  Backend (gia' esistente):
+    - POST   /api/connections/:id/share         → Condividi (email, permission)
+    - DELETE /api/connections/:id/share/:userId  → Revoca condivisione
+    - PUT    /api/connections/:id/share/:userId  → Aggiorna permesso
+    - GET    /api/connections/:id/shares         → Lista condivisioni
+    Nota: entrambi i vault (owner + target) devono essere sbloccati per
+    condividere, perche' le credenziali vengono ri-cifrate con la chiave
+    del destinatario.
+
+  Frontend DA IMPLEMENTARE:
+    1. Aggiungere voce "Share" nel context menu (ConnectionTree.tsx)
+       - Icona ShareIcon, disabilitata se !isOwner
+    2. Collegare ShareDialog.tsx all'apertura dal context menu
+       - Passare connectionId come prop
+       - ShareDialog gia' ha: input email, select permesso, lista share
+    3. In MainLayout.tsx: gestire stato apertura ShareDialog
+       - Nuovo state: shareTarget (ConnectionData | null)
+       - Prop onShare passata a ConnectionTree
+    4. Migliorare ShareDialog:
+       - Mostrare descrizione chiara dei permessi (tooltip/help text)
+       - READ_ONLY: "L'utente potra' solo connettersi"
+       - FULL_ACCESS: "L'utente potra' connettersi e modificare"
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+                (aggiungere voce Share nel context menu)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx
+                (aggiungere ShareDialog e stato gestione)
+    MODIFICARE: client/src/components/Dialogs/ShareDialog.tsx
+                (collegare a ConnectionTree, migliorare UX permessi)
+
+
+------------------------------------------------------------------------------
+[~] USER-007 — Pannello amministrazione utente
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Creare una pagina completa di impostazioni utente accessibile dal menu
+  account in alto a destra. Include modifica profilo (username, email,
+  avatar) e cambio password con ri-cifratura vault.
+
+  DETTAGLI TECNICI:
+  Backend DA CREARE:
+    1. server/src/routes/user.routes.ts
+       - GET  /api/user/profile    → Dati profilo (username, email, avatar)
+       - PUT  /api/user/profile    → Aggiorna profilo
+       - PUT  /api/user/password   → Cambio password
+       - POST /api/user/avatar     → Upload avatar (multipart/form-data)
+    2. server/src/controllers/user.controller.ts
+       - Validazione Zod per ogni endpoint
+    3. server/src/services/user.service.ts
+       - getProfile(): Ritorna dati utente
+       - updateProfile(): Aggiorna username/email
+         - Verifica unicita' email se cambiata
+       - changePassword(): CRITICO per sicurezza
+         - Verifica password attuale (bcrypt compare)
+         - Hash nuova password (bcrypt 12 rounds)
+         - Ri-deriva chiave da nuova password (Argon2)
+         - Decifra vault key con vecchia chiave derivata
+         - Ri-cifra vault key con nuova chiave derivata
+         - Aggiorna vaultSalt, encryptedVaultKey, vaultKeyIV, vaultKeyTag
+         - Aggiorna sessione vault in memoria
+       - uploadAvatar(): Salva immagine (filesystem o base64 nel DB)
+    4. Aggiornare server/prisma/schema.prisma:
+       - Aggiungere a User: username String?, avatarUrl String?
+
+  Frontend DA CREARE:
+    1. client/src/pages/SettingsPage.tsx
+       Sezione Profilo:
+         - Campo username (TextField)
+         - Campo email (TextField, con validazione)
+         - Upload avatar (input file + preview circolare)
+         - Bottone "Salva modifiche"
+       Sezione Sicurezza:
+         - Campo password attuale (obbligatorio)
+         - Campo nuova password (min 8 caratteri)
+         - Campo conferma nuova password
+         - Bottone "Cambia password"
+    2. client/src/api/user.api.ts
+       - getProfile(), updateProfile(), changePassword(), uploadAvatar()
+    3. Aggiornare client/src/App.tsx (o router)
+       - Aggiungere rotta /settings → SettingsPage
+    4. Aggiornare MainLayout.tsx menu utente:
+       - Aggiungere voce "Settings" / "Impostazioni" con icona
+       - Navigate a /settings al click
+    5. Aggiornare authStore.ts:
+       - Estendere user con username e avatarUrl
+       - Mostrare avatar nell'AppBar se presente
+
+  FILE COINVOLTI:
+    CREARE:  server/src/routes/user.routes.ts
+    CREARE:  server/src/controllers/user.controller.ts
+    CREARE:  server/src/services/user.service.ts
+    CREARE:  client/src/pages/SettingsPage.tsx
+    CREARE:  client/src/api/user.api.ts
+    MODIFICARE: server/prisma/schema.prisma (campi username, avatarUrl)
+    MODIFICARE: server/src/app.ts (montare nuove routes)
+    MODIFICARE: client/src/App.tsx (aggiungere rotta /settings)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx (voce menu)
+    MODIFICARE: client/src/store/authStore.ts (estendere user type)
+
+
+================================================================================
+  SEZIONE B — TASK AGGIUNTIVI SUGGERITI
+================================================================================
+
+------------------------------------------------------------------------------
+[~] SEARCH-009 — Barra di ricerca connessioni nella sidebar
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Campo di ricerca nella sidebar che filtra connessioni in tempo reale
+  per nome, host o tipo. Utile quando si hanno molte connessioni.
+
+  DETTAGLI TECNICI:
+    1. In ConnectionTree.tsx, aggiungere un TextField con icona Search
+       sopra la lista (sotto il bottone nuova connessione)
+    2. Stato locale searchQuery con filtro su ownConnections e
+       sharedConnections
+    3. Filtrare per: nome (case-insensitive), host, tipo (RDP/SSH)
+    4. Mostrare badge con conteggio risultati
+    5. Tasto ESC o "X" per pulire la ricerca
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+
+
+------------------------------------------------------------------------------
+[~] THEME-011 — Toggle tema scuro/chiaro
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Permettere all'utente di scegliere tra tema scuro e chiaro.
+
+  DETTAGLI TECNICI:
+    1. Creare un ThemeContext o usare un themeStore (Zustand)
+    2. Definire due temi MUI (light e dark) con createTheme
+    3. Wrappare App con ThemeProvider dinamico
+    4. Toggle nell'AppBar o nelle impostazioni utente
+    5. Persistere preferenza in localStorage
+    6. Opzionale: rispettare prefers-color-scheme del sistema
+
+  FILE COINVOLTI:
+    CREARE:  client/src/store/themeStore.ts (o context)
+    CREARE:  client/src/theme.ts (definizioni temi light/dark)
+    MODIFICARE: client/src/App.tsx (ThemeProvider dinamico)
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx (toggle button)
+
+
+------------------------------------------------------------------------------
+[~] FAVS-014 — Connessioni preferite e recenti
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Sezione "Preferiti" e "Recenti" nella sidebar per accesso rapido
+  alle connessioni piu' usate.
+
+  DETTAGLI TECNICI:
+    1. Opzione A — Campo nel modello:
+       Aggiungere isFavorite Boolean @default(false) a Connection
+       Endpoint PUT /api/connections/:id/favorite (toggle)
+    2. Opzione B — Tabella separata:
+       Modello Favorite { id, userId, connectionId, createdAt }
+       Piu' flessibile per ordinamento e gestione
+    3. Recenti: salvare in localStorage gli ultimi 10 connectionId aperti
+       oppure modello ConnectionHistory { userId, connectionId, openedAt }
+    4. Frontend: due nuove sezioni nella sidebar ConnectionTree
+       - "Favorites" con stella/pin icon
+       - "Recent" con icona orologio
+    5. Toggle preferito: doppio-click su stella o voce nel context menu
+
+  FILE COINVOLTI:
+    MODIFICARE: server/prisma/schema.prisma
+    CREARE:  server/src/routes/favorites.routes.ts (se tabella separata)
+    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
+    MODIFICARE: client/src/store/connectionsStore.ts
+
+
+------------------------------------------------------------------------------
+[~] CLIP-017 — Clipboard (copy/paste) per connessioni RDP e SSH
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Abilitare il copia/incolla bidirezionale tra il browser e le sessioni
+  remote (RDP e SSH). Attualmente non e' implementato in nessuno dei due
+  protocolli. Per RDP si usano le API clipboard di guacamole-common-js,
+  per SSH si intercettano le combinazioni tastiera in xterm.js.
+
+  DETTAGLI TECNICI:
+  RDP Clipboard (guacamole-common-js):
+    1. In RdpViewer.tsx, aggiungere handler client.onclipboard:
+       - Decodificare dati con Guacamole.StringReader
+       - Scrivere nel clipboard del browser con navigator.clipboard.writeText()
+    2. Direzione inversa (browser → remote):
+       - Leggere navigator.clipboard.readText() su focus/input del display
+       - Inviare al remote via Guacamole.OutputStream + Guacamole.StringWriter
+    3. Nessuna modifica server-side necessaria (guacd abilita clipboard
+       di default se non ci sono flag disable-copy/disable-paste)
+
+  SSH Clipboard (xterm.js):
+    1. In SshTerminal.tsx, aggiungere terminal.attachCustomKeyEventHandler():
+       - Ctrl+Shift+C → navigator.clipboard.writeText(terminal.getSelection())
+       - Ctrl+Shift+V → navigator.clipboard.readText() → socket.emit('data', text)
+    2. Nessun pacchetto aggiuntivo necessario
+
+  FILE COINVOLTI:
+    MODIFICARE: client/src/components/RDP/RdpViewer.tsx
+                (onclipboard handler, clipboard write/read, navigator.clipboard)
+    MODIFICARE: client/src/components/Terminal/SshTerminal.tsx
+                (attachCustomKeyEventHandler per Ctrl+Shift+C/V)
+
+
+------------------------------------------------------------------------------
+[~] RDPFS-018 — Condivisione file/cartelle via drive redirection (RDP)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Abilitare la drive redirection di guacd per permettere il trasferimento
+  di file tra il browser e la sessione RDP. Il desktop remoto vedra' un
+  disco di rete condiviso ("Shared") dove l'utente puo' copiare file.
+  Lato browser, una UI permette di caricare/scaricare file da quel disco.
+
+  DETTAGLI TECNICI:
+  Server (guacd parameters):
+    1. In rdp.service.ts, aggiungere ai settings del token:
+       - 'enable-drive': 'true'
+       - 'drive-name': 'Shared'
+       - 'drive-path': '/guacd-drive'
+       - 'create-drive-path': 'true'
+
+  Docker (volume condiviso):
+    2. In docker-compose.dev.yml e docker-compose.prod.yml:
+       - Montare volume rdm_drive:/guacd-drive nel container guacd
+       - Montare stesso volume nel container server (per accesso API)
+       - Dichiarare volume rdm_drive nelle volumes globali
+
+  Server API (gestione file):
+    3. Creare routes + controller + service per file transfer:
+       - GET    /api/files         → Lista file nella cartella condivisa
+       - GET    /api/files/:name   → Download file
+       - POST   /api/files         → Upload file (multer)
+       - DELETE /api/files/:name   → Elimina file
+    4. Installare multer per gestione upload multipart
+
+  Frontend (file browser):
+    5. Creare componente FileBrowser per navigare la cartella condivisa
+       - Lista file con nome, dimensione, data
+       - Bottone upload (input file o drag-and-drop)
+       - Bottone download per ogni file
+       - Accessibile dalla tab RDP o da un pannello laterale
+
+  FILE COINVOLTI:
+    MODIFICARE: server/src/services/rdp.service.ts
+                (aggiungere parametri enable-drive al token)
+    MODIFICARE: docker-compose.dev.yml (volume guacd-drive)
+    MODIFICARE: docker-compose.yml (volume guacd-drive)
+    MODIFICARE: docker-compose.prod.yml (volume guacd-drive)
+    CREARE:  server/src/routes/filetransfer.routes.ts
+    CREARE:  server/src/controllers/filetransfer.controller.ts
+    CREARE:  server/src/services/filetransfer.service.ts
+    CREARE:  client/src/components/FileTransfer/FileBrowser.tsx
+    MODIFICARE: server/src/app.ts (montare routes filetransfer)
+    MODIFICARE: package.json (dipendenza multer)

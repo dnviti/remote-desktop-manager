@@ -1,180 +1,14 @@
 ================================================================================
   REMOTE DESKTOP MANAGER — TASK LIST
-  Generato: 2026-02-25
   Formato: [CODICE] [STATO] — Titolo
   Stati: [ ] Da fare | [~] In corso | [x] Completato | [!] Bloccato
+  Note: I task completati sono in done.txt, quelli in corso in progressing.txt
 ================================================================================
 
 
 ================================================================================
   SEZIONE A — TASK RICHIESTI (Core Features)
 ================================================================================
-
-------------------------------------------------------------------------------
-[x] FOLD-001 — Gestione cartelle per organizzare le connessioni
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-  Stato backend: COMPLETO (API CRUD gia' implementata)
-  Stato frontend: COMPLETO (API client, FolderDialog, ConnectionTree, connectionsStore)
-  COMPLETATO: Frontend CRUD completo (API, Dialog, Tree, Store)
-
-  DESCRIZIONE:
-  Permettere agli utenti di creare, rinominare ed eliminare cartelle
-  direttamente dalla sidebar per organizzare le connessioni in modo
-  gerarchico. Il backend supporta gia' nesting illimitato e sortOrder.
-
-  DETTAGLI TECNICI:
-  Backend (gia' esistente):
-    - GET    /api/folders       → Lista cartelle (ordinate per sortOrder, nome)
-    - POST   /api/folders       → Crea cartella (name, parentId?)
-    - PUT    /api/folders/:id   → Aggiorna (name?, parentId?)
-    - DELETE /api/folders/:id   → Elimina (orfanizza figli e connessioni)
-    Modello Prisma: Folder { id, name, parentId, userId, sortOrder }
-
-  Frontend DA IMPLEMENTARE:
-    1. Creare client/src/api/folders.api.ts
-       - createFolder(name, parentId?), updateFolder(id, data),
-         deleteFolder(id), listFolders()
-    2. Creare client/src/components/Dialogs/FolderDialog.tsx
-       - Campo nome (obbligatorio)
-       - Select cartella padre (opzionale, lista cartelle esistenti)
-       - Modalita' crea/modifica
-    3. Modificare client/src/components/Sidebar/ConnectionTree.tsx
-       - Aggiungere bottone "+" accanto a "My Connections" per nuova cartella
-       - Context menu su cartelle: Rinomina, Elimina, Nuova sottocartella
-    4. Aggiornare client/src/store/connectionsStore.ts
-       - Aggiungere azioni: createFolder, updateFolder, deleteFolder
-       - Refresh automatico della lista dopo ogni operazione
-
-  FILE COINVOLTI:
-    CREARE:  client/src/api/folders.api.ts
-    CREARE:  client/src/components/Dialogs/FolderDialog.tsx
-    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
-    MODIFICARE: client/src/store/connectionsStore.ts
-
-
-------------------------------------------------------------------------------
-[x] UI-002 — Spostare bottone "Nuova connessione" sopra la lista connessioni
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-  COMPLETATO: AddIcon rimosso da AppBar, aggiunto nella sidebar header di ConnectionTree
-
-  DESCRIZIONE:
-  Attualmente il bottone "+" per creare una nuova connessione si trova
-  nella AppBar in alto a destra. Va spostato nella sidebar, sopra la
-  lista delle connessioni, per essere piu' intuitivo e accessibile.
-
-  DETTAGLI TECNICI:
-  Stato attuale:
-    - MainLayout.tsx riga 65-71: IconButton con AddIcon nella Toolbar
-    - Apre ConnectionDialog al click
-
-  Modifiche richieste:
-    1. Rimuovere l'IconButton dalla Toolbar in MainLayout.tsx
-    2. In ConnectionTree.tsx, nella sezione header "My Connections":
-       - Aggiungere un bottone "+" o un Button pieno "New Connection"
-       - Il bottone deve chiamare una callback passata come prop
-         (onNewConnection) che apra il ConnectionDialog nel parent
-    3. Opzionale: aggiungere anche un bottone "Nuova cartella" accanto
-
-  FILE COINVOLTI:
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx
-                (rimuovere IconButton AddIcon dalla Toolbar, passare callback)
-    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
-                (aggiungere bottone nella sezione header, ricevere prop)
-
-
-------------------------------------------------------------------------------
-[x] CTX-003 — Menu contestuale (tasto destro) sulle connessioni
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-  COMPLETATO: Context menu implementato in ConnectionTree.tsx
-
-  DESCRIZIONE:
-  Menu contestuale che appare al click destro su una connessione nella
-  sidebar, con azioni rapide senza dover navigare in altri menu.
-
-  STATO IMPLEMENTAZIONE:
-  - Context menu con anchorPosition basato su coordinate mouse: OK
-  - Voci implementate: Connect, Open in New Window, Edit, Delete
-  - Edit e Delete disabilitati per connessioni non possedute (isOwner)
-  - Dialog conferma eliminazione: OK
-
-  DA AGGIUNGERE (nelle prossime task):
-  - Voce "Share" (SHR-005)
-  - Voce "Connect As..." (CRED-006)
-
-
-------------------------------------------------------------------------------
-[x] DEL-004 — Eliminazione connessioni dal menu contestuale
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: CTX-003 (completato)
-  COMPLETATO: Eliminazione con dialog di conferma implementata
-
-  DESCRIZIONE:
-  Permettere l'eliminazione di connessioni dal context menu del tasto
-  destro con dialog di conferma per evitare cancellazioni accidentali.
-
-  STATO IMPLEMENTAZIONE:
-  - Voce "Delete" nel context menu: OK
-  - Disabilitata per connessioni non possedute (isOwner check): OK
-  - Dialog di conferma con nome connessione: OK
-  - Chiamata API deleteConnection + refresh lista: OK
-  - Icona rossa per indicare azione distruttiva: OK
-
-
-------------------------------------------------------------------------------
-[~] SHR-005 — Condivisione connessioni dal menu contestuale (view/edit)
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: CTX-003 (completato)
-  Stato backend: COMPLETO (API sharing con re-cifratura credenziali)
-  Stato frontend: PARZIALE (ShareDialog.tsx esiste ma non collegato)
-
-  DESCRIZIONE:
-  Aggiungere voce "Share" nel context menu per condividere connessioni
-  con altri utenti. Due livelli di permesso:
-    - READ_ONLY (View): il destinatario puo' solo aprire la connessione,
-      NON vede la password ne' puo' modificare le impostazioni
-    - FULL_ACCESS (Edit): il destinatario puo' anche modificare la
-      connessione e visualizzare le credenziali decifrate
-
-  DETTAGLI TECNICI:
-  Backend (gia' esistente):
-    - POST   /api/connections/:id/share         → Condividi (email, permission)
-    - DELETE /api/connections/:id/share/:userId  → Revoca condivisione
-    - PUT    /api/connections/:id/share/:userId  → Aggiorna permesso
-    - GET    /api/connections/:id/shares         → Lista condivisioni
-    Nota: entrambi i vault (owner + target) devono essere sbloccati per
-    condividere, perche' le credenziali vengono ri-cifrate con la chiave
-    del destinatario.
-
-  Frontend DA IMPLEMENTARE:
-    1. Aggiungere voce "Share" nel context menu (ConnectionTree.tsx)
-       - Icona ShareIcon, disabilitata se !isOwner
-    2. Collegare ShareDialog.tsx all'apertura dal context menu
-       - Passare connectionId come prop
-       - ShareDialog gia' ha: input email, select permesso, lista share
-    3. In MainLayout.tsx: gestire stato apertura ShareDialog
-       - Nuovo state: shareTarget (ConnectionData | null)
-       - Prop onShare passata a ConnectionTree
-    4. Migliorare ShareDialog:
-       - Mostrare descrizione chiara dei permessi (tooltip/help text)
-       - READ_ONLY: "L'utente potra' solo connettersi"
-       - FULL_ACCESS: "L'utente potra' connettersi e modificare"
-
-  FILE COINVOLTI:
-    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
-                (aggiungere voce Share nel context menu)
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx
-                (aggiungere ShareDialog e stato gestione)
-    MODIFICARE: client/src/components/Dialogs/ShareDialog.tsx
-                (collegare a ConnectionTree, migliorare UX permessi)
-
 
 ------------------------------------------------------------------------------
 [ ] CRED-006 — Connessione con credenziali alternative (tasto destro)
@@ -218,122 +52,9 @@
     MODIFICARE: server/src/controllers/session.controller.ts (o equivalente)
 
 
-------------------------------------------------------------------------------
-[~] USER-007 — Pannello amministrazione utente
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Creare una pagina completa di impostazioni utente accessibile dal menu
-  account in alto a destra. Include modifica profilo (username, email,
-  avatar) e cambio password con ri-cifratura vault.
-
-  DETTAGLI TECNICI:
-  Backend DA CREARE:
-    1. server/src/routes/user.routes.ts
-       - GET  /api/user/profile    → Dati profilo (username, email, avatar)
-       - PUT  /api/user/profile    → Aggiorna profilo
-       - PUT  /api/user/password   → Cambio password
-       - POST /api/user/avatar     → Upload avatar (multipart/form-data)
-    2. server/src/controllers/user.controller.ts
-       - Validazione Zod per ogni endpoint
-    3. server/src/services/user.service.ts
-       - getProfile(): Ritorna dati utente
-       - updateProfile(): Aggiorna username/email
-         - Verifica unicita' email se cambiata
-       - changePassword(): CRITICO per sicurezza
-         - Verifica password attuale (bcrypt compare)
-         - Hash nuova password (bcrypt 12 rounds)
-         - Ri-deriva chiave da nuova password (Argon2)
-         - Decifra vault key con vecchia chiave derivata
-         - Ri-cifra vault key con nuova chiave derivata
-         - Aggiorna vaultSalt, encryptedVaultKey, vaultKeyIV, vaultKeyTag
-         - Aggiorna sessione vault in memoria
-       - uploadAvatar(): Salva immagine (filesystem o base64 nel DB)
-    4. Aggiornare server/prisma/schema.prisma:
-       - Aggiungere a User: username String?, avatarUrl String?
-
-  Frontend DA CREARE:
-    1. client/src/pages/SettingsPage.tsx
-       Sezione Profilo:
-         - Campo username (TextField)
-         - Campo email (TextField, con validazione)
-         - Upload avatar (input file + preview circolare)
-         - Bottone "Salva modifiche"
-       Sezione Sicurezza:
-         - Campo password attuale (obbligatorio)
-         - Campo nuova password (min 8 caratteri)
-         - Campo conferma nuova password
-         - Bottone "Cambia password"
-    2. client/src/api/user.api.ts
-       - getProfile(), updateProfile(), changePassword(), uploadAvatar()
-    3. Aggiornare client/src/App.tsx (o router)
-       - Aggiungere rotta /settings → SettingsPage
-    4. Aggiornare MainLayout.tsx menu utente:
-       - Aggiungere voce "Settings" / "Impostazioni" con icona
-       - Navigate a /settings al click
-    5. Aggiornare authStore.ts:
-       - Estendere user con username e avatarUrl
-       - Mostrare avatar nell'AppBar se presente
-
-  FILE COINVOLTI:
-    CREARE:  server/src/routes/user.routes.ts
-    CREARE:  server/src/controllers/user.controller.ts
-    CREARE:  server/src/services/user.service.ts
-    CREARE:  client/src/pages/SettingsPage.tsx
-    CREARE:  client/src/api/user.api.ts
-    MODIFICARE: server/prisma/schema.prisma (campi username, avatarUrl)
-    MODIFICARE: server/src/app.ts (montare nuove routes)
-    MODIFICARE: client/src/App.tsx (aggiungere rotta /settings)
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx (voce menu)
-    MODIFICARE: client/src/store/authStore.ts (estendere user type)
-
-
 ================================================================================
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================
-
-------------------------------------------------------------------------------
-[x] EDIT-008 — Modifica connessioni esistenti (UI)
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: CTX-003 (completato)
-  COMPLETATO: Full edit flow via context menu, ConnectionDialog edit mode, server PUT endpoint
-
-  STATO IMPLEMENTAZIONE:
-  - Context menu "Edit" con ownership check (isOwner): OK
-  - ConnectionDialog edit mode con pre-popolamento campi: OK
-  - Type field disabilitato in edit mode: OK
-  - Username/password opzionali ("Leave blank to keep unchanged"): OK
-  - Cancellazione description (fix: invia null al server): OK
-  - Server-side: validazione Zod, ownership check, vault unlock, encryption: OK
-  - Refresh lista dopo salvataggio: OK
-  - Folder preservation (edit non cambia folderId, "Move to Folder" separato): OK
-
-
-------------------------------------------------------------------------------
-[~] SEARCH-009 — Barra di ricerca connessioni nella sidebar
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Campo di ricerca nella sidebar che filtra connessioni in tempo reale
-  per nome, host o tipo. Utile quando si hanno molte connessioni.
-
-  DETTAGLI TECNICI:
-    1. In ConnectionTree.tsx, aggiungere un TextField con icona Search
-       sopra la lista (sotto il bottone nuova connessione)
-    2. Stato locale searchQuery con filtro su ownConnections e
-       sharedConnections
-    3. Filtrare per: nome (case-insensitive), host, tipo (RDP/SSH)
-    4. Mostrare badge con conteggio risultati
-    5. Tasto ESC o "X" per pulire la ricerca
-
-  FILE COINVOLTI:
-    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
-
 
 ------------------------------------------------------------------------------
 [ ] DND-010 — Drag and Drop connessioni tra cartelle
@@ -355,30 +76,6 @@
   FILE COINVOLTI:
     MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
     MODIFICARE: package.json (aggiungere dipendenza)
-
-
-------------------------------------------------------------------------------
-[~] THEME-011 — Toggle tema scuro/chiaro
-------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Permettere all'utente di scegliere tra tema scuro e chiaro.
-
-  DETTAGLI TECNICI:
-    1. Creare un ThemeContext o usare un themeStore (Zustand)
-    2. Definire due temi MUI (light e dark) con createTheme
-    3. Wrappare App con ThemeProvider dinamico
-    4. Toggle nell'AppBar o nelle impostazioni utente
-    5. Persistere preferenza in localStorage
-    6. Opzionale: rispettare prefers-color-scheme del sistema
-
-  FILE COINVOLTI:
-    CREARE:  client/src/store/themeStore.ts (o context)
-    CREARE:  client/src/theme.ts (definizioni temi light/dark)
-    MODIFICARE: client/src/App.tsx (ThemeProvider dinamico)
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx (toggle button)
 
 
 ------------------------------------------------------------------------------
@@ -446,37 +143,6 @@
 
 
 ------------------------------------------------------------------------------
-[~] FAVS-014 — Connessioni preferite e recenti
-------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Sezione "Preferiti" e "Recenti" nella sidebar per accesso rapido
-  alle connessioni piu' usate.
-
-  DETTAGLI TECNICI:
-    1. Opzione A — Campo nel modello:
-       Aggiungere isFavorite Boolean @default(false) a Connection
-       Endpoint PUT /api/connections/:id/favorite (toggle)
-    2. Opzione B — Tabella separata:
-       Modello Favorite { id, userId, connectionId, createdAt }
-       Piu' flessibile per ordinamento e gestione
-    3. Recenti: salvare in localStorage gli ultimi 10 connectionId aperti
-       oppure modello ConnectionHistory { userId, connectionId, openedAt }
-    4. Frontend: due nuove sezioni nella sidebar ConnectionTree
-       - "Favorites" con stella/pin icon
-       - "Recent" con icona orologio
-    5. Toggle preferito: doppio-click su stella o voce nel context menu
-
-  FILE COINVOLTI:
-    MODIFICARE: server/prisma/schema.prisma
-    CREARE:  server/src/routes/favorites.routes.ts (se tabella separata)
-    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
-    MODIFICARE: client/src/store/connectionsStore.ts
-
-
-------------------------------------------------------------------------------
 [ ] NOTIF-015 — Notifiche in-app per condivisioni
 ------------------------------------------------------------------------------
   Priorita: BASSA
@@ -508,147 +174,230 @@
 
 
 ------------------------------------------------------------------------------
-[x] KEYS-016 — Scorciatoie da tastiera (CANCELLATO — non implementare)
+[ ] SSHUI-027 — Personalizzazione terminale SSH (font, temi, opzioni)
 ------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: Nessuna
+  Priorita: MEDIA
+  Dipendenze: USER-007 (pagina impostazioni per configurazione globale)
 
   DESCRIZIONE:
-  Scorciatoie da tastiera per azioni frequenti.
+  Permettere la personalizzazione dell'aspetto e del comportamento del
+  terminale SSH. Attualmente tutti i parametri sono hard-coded in
+  SshTerminal.tsx (font 14px Menlo, tema scuro fisso, cursore blu).
+  Due livelli di configurazione:
+    - Impostazioni globali: nell'account utente (SettingsPage), salvate
+      nel modello User, si applicano a tutte le connessioni SSH
+    - Override per connessione: nel dialog di modifica connessione,
+      salvate nel modello Connection, sovrascrivono i default globali
+
+  OPZIONI DI PERSONALIZZAZIONE:
+    - Font family (Menlo, Fira Code, JetBrains Mono, Cascadia Code,
+      Consolas, monospace)
+    - Font size (10–24px, default 14)
+    - Line height (1.0–2.0, default 1.0)
+    - Letter spacing (0–5px, default 0)
+    - Cursor style (block, underline, bar — default block)
+    - Cursor blink (on/off, default on)
+    - Color theme — preset: Default Dark, Dracula, Solarized Dark,
+      Solarized Light, Monokai, Nord, One Dark, Gruvbox, GitHub Dark;
+      oppure personalizzato con color picker per background, foreground,
+      cursor, e 16 colori ANSI
+    - Scrollback lines (100–10000, default 1000)
+    - Bell style (none, sound, visual — default none)
 
   DETTAGLI TECNICI:
-    1. Installare react-hotkeys-hook (o implementare con useEffect)
-    2. Scorciatoie globali:
-       - Ctrl+N → Nuova connessione
-       - Ctrl+W → Chiudi tab attivo
-       - Ctrl+Tab / Ctrl+Shift+Tab → Prossimo/precedente tab
-       - Ctrl+L → Lock vault
-       - Ctrl+F → Focus barra ricerca (richiede SEARCH-009)
-       - Ctrl+, → Apri impostazioni (richiede USER-007)
-    3. Creare hook useKeyboardShortcuts()
-    4. Opzionale: pagina configurazione shortcut nelle impostazioni
+  Risoluzione configurazione a runtime (SshTerminal.tsx):
+    1. Partire dai fallback hard-coded (valori attuali)
+    2. Sovrascrivere con i default globali dell'utente (User.sshDefaults)
+    3. Sovrascrivere con gli override della connessione (Connection.sshTerminalConfig)
+    4. Applicare la configurazione risultante a new Terminal(options)
+
+  Backend:
+    1. Aggiungere campo sshDefaults Json? al modello User (schema.prisma)
+       - Contiene le preferenze terminale globali dell'utente
+       - Letto/scritto tramite GET/PUT /api/user/profile (estendere)
+    2. Aggiungere campo sshTerminalConfig Json? al modello Connection
+       - Contiene solo i campi sovrascritti (override sparso)
+       - Pass-through nel CRUD connessioni (create/update)
+
+  Frontend — Impostazioni globali (account utente):
+    1. Creare client/src/store/terminalSettingsStore.ts (Zustand)
+       - fetchDefaults(): carica da profilo utente
+       - updateDefaults(settings): salva nel profilo utente
+       - getMergedConfig(connection): risolve fallback → globali → override
+    2. Creare client/src/components/Settings/TerminalSettingsSection.tsx
+       - Componente riutilizzabile con tutti i controlli (select, slider,
+         color picker, toggle) per le opzioni terminale
+       - Props: values, onChange, showUseDefaultToggle (per modalita' override)
+    3. Aggiungere sezione "SSH Terminal" in SettingsPage.tsx
+       - Usa TerminalSettingsSection con i default globali
+       - Preview live del terminale con le impostazioni correnti
+
+  Frontend — Override per connessione:
+    4. Aggiungere sezione collassabile "Terminal Appearance" in
+       ConnectionDialog.tsx (visibile solo quando type=SSH)
+       - Usa TerminalSettingsSection con showUseDefaultToggle=true
+       - Ogni campo ha checkbox "Use default" — solo i campi sovrascritti
+         vengono salvati in sshTerminalConfig
+    5. Modificare SshTerminal.tsx:
+       - Importare terminalSettingsStore
+       - Chiamare getMergedConfig(connection) per ottenere configurazione
+       - Passare risultato a new Terminal({ ...mergedConfig })
 
   FILE COINVOLTI:
-    CREARE:  client/src/hooks/useKeyboardShortcuts.ts
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx (attivare hook)
-    MODIFICARE: package.json (dipendenza react-hotkeys-hook)
-
-
-------------------------------------------------------------------------------
-[~] CLIP-017 — Clipboard (copy/paste) per connessioni RDP e SSH
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Abilitare il copia/incolla bidirezionale tra il browser e le sessioni
-  remote (RDP e SSH). Attualmente non e' implementato in nessuno dei due
-  protocolli. Per RDP si usano le API clipboard di guacamole-common-js,
-  per SSH si intercettano le combinazioni tastiera in xterm.js.
-
-  DETTAGLI TECNICI:
-  RDP Clipboard (guacamole-common-js):
-    1. In RdpViewer.tsx, aggiungere handler client.onclipboard:
-       - Decodificare dati con Guacamole.StringReader
-       - Scrivere nel clipboard del browser con navigator.clipboard.writeText()
-    2. Direzione inversa (browser → remote):
-       - Leggere navigator.clipboard.readText() su focus/input del display
-       - Inviare al remote via Guacamole.OutputStream + Guacamole.StringWriter
-    3. Nessuna modifica server-side necessaria (guacd abilita clipboard
-       di default se non ci sono flag disable-copy/disable-paste)
-
-  SSH Clipboard (xterm.js):
-    1. In SshTerminal.tsx, aggiungere terminal.attachCustomKeyEventHandler():
-       - Ctrl+Shift+C → navigator.clipboard.writeText(terminal.getSelection())
-       - Ctrl+Shift+V → navigator.clipboard.readText() → socket.emit('data', text)
-    2. Nessun pacchetto aggiuntivo necessario
-
-  FILE COINVOLTI:
-    MODIFICARE: client/src/components/RDP/RdpViewer.tsx
-                (onclipboard handler, clipboard write/read, navigator.clipboard)
+    MODIFICARE: server/prisma/schema.prisma
+                (aggiungere sshDefaults a User, sshTerminalConfig a Connection)
+    CREARE:  client/src/store/terminalSettingsStore.ts
+    CREARE:  client/src/components/Settings/TerminalSettingsSection.tsx
     MODIFICARE: client/src/components/Terminal/SshTerminal.tsx
-                (attachCustomKeyEventHandler per Ctrl+Shift+C/V)
+                (leggere configurazione dal store invece di valori hard-coded)
+    MODIFICARE: client/src/pages/SettingsPage.tsx
+                (aggiungere sezione SSH Terminal)
+    MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx
+                (aggiungere sezione Terminal Appearance per SSH)
+    MODIFICARE: client/src/api/user.api.ts (estendere tipi profilo)
+    MODIFICARE: client/src/api/connections.api.ts (estendere ConnectionData)
+    MODIFICARE: server/src/services/user.service.ts (gestire sshDefaults)
+    MODIFICARE: server/src/services/connection.service.ts (pass-through sshTerminalConfig)
 
 
 ------------------------------------------------------------------------------
-[~] RDPFS-018 — Condivisione file/cartelle via drive redirection (RDP)
+[ ] RDPSET-028 — Personalizzazione sessioni RDP (qualita', risoluzione, opzioni)
 ------------------------------------------------------------------------------
   Priorita: MEDIA
-  Dipendenze: Nessuna
+  Dipendenze: USER-007 (pagina impostazioni per configurazione globale)
 
   DESCRIZIONE:
-  Abilitare la drive redirection di guacd per permettere il trasferimento
-  di file tra il browser e la sessione RDP. Il desktop remoto vedra' un
-  disco di rete condiviso ("Shared") dove l'utente puo' copiare file.
-  Lato browser, una UI permette di caricare/scaricare file da quel disco.
+  Permettere la personalizzazione della qualita', risoluzione e comportamento
+  delle sessioni RDP. Attualmente tutti i parametri Guacamole sono hard-coded
+  in rdp.service.ts (security: nla, wallpaper: off, font-smoothing: on, ecc.).
+  Due livelli di configurazione, stesso pattern di SSHUI-027:
+    - Impostazioni globali: nell'account utente (SettingsPage), salvate
+      nel modello User (rdpDefaults), si applicano a tutte le connessioni RDP
+    - Override per connessione: nel dialog di modifica connessione,
+      salvate nel modello Connection (rdpSettings), sovrascrivono i default
+
+  OPZIONI DI PERSONALIZZAZIONE:
+
+    Display e risoluzione:
+      - Color depth (8 / 16 / 24 bpp — default: auto-negoziato)
+      - Risoluzione fissa width x height in pixel (default: auto/browser)
+      - DPI (default: 96)
+      - Metodo resize: display-update / reconnect (default: display-update)
+
+    Qualita' e performance (preset + personalizzato):
+      - Preset "Performance": niente wallpaper, niente compositing, niente
+        animazioni — banda minima (ideale per connessioni lente)
+      - Preset "Balanced" (default): theming + font smoothing attivi,
+        wallpaper e compositing disattivati
+      - Preset "Quality": tutto attivo (wallpaper, theming, font smoothing,
+        compositing, full window drag, menu animations)
+      - Preset "Custom": controllo granulare su ogni parametro
+      I singoli parametri Guacamole controllati:
+        - enable-wallpaper (default: false)
+        - enable-theming (default: true)
+        - enable-font-smoothing (default: true)
+        - enable-full-window-drag (default: false)
+        - enable-desktop-composition (default: false)
+        - enable-menu-animations (default: false)
+        - force-lossless (default: false)
+
+    Audio:
+      - Abilita audio remoto (disable-audio: default true = disattivato)
+      - Abilita microfono (enable-audio-input: default false)
+
+    Sicurezza:
+      - Tipo sicurezza: any / nla / nla-ext / tls / rdp (default: nla)
+      - Ignora certificato server (ignore-cert: default true)
+
+    Sessione:
+      - Keyboard layout (en-us-qwerty, it-it-qwerty, de-de-qwertz,
+        fr-fr-azerty, es-es-qwerty, pt-br-qwerty, ja-jp-qwerty,
+        ecc. — default: en-us-qwerty)
+      - Sessione console/admin (default: false)
+      - Timezone: forward fuso orario IANA al server (default: non impostato)
 
   DETTAGLI TECNICI:
-  Server (guacd parameters):
-    1. In rdp.service.ts, aggiungere ai settings del token:
-       - 'enable-drive': 'true'
-       - 'drive-name': 'Shared'
-       - 'drive-path': '/guacd-drive'
-       - 'create-drive-path': 'true'
+  Risoluzione configurazione a runtime (rdp.service.ts):
+    1. Partire dai fallback hard-coded (valori attuali in generateGuacamoleToken)
+    2. Sovrascrivere con i default globali dell'utente (User.rdpDefaults)
+    3. Sovrascrivere con gli override della connessione (Connection.rdpSettings)
+    4. Passare la configurazione risultante al token Guacamole
 
-  Docker (volume condiviso):
-    2. In docker-compose.dev.yml e docker-compose.prod.yml:
-       - Montare volume rdm_drive:/guacd-drive nel container guacd
-       - Montare stesso volume nel container server (per accesso API)
-       - Dichiarare volume rdm_drive nelle volumes globali
+  Backend:
+    1. Aggiungere campo rdpDefaults Json? al modello User (schema.prisma)
+       - Contiene le preferenze RDP globali dell'utente
+       - Letto/scritto tramite GET/PUT /api/user/profile (estendere)
+    2. Aggiungere campo rdpSettings Json? al modello Connection
+       - Contiene solo i campi sovrascritti (override sparso)
+       - Pass-through nel CRUD connessioni (create/update)
+    3. Definire interfaccia RdpSettings in server/src/types/index.ts:
+       - colorDepth?: 8 | 16 | 24
+       - width?: number
+       - height?: number
+       - dpi?: number
+       - resizeMethod?: 'display-update' | 'reconnect'
+       - enableWallpaper?: boolean
+       - enableTheming?: boolean
+       - enableFontSmoothing?: boolean
+       - enableFullWindowDrag?: boolean
+       - enableDesktopComposition?: boolean
+       - enableMenuAnimations?: boolean
+       - forceLossless?: boolean
+       - disableAudio?: boolean
+       - enableAudioInput?: boolean
+       - security?: 'any' | 'nla' | 'nla-ext' | 'tls' | 'rdp'
+       - ignoreCert?: boolean
+       - serverLayout?: string
+       - console?: boolean
+       - timezone?: string
+    4. Modificare generateGuacamoleToken() in rdp.service.ts:
+       - Accettare parametro opzionale rdpSettings: Partial<RdpSettings>
+       - Mappare i campi dell'interfaccia ai parametri Guacamole
+       - Usare i default attuali come fallback per ogni campo
 
-  Server API (gestione file):
-    3. Creare routes + controller + service per file transfer:
-       - GET    /api/files         → Lista file nella cartella condivisa
-       - GET    /api/files/:name   → Download file
-       - POST   /api/files         → Upload file (multer)
-       - DELETE /api/files/:name   → Elimina file
-    4. Installare multer per gestione upload multipart
+  Frontend — Impostazioni globali (account utente):
+    1. Creare client/src/components/Settings/RdpSettingsSection.tsx
+       - Componente riutilizzabile con tutti i controlli per le opzioni RDP
+       - Select per preset qualita' (Performance/Balanced/Quality/Custom)
+       - Controlli granulari visibili solo con preset "Custom"
+       - Select per color depth, keyboard layout, security
+       - Input per width/height/dpi
+       - Toggle per audio, microfono, console, ignore-cert
+       - Input per timezone (select con fusi orari comuni o auto-detect)
+       - Props: values, onChange, showUseDefaultToggle (per modalita' override)
+    2. Aggiungere sezione "RDP Defaults" in SettingsPage.tsx
+       - Usa RdpSettingsSection con i default globali
 
-  Frontend (file browser):
-    5. Creare componente FileBrowser per navigare la cartella condivisa
-       - Lista file con nome, dimensione, data
-       - Bottone upload (input file o drag-and-drop)
-       - Bottone download per ogni file
-       - Accessibile dalla tab RDP o da un pannello laterale
+  Frontend — Override per connessione:
+    3. Aggiungere sezione collassabile "RDP Settings" in
+       ConnectionDialog.tsx (visibile solo quando type=RDP)
+       - Usa RdpSettingsSection con showUseDefaultToggle=true
+       - Ogni campo ha checkbox "Use default" — solo i campi sovrascritti
+         vengono salvati in rdpSettings
+    4. Modificare rdp.handler.ts (POST /sessions/rdp):
+       - Caricare User.rdpDefaults dal database
+       - Caricare Connection.rdpSettings
+       - Merge: system defaults -> user defaults -> connection overrides
+       - Passare risultato a generateGuacamoleToken()
 
   FILE COINVOLTI:
+    MODIFICARE: server/prisma/schema.prisma
+                (aggiungere rdpDefaults a User, rdpSettings a Connection)
+    MODIFICARE: server/src/types/index.ts
+                (aggiungere interfaccia RdpSettings)
     MODIFICARE: server/src/services/rdp.service.ts
-                (aggiungere parametri enable-drive al token)
-    MODIFICARE: docker-compose.dev.yml (volume guacd-drive)
-    MODIFICARE: docker-compose.yml (volume guacd-drive)
-    MODIFICARE: docker-compose.prod.yml (volume guacd-drive)
-    CREARE:  server/src/routes/filetransfer.routes.ts
-    CREARE:  server/src/controllers/filetransfer.controller.ts
-    CREARE:  server/src/services/filetransfer.service.ts
-    CREARE:  client/src/components/FileTransfer/FileBrowser.tsx
-    MODIFICARE: server/src/app.ts (montare routes filetransfer)
-    MODIFICARE: package.json (dipendenza multer)
-
-
-------------------------------------------------------------------------------
-[x] LOG-018 — Logging configurabile per connessioni
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: Nessuna
-  COMPLETATO: Logger utility, LOG_LEVEL env var, guacamole-lite level mapping
-
-  DESCRIZIONE:
-  Disabilitare i log verbosi di guacamole-lite in sviluppo e rendere il
-  livello di logging configurabile tramite variabile d'ambiente LOG_LEVEL.
-
-  STATO IMPLEMENTAZIONE:
-  - LOG_LEVEL env var (error | warn | info | debug), default: info
-  - Logger utility senza dipendenze esterne (server/src/utils/logger.ts)
-  - Guacamole-lite usa livello mappato da LOG_LEVEL (non piu' hardcoded DEBUG)
-  - Tutti i console.log/error/warn sostituiti con logger.*
-  - Con default "info": guacamole gira a NORMAL (niente spam DEBUG)
-
-  FILE COINVOLTI:
-    CREATO:    server/src/utils/logger.ts
-    MODIFICATO: server/src/config.ts (campo logLevel)
-    MODIFICATO: server/src/index.ts (usa logger + toGuacamoleLogLevel)
-    MODIFICATO: server/src/middleware/error.middleware.ts (usa logger)
-    MODIFICATO: .env.example (LOG_LEVEL)
+                (generateGuacamoleToken accetta RdpSettings, merge con defaults)
+    MODIFICARE: server/src/socket/rdp.handler.ts
+                (caricare user defaults + connection settings, merge, passare a token)
+    CREARE:  client/src/components/Settings/RdpSettingsSection.tsx
+    MODIFICARE: client/src/pages/SettingsPage.tsx
+                (aggiungere sezione RDP Defaults)
+    MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx
+                (aggiungere sezione RDP Settings per type=RDP)
+    MODIFICARE: client/src/api/user.api.ts (estendere tipi profilo)
+    MODIFICARE: client/src/api/connections.api.ts (estendere ConnectionData)
+    MODIFICARE: server/src/services/user.service.ts (gestire rdpDefaults)
+    MODIFICARE: server/src/services/connection.service.ts (pass-through rdpSettings)
 
 
 ------------------------------------------------------------------------------
@@ -659,39 +408,158 @@
 
   DESCRIZIONE:
   Abilitare il trasferimento file bidirezionale nelle sessioni SSH
-  tramite il protocollo SFTP. La libreria ssh2 gia' presente nel progetto
-  supporta SFTP nativamente via client.sftp(). Serve un file browser
-  nel frontend e nuovi eventi socket lato server.
+  tramite il protocollo SFTP. La libreria ssh2 (v1.17.0) gia' presente
+  nel progetto supporta SFTP nativamente via client.sftp(). L'architettura
+  segue il pattern Socket.IO gia' usato per il terminale SSH: la sessione
+  SFTP viene creata sulla stessa connessione SSH esistente.
+  Riferimento: il file transfer RDP (RDPFS-018) usa un approccio HTTP/REST
+  con drawer laterale — il pattern frontend puo' essere riutilizzato.
 
   DETTAGLI TECNICI:
-  Server (SFTP via ssh2):
-    1. In ssh.service.ts, aggiungere metodo per creare sessione SFTP:
-       - Usare client.sftp() sulla connessione SSH esistente
-    2. In ssh.handler.ts, aggiungere nuovi eventi socket:
-       - sftp:list (directory) → Lista file/cartelle con stat
-       - sftp:upload (path, data) → Scrive file sul server remoto
-       - sftp:download (path) → Legge file e invia al client
-       - sftp:mkdir (path) → Crea cartella
-       - sftp:delete (path) → Elimina file/cartella
-    3. Alternativa: creare routes HTTP con multer per upload/download
-       streaming attraverso canale SFTP
 
-  Frontend (SFTP browser):
-    4. Creare componente SftpBrowser:
-       - Navigazione directory con breadcrumb
-       - Lista file con nome, dimensione, permessi, data
-       - Upload file (drag-and-drop con react-dropzone o input nativo)
-       - Download file (click o bottone)
-       - Creazione cartelle, eliminazione file
-       - Accessibile dalla tab SSH come pannello split o tab separata
-    5. Opzionale: installare react-dropzone per UX upload migliore
+  ---- Server — SFTP via Socket.IO (approccio primario) ----
+
+    1. Estendere ssh.service.ts con creazione sessione SFTP:
+       - createSftpSession(client: Client): Promise<SFTPWrapper>
+         Chiama client.sftp() sulla connessione SSH gia' attiva
+       - La sessione SFTP vive in parallelo alla shell (stesso client SSH)
+       - Salvare SFTPWrapper nella mappa sessioni attive di ssh.handler.ts
+
+    2. Aggiungere eventi SFTP in ssh.handler.ts:
+       Navigazione:
+         - sftp:list (path: string)
+           → Ritorna array di { name, size, permissions, type, modifiedAt }
+           → type: 'file' | 'directory' | 'symlink'
+           → Usa sftp.readdir() con attrs (mode, size, mtime)
+         - sftp:stat (path: string)
+           → Ritorna stat singolo file/cartella (size, permissions, type, dates)
+
+       Upload (browser → server remoto):
+         - sftp:upload:start (remotePath: string, fileSize: number)
+           → Apre write stream con sftp.createWriteStream(remotePath)
+           → Ritorna transferId (uuid)
+         - sftp:upload:chunk (transferId: string, data: Buffer, offset: number)
+           → Scrive chunk nello stream aperto
+           → Emette sftp:progress (transferId, bytesTransferred, totalBytes)
+         - sftp:upload:end (transferId: string)
+           → Chiude lo stream, conferma completamento
+           → Emette sftp:transfer:complete (transferId)
+
+       Download (server remoto → browser):
+         - sftp:download:start (remotePath: string)
+           → Apre read stream con sftp.createReadStream(remotePath)
+           → Stat per ottenere fileSize, ritorna transferId
+         - Server emette sftp:download:chunk (transferId, data, offset) in loop
+           → Chunk size configurabile (default 64KB)
+           → Emette sftp:progress tra i chunk
+         - sftp:download:end emesso al completamento
+
+       Gestione file/cartelle:
+         - sftp:mkdir (path: string) → sftp.mkdir()
+         - sftp:delete (path: string) → sftp.unlink() per file
+         - sftp:rmdir (path: string) → sftp.rmdir() per cartelle
+         - sftp:rename (oldPath: string, newPath: string) → sftp.rename()
+
+       Controllo trasferimenti:
+         - sftp:cancel (transferId: string)
+           → Chiude stream in corso, pulisce risorse
+           → Emette sftp:transfer:cancelled (transferId)
+
+    3. Progresso e coda trasferimenti:
+       - Ogni trasferimento ha un transferId univoco (uuid)
+       - Evento sftp:progress (transferId, bytesTransferred, totalBytes, filename)
+         emesso ogni chunk (lato server)
+       - Mappa in-memory dei trasferimenti attivi per sessione
+       - Cleanup automatico alla disconnessione socket
+
+    4. Limiti e sicurezza:
+       - Max file size configurabile (default 100MB per SFTP)
+       - Validazione path: no path traversal (sanitize input)
+       - Rate limiting sugli eventi upload (evitare flood)
+       - Timeout per trasferimenti inattivi (30s senza chunk → abort)
+
+  ---- Server — Approccio HTTP alternativo (opzionale) ----
+
+    5. Routes HTTP per upload/download via SFTP:
+       - POST /api/sessions/ssh/:sessionId/upload
+         → Multer riceve il file, lo streamma via SFTP al server remoto
+         → Riutilizza setup multer e logica quota da files.routes.ts
+       - GET  /api/sessions/ssh/:sessionId/download?path=...
+         → Legge file remoto via SFTP, streamma come risposta HTTP
+       - Utile per: drag-and-drop dal desktop, download diretto nel browser
+       - Richiede sessionId valido (mapping in ssh.handler.ts)
+
+  ---- Frontend — SftpBrowser ----
+
+    6. Creare client/src/components/SSH/SftpBrowser.tsx:
+       Navigazione:
+         - Barra breadcrumb con path corrente (es. / > home > user > docs)
+         - Click su segmento breadcrumb per navigare a quel livello
+         - Doppio-click su cartella per entrare
+         - Bottone "Up" per tornare alla cartella padre
+
+       Lista file:
+         - Tabella/lista con colonne: Icona, Nome, Dimensione, Permessi, Data
+         - Ordinamento per colonna (click su header)
+         - Icone diverse per file, cartella, symlink
+         - Dimensione formattata (KB, MB, GB)
+         - Data formattata (relativa per recenti, assoluta per vecchi)
+
+       Azioni file:
+         - Upload: bottone + zona drag-and-drop (evidenziata al trascinamento)
+         - Download: icona per ogni file (click diretto)
+         - Crea cartella: bottone + dialog con input nome
+         - Elimina: icona con dialog di conferma
+         - Rinomina: doppio-click sul nome o voce context menu
+         - Refresh: bottone per ricaricare la lista
+
+       Upload multiplo:
+         - Supporto selezione multipla nell'input file
+         - Coda visiva dei file in attesa di upload
+         - Upload sequenziale (uno alla volta per non sovraccaricare)
+
+    7. Creare client/src/components/SSH/SftpTransferQueue.tsx:
+       - Pannello collassabile in basso nel SftpBrowser
+       - Lista trasferimenti: attivi, in coda, completati, falliti
+       - Per ogni trasferimento: nome file, direzione (up/down),
+         barra progresso, velocita', tempo stimato
+       - Bottone cancella per trasferimenti attivi
+       - Bottone riprova per trasferimenti falliti
+       - Bottone "Clear completed" per pulire la lista
+
+    8. Integrazione nella tab SSH:
+       - FloatingToolbar: aggiungere bottone con icona cartella
+         (stesso pattern di RDP: FloatingToolbar.tsx)
+       - Click su bottone: apre/chiude drawer laterale (320px, stile FileBrowser RDP)
+       - Il drawer SftpBrowser si affianca al terminale XTerm
+       - Stato apertura/chiusura persistente per sessione
+
+    9. Aggiornare SshTerminal.tsx:
+       - Prop onToggleSftp / sftpOpen per controllare il drawer
+       - Passare socket e sessionId al SftpBrowser
+       - Ridimensionare terminale quando il drawer si apre/chiude (FitAddon.fit())
+
+   10. Aggiornare TabPanel.tsx:
+       - Rendere SftpBrowser condizionalmente per tab SSH
+       - Gestire stato sftpOpen nel tab
 
   FILE COINVOLTI:
-    MODIFICARE: server/src/socket/ssh.handler.ts
-                (aggiungere eventi SFTP: list, upload, download, mkdir, delete)
     MODIFICARE: server/src/services/ssh.service.ts
-                (aggiungere creazione sessione SFTP via client.sftp())
-    CREARE:  client/src/components/FileTransfer/SftpBrowser.tsx
+                (aggiungere createSftpSession() via client.sftp())
+    MODIFICARE: server/src/socket/ssh.handler.ts
+                (aggiungere tutti gli eventi SFTP: list, stat, upload, download,
+                 mkdir, delete, rmdir, rename, cancel, progress)
+    CREARE:  client/src/components/SSH/SftpBrowser.tsx
+             (file browser con breadcrumb, lista file, upload, download,
+              drag-and-drop, azioni CRUD, progress)
+    CREARE:  client/src/components/SSH/SftpTransferQueue.tsx
+             (coda trasferimenti con progresso, cancel, retry)
+    MODIFICARE: client/src/components/Terminal/SshTerminal.tsx
+                (integrazione toggle SFTP drawer, resize terminale)
+    MODIFICARE: client/src/components/Tabs/TabPanel.tsx
+                (render condizionale SftpBrowser per tab SSH)
+    OPZIONALE:  server/src/routes/sftp.routes.ts
+                (endpoint HTTP alternativi per upload/download streaming)
 
 
 ================================================================================
@@ -1201,51 +1069,47 @@
 ================================================================================
 
   Fase 1 — Quick wins e prerequisiti:
-    1. UI-002   Spostare bottone nuova connessione
-    2. FOLD-001 Gestione cartelle UI (backend gia' pronto)
-    3. EDIT-008 Verificare/completare modifica connessioni
+    1. UI-002   Spostare bottone nuova connessione              [COMPLETATO]
+    2. FOLD-001 Gestione cartelle UI (backend gia' pronto)      [COMPLETATO]
+    3. EDIT-008 Verificare/completare modifica connessioni      [COMPLETATO]
 
   Fase 2 — Context menu completo + clipboard:
-    4. SHR-005   Condivisione dal context menu
-    5. CLIP-017  Clipboard RDP e SSH (quick win, solo frontend)
-    6. USER-007  Pannello utente (necessario per CRED-006)
+    4. SHR-005   Condivisione dal context menu                  [IN CORSO]
+    5. CLIP-017  Clipboard RDP e SSH (quick win, solo frontend) [IN CORSO]
+    6. USER-007  Pannello utente (necessario per CRED-006)      [IN CORSO]
     7. CRED-006  Connessione con credenziali alternative
 
   Fase 3 — Miglioramenti UX:
-    8. SEARCH-009  Barra di ricerca
-    9. THEME-011   Tema scuro/chiaro
-   10. FAVS-014    Preferiti e recenti
-   11. RDPFS-018   Drive redirection RDP (file transfer)
-   12. SFTP-019    Trasferimento file SFTP (SSH)
+    8. SEARCH-009  Barra di ricerca                             [IN CORSO]
+    9. THEME-011   Tema scuro/chiaro                            [IN CORSO]
+   10. FAVS-014    Preferiti e recenti                          [IN CORSO]
+   11. RDPFS-018   Drive redirection RDP (file transfer)        [IN CORSO]
+   12. SSHUI-027   Personalizzazione terminale SSH (font, temi, opzioni)
+   13. RDPSET-028  Personalizzazione sessioni RDP (qualita', risoluzione)
+   14. SFTP-019    Trasferimento file SFTP (SSH)
 
   Fase 4 — Sicurezza e amministrazione:
-   13. 2FA-012     Autenticazione due fattori
-   14. AUDIT-013   Log attivita'
-   15. NOTIF-015   Notifiche condivisione
-   16. DND-010     Drag and drop
+   15. 2FA-012     Autenticazione due fattori
+   16. AUDIT-013   Log attivita'
+   17. NOTIF-015   Notifiche condivisione
+   18. DND-010     Drag and drop
 
   Fase 5 — Multi-tenant e team:
-   17. TENANT-020  Schema multi-tenant (modelli Prisma)
-   18. TENANT-021  Backend CRUD tenant + onboarding
-   19. TEAM-022    Backend CRUD team + vault team
-   20. PERM-023    Ownership connessioni + permessi team
-   21. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 20)
-   22. UI-025      Frontend tenant/team/sidebar
-   23. GUARD-026   Middleware sicurezza + test isolamento
+   19. TENANT-020  Schema multi-tenant (modelli Prisma)
+   20. TENANT-021  Backend CRUD tenant + onboarding
+   21. TEAM-022    Backend CRUD team + vault team
+   22. PERM-023    Ownership connessioni + permessi team
+   23. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 22)
+   24. UI-025      Frontend tenant/team/sidebar
+   25. GUARD-026   Middleware sicurezza + test isolamento
 
 
 ================================================================================
   NOTE
 ================================================================================
-  - Task CTX-003 e DEL-004 sono gia' completati
-  - EDIT-008 e' parzialmente implementato (verificare funzionamento)
-  - FOLD-001 ha il backend completo, manca solo il frontend
-  - SHR-005 ha ShareDialog.tsx gia' creato ma non collegato alla UI
   - CRED-006 richiede modifiche sia frontend che backend
   - USER-007 e' il task piu' grande: richiede nuovo layer backend completo
   - Il cambio password (USER-007) e' critico: deve ri-cifrare la vault key
-  - CLIP-017 e' un quick win: solo modifiche frontend, nessun backend
-  - RDPFS-018 richiede volume Docker condiviso tra guacd e server
   - SFTP-019 usa client.sftp() di ssh2 (gia' installato), nessun nuovo pacchetto
   - TENANT-020 aggiunge colonne nullable: backward compatible con utenti esistenti
   - TEAM-022 richiede vault sbloccato per aggiungere membri (re-cifratura team key)
@@ -1253,4 +1117,14 @@
   - GUARD-026 e' critico per sicurezza: garantisce isolamento cross-tenant totale
   - DISC-024 migliora UX condivisione: ricerca utenti per nome/email nel tenant
   - La condivisione cross-tenant e' VIETATA per design
+  - SSHUI-027 ha due livelli: default globali (User.sshDefaults via Settings page)
+    e override per connessione (Connection.sshTerminalConfig via ConnectionDialog)
+  - SSHUI-027 dipende da USER-007 per la pagina impostazioni account
+  - RDPSET-028 ha due livelli: default globali (User.rdpDefaults via Settings page)
+    e override per connessione (Connection.rdpSettings via ConnectionDialog)
+  - RDPSET-028 dipende da USER-007 per la pagina impostazioni account
+  - RDPSET-028 include preset qualita' (Performance/Balanced/Quality/Custom)
+    per semplificare la scelta; il preset "Custom" mostra tutti i parametri
+  - RDPSET-028 espone parametri Guacamole: color-depth, risoluzione, DPI,
+    performance flags, audio, security, keyboard layout, console, timezone
 ================================================================================
