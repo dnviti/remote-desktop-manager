@@ -111,6 +111,21 @@ export default function RdpViewer({ connectionId, tabId, isActive = true }: RdpV
           if (activeRef.current) client.sendMouseState(e.state);
         });
 
+        // Clipboard: remote → browser
+        client.onclipboard = (stream: Guacamole.InputStream, mimetype: string) => {
+          if (mimetype !== 'text/plain') return;
+          const reader = new Guacamole.StringReader(stream);
+          let data = '';
+          reader.ontext = (text: string) => { data += text; };
+          reader.onend = () => {
+            if (data && navigator.clipboard?.writeText) {
+              navigator.clipboard.writeText(data).catch((err) => {
+                console.warn('Failed to write to browser clipboard:', err);
+              });
+            }
+          };
+        };
+
         // Keyboard events — only forward when this viewer is active and focused
         const keyboard = new Guacamole.Keyboard(displayRef.current!);
         keyboardRef.current = keyboard;
@@ -151,6 +166,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true }: RdpV
         keyboardRef.current = null;
       }
       if (clientRef.current) {
+        clientRef.current.onclipboard = null;
         clientRef.current.disconnect();
       }
       if (displayRef.current) {
@@ -176,14 +192,36 @@ export default function RdpViewer({ connectionId, tabId, isActive = true }: RdpV
       keyboardRef.current?.reset();
     };
 
+    // Clipboard: browser → remote
+    const syncClipboardToRemote = () => {
+      const client = clientRef.current;
+      if (!client || !activeRef.current) return;
+      if (!navigator.clipboard?.readText) return;
+      navigator.clipboard.readText().then((text) => {
+        if (!text) return;
+        const stream = client.createClipboardStream('text/plain');
+        const writer = new Guacamole.StringWriter(stream);
+        writer.sendText(text);
+        writer.sendEnd();
+      }).catch((err) => {
+        console.warn('Failed to read browser clipboard:', err);
+      });
+    };
+    const handleFocus = () => { syncClipboardToRemote(); };
+    const handleMouseDown = () => { syncClipboardToRemote(); };
+
     container.addEventListener('mouseenter', handleMouseEnter);
     container.addEventListener('mouseleave', handleMouseLeave);
     container.addEventListener('blur', handleBlur);
+    container.addEventListener('focus', handleFocus);
+    container.addEventListener('mousedown', handleMouseDown);
 
     return () => {
       container.removeEventListener('mouseenter', handleMouseEnter);
       container.removeEventListener('mouseleave', handleMouseLeave);
       container.removeEventListener('blur', handleBlur);
+      container.removeEventListener('focus', handleFocus);
+      container.removeEventListener('mousedown', handleMouseDown);
     };
   }, []);
 

@@ -50,6 +50,36 @@ export default function SshTerminal({ connectionId, tabId }: SshTerminalProps) {
 
     socketRef.current = socket;
 
+    // Clipboard: Ctrl+Shift+C to copy, Ctrl+Shift+V to paste
+    terminal.attachCustomKeyEventHandler((event: KeyboardEvent) => {
+      if (event.type !== 'keydown') return true;
+
+      if (event.ctrlKey && event.shiftKey && event.key === 'C') {
+        const selection = terminal.getSelection();
+        if (selection && navigator.clipboard?.writeText) {
+          navigator.clipboard.writeText(selection).catch((err) => {
+            console.warn('Failed to copy to clipboard:', err);
+          });
+        }
+        return false;
+      }
+
+      if (event.ctrlKey && event.shiftKey && event.key === 'V') {
+        if (navigator.clipboard?.readText) {
+          navigator.clipboard.readText().then((text) => {
+            if (text && socket.connected) {
+              socket.emit('data', text);
+            }
+          }).catch((err) => {
+            console.warn('Failed to read clipboard:', err);
+          });
+        }
+        return false;
+      }
+
+      return true;
+    });
+
     socket.on('connect', () => {
       socket.emit('session:start', { connectionId });
     });
