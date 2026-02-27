@@ -99,6 +99,100 @@
     INSTALLARE: eslint-plugin-security, semgrep (o equivalente)
 
 
+------------------------------------------------------------------------------
+[ ] OSS-032 — Preparare la repository per pubblicazione open-source
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna (indipendente dai task funzionali)
+  Fase: Pre-release
+
+  DESCRIZIONE:
+  Preparare la repository per essere pubblicata come progetto open-source.
+  Include l'aggiunta di tutti i file di governance richiesti dalla community
+  (LICENSE, CONTRIBUTING, CODE_OF_CONDUCT, SECURITY), l'aggiornamento dei
+  metadati nei package.json, la creazione di template GitHub per issue e PR,
+  la revisione del README con badge e screenshot, e la sanitizzazione dei
+  file interni (task tracker) prima della pubblicazione.
+
+  DETTAGLI TECNICI:
+
+  1. File LICENSE (GPL v3):
+     - Creare LICENSE nella root con il testo completo della GNU GPL v3
+     - Aggiungere header GPL in cima ai file sorgente principali (opzionale)
+
+  2. CONTRIBUTING.md:
+     - Prerequisiti e setup ambiente di sviluppo
+     - Come eseguire il progetto in locale (riassunto da README)
+     - Convenzioni di codice (naming, architettura layered, pattern esistenti)
+     - Processo per aprire issue e pull request
+     - Linee guida per i commit message
+     - Come eseguire i test (quando disponibili)
+
+  3. CODE_OF_CONDUCT.md:
+     - Adottare il Contributor Covenant v2.1 (standard de facto)
+
+  4. SECURITY.md:
+     - Come segnalare vulnerabilita' in modo responsabile (email dedicata)
+     - Panoramica delle feature di sicurezza del progetto:
+       vault AES-256-GCM, Argon2 key derivation, JWT auth, 2FA TOTP
+     - Scope delle segnalazioni accettate
+     - Tempi di risposta attesi
+
+  5. CHANGELOG.md:
+     - Formato Keep a Changelog (https://keepachangelog.com)
+     - Documentare le feature principali gia' implementate come v1.0.0
+     - Sezioni: Added, Changed, Fixed, Security
+
+  6. Aggiornamento package.json (root, server/, client/):
+     - "description": descrizione progetto
+     - "license": "GPL-3.0"
+     - "repository": { "type": "git", "url": "https://github.com/..." }
+     - "keywords": ["remote-desktop", "ssh", "rdp", "guacamole", "web-terminal"]
+     - "homepage": URL repository GitHub
+     - "bugs": { "url": "https://github.com/.../issues" }
+     - "author": nome e contatto del maintainer
+
+  7. GitHub templates:
+     - .github/ISSUE_TEMPLATE/bug_report.md (titolo, descrizione, steps to
+       reproduce, expected behavior, environment)
+     - .github/ISSUE_TEMPLATE/feature_request.md (problema, soluzione proposta,
+       alternative considerate)
+     - .github/pull_request_template.md (descrizione, tipo di cambio,
+       checklist: test, docs, breaking changes)
+
+  8. .editorconfig:
+     - indent_style = space, indent_size = 2 (coerente con codebase)
+     - end_of_line = lf, charset = utf-8
+     - trim_trailing_whitespace = true, insert_final_newline = true
+
+  9. Revisione README.md:
+     - Aggiungere badge: license, build status (GitHub Actions), versione
+     - Aggiungere sezione screenshot/demo (se disponibili)
+     - Verificare che le istruzioni di setup siano complete per un nuovo utente
+     - Aggiungere sezione "Contributing" con link a CONTRIBUTING.md
+     - Aggiungere sezione "License" con link a LICENSE
+
+  10. Sanitizzazione file interni:
+      - Rimuovere o aggiungere a .gitignore i file task tracker:
+        to-do.txt, progressing.txt, done.txt
+      - Verificare che nessun dato personale o segreto sia nel repository
+      - Verificare che .env.example sia aggiornato e completo
+
+  FILE COINVOLTI:
+    CREARE:  LICENSE
+    CREARE:  CONTRIBUTING.md
+    CREARE:  CODE_OF_CONDUCT.md
+    CREARE:  SECURITY.md
+    CREARE:  CHANGELOG.md
+    CREARE:  .editorconfig
+    CREARE:  .github/ISSUE_TEMPLATE/bug_report.md
+    CREARE:  .github/ISSUE_TEMPLATE/feature_request.md
+    CREARE:  .github/pull_request_template.md
+    MODIFICARE: package.json (root — aggiungere metadati OSS)
+    MODIFICARE: server/package.json (aggiungere license, description)
+    MODIFICARE: client/package.json (aggiungere license, description)
+    MODIFICARE: README.md (badge, screenshot, sezioni Contributing e License)
+    MODIFICARE: .gitignore (escludere file task tracker)
 
 
 
@@ -468,17 +562,18 @@
    19. NOTIF-015   Notifiche condivisione                               [COMPLETATO]
    20. DND-010     Drag and drop                                          [COMPLETATO]
 
-  Fase 5 — Quality gate (da fare PRIMA di continuare i task):
+  Fase 5 — Quality gate e preparazione OSS:
    21. SAST-031    SAST e code verification tools + check post-task
+   22. OSS-032     Preparare repository per pubblicazione open-source
 
   Fase 6 — Multi-tenant e team:
-   22. TENANT-020  Schema multi-tenant (modelli Prisma)                   [COMPLETATO]
-   23. TENANT-021  Backend CRUD tenant + onboarding                          [IN CORSO]
-   24. TEAM-022    Backend CRUD team + vault team
-   25. PERM-023    Ownership connessioni + permessi team
-   26. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 24)
-   27. UI-025      Frontend tenant/team/sidebar
-   28. GUARD-026   Middleware sicurezza + test isolamento
+   23. TENANT-020  Schema multi-tenant (modelli Prisma)                   [COMPLETATO]
+   24. TENANT-021  Backend CRUD tenant + onboarding                          [IN CORSO]
+   25. TEAM-022    Backend CRUD team + vault team
+   26. PERM-023    Ownership connessioni + permessi team
+   27. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 25)
+   28. UI-025      Frontend tenant/team/sidebar
+   29. GUARD-026   Middleware sicurezza + test isolamento
 
 
 ================================================================================
@@ -521,4 +616,10 @@
   - SAST-031 non ha dipendenze: puo' essere implementato immediatamente
   - SAST-031 copre: ESLint (sicurezza), TypeScript strict, Semgrep (SAST),
     npm audit (dipendenze), build verification
+  - OSS-032 non ha dipendenze funzionali ma va fatto prima del primo release pubblico
+  - OSS-032 licenza scelta: GPL v3 (copyleft, derivati devono essere open-source)
+  - OSS-032 i file task tracker (to-do.txt, progressing.txt, done.txt) vanno rimossi
+    o aggiunti a .gitignore prima della pubblicazione (contengono note interne)
+  - OSS-032 README.md gia' buono (176 righe), serve aggiungere badge e sezioni
+    Contributing/License
 ================================================================================
