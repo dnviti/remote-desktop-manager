@@ -15,26 +15,89 @@
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================
 
+
 ------------------------------------------------------------------------------
-[ ] DND-010 — Drag and Drop connessioni tra cartelle
+[ ] SAST-031 — SAST e code verification tools con check post-task automatico
 ------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: FOLD-001
+  Priorita: ALTA
+  Dipendenze: Nessuna (puo' essere implementato subito)
+  Fase: Trasversale (Quality Gate)
 
   DESCRIZIONE:
-  Trascinare connessioni tra cartelle e verso la root usando drag & drop.
+  Integrare strumenti di analisi statica del codice (SAST) e verifiche
+  di qualita' nel progetto. Ogni volta che un task viene concluso, prima
+  di considerarlo completato, il codice deve essere verificato e gli
+  eventuali problemi corretti. Questo include linting, type-checking,
+  analisi di sicurezza e build verification.
 
   DETTAGLI TECNICI:
-    1. Installare @hello-pangea/dnd (fork mantenuto di react-beautiful-dnd)
-    2. Wrappare la lista connessioni con DragDropContext
-    3. Ogni ConnectionItem diventa Draggable
-    4. Ogni FolderItem e la root diventano Droppable
-    5. onDragEnd: chiamare PUT /api/connections/:id con nuovo folderId
-    6. Feedback visivo durante il drag (highlight cartella target)
+  Strumenti da configurare:
+
+    1. ESLint (gia' presente, da rafforzare):
+       - Abilitare regole di sicurezza: eslint-plugin-security
+       - Aggiungere eslint-plugin-no-unsanitized (previene XSS)
+       - Regole strict per TypeScript: @typescript-eslint/strict
+       - Configurazione separata server/ e client/ se necessario
+
+    2. TypeScript strict check:
+       - Verificare che tsconfig.json abbia strict: true
+       - Aggiungere script: npm run typecheck (tsc --noEmit)
+       - Coprire sia server/ che client/
+
+    3. SAST scanner — Semgrep o equivalente:
+       - Installare semgrep come devDependency o tool globale
+       - Configurare regole per Node.js, Express, React
+       - Focus: SQL injection, XSS, path traversal, auth bypass,
+         hardcoded secrets, insecure crypto usage
+       - File config: .semgrep.yml (o equivalente) alla root
+
+    4. Dependency audit:
+       - npm audit come step di verifica
+       - Opzionale: installare better-npm-audit per output migliorato
+
+    5. Build verification:
+       - npm run build deve completare senza errori
+
+  Script di verifica unificato:
+    Creare npm script "verify" che esegua tutti i check in sequenza:
+
+    package.json (root):
+      "scripts": {
+        "verify": "npm run typecheck && npm run lint && npm run sast && npm run build",
+        "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+        "lint": "npm run lint -w server && npm run lint -w client",
+        "sast": "semgrep --config auto ."
+      }
+
+    server/package.json:
+      "scripts": {
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint src/"
+      }
+
+    client/package.json:
+      "scripts": {
+        "typecheck": "tsc --noEmit",
+        "lint": "eslint src/"
+      }
+
+  Procedura post-task (da seguire per ogni task futuro):
+    1. Implementare il task
+    2. Eseguire: npm run verify
+    3. Correggere TUTTI gli errori e warning critici
+    4. Ri-eseguire npm run verify fino a zero errori
+    5. Solo allora marcare il task come completato
 
   FILE COINVOLTI:
-    MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx
-    MODIFICARE: package.json (aggiungere dipendenza)
+    MODIFICARE: package.json (script verify, typecheck, lint, sast)
+    MODIFICARE: server/package.json (script typecheck, lint)
+    MODIFICARE: client/package.json (script typecheck, lint)
+    CREARE:  .semgrep.yml (configurazione regole SAST)
+    MODIFICARE: server/tsconfig.json (verificare strict mode)
+    MODIFICARE: client/tsconfig.json (verificare strict mode)
+    MODIFICARE: .eslintrc / eslint.config.* (regole sicurezza)
+    INSTALLARE: eslint-plugin-security, semgrep (o equivalente)
+
 
 
 
@@ -45,176 +108,6 @@
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
 ================================================================================
 
-------------------------------------------------------------------------------
-[ ] TENANT-020 — Schema multi-tenant: modelli Tenant, Team, TeamMember e ruoli
-------------------------------------------------------------------------------
-  Priorita: CRITICA
-  Dipendenze: Nessuna
-  Fase: 1 (Fondamenta)
-
-  DESCRIZIONE:
-  Creare i modelli Prisma fondamentali per il sistema multi-tenant:
-  Tenant (organizzazione top-level), Team (gruppo all'interno del tenant),
-  TeamMember (appartenenza utente a un team con ruolo), e il ruolo
-  dell'utente a livello di tenant. Ogni utente appartiene a esattamente
-  un tenant. Le connessioni restano private per default (userId), ma
-  possono essere opzionalmente associate a un team (teamId).
-  Aggiungere inoltre una chiave vault per ogni team, cifrata per-membro.
-
-  DETTAGLI TECNICI:
-  Prisma schema — Nuovi modelli:
-
-    enum TenantRole {
-      OWNER        // Creatore del tenant, pieni poteri
-      ADMIN        // Puo' gestire team, utenti, connessioni tenant-level
-      MEMBER       // Utente base, accede solo ai propri dati e team assegnati
-    }
-
-    enum TeamRole {
-      TEAM_ADMIN   // Gestisce il team: aggiunge/rimuove membri, crea connessioni
-      TEAM_EDITOR  // Puo' creare/modificare connessioni nel team
-      TEAM_VIEWER  // Puo' solo visualizzare e connettersi
-    }
-
-    model Tenant {
-      id          String       @id @default(uuid())
-      name        String
-      slug        String       @unique  // per URL-friendly access
-      createdAt   DateTime     @default(now())
-      updatedAt   DateTime     @updatedAt
-      users       User[]
-      teams       Team[]
-    }
-
-    model Team {
-      id          String       @id @default(uuid())
-      name        String
-      description String?
-      tenantId    String
-      createdAt   DateTime     @default(now())
-      updatedAt   DateTime     @updatedAt
-      tenant      Tenant       @relation(fields: [tenantId], references: [id])
-      members     TeamMember[]
-      connections Connection[]
-      folders     Folder[]
-      @@unique([tenantId, name])
-    }
-
-    model TeamMember {
-      id                    String   @id @default(uuid())
-      teamId                String
-      userId                String
-      role                  TeamRole
-      // Chiave vault del team, cifrata con la master key dell'utente
-      encryptedTeamVaultKey String?
-      teamVaultKeyIV        String?
-      teamVaultKeyTag       String?
-      joinedAt              DateTime @default(now())
-      team                  Team     @relation(..., onDelete: Cascade)
-      user                  User     @relation(..., onDelete: Cascade)
-      @@unique([teamId, userId])
-    }
-
-  Modifiche a modelli esistenti:
-
-    model User:
-      + tenantId    String?         // nullable per migrazione graduale
-      + tenantRole  TenantRole?     // ruolo nel tenant
-      + tenant      Tenant?         @relation(...)
-      + teamMembers TeamMember[]
-
-    model Connection:
-      + teamId      String?         // se != null, connessione del team
-      + team        Team?           @relation(...)
-
-    model Folder:
-      + teamId      String?         // cartelle possono essere del team
-      + team        Team?           @relation(...)
-
-  Migrazione dati esistenti:
-    - Creare una migrazione Prisma che:
-      a) Crea i nuovi modelli e enum
-      b) Aggiunge colonne nullable a User, Connection, Folder
-      c) NON forza un tenant per utenti esistenti (tenantId nullable)
-      d) Gli utenti senza tenant continuano a funzionare come oggi
-    - La migrazione effettiva degli utenti avviene in TENANT-021
-
-  FILE COINVOLTI:
-    MODIFICARE: server/prisma/schema.prisma
-                (nuovi modelli Tenant, Team, TeamMember; enum TenantRole, TeamRole;
-                 nuovi campi su User, Connection, Folder)
-    MODIFICARE: server/src/types/index.ts
-                (aggiungere tipi AuthPayload.tenantId, nuovi tipi per ruoli)
-
-
-------------------------------------------------------------------------------
-[ ] TENANT-021 — Backend CRUD tenant + onboarding e migrazione utenti
-------------------------------------------------------------------------------
-  Priorita: CRITICA
-  Dipendenze: TENANT-020
-  Fase: 1 (Fondamenta)
-
-  DESCRIZIONE:
-  Implementare il layer backend completo per la gestione dei tenant:
-  creazione, aggiornamento, eliminazione tenant. Implementare il flusso
-  di onboarding: quando un utente crea un tenant, diventa OWNER.
-  Gli utenti possono essere invitati nel tenant (via email o link).
-  Creare endpoint per listare utenti del tenant e gestirne i ruoli.
-  Utenti esistenti senza tenant possono crearne uno o essere invitati.
-
-  DETTAGLI TECNICI:
-  Backend — Layer completo:
-
-    server/src/routes/tenant.routes.ts:
-      POST   /api/tenants              → Crea tenant (l'utente diventa OWNER)
-      GET    /api/tenants/mine         → Dettagli del tenant dell'utente
-      PUT    /api/tenants/:id          → Aggiorna tenant (solo OWNER/ADMIN)
-      DELETE /api/tenants/:id          → Elimina tenant (solo OWNER)
-      GET    /api/tenants/:id/users    → Lista utenti del tenant
-      POST   /api/tenants/:id/invite   → Invita utente (email)
-      PUT    /api/tenants/:id/users/:userId  → Cambia ruolo utente
-      DELETE /api/tenants/:id/users/:userId  → Rimuovi utente dal tenant
-
-    server/src/controllers/tenant.controller.ts:
-      - Validazione Zod per ogni endpoint
-      - Verifica che l'utente appartenga al tenant (tranne creazione)
-
-    server/src/services/tenant.service.ts:
-      - createTenant(userId, name): crea tenant + imposta utente come OWNER
-      - getTenant(tenantId): dettagli tenant
-      - updateTenant(tenantId, data): aggiorna nome/slug
-      - deleteTenant(tenantId): elimina con cascade (teams, members)
-      - listTenantUsers(tenantId): lista utenti con ruolo
-      - inviteUser(tenantId, email, role): cerca utente per email,
-        se esiste lo aggiunge al tenant, altrimenti genera invito pendente
-      - updateUserRole(tenantId, userId, role): cambia ruolo
-      - removeUser(tenantId, userId): rimuovi da tenant e tutti i team
-
-    server/src/middleware/tenant.middleware.ts:
-      - requireTenant: middleware che verifica req.user.tenantId != null
-      - requireTenantRole(minRole): verifica ruolo minimo (OWNER > ADMIN > MEMBER)
-      - extractTenantContext: aggiunge tenantId al request per query scoping
-
-  Modifica auth flow:
-    - In auth.service.ts login(): includere tenantId e tenantRole nel
-      payload JWT e nella risposta login
-    - In AuthPayload: aggiungere tenantId?, tenantRole?
-    - Utenti senza tenant: continuano a funzionare (backward compatible)
-
-  Nota sicurezza:
-    - Ogni query Prisma che accede a dati tenant-scoped DEVE filtrare
-      per tenantId. Mai fidarsi solo dell'autenticazione JWT.
-    - L'eliminazione dell'ultimo OWNER e' vietata
-
-  FILE COINVOLTI:
-    CREARE:  server/src/routes/tenant.routes.ts
-    CREARE:  server/src/controllers/tenant.controller.ts
-    CREARE:  server/src/services/tenant.service.ts
-    CREARE:  server/src/middleware/tenant.middleware.ts
-    MODIFICARE: server/src/app.ts (montare tenant routes)
-    MODIFICARE: server/src/services/auth.service.ts (tenantId in JWT + risposta)
-    MODIFICARE: server/src/types/index.ts (AuthPayload + tenantId/tenantRole)
-    MODIFICARE: server/src/middleware/auth.middleware.ts (estrarre tenantId dal JWT)
 
 
 ------------------------------------------------------------------------------
@@ -572,17 +465,20 @@
    16. EMAIL-030   Verifica email alla registrazione                    [COMPLETATO]
    17. OAUTH-029   Autenticazione OAuth (Google, Microsoft, GitHub)    [COMPLETATO]
    18. AUDIT-013   Log attivita'                                      [COMPLETATO]
-   19. NOTIF-015   Notifiche condivisione                                [IN CORSO]
-   20. DND-010     Drag and drop
+   19. NOTIF-015   Notifiche condivisione                               [COMPLETATO]
+   20. DND-010     Drag and drop                                          [COMPLETATO]
 
-  Fase 5 — Multi-tenant e team:
-   21. TENANT-020  Schema multi-tenant (modelli Prisma)
-   22. TENANT-021  Backend CRUD tenant + onboarding
-   23. TEAM-022    Backend CRUD team + vault team
-   24. PERM-023    Ownership connessioni + permessi team
-   25. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 23)
-   26. UI-025      Frontend tenant/team/sidebar
-   27. GUARD-026   Middleware sicurezza + test isolamento
+  Fase 5 — Quality gate (da fare PRIMA di continuare i task):
+   21. SAST-031    SAST e code verification tools + check post-task
+
+  Fase 6 — Multi-tenant e team:
+   22. TENANT-020  Schema multi-tenant (modelli Prisma)                   [COMPLETATO]
+   23. TENANT-021  Backend CRUD tenant + onboarding                          [IN CORSO]
+   24. TEAM-022    Backend CRUD team + vault team
+   25. PERM-023    Ownership connessioni + permessi team
+   26. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 24)
+   27. UI-025      Frontend tenant/team/sidebar
+   28. GUARD-026   Middleware sicurezza + test isolamento
 
 
 ================================================================================
@@ -620,4 +516,9 @@
     di login, solo vault password per cifrare le credenziali
   - OAUTH-029 TOTP (2FA-012) NON richiesto per login OAuth: il provider gestisce
     il suo 2FA. Richiesto solo per login email/password.
+  - SAST-031 e' trasversale: una volta implementato, "npm run verify" diventa
+    step obbligatorio alla fine di OGNI task futuro prima di marcarlo completato
+  - SAST-031 non ha dipendenze: puo' essere implementato immediatamente
+  - SAST-031 copre: ESLint (sicurezza), TypeScript strict, Semgrep (SAST),
+    npm audit (dipendenze), build verification
 ================================================================================

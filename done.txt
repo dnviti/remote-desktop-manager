@@ -575,3 +575,70 @@
     MODIFICATO: server/src/controllers/oauth.controller.ts (OAUTH_LINK/UNLINK, LOGIN_OAUTH, VAULT_SETUP)
     MODIFICATO: client/src/App.tsx (/audit-log route)
     MODIFICATO: client/src/components/Layout/MainLayout.tsx (Activity Log menu item)
+
+
+------------------------------------------------------------------------------
+[x] DND-010 — Drag and Drop connessioni tra cartelle
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: FOLD-001
+  COMPLETATO: Full drag-and-drop with @dnd-kit/core — DndContext wrapping, useDraggable on connections (owner-only), useDroppable on folders + root, DragOverlay with floating card, optimistic moveConnection action, visual feedback (border highlight, bg color, opacity), auto-expand folders on hover, search-aware disable
+
+  DESCRIZIONE:
+  Trascinare connessioni tra cartelle e verso la root usando drag & drop.
+
+  FILE COINVOLTI:
+    MODIFICATO: client/src/components/Sidebar/ConnectionTree.tsx
+    MODIFICATO: client/src/store/connectionsStore.ts (moveConnection action)
+    MODIFICATO: client/package.json (@dnd-kit/core + @dnd-kit/utilities)
+
+
+------------------------------------------------------------------------------
+[x] NOTIF-015 — Notifiche in-app per condivisioni
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: SHR-005
+  COMPLETATO: Full in-app notification system — Notification model + NotificationType enum in Prisma, notification.service.ts with async creation + pagination + mark-as-read, notification.routes.ts (GET/PUT/DELETE endpoints), real-time Socket.IO delivery via /notifications namespace with user room targeting, NotificationBell component with badge + popover + time-ago formatting, notifications triggered on share/unshare/permission-update in sharing.service.ts, Zustand notificationListStore for state management
+
+  DESCRIZIONE:
+  Notificare l'utente quando qualcuno condivide una connessione con lui.
+
+  FILE COINVOLTI:
+    CREATO:  server/src/services/notification.service.ts
+    CREATO:  server/src/routes/notification.routes.ts
+    CREATO:  server/src/controllers/notification.controller.ts
+    CREATO:  server/src/socket/notification.handler.ts
+    CREATO:  client/src/components/Layout/NotificationBell.tsx
+    CREATO:  client/src/api/notifications.api.ts
+    CREATO:  client/src/store/notificationListStore.ts
+    MODIFICATO: server/prisma/schema.prisma (Notification model + NotificationType enum)
+    MODIFICATO: server/src/services/sharing.service.ts (trigger notifications on share/unshare/update)
+    MODIFICATO: server/src/socket/index.ts (setupNotificationHandler)
+    MODIFICATO: server/src/app.ts (mount notification routes)
+    MODIFICATO: client/src/components/Layout/MainLayout.tsx (NotificationBell in AppBar)
+
+
+================================================================================
+  SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
+================================================================================
+
+------------------------------------------------------------------------------
+[x] TENANT-020 — Schema multi-tenant: modelli Tenant, Team, TeamMember e ruoli
+------------------------------------------------------------------------------
+  Priorita: CRITICA
+  Dipendenze: Nessuna
+  Fase: 1 (Fondamenta)
+  COMPLETATO: Prisma schema with Tenant, Team, TeamMember models, TenantRole/TeamRole enums, nullable tenantId/teamId on User/Connection/Folder, AuthPayload extended with tenantId/tenantRole
+
+  DESCRIZIONE:
+  Creare i modelli Prisma fondamentali per il sistema multi-tenant:
+  Tenant (organizzazione top-level), Team (gruppo all'interno del tenant),
+  TeamMember (appartenenza utente a un team con ruolo), e il ruolo
+  dell'utente a livello di tenant.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/prisma/schema.prisma
+               (nuovi modelli Tenant, Team, TeamMember; enum TenantRole, TeamRole;
+                nuovi campi su User, Connection, Folder)
+    MODIFICATO: server/src/types/index.ts
+               (aggiunto tenantId?, tenantRole? a AuthPayload)

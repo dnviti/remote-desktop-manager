@@ -80,13 +80,17 @@ Perform these verification checks:
 **0c. Decision based on verification result:**
 
 - **ALL checks pass (task fully implemented):**
-  1. Remove the entire task block from `progressing.txt` (everything between its `------` separators, inclusive)
-  2. Append the task block to `done.txt` at the end of the appropriate section (SEZIONE A or SEZIONE B, matching where it was in progressing.txt)
-  3. In the appended block: change `[~]` to `[x]` in the header line
-  4. Add a `COMPLETATO:` line after the priority/dependencies lines with a brief English summary of what was implemented
-  5. If the task appears in the recommended order section of `to-do.txt`, update its status annotation to `[COMPLETATO]`
-  6. Present the verification report to the user and confirm the task was closed
-  7. **Continue to the next `[~]` task** in progressing.txt — repeat Step 0b
+  1. **SAST/Quality Gate (MANDATORY):** Before closing the task, run `npm run verify` (typecheck + lint + sast + build). If this script does not exist yet (SAST-031 not implemented), run `npm run build` as a minimum gate. If the verify/build fails:
+     - Fix ALL errors and warnings reported
+     - Re-run `npm run verify` (or `npm run build`) until it passes with zero errors
+     - Only proceed to step 2 when the quality gate passes
+  2. Remove the entire task block from `progressing.txt` (everything between its `------` separators, inclusive)
+  3. Append the task block to `done.txt` at the end of the appropriate section (SEZIONE A or SEZIONE B, matching where it was in progressing.txt)
+  4. In the appended block: change `[~]` to `[x]` in the header line
+  5. Add a `COMPLETATO:` line after the priority/dependencies lines with a brief English summary of what was implemented
+  6. If the task appears in the recommended order section of `to-do.txt`, update its status annotation to `[COMPLETATO]`
+  7. Present the verification report to the user (including SAST/quality gate result) and confirm the task was closed
+  8. **Continue to the next `[~]` task** in progressing.txt — repeat Step 0b
 
 - **Some checks fail (task partially implemented or not implemented):**
   1. Present the verification report showing what is implemented and what is missing
@@ -140,5 +144,6 @@ Present a clear English-language briefing:
 5. **Files to Create/Modify**: Every file with what needs to happen in each
 6. **Dependencies**: Status of all dependencies (check done.txt for completed deps)
 7. **Risks**: Any concerns found during exploration
+8. **Quality Gate**: Remind that `npm run verify` (or `npm run build` if SAST-031 not yet done) must pass before the task can be closed
 
 After presenting the briefing, ask the user: "Ready to start implementation, or would you like to adjust the approach?"
