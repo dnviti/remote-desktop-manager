@@ -144,7 +144,7 @@ export default function TerminalSettingsSection({
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Font</Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('fontFamily')}
               <FormControl fullWidth size="small" disabled={isDisabled('fontFamily')}>
@@ -163,7 +163,7 @@ export default function TerminalSettingsSection({
               </FormControl>
             </Box>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('fontSize')}
               <Box sx={{ flex: 1 }}>
@@ -183,7 +183,7 @@ export default function TerminalSettingsSection({
               </Box>
             </Box>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('lineHeight')}
               <Box sx={{ flex: 1 }}>
@@ -203,7 +203,7 @@ export default function TerminalSettingsSection({
               </Box>
             </Box>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('letterSpacing')}
               <Box sx={{ flex: 1 }}>
@@ -230,7 +230,7 @@ export default function TerminalSettingsSection({
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Cursor</Typography>
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('cursorStyle')}
               <Box>
@@ -251,7 +251,7 @@ export default function TerminalSettingsSection({
               </Box>
             </Box>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('cursorBlink')}
               <FormControlLabel
@@ -275,7 +275,7 @@ export default function TerminalSettingsSection({
         {mode === 'connection' && renderOverrideCheckbox('theme')}
         <Grid container spacing={1} sx={{ mb: 1 }}>
           {THEME_PRESET_NAMES.map((name) => (
-            <Grid item xs={6} sm={4} md={3} key={name}>
+            <Grid size={{ xs: 6, sm: 4, md: 3 }} key={name}>
               <Paper
                 elevation={currentTheme === name ? 4 : 0}
                 onClick={() => {
@@ -305,7 +305,7 @@ export default function TerminalSettingsSection({
             </Grid>
           ))}
           {/* Custom option */}
-          <Grid item xs={6} sm={4} md={3}>
+          <Grid size={{ xs: 6, sm: 4, md: 3 }}>
             <Paper
               elevation={currentTheme === 'custom' ? 4 : 0}
               onClick={() => {
@@ -339,7 +339,7 @@ export default function TerminalSettingsSection({
             </Typography>
             <Grid container spacing={1}>
               {ANSI_COLOR_KEYS.map((colorKey) => (
-                <Grid item xs={6} sm={4} md={3} key={colorKey}>
+                <Grid size={{ xs: 6, sm: 4, md: 3 }} key={colorKey}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                     <input
                       type="color"
@@ -363,7 +363,7 @@ export default function TerminalSettingsSection({
       <Box>
         <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Performance</Typography>
         <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('scrollback')}
               <Box sx={{ flex: 1 }}>
@@ -383,7 +383,7 @@ export default function TerminalSettingsSection({
               </Box>
             </Box>
           </Grid>
-          <Grid item xs={12} sm={6}>
+          <Grid size={{ xs: 12, sm: 6 }}>
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               {renderOverrideCheckbox('bellStyle')}
               <FormControl fullWidth size="small" disabled={isDisabled('bellStyle')}>
