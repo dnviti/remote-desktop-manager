@@ -39,6 +39,8 @@ npm run docker:prod         # Full production stack (requires .env.production)
 
 Copy `.env.example` to `.env`. PostgreSQL is used in both development and production. Docker is required for both PostgreSQL and `guacd` (Guacamole daemon). The `predev` script starts both containers automatically.
 
+**Important:** The `.env` file lives at the **monorepo root**, not inside `server/`. Prisma CLI commands (`db:push`, `db:migrate`) run from the `server/` workspace directory, so `server/prisma.config.ts` explicitly resolves the `.env` path to `../.env`. Never add a separate `server/.env` — all env vars are loaded from the root `.env`.
+
 ## Architecture
 
 **Monorepo** with npm workspaces: `server/` and `client/`.

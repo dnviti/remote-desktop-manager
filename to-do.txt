@@ -40,37 +40,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] NOTIF-015 — Notifiche in-app per condivisioni
-------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: SHR-005
-
-  DESCRIZIONE:
-  Notificare l'utente quando qualcuno condivide una connessione con lui.
-
-  DETTAGLI TECNICI:
-    1. Modello Prisma:
-       Notification { id, userId, type (enum), message, read Boolean,
-                      relatedId, createdAt }
-    2. Creare notifica quando shareConnection() viene chiamata
-    3. Real-time: emettere evento Socket.IO "notification:new" al target
-    4. Frontend:
-       - Badge con conteggio notifiche non lette nell'AppBar
-       - Popover/drawer con lista notifiche
-       - Click su notifica naviga al contesto (es. connessione condivisa)
-       - Endpoint: GET /api/notifications, PUT /api/notifications/:id/read
-
-  FILE COINVOLTI:
-    CREARE:  server/src/services/notification.service.ts
-    CREARE:  server/src/routes/notification.routes.ts
-    CREARE:  client/src/components/Layout/NotificationBell.tsx
-    MODIFICARE: server/prisma/schema.prisma
-    MODIFICARE: server/src/services/sharing.service.ts (trigger notifica)
-    MODIFICARE: server/src/socket/index.ts (namespace notifiche)
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx (badge)
-
-
 
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
@@ -603,7 +572,7 @@
    16. EMAIL-030   Verifica email alla registrazione                    [COMPLETATO]
    17. OAUTH-029   Autenticazione OAuth (Google, Microsoft, GitHub)    [COMPLETATO]
    18. AUDIT-013   Log attivita'                                      [COMPLETATO]
-   19. NOTIF-015   Notifiche condivisione
+   19. NOTIF-015   Notifiche condivisione                                [IN CORSO]
    20. DND-010     Drag and drop
 
   Fase 5 — Multi-tenant e team:

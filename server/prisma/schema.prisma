@@ -35,6 +35,7 @@ model User {
   refreshTokens RefreshToken[]
   oauthAccounts OAuthAccount[]
   auditLogs     AuditLog[]
+  notifications Notification[]
 }
 
 enum AuthProvider {
@@ -186,4 +187,25 @@ model AuditLog {
   @@index([userId])
   @@index([action])
   @@index([createdAt])
+}
+
+enum NotificationType {
+  CONNECTION_SHARED
+  SHARE_PERMISSION_UPDATED
+  SHARE_REVOKED
+}
+
+model Notification {
+  id        String           @id @default(uuid())
+  userId    String
+  type      NotificationType
+  message   String
+  read      Boolean          @default(false)
+  relatedId String?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
+  @@index([userId, createdAt])
 }

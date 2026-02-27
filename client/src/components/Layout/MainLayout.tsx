@@ -22,6 +22,7 @@ import ShareDialog from '../Dialogs/ShareDialog';
 import ConnectAsDialog from '../Dialogs/ConnectAsDialog';
 import VaultUnlockDialog from '../Dialogs/VaultUnlockDialog';
 import VaultLockedOverlay from '../Overlays/VaultLockedOverlay';
+import NotificationBell from './NotificationBell';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
 import { logoutApi } from '../../api/auth.api';
@@ -139,6 +140,7 @@ export default function MainLayout() {
             sx={{ mr: 2 }}
           />
           <Box sx={{ flexGrow: 1 }} />
+          <NotificationBell />
           <IconButton
             color="inherit"
             onClick={toggleTheme}

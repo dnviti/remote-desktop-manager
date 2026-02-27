@@ -1,6 +1,8 @@
 import prisma, { Permission } from '../lib/prisma';
 import { encrypt, decrypt, getMasterKey } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
+import { createNotificationAsync } from './notification.service';
+import { emitNotification } from '../socket/notification.handler';
 
 export async function shareConnection(
   ownerUserId: string,
@@ -85,6 +87,31 @@ export async function shareConnection(
     },
   });
 
+  // Notify target user
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerUserId },
+    select: { username: true, email: true },
+  });
+  const ownerName = owner?.username || owner?.email || 'Someone';
+  const msg = `${ownerName} shared "${connection.name}" with you (${permission === 'FULL_ACCESS' ? 'Full Access' : 'Read Only'})`;
+
+  createNotificationAsync({
+    userId: targetUser.id,
+    type: 'CONNECTION_SHARED',
+    message: msg,
+    relatedId: connectionId,
+  });
+
+  // Real-time push
+  emitNotification(targetUser.id, {
+    id: shared.id,
+    type: 'CONNECTION_SHARED',
+    message: msg,
+    read: false,
+    relatedId: connectionId,
+    createdAt: new Date(),
+  });
+
   return {
     id: shared.id,
     permission: shared.permission,
@@ -106,6 +133,29 @@ export async function unshareConnection(
     where: { connectionId, sharedWithUserId: targetUserId },
   });
 
+  // Notify target user
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerUserId },
+    select: { username: true, email: true },
+  });
+  const ownerName = owner?.username || owner?.email || 'Someone';
+  const msg = `${ownerName} revoked your access to "${connection.name}"`;
+
+  createNotificationAsync({
+    userId: targetUserId,
+    type: 'SHARE_REVOKED',
+    message: msg,
+    relatedId: connectionId,
+  });
+  emitNotification(targetUserId, {
+    id: '',
+    type: 'SHARE_REVOKED',
+    message: msg,
+    read: false,
+    relatedId: connectionId,
+    createdAt: new Date(),
+  });
+
   return { deleted: true };
 }
 
@@ -125,10 +175,36 @@ export async function updateSharePermission(
   });
   if (!shared) throw new AppError('Share not found', 404);
 
-  return prisma.sharedConnection.update({
+  const result = await prisma.sharedConnection.update({
     where: { id: shared.id },
     data: { permission },
   });
+
+  // Notify target user
+  const owner = await prisma.user.findUnique({
+    where: { id: ownerUserId },
+    select: { username: true, email: true },
+  });
+  const ownerName = owner?.username || owner?.email || 'Someone';
+  const permLabel = permission === 'FULL_ACCESS' ? 'Full Access' : 'Read Only';
+  const msg = `${ownerName} changed your permission on "${connection.name}" to ${permLabel}`;
+
+  createNotificationAsync({
+    userId: targetUserId,
+    type: 'SHARE_PERMISSION_UPDATED',
+    message: msg,
+    relatedId: connectionId,
+  });
+  emitNotification(targetUserId, {
+    id: '',
+    type: 'SHARE_PERMISSION_UPDATED',
+    message: msg,
+    read: false,
+    relatedId: connectionId,
+    createdAt: new Date(),
+  });
+
+  return result;
 }
 
 export async function listShares(ownerUserId: string, connectionId: string) {
