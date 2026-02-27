@@ -66,8 +66,20 @@ export async function register(email: string, password: string) {
   return { message: 'Registration successful. Please check your email to verify your account.', userId: user.id };
 }
 
-export async function issueTokens(user: { id: string; email: string; username: string | null; avatarData: string | null }) {
-  const payload: AuthPayload = { userId: user.id, email: user.email };
+export async function issueTokens(user: {
+  id: string;
+  email: string;
+  username: string | null;
+  avatarData: string | null;
+  tenantId?: string | null;
+  tenantRole?: string | null;
+}) {
+  const payload: AuthPayload = {
+    userId: user.id,
+    email: user.email,
+    ...(user.tenantId && { tenantId: user.tenantId }),
+    ...(user.tenantRole && { tenantRole: user.tenantRole as AuthPayload['tenantRole'] }),
+  };
   const accessToken = jwt.sign(payload, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn as string,
   } as jwt.SignOptions);
@@ -85,7 +97,14 @@ export async function issueTokens(user: { id: string; email: string; username: s
   return {
     accessToken,
     refreshToken: refreshTokenValue,
-    user: { id: user.id, email: user.email, username: user.username, avatarData: user.avatarData },
+    user: {
+      id: user.id,
+      email: user.email,
+      username: user.username,
+      avatarData: user.avatarData,
+      tenantId: user.tenantId ?? undefined,
+      tenantRole: user.tenantRole ?? undefined,
+    },
   };
 }
 
@@ -183,6 +202,8 @@ export async function refreshAccessToken(refreshToken: string) {
   const payload: AuthPayload = {
     userId: stored.user.id,
     email: stored.user.email,
+    ...(stored.user.tenantId && { tenantId: stored.user.tenantId }),
+    ...(stored.user.tenantRole && { tenantRole: stored.user.tenantRole as AuthPayload['tenantRole'] }),
   };
   const accessToken = jwt.sign(payload, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn as string,
@@ -195,6 +216,8 @@ export async function refreshAccessToken(refreshToken: string) {
       email: stored.user.email,
       username: stored.user.username,
       avatarData: stored.user.avatarData,
+      tenantId: stored.user.tenantId ?? undefined,
+      tenantRole: stored.user.tenantRole ?? undefined,
     },
   };
 }

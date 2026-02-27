@@ -100,6 +100,8 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
         email: result.user.email,
         username: result.user.username || '',
         avatarData: result.user.avatarData || '',
+        tenantId: result.user.tenantId || '',
+        tenantRole: result.user.tenantRole || '',
       });
 
       res.redirect(`${config.clientUrl}/oauth/callback?${params.toString()}`);

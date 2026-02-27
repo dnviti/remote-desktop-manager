@@ -3,6 +3,8 @@ import { Request } from 'express';
 export interface AuthPayload {
   userId: string;
   email: string;
+  tenantId?: string;
+  tenantRole?: 'OWNER' | 'ADMIN' | 'MEMBER';
 }
 
 // Merge AuthPayload into Express.User so passport's global

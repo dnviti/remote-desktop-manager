@@ -7,9 +7,64 @@ datasource db {
   provider = "postgresql"
 }
 
+enum TenantRole {
+  OWNER
+  ADMIN
+  MEMBER
+}
+
+enum TeamRole {
+  TEAM_ADMIN
+  TEAM_EDITOR
+  TEAM_VIEWER
+}
+
+model Tenant {
+  id        String   @id @default(uuid())
+  name      String
+  slug      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users User[]
+  teams Team[]
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  tenantId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  tenant      Tenant         @relation(fields: [tenantId], references: [id])
+  members     TeamMember[]
+  connections Connection[]
+  folders     Folder[]
+
+  @@unique([tenantId, name])
+}
+
+model TeamMember {
+  id                    String   @id @default(uuid())
+  teamId                String
+  userId                String
+  role                  TeamRole
+  encryptedTeamVaultKey String?
+  teamVaultKeyIV        String?
+  teamVaultKeyTag       String?
+  joinedAt              DateTime @default(now())
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, userId])
+}
+
 model User {
-  id                 String   @id @default(uuid())
-  email              String   @unique
+  id                 String      @id @default(uuid())
+  email              String      @unique
   username           String?
   avatarData         String?
   passwordHash       String?
@@ -17,17 +72,20 @@ model User {
   encryptedVaultKey  String?
   vaultKeyIV         String?
   vaultKeyTag        String?
-  vaultSetupComplete Boolean  @default(true)
+  vaultSetupComplete Boolean     @default(true)
   sshDefaults        Json?
   rdpDefaults        Json?
   totpSecret         String?
-  totpEnabled        Boolean  @default(false)
-  emailVerified      Boolean  @default(false)
-  emailVerifyToken   String?  @unique
+  totpEnabled        Boolean     @default(false)
+  emailVerified      Boolean     @default(false)
+  emailVerifyToken   String?     @unique
   emailVerifyExpiry  DateTime?
-  createdAt          DateTime @default(now())
-  updatedAt          DateTime @updatedAt
+  tenantId           String?
+  tenantRole         TenantRole?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
 
+  tenant        Tenant?            @relation(fields: [tenantId], references: [id])
   connections   Connection[]
   folders       Folder[]
   sharedWithMe  SharedConnection[] @relation("SharedWith")
@@ -36,6 +94,7 @@ model User {
   oauthAccounts OAuthAccount[]
   auditLogs     AuditLog[]
   notifications Notification[]
+  teamMembers   TeamMember[]
 }
 
 enum AuthProvider {
@@ -67,6 +126,7 @@ model Folder {
   name      String
   parentId  String?
   userId    String
+  teamId    String?
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -74,6 +134,7 @@ model Folder {
   parent      Folder?      @relation("FolderTree", fields: [parentId], references: [id])
   children    Folder[]     @relation("FolderTree")
   user        User         @relation(fields: [userId], references: [id])
+  team        Team?        @relation(fields: [teamId], references: [id])
   connections Connection[]
 }
 
@@ -84,6 +145,7 @@ model Connection {
   host              String
   port              Int
   folderId          String?
+  teamId            String?
   encryptedUsername  String
   usernameIV        String
   usernameTag       String
@@ -100,6 +162,7 @@ model Connection {
   updatedAt         DateTime       @updatedAt
 
   folder Folder? @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  team   Team?   @relation(fields: [teamId], references: [id])
   user   User    @relation(fields: [userId], references: [id])
   shares SharedConnection[]
 }
@@ -170,6 +233,12 @@ enum AuditAction {
   OAUTH_LINK
   OAUTH_UNLINK
   PASSWORD_REVEAL
+  TENANT_CREATE
+  TENANT_UPDATE
+  TENANT_DELETE
+  TENANT_INVITE_USER
+  TENANT_REMOVE_USER
+  TENANT_UPDATE_USER_ROLE
 }
 
 model AuditLog {
