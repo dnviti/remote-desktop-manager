@@ -79,7 +79,7 @@
    26. PERM-023    Ownership connessioni + permessi team                          [COMPLETATO]
    27. DISC-024    Ricerca utenti per condivisione (parallelizzabile con 25)       [COMPLETATO]
    28. UI-025      Frontend tenant/team/sidebar                                        [COMPLETATO]
-   29. GUARD-026   Middleware sicurezza + test isolamento                                  [IN CORSO]
+   29. GUARD-026   Middleware sicurezza + test isolamento                                  [COMPLETATO]
 
 
 ================================================================================

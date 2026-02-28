@@ -878,3 +878,32 @@
     MODIFICATO: client/src/App.tsx (nuove rotte)
     MODIFICATO: client/src/pages/SettingsPage.tsx
     MODIFICATO: client/src/store/uiPreferencesStore.ts
+
+
+------------------------------------------------------------------------------
+[x] GUARD-026 — Middleware autorizzazione tenant-scoped e test di isolamento
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: TENANT-021, TEAM-022, PERM-023
+  Fase: 3 (Sicurezza)
+  COMPLETATO: Full tenant isolation enforcement — tenant.middleware.ts (requireTenant/requireTenantRole/requireOwnTenant with role hierarchy), team.middleware.ts (requireTeamMember/requireTeamRole with tenant boundary check), tenantScope.ts (assertSameTenant/tenantScopedTeamFilter utilities), permission.service.ts (centralized access control with assertSameTenant in all 5 permission functions), connection.service.ts (all 7 functions scoped by tenantId), folder.service.ts (all 4 functions scoped by tenantId), sharing.service.ts (cross-tenant sharing blocked with 400 error), all controllers propagate req.user.tenantId to services
+
+  DESCRIZIONE:
+  Implementare i guardrail di sicurezza per garantire l'isolamento
+  completo tra tenant. Ogni endpoint che accede a dati (connessioni,
+  cartelle, team, utenti) deve verificare che la risorsa appartenga
+  allo stesso tenant dell'utente autenticato. Creare middleware
+  riutilizzabili e applicarli a tutte le route. Aggiornare TUTTE le
+  query Prisma esistenti per filtrare per tenant quando applicabile.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/src/middleware/tenant.middleware.ts
+    MODIFICATO: server/src/middleware/team.middleware.ts
+    CREATO:  server/src/utils/tenantScope.ts
+    CREATO:  server/src/services/permission.service.ts
+    MODIFICATO: server/src/services/connection.service.ts
+    MODIFICATO: server/src/services/folder.service.ts
+    MODIFICATO: server/src/services/sharing.service.ts
+    MODIFICATO: server/src/controllers/connections.controller.ts
+    MODIFICATO: server/src/controllers/folders.controller.ts
+    MODIFICATO: server/src/controllers/sharing.controller.ts
