@@ -29,11 +29,20 @@ npm run db:generate         # Generate Prisma client types
 npm run db:push             # Sync schema to database (no migration)
 npm run db:migrate          # Run migrations
 
+# Code quality & verification
+npm run verify              # Full pipeline: typecheck → lint → audit → build
+npm run typecheck           # TypeScript type-check (both workspaces, no emit)
+npm run lint                # ESLint (both workspaces via root flat config)
+npm run lint:fix            # ESLint with auto-fix
+npm run sast                # npm audit (dependency vulnerability scan)
+
 # Docker
 npm run docker:dev          # Start guacd + PostgreSQL containers (required for dev)
 npm run docker:dev:down     # Stop dev containers
 npm run docker:prod         # Full production stack (requires .env.production)
 ```
+
+**Important:** `npm run verify` must pass before closing any task. It runs typecheck, lint, dependency audit, and build in sequence.
 
 ## Environment Setup
 

@@ -618,6 +618,32 @@
     MODIFICATO: client/src/components/Layout/MainLayout.tsx (NotificationBell in AppBar)
 
 
+------------------------------------------------------------------------------
+[x] SAST-031 — SAST e code verification tools con check post-task automatico
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna (puo' essere implementato subito)
+  Fase: Trasversale (Quality Gate)
+  COMPLETATO: Full quality gate pipeline — eslint.config.mjs with tseslint.configs.strict + eslint-plugin-security (recommended rules), TypeScript strict mode verified in both workspaces, npm run verify script (typecheck + lint + sast + build), npm audit as SAST dependency scanner, GitHub Actions CI/CD verify.yml running full pipeline on push/PR to main, typecheck/lint/sast/build scripts in root + workspace package.json
+
+  DESCRIZIONE:
+  Integrare strumenti di analisi statica del codice (SAST) e verifiche
+  di qualita' nel progetto. Ogni volta che un task viene concluso, prima
+  di considerarlo completato, il codice deve essere verificato e gli
+  eventuali problemi corretti. Questo include linting, type-checking,
+  analisi di sicurezza e build verification.
+
+  FILE COINVOLTI:
+    CREATO:    eslint.config.mjs (flat config: strict TS, security, React hooks/refresh)
+    CREATO:    .github/workflows/verify.yml (CI/CD pipeline)
+    MODIFICATO: package.json (verify, typecheck, lint, sast, lint:fix scripts)
+    MODIFICATO: server/package.json (typecheck script)
+    MODIFICATO: client/package.json (typecheck script)
+    VERIFICATO: server/tsconfig.json (strict: true)
+    VERIFICATO: client/tsconfig.json (strict: true)
+    INSTALLATO: eslint-plugin-security, typescript-eslint
+
+
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
 ================================================================================
