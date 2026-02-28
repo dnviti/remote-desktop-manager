@@ -17,9 +17,19 @@
     "docker:dev:down": "docker compose -f docker-compose.dev.yml down",
     "docker:prod": "docker compose --env-file .env.production up -d --build",
     "db:migrate": "npm run db:migrate -w server",
-    "db:generate": "npm run db:generate -w server"
+    "db:generate": "npm run db:generate -w server",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "sast": "npm audit --audit-level=moderate || true",
+    "verify": "npm run typecheck && npm run lint && npm run sast && npm run build"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "eslint": "^9.39.3",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
+    "eslint-plugin-security": "^4.0.0",
+    "typescript-eslint": "^8.56.1"
   }
 }

@@ -19,7 +19,6 @@ import LinkedAccountsSection from '../components/Settings/LinkedAccountsSection'
 export default function SettingsPage() {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const authLogout = useAuthStore((s) => s.logout);
   const [hasPassword, setHasPassword] = useState(true);

@@ -9,9 +9,11 @@ export default defineConfig({
   earlyAccess: true,
   schema: "prisma/schema.prisma",
   migrate: {
-    async seed(prisma) {},
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    async seed(_prisma) {},
   },
   datasource: {
+    // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     url: process.env.DATABASE_URL!,
   },
 });

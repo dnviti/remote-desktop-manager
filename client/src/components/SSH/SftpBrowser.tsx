@@ -88,9 +88,11 @@ export default function SftpBrowser({ open, onClose, socket }: SftpBrowserProps)
     });
   }, [socket]);
 
+  /* eslint-disable react-hooks/set-state-in-effect -- triggers data fetch when drawer opens or path changes */
   useEffect(() => {
     if (open) fetchEntries(currentPath);
   }, [open, currentPath, fetchEntries]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const navigateTo = (newPath: string) => {
     setCurrentPath(newPath);
@@ -174,6 +176,7 @@ export default function SftpBrowser({ open, onClose, socket }: SftpBrowserProps)
   };
 
   // Refresh listing when an upload completes
+  /* eslint-disable react-hooks/set-state-in-effect -- triggers refresh when upload completes */
   useEffect(() => {
     let shouldRefresh = false;
     for (const t of transfers) {
@@ -190,6 +193,7 @@ export default function SftpBrowser({ open, onClose, socket }: SftpBrowserProps)
       fetchEntries(currentPath);
     }
   }, [transfers, currentPath, fetchEntries]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();

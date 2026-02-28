@@ -57,6 +57,7 @@ declare module 'guacamole-common-js' {
 
     class Keyboard {
       constructor(element: HTMLElement | Document);
+      // eslint-disable-next-line @typescript-eslint/no-invalid-void-type
       onkeydown: ((keysym: number) => boolean | void) | null;
       onkeyup: ((keysym: number) => void) | null;
       reset(): void;

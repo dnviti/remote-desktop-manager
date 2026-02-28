@@ -287,7 +287,7 @@ export async function addMember(
 export async function removeMember(
   teamId: string,
   targetUserId: string,
-  actingUserId: string
+  _actingUserId: string
 ) {
   const membership = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId: targetUserId } },
@@ -315,7 +315,7 @@ export async function updateMemberRole(
   teamId: string,
   targetUserId: string,
   newRole: 'TEAM_ADMIN' | 'TEAM_EDITOR' | 'TEAM_VIEWER',
-  actingUserId: string
+  _actingUserId: string
 ) {
   const membership = await prisma.teamMember.findUnique({
     where: { teamId_userId: { teamId, userId: targetUserId } },

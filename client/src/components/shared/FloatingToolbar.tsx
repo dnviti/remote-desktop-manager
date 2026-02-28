@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback } from 'react';
-import { Box, IconButton, Tooltip, Paper } from '@mui/material';
+import { IconButton, Tooltip, Paper } from '@mui/material';
 import { Build as BuildIcon } from '@mui/icons-material';
 
 export interface ToolbarAction {
@@ -110,6 +110,7 @@ export default function FloatingToolbar({ actions, containerRef }: FloatingToolb
         gap: 0.25,
         borderRadius: 2,
         p: 0.25,
+        // eslint-disable-next-line react-hooks/refs -- drag state must be a ref to avoid re-render churn
         cursor: dragging.current ? 'grabbing' : 'grab',
         userSelect: 'none',
         touchAction: 'none',

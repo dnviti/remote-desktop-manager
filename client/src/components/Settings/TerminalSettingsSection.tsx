@@ -97,9 +97,8 @@ export default function TerminalSettingsSection({
   };
 
   const clearField = (key: keyof SshTerminalConfig) => {
-    const next = { ...value };
-    delete next[key];
-    onChange(next);
+    const { [key]: _, ...rest } = value;
+    onChange(rest);
   };
 
   const toggleOverride = (key: keyof SshTerminalConfig) => {

@@ -39,7 +39,9 @@ async function main() {
   // Setup guacamole-lite for RDP
   if (config.nodeEnv !== 'test') {
     try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const GuacamoleLite = require('guacamole-lite');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getGuacamoleKey } = require('./services/rdp.service');
       const guacServer = new GuacamoleLite(
         { port: config.guacamoleWsPort },

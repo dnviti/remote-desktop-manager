@@ -19,6 +19,7 @@ export default function ConnectionViewerPage() {
   const [loading, setLoading] = useState(true);
 
   // Bootstrap auth: accessToken is not persisted, so refresh it for popup windows
+  /* eslint-disable react-hooks/set-state-in-effect -- bootstrap auth state for popup windows */
   useEffect(() => {
     if (accessToken) {
       setAuthReady(true);
@@ -39,6 +40,7 @@ export default function ConnectionViewerPage() {
       setLoading(false);
     }
   }, [accessToken, refreshToken, setAccessToken]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   // Fetch connection data once auth is ready
   useEffect(() => {

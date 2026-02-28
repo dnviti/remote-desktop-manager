@@ -1,4 +1,4 @@
-import prisma, { TeamRole } from '../lib/prisma';
+import prisma from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { getMasterKey } from './crypto.service';
 import { resolveTeamKey } from './team.service';

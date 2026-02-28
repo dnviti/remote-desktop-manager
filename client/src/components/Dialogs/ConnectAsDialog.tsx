@@ -22,6 +22,7 @@ export default function ConnectAsDialog({ open, onClose, connection }: ConnectAs
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
+  /* eslint-disable react-hooks/set-state-in-effect -- reset form state when dialog opens */
   useEffect(() => {
     if (open) {
       setMode('saved');
@@ -41,6 +42,7 @@ export default function ConnectAsDialog({ open, onClose, connection }: ConnectAs
     }
     setError('');
   }, [mode, user]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleConnect = () => {
     if (!connection) return;

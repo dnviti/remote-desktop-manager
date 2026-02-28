@@ -22,6 +22,28 @@ import {
   COMMON_TIMEZONES,
 } from '../../constants/rdpDefaults';
 
+function OverrideCheckbox({ label, mode, isOverridden, onToggle }: {
+  label: string;
+  mode: 'global' | 'connection';
+  isOverridden: boolean;
+  onToggle: () => void;
+}) {
+  if (mode !== 'connection') return null;
+  return (
+    <FormControlLabel
+      control={
+        <Checkbox
+          size="small"
+          checked={isOverridden}
+          onChange={onToggle}
+        />
+      }
+      label={<Typography variant="caption">Override {label}</Typography>}
+      sx={{ mb: 0.5 }}
+    />
+  );
+}
+
 interface RdpSettingsSectionProps {
   value: Partial<RdpSettings>;
   onChange: (updated: Partial<RdpSettings>) => void;
@@ -45,32 +67,14 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
 
   const toggleOverride = (key: keyof RdpSettings, currentVal: unknown) => {
     if (isOverridden(key)) {
-      const next = { ...value };
-      delete next[key];
-      onChange(next);
+      const { [key]: _, ...rest } = value;
+      onChange(rest);
     } else {
       onChange({ ...value, [key]: currentVal });
     }
   };
 
   const fieldDisabled = (key: keyof RdpSettings) => mode === 'connection' && !isOverridden(key);
-
-  function OverrideCheckbox({ field, label }: { field: keyof RdpSettings; label: string }) {
-    if (mode !== 'connection') return null;
-    return (
-      <FormControlLabel
-        control={
-          <Checkbox
-            size="small"
-            checked={isOverridden(field)}
-            onChange={() => toggleOverride(field, get(field))}
-          />
-        }
-        label={<Typography variant="caption">Override {label}</Typography>}
-        sx={{ mb: 0.5 }}
-      />
-    );
-  }
 
   const qualityPreset = get('qualityPreset') ?? 'balanced';
   const isCustom = qualityPreset === 'custom';
@@ -89,7 +93,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       {/* ── Quality Preset ─────────────────────────────────────── */}
       <Box>
         <Typography variant="subtitle2" gutterBottom>Quality Preset</Typography>
-        <OverrideCheckbox field="qualityPreset" label="quality preset" />
+        <OverrideCheckbox label="quality preset" mode={mode} isOverridden={isOverridden('qualityPreset')} onToggle={() => toggleOverride('qualityPreset', get('qualityPreset'))} />
         <ToggleButtonGroup
           value={qualityPreset}
           exclusive
@@ -144,7 +148,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Display & Resolution</Typography>
 
-        <OverrideCheckbox field="colorDepth" label="color depth" />
+        <OverrideCheckbox label="color depth" mode={mode} isOverridden={isOverridden('colorDepth')} onToggle={() => toggleOverride('colorDepth', get('colorDepth'))} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('colorDepth')}>
           <InputLabel>Color Depth</InputLabel>
           <Select
@@ -159,7 +163,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox field="dpi" label="DPI" />
+        <OverrideCheckbox label="DPI" mode={mode} isOverridden={isOverridden('dpi')} onToggle={() => toggleOverride('dpi', get('dpi'))} />
         <Box sx={{ mb: 1.5 }}>
           <Typography variant="body2" gutterBottom>DPI: {get('dpi') ?? 96}</Typography>
           <Slider
@@ -177,7 +181,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           />
         </Box>
 
-        <OverrideCheckbox field="width" label="resolution" />
+        <OverrideCheckbox label="resolution" mode={mode} isOverridden={isOverridden('width')} onToggle={() => toggleOverride('width', get('width'))} />
         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
           <TextField
             label="Width"
@@ -201,7 +205,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           />
         </Box>
 
-        <OverrideCheckbox field="resizeMethod" label="resize method" />
+        <OverrideCheckbox label="resize method" mode={mode} isOverridden={isOverridden('resizeMethod')} onToggle={() => toggleOverride('resizeMethod', get('resizeMethod'))} />
         <FormControl fullWidth size="small" disabled={fieldDisabled('resizeMethod')}>
           <InputLabel>Resize Method</InputLabel>
           <Select
@@ -219,7 +223,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Audio</Typography>
 
-        <OverrideCheckbox field="disableAudio" label="audio" />
+        <OverrideCheckbox label="audio" mode={mode} isOverridden={isOverridden('disableAudio')} onToggle={() => toggleOverride('disableAudio', get('disableAudio'))} />
         <FormControlLabel
           control={
             <Switch
@@ -232,7 +236,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           label={<Typography variant="body2">Enable remote audio playback</Typography>}
         />
 
-        <OverrideCheckbox field="enableAudioInput" label="microphone" />
+        <OverrideCheckbox label="microphone" mode={mode} isOverridden={isOverridden('enableAudioInput')} onToggle={() => toggleOverride('enableAudioInput', get('enableAudioInput'))} />
         <FormControlLabel
           control={
             <Switch
@@ -250,7 +254,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Security</Typography>
 
-        <OverrideCheckbox field="security" label="security type" />
+        <OverrideCheckbox label="security type" mode={mode} isOverridden={isOverridden('security')} onToggle={() => toggleOverride('security', get('security'))} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('security')}>
           <InputLabel>Security Type</InputLabel>
           <Select
@@ -266,7 +270,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox field="ignoreCert" label="certificate" />
+        <OverrideCheckbox label="certificate" mode={mode} isOverridden={isOverridden('ignoreCert')} onToggle={() => toggleOverride('ignoreCert', get('ignoreCert'))} />
         <FormControlLabel
           control={
             <Switch
@@ -284,7 +288,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Session</Typography>
 
-        <OverrideCheckbox field="serverLayout" label="keyboard layout" />
+        <OverrideCheckbox label="keyboard layout" mode={mode} isOverridden={isOverridden('serverLayout')} onToggle={() => toggleOverride('serverLayout', get('serverLayout'))} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('serverLayout')}>
           <InputLabel>Keyboard Layout</InputLabel>
           <Select
@@ -299,7 +303,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox field="timezone" label="timezone" />
+        <OverrideCheckbox label="timezone" mode={mode} isOverridden={isOverridden('timezone')} onToggle={() => toggleOverride('timezone', get('timezone'))} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('timezone')}>
           <InputLabel>Timezone</InputLabel>
           <Select
@@ -314,7 +318,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox field="console" label="console session" />
+        <OverrideCheckbox label="console session" mode={mode} isOverridden={isOverridden('console')} onToggle={() => toggleOverride('console', get('console'))} />
         <FormControlLabel
           control={
             <Switch

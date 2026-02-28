@@ -11,6 +11,7 @@ export default function OAuthCallbackPage() {
   const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const [error, setError] = useState('');
 
+  /* eslint-disable react-hooks/set-state-in-effect -- one-time OAuth callback processing */
   useEffect(() => {
     const accessToken = searchParams.get('accessToken');
     const refreshToken = searchParams.get('refreshToken');
@@ -51,6 +52,7 @@ export default function OAuthCallbackPage() {
       navigate('/', { replace: true });
     }
   }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (error) {
     return (

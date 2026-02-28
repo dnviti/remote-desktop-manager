@@ -21,7 +21,7 @@ interface SshTerminalProps {
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
 }
 
-export default function SshTerminal({ connectionId, tabId, credentials, sshTerminalConfig }: SshTerminalProps) {
+export default function SshTerminal({ connectionId, tabId: _tabId, credentials, sshTerminalConfig }: SshTerminalProps) {
   const termRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const terminalRef = useRef<Terminal | null>(null);
@@ -38,13 +38,16 @@ export default function SshTerminal({ connectionId, tabId, credentials, sshTermi
     [userDefaults, sshTerminalConfig],
   );
   const xtermOptionsRef = useRef(xtermOptions);
-  xtermOptionsRef.current = xtermOptions;
+  useEffect(() => {
+    xtermOptionsRef.current = xtermOptions;
+  }, [xtermOptions]);
 
   // Resolve bell style for onBell handler
-  const bellStyleRef = useRef(
-    mergeTerminalConfig(userDefaults, sshTerminalConfig).bellStyle,
-  );
-  bellStyleRef.current = mergeTerminalConfig(userDefaults, sshTerminalConfig).bellStyle;
+  const bellStyle = mergeTerminalConfig(userDefaults, sshTerminalConfig).bellStyle;
+  const bellStyleRef = useRef(bellStyle);
+  useEffect(() => {
+    bellStyleRef.current = bellStyle;
+  }, [bellStyle]);
 
   const sftpOpen = useUiPreferencesStore((s) => s.sshSftpBrowserOpen);
   const togglePref = useUiPreferencesStore((s) => s.toggle);
@@ -224,11 +227,13 @@ export default function SshTerminal({ connectionId, tabId, credentials, sshTermi
           ref={termRef}
           sx={{ flex: 1, overflow: 'hidden', '& .xterm': { height: '100%', padding: '4px' } }}
         />
+        {/* eslint-disable react-hooks/refs -- socket ref is stable after mount */}
         <SftpBrowser
           open={sftpOpen}
           onClose={() => togglePref('sshSftpBrowserOpen')}
           socket={socketRef.current}
         />
+        {/* eslint-enable react-hooks/refs */}
       </Box>
     </Box>
   );

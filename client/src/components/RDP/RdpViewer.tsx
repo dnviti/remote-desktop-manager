@@ -15,7 +15,7 @@ interface RdpViewerProps {
   credentials?: CredentialOverride;
 }
 
-export default function RdpViewer({ connectionId, tabId, isActive = true, enableDrive = false, credentials }: RdpViewerProps) {
+export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true, enableDrive = false, credentials }: RdpViewerProps) {
   const displayRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<Guacamole.Client | null>(null);
   const activeRef = useRef(isActive);
