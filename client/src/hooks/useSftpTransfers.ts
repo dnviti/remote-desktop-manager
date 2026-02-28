@@ -73,7 +73,7 @@ export function useSftpTransfers(socket: Socket | null) {
       downloadBuffers.current.delete(data.transferId);
     };
 
-    const onDownloadChunk = (data: { transferId: string; chunk: ArrayBuffer | Buffer | number[] }) => {
+    const onDownloadChunk = (data: { transferId: string; chunk: ArrayBuffer | Uint8Array | number[] }) => {
       let chunks = downloadBuffers.current.get(data.transferId);
       if (!chunks) {
         chunks = [];
