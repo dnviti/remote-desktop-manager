@@ -16,8 +16,58 @@
 ================================================================================
 
 
+------------------------------------------------------------------------------
+[ ] SMS-034 — Autenticazione MFA via SMS
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: 2FA-012 (completato)
 
+  DESCRIZIONE:
+  Abilitare l'invio di codici OTP via SMS come metodo di autenticazione
+  a due fattori, in alternativa o in aggiunta al TOTP gia' implementato.
+  L'utente puo' scegliere SMS, TOTP o entrambi.
 
+  DETTAGLI TECNICI:
+  Backend:
+    - Integrare un provider SMS (Twilio, AWS SNS, Vonage)
+    - Nuove env vars: SMS_PROVIDER (twilio|sns|vonage), credenziali provider
+    - Endpoint per: registrazione numero di telefono, invio OTP,
+      verifica OTP, rimozione numero
+    - Rate limiting per prevenire abusi (costo per SMS)
+    - Modello Prisma: aggiungere phoneNumber e smsVerified a User
+  Frontend:
+    - UI per aggiungere/verificare numero di telefono nelle impostazioni account
+    - Step SMS nel flusso di login MFA (scelta tra TOTP e SMS se entrambi attivi)
+
+------------------------------------------------------------------------------
+[ ] OIDC-035 — Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: OAUTH-029 (completato)
+
+  DESCRIZIONE:
+  Consentire agli admin di configurare uno o piu' provider OAuth2/OIDC generici
+  (es. Authentik, Keycloak, Authelia, Zitadel, qualsiasi IdP OIDC-compliant)
+  come metodo di autenticazione. Il sistema usa OIDC Discovery
+  (.well-known/openid-configuration) per risolvere automaticamente gli endpoint.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Aggiungere strategia passport-openidconnect (o openid-client)
+    - Nuove env vars: OIDC_PROVIDER_NAME (nome visualizzato), OIDC_ISSUER_URL,
+      OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_SCOPES (opzionale, default
+      "openid profile email")
+    - Auto-discovery endpoint authorize/token/userinfo da OIDC_ISSUER_URL
+    - Estendere enum Prisma AuthProvider con valore OIDC (richiede migrazione)
+    - Estendere OAuthProfile, VALID_PROVIDERS e SCOPE_MAP nel controller
+    - Riutilizzare makeVerifyCallback(), findOrCreateOAuthUser() e OAuth
+      service layer esistenti (gia' provider-agnostic)
+  Frontend:
+    - OAuthButtons.tsx: renderizzare bottone OIDC dinamicamente (nome/icona
+      dal endpoint /oauth/providers)
+    - LinkedAccountsSection.tsx: supportare visualizzazione provider OIDC
+    - UI admin opzionale per configurare nome provider, issuer URL e
+      credenziali client (env vars sufficienti per singolo provider)
 
 
 
@@ -81,6 +131,10 @@
    28. UI-025      Frontend tenant/team/sidebar                                        [COMPLETATO]
    29. GUARD-026   Middleware sicurezza + test isolamento                                  [COMPLETATO]
 
+  Fase 7 — Comunicazioni cloud:
+   30. CLOUD-033  Integrazione provider email cloud (alternativa a SMTP)    [COMPLETATO]
+   31. SMS-034   Autenticazione MFA via SMS
+   32. OIDC-035  Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)
 
 ================================================================================
   NOTE
@@ -128,4 +182,17 @@
     o aggiunti a .gitignore prima della pubblicazione (contengono note interne)
   - OSS-032 README.md gia' buono (176 righe), serve aggiungere badge e sezioni
     Contributing/License
+  - CLOUD-033 dipende da EMAIL-030: rifattorizza il servizio email esistente
+    (nodemailer) dietro un'interfaccia astratta EmailProvider
+  - CLOUD-033 provider supportati: SendGrid, Amazon SES, Resend, Mailgun
+  - CLOUD-033 backward compatible: se EMAIL_PROVIDER non impostato, usa SMTP
+  - SMS-034 dipende da 2FA-012: estende il flusso MFA esistente con opzione SMS
+  - SMS-034 richiede rate limiting severo per prevenire abusi (ogni SMS ha un costo)
+  - SMS-034 provider supportati: Twilio, AWS SNS, Vonage
+  - SMS-034 l'utente puo' avere TOTP e SMS attivi contemporaneamente
+  - OIDC-035 dipende da OAUTH-029: estende l'infrastruttura Passport.js esistente
+  - OIDC-035 usa OIDC Discovery per risolvere automaticamente gli endpoint dall'issuer URL
+  - OIDC-035 richiede migrazione Prisma per aggiungere OIDC all'enum AuthProvider
+  - OIDC-035 singolo provider generico via env vars; multi-provider via admin UI e' estensione futura
+  - OIDC-035 compatibile con qualsiasi IdP OIDC-compliant: Authentik, Keycloak, Authelia, Zitadel, etc.
 ================================================================================

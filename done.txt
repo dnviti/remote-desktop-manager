@@ -677,6 +677,31 @@
     MODIFICATO: .gitignore (exclude to-do.txt, progressing.txt, done.txt)
 
 
+------------------------------------------------------------------------------
+[x] CLOUD-033 — Integrazione provider email cloud (alternativa a SMTP)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: EMAIL-030 (completato)
+  COMPLETATO: Email provider abstraction with factory pattern supporting SMTP, SendGrid, Amazon SES, Resend, and Mailgun. Admin API for email status and test send. Settings UI with EmailProviderSection component. All providers configurable via env vars with SMTP fallback.
+
+  DESCRIZIONE:
+  Aggiungere supporto per servizi cloud di invio email transazionale
+  (SendGrid, Amazon SES, Resend, Mailgun) come alternativa alla
+  configurazione SMTP diretta. L'utente sceglie il provider dalle
+  impostazioni; il sistema usa un'interfaccia unificata per l'invio.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Creare un'astrazione EmailProvider con implementazioni per:
+      SMTP (esistente), SendGrid, Amazon SES, Resend, Mailgun
+    - Nuove env vars: EMAIL_PROVIDER (smtp|sendgrid|ses|resend|mailgun),
+      API key/credenziali specifiche per provider
+    - Il provider si configura via env vars; fallback a SMTP se non specificato
+  Frontend:
+    - Sezione impostazioni admin per selezione provider e configurazione
+    - Test di invio email dalla UI per verificare la configurazione
+
+
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
 ================================================================================
