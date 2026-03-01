@@ -37,6 +37,11 @@ export default function LoginPage() {
       searchParams.delete('verified');
       setSearchParams(searchParams, { replace: true });
     }
+    if (searchParams.get('registered') === 'true') {
+      setSuccess('Registration successful! You can now sign in.');
+      searchParams.delete('registered');
+      setSearchParams(searchParams, { replace: true });
+    }
     const verifyError = searchParams.get('verifyError');
     if (verifyError) {
       setError(verifyError);

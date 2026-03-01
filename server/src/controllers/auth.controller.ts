@@ -24,7 +24,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
     const { email, password } = registerSchema.parse(req.body);
     const result = await authService.register(email, password);
     auditService.log({ userId: result.userId, action: 'REGISTER', ipAddress: req.ip });
-    res.status(201).json({ message: result.message });
+    res.status(201).json({ message: result.message, emailVerifyRequired: result.emailVerifyRequired });
   } catch (err) {
     if (err instanceof z.ZodError) {
       return next(new AppError(err.issues[0].message, 400));

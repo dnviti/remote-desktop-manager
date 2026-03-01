@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Link,
 } from '@mui/material';
@@ -8,6 +8,7 @@ import { resendVerificationEmail } from '../api/email.api';
 import OAuthButtons from '../components/OAuthButtons';
 
 export default function RegisterPage() {
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -52,6 +53,10 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const result = await registerApi(email, password);
+      if (!result.emailVerifyRequired) {
+        navigate('/login?registered=true');
+        return;
+      }
       setRegisteredEmail(email);
       setSuccessMessage(result.message);
       setRegistered(true);

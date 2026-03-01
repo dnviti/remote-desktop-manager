@@ -31,7 +31,7 @@ export async function verifySmsApi(tempToken: string, code: string) {
 
 export async function registerApi(email: string, password: string) {
   const res = await api.post('/auth/register', { email, password });
-  return res.data as { message: string };
+  return res.data as { message: string; emailVerifyRequired: boolean };
 }
 
 export async function refreshApi(refreshToken: string) {

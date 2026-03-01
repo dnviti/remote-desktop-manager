@@ -37,8 +37,9 @@ export async function register(email: string, password: string) {
   const derivedKey = await deriveKeyFromPassword(password, vaultSalt);
   const encryptedVault = encryptMasterKey(masterKey, derivedKey);
 
-  const emailVerifyToken = crypto.randomBytes(32).toString('hex');
-  const emailVerifyExpiry = new Date(Date.now() + EMAIL_VERIFY_TTL_MS);
+  const needsVerification = config.emailVerifyRequired;
+  const emailVerifyToken = needsVerification ? crypto.randomBytes(32).toString('hex') : null;
+  const emailVerifyExpiry = needsVerification ? new Date(Date.now() + EMAIL_VERIFY_TTL_MS) : null;
 
   const user = await prisma.user.create({
     data: {
@@ -48,7 +49,7 @@ export async function register(email: string, password: string) {
       encryptedVaultKey: encryptedVault.ciphertext,
       vaultKeyIV: encryptedVault.iv,
       vaultKeyTag: encryptedVault.tag,
-      emailVerified: false,
+      emailVerified: !needsVerification,
       emailVerifyToken,
       emailVerifyExpiry,
     },
@@ -59,11 +60,19 @@ export async function register(email: string, password: string) {
   masterKey.fill(0);
   derivedKey.fill(0);
 
-  sendVerificationEmail(email, emailVerifyToken).catch((err) => {
-    logger.error('Failed to send verification email:', err);
-  });
+  if (needsVerification && emailVerifyToken) {
+    sendVerificationEmail(email, emailVerifyToken).catch((err) => {
+      logger.error('Failed to send verification email:', err);
+    });
+  }
 
-  return { message: 'Registration successful. Please check your email to verify your account.', userId: user.id };
+  return {
+    message: needsVerification
+      ? 'Registration successful. Please check your email to verify your account.'
+      : 'Registration successful. You can now log in.',
+    userId: user.id,
+    emailVerifyRequired: needsVerification,
+  };
 }
 
 export async function issueTokens(user: {
@@ -124,7 +133,7 @@ export async function login(email: string, password: string) {
     throw new Error('Invalid email or password');
   }
 
-  if (!user.emailVerified) {
+  if (config.emailVerifyRequired && !user.emailVerified) {
     throw new AppError('Email not verified. Please check your inbox or resend the verification email.', 403);
   }
 
