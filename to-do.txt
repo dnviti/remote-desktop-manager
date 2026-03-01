@@ -17,39 +17,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] OIDC-035 — Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: OAUTH-029 (completato)
-
-  DESCRIZIONE:
-  Consentire agli admin di configurare uno o piu' provider OAuth2/OIDC generici
-  (es. Authentik, Keycloak, Authelia, Zitadel, qualsiasi IdP OIDC-compliant)
-  come metodo di autenticazione. Il sistema usa OIDC Discovery
-  (.well-known/openid-configuration) per risolvere automaticamente gli endpoint.
-
-  DETTAGLI TECNICI:
-  Backend:
-    - Aggiungere strategia passport-openidconnect (o openid-client)
-    - Nuove env vars: OIDC_PROVIDER_NAME (nome visualizzato), OIDC_ISSUER_URL,
-      OIDC_CLIENT_ID, OIDC_CLIENT_SECRET, OIDC_SCOPES (opzionale, default
-      "openid profile email")
-    - Auto-discovery endpoint authorize/token/userinfo da OIDC_ISSUER_URL
-    - Estendere enum Prisma AuthProvider con valore OIDC (richiede migrazione)
-    - Estendere OAuthProfile, VALID_PROVIDERS e SCOPE_MAP nel controller
-    - Riutilizzare makeVerifyCallback(), findOrCreateOAuthUser() e OAuth
-      service layer esistenti (gia' provider-agnostic)
-  Frontend:
-    - OAuthButtons.tsx: renderizzare bottone OIDC dinamicamente (nome/icona
-      dal endpoint /oauth/providers)
-    - LinkedAccountsSection.tsx: supportare visualizzazione provider OIDC
-    - UI admin opzionale per configurare nome provider, issuer URL e
-      credenziali client (env vars sufficienti per singolo provider)
-
-
-
-
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
 ================================================================================
@@ -584,7 +551,7 @@
   Fase 7 — Comunicazioni cloud:
    30. CLOUD-033  Integrazione provider email cloud (alternativa a SMTP)    [COMPLETATO]
    31. SMS-034   Autenticazione MFA via SMS                                      [COMPLETATO]
-   32. OIDC-035  Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)
+   32. OIDC-035  Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)  [COMPLETATO]
 
   Fase 8 — Multi-backend / Multi-gateway:
    33. GATE-036  Modello Gateway e CRUD backend (Prisma + API)
