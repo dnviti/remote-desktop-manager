@@ -26,7 +26,14 @@ export interface InviteResult {
   role: string;
 }
 
-export async function createTenant(name: string): Promise<TenantData> {
+export interface CreateTenantResponse {
+  tenant: TenantData;
+  accessToken: string;
+  refreshToken: string;
+  user: { id: string; email: string; username: string | null; avatarData: string | null; tenantId?: string; tenantRole?: string };
+}
+
+export async function createTenant(name: string): Promise<CreateTenantResponse> {
   const res = await api.post('/tenants', { name });
   return res.data;
 }

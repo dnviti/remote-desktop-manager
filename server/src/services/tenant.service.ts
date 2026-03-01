@@ -49,7 +49,10 @@ export async function createTenant(userId: string, name: string) {
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
+    userCount: 1,
+    teamCount: 0,
     createdAt: tenant.createdAt,
+    updatedAt: tenant.updatedAt,
   };
 }
 

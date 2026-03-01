@@ -48,9 +48,9 @@ export const useTenantStore = create<TenantState>((set, get) => ({
   },
 
   createTenant: async (name) => {
-    const tenant = await createTenantApi(name);
+    const { tenant, accessToken, refreshToken, user } = await createTenantApi(name);
     set({ tenant });
-    useAuthStore.getState().updateUser({ tenantId: tenant.id, tenantRole: 'OWNER' });
+    useAuthStore.getState().setAuth(accessToken, refreshToken, user);
     return tenant;
   },
 
