@@ -37,37 +37,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] GATE-038 — Routing SSH tramite bastion/jump host
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: GATE-036
-
-  DESCRIZIONE:
-  Instradare le connessioni SSH attraverso un bastion host (jump host) quando
-  la connessione ha un gateway di tipo SSH_BASTION. Il server apre prima una
-  connessione SSH verso il bastion, poi un tunnel TCP verso l'host target,
-  e infine stabilisce la sessione SSH finale attraverso il tunnel.
-  Se nessun gateway e' assegnato, connessione diretta (comportamento attuale).
-
-  DETTAGLI TECNICI:
-  Backend:
-    - ssh.service.ts: nuova funzione createSshConnectionViaBastion() che:
-      1. Connette al bastion host con credenziali del Gateway (decifrate dalla vault)
-      2. Apre un canale TCP forwarded (client.forwardOut()) verso target host:port
-      3. Crea un secondo SSH2 Client sullo stream forwarded verso il target
-      4. Restituisce la sessione finale (stessa interfaccia SshSession)
-    - ssh.handler.ts: controllare se la connessione ha un gateway SSH_BASTION;
-      se si', usare createSshConnectionViaBastion() al posto di createSshConnection()
-    - SFTP: funziona automaticamente (stesso client SSH2 sottostante)
-    - Gestione cleanup: chiudere entrambi i client SSH (bastion + target)
-      quando la sessione termina
-    - Fallback: nessun gateway = connessione diretta (createSshConnection)
-  File coinvolti:
-    MODIFICARE: server/src/services/ssh.service.ts
-    MODIFICARE: server/src/socket/ssh.handler.ts
-    MODIFICARE: server/src/services/connection.service.ts
-
 
 ------------------------------------------------------------------------------
 [ ] GATE-039 — Frontend gestione gateway e assegnazione connessioni
@@ -471,7 +440,7 @@
   Fase 8 — Multi-backend / Multi-gateway:
    33. GATE-036  Modello Gateway e CRUD backend (Prisma + API)                         [COMPLETATO]
    34. GATE-037  Routing RDP tramite gateway guacd dinamico                             [COMPLETATO]
-   35. GATE-038  Routing SSH tramite bastion/jump host (parallelizzabile con 34)
+   35. GATE-038  Routing SSH tramite bastion/jump host (parallelizzabile con 34)  [IN CORSO]
    36. GATE-039  Frontend gestione gateway e assegnazione connessioni
 
   Fase 9 — Zero Trust hardening (Tier 1, priorita' alta):

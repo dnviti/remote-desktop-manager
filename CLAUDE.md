@@ -9,7 +9,8 @@ Always respond and work in English, even if the user's prompt is written in anot
 ## Development Commands
 
 ```bash
-# Full dev setup (starts Docker guacd, generates Prisma client, syncs DB schema, runs server+client)
+# Full dev setup (starts Docker containers, generates Prisma client, runs server+client)
+# Database migrations run automatically on server start — no manual migrate command needed
 npm run predev && npm run dev
 
 # Run server and client concurrently
@@ -26,8 +27,8 @@ npm run build -w client     # Client only
 
 # Database (Prisma)
 npm run db:generate         # Generate Prisma client types
-npm run db:push             # Sync schema to database (no migration)
-npm run db:migrate          # Run migrations
+npm run db:push             # Sync schema to database (no migration, manual only)
+npm run db:migrate          # Run migrations (manual only — server auto-migrates on start)
 
 # Code quality & verification
 npm run verify              # Full pipeline: typecheck → lint → audit → build
@@ -58,7 +59,7 @@ Copy `.env.example` to `.env`. PostgreSQL is used in both development and produc
 
 Layered architecture: **Routes → Controllers → Services → Prisma ORM**
 
-- `server/src/index.ts` — Entry point: creates HTTP server, attaches Socket.IO and Guacamole WebSocket server
+- `server/src/index.ts` — Entry point: runs `prisma migrate deploy` automatically, creates HTTP server, attaches Socket.IO and Guacamole WebSocket server
 - `server/src/app.ts` — Express app setup with middleware and route mounting
 - `server/src/routes/*.routes.ts` — Route definitions (auth, connections, folders, sharing, vault)
 - `server/src/controllers/*.controller.ts` — Request parsing and validation
