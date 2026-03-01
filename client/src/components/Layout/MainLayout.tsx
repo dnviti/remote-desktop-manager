@@ -20,8 +20,7 @@ import ConnectionDialog from '../Dialogs/ConnectionDialog';
 import FolderDialog from '../Dialogs/FolderDialog';
 import ShareDialog from '../Dialogs/ShareDialog';
 import ConnectAsDialog from '../Dialogs/ConnectAsDialog';
-import VaultUnlockDialog from '../Dialogs/VaultUnlockDialog';
-import VaultLockedOverlay from '../Overlays/VaultLockedOverlay';
+
 import NotificationBell from './NotificationBell';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
@@ -66,7 +65,6 @@ export default function MainLayout() {
   const [folderTeamId, setFolderTeamId] = useState<string | null>(null);
   const [shareTarget, setShareTarget] = useState<ConnectionData | null>(null);
   const [connectAsTarget, setConnectAsTarget] = useState<ConnectionData | null>(null);
-  const [vaultDialogOpen, setVaultDialogOpen] = useState(false);
   const navigate = useNavigate();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
 
@@ -140,7 +138,7 @@ export default function MainLayout() {
             label={vaultUnlocked ? 'Vault Unlocked' : 'Vault Locked'}
             color={vaultUnlocked ? 'success' : 'error'}
             size="small"
-            onClick={vaultUnlocked ? handleLockVault : () => setVaultDialogOpen(true)}
+            onClick={vaultUnlocked ? handleLockVault : undefined}
             sx={{ mr: 2 }}
           />
           <Box sx={{ flexGrow: 1 }} />
@@ -254,10 +252,6 @@ export default function MainLayout() {
         onClose={() => setConnectAsTarget(null)}
         connection={connectAsTarget}
       />
-      <VaultUnlockDialog
-        open={vaultDialogOpen}
-        onClose={() => setVaultDialogOpen(false)}
-      />
 
       <Snackbar
         open={notification !== null}
@@ -276,7 +270,6 @@ export default function MainLayout() {
       </Snackbar>
       </Box>
 
-      <VaultLockedOverlay />
     </>
   );
 }

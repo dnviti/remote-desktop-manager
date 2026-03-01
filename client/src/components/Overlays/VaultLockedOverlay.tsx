@@ -2,12 +2,16 @@ import { useState } from 'react';
 import { Box, Typography, TextField, Button, Alert, Paper } from '@mui/material';
 import { Lock as LockIcon } from '@mui/icons-material';
 import { unlockVault } from '../../api/vault.api';
+import { logoutApi } from '../../api/auth.api';
 import { useVaultStore } from '../../store/vaultStore';
+import { useAuthStore } from '../../store/authStore';
 
 export default function VaultLockedOverlay() {
   const unlocked = useVaultStore((s) => s.unlocked);
   const initialized = useVaultStore((s) => s.initialized);
   const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
+  const refreshToken = useAuthStore((s) => s.refreshToken);
+  const authLogout = useAuthStore((s) => s.logout);
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,6 +33,13 @@ export default function VaultLockedOverlay() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = async () => {
+    if (refreshToken) {
+      try { await logoutApi(refreshToken); } catch {}
+    }
+    authLogout();
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -82,6 +93,15 @@ export default function VaultLockedOverlay() {
           sx={{ mt: 1 }}
         >
           {loading ? 'Unlocking...' : 'Unlock Vault'}
+        </Button>
+        <Button
+          onClick={handleLogout}
+          variant="text"
+          fullWidth
+          color="inherit"
+          sx={{ mt: 1 }}
+        >
+          Logout
         </Button>
       </Paper>
     </Box>
