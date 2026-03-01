@@ -2,6 +2,7 @@
 name: task-pick
 description: Pick up the next task for implementation. Prioritizes verifying and closing in-progress tasks before picking new ones.
 disable-model-invocation: true
+allowed-tools: Bash, Read, Grep, Glob, Edit, Write
 argument-hint: "[TASK-CODE]"
 ---
 
@@ -187,4 +188,39 @@ Use `AskUserQuestion` with options:
 - **"Yes, commit"** — create a commit using the `/commit` skill (or follow the standard git commit workflow). The commit message should reference the task code and briefly describe what was implemented.
 - **"No, skip commit"** — skip the commit; done.
 
-**Important:** Always ask — never auto-commit or auto-close without user confirmation.
+**6d. App lifecycle check (after commit or skip):**
+
+After the commit step (whether the user committed or skipped), check if the development server is running and manage it accordingly.
+
+1. **Detect if the app is running** — check dev ports:
+   ```bash
+   netstat -ano 2>/dev/null | grep -E ":(3000|3001)\s" | grep LISTENING
+   ```
+
+2. **If the app IS running** (any of ports 3000/3001 are in use):
+   - Inform the user: "The dev server is running. Restarting to pick up the latest changes..."
+   - Automatically restart without asking (a restart is nearly always needed after code changes).
+   - **Stop existing processes:**
+     ```bash
+     for port in 3000 3001 3002; do
+       pids=$(netstat -ano 2>/dev/null | grep -E ":${port}\s" | grep LISTENING | awk '{print $5}' | sort -u | tr -d '\r')
+       for pid in $pids; do
+         [ -n "$pid" ] && [ "$pid" != "0" ] && taskkill /PID "$pid" /F /T 2>/dev/null || true
+       done
+     done
+     sleep 2
+     ```
+   - **Start fresh:** Run `npm run predev` synchronously from the project root, then run `npm run dev` with `run_in_background: true`.
+   - **Monitor** for 8 seconds, then check ports are bound and read background process output for errors using `TaskOutput`.
+   - If errors are found, attempt to diagnose and fix them (e.g., missing import, type error). If the error relates to the code just implemented, fix the code, stop the failed processes, and restart once more. Max 1 automatic retry.
+
+3. **If the app is NOT running** (ports 3000/3001 are free):
+   - Ask the user using `AskUserQuestion`: "The dev server is not running. Would you like me to start it?"
+     - **"Yes, start it"** — Run `npm run predev` synchronously, then `npm run dev` with `run_in_background: true`. Monitor for errors as described above.
+     - **"No, skip"** — Done.
+
+4. **Report** the result:
+   - **Success:** "Application running at http://localhost:3000 (server: http://localhost:3001)"
+   - **Failure:** Show the error output and suggest remediation steps.
+
+**Important:** Always ask — never auto-commit or auto-close without user confirmation. The app lifecycle step (6d) auto-restarts when the app is already running (since a restart is almost always needed after code changes) but always asks before starting a stopped app.
