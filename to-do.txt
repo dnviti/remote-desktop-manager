@@ -16,28 +16,6 @@
 ================================================================================
 
 
-------------------------------------------------------------------------------
-[ ] SMS-034 — Autenticazione MFA via SMS
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: 2FA-012 (completato)
-
-  DESCRIZIONE:
-  Abilitare l'invio di codici OTP via SMS come metodo di autenticazione
-  a due fattori, in alternativa o in aggiunta al TOTP gia' implementato.
-  L'utente puo' scegliere SMS, TOTP o entrambi.
-
-  DETTAGLI TECNICI:
-  Backend:
-    - Integrare un provider SMS (Twilio, AWS SNS, Vonage)
-    - Nuove env vars: SMS_PROVIDER (twilio|sns|vonage), credenziali provider
-    - Endpoint per: registrazione numero di telefono, invio OTP,
-      verifica OTP, rimozione numero
-    - Rate limiting per prevenire abusi (costo per SMS)
-    - Modello Prisma: aggiungere phoneNumber e smsVerified a User
-  Frontend:
-    - UI per aggiungere/verificare numero di telefono nelle impostazioni account
-    - Step SMS nel flusso di login MFA (scelta tra TOTP e SMS se entrambi attivi)
 
 ------------------------------------------------------------------------------
 [ ] OIDC-035 — Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)
@@ -87,6 +65,478 @@
 
 
 ================================================================================
+  SEZIONE D — MULTI-BACKEND / MULTI-GATEWAY
+================================================================================
+
+
+------------------------------------------------------------------------------
+[ ] GATE-036 — Modello Gateway e CRUD backend (Prisma + API)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: TENANT-020 (completato), GUARD-026 (completato)
+
+  DESCRIZIONE:
+  Creare l'entita' Gateway nel database e le relative API CRUD. Un Gateway
+  rappresenta un backend riutilizzabile (istanza guacd per RDP o bastion SSH)
+  attraverso cui instradare le connessioni verso sottoreti/VLAN diverse.
+  Casi d'uso: Proxmox con piu' SDN, datacenter multipli con subnet isolate,
+  ambienti dove si aprono solo le porte verso guacd e il gateway SSH.
+  I gateway sono tenant-scoped (ogni tenant gestisce i propri).
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Nuovo enum GatewayType { GUACD SSH_BASTION } in schema.prisma
+    - Nuovo modello Gateway in schema.prisma:
+      id                 String      @id @default(uuid())
+      name               String      (nome visualizzato, es. "DC Milano", "Proxmox SDN-Lab")
+      type               GatewayType (GUACD per istanze guacamole-daemon, SSH_BASTION per jump host)
+      host               String      (hostname/IP del gateway)
+      port               Int         (porta: 4822 per guacd, 22 per SSH bastion)
+      description        String?     (descrizione opzionale)
+      isDefault          Boolean     @default(false)  (un default per tipo per tenant)
+      tenantId           String      (FK a Tenant, obbligatorio — isolamento tenant)
+      createdById        String      (FK a User, chi ha creato il gateway)
+      createdAt          DateTime    @default(now())
+      updatedAt          DateTime    @updatedAt
+      -- Credenziali cifrate per SSH_BASTION (nullable, non servono per GUACD):
+      encryptedUsername   String?
+      usernameIV         String?
+      usernameTag        String?
+      encryptedPassword  String?
+      passwordIV         String?
+      passwordTag        String?
+    - Modello Connection: aggiungere gatewayId String? (FK opzionale a Gateway)
+    - Migrazione Prisma (db:migrate)
+    - Nuovi file backend: gateway.routes.ts, gateway.controller.ts, gateway.service.ts
+    - Endpoint API:
+      GET    /api/gateways           Lista gateway del tenant corrente
+      POST   /api/gateways           Crea gateway (solo admin/owner tenant)
+      PUT    /api/gateways/:id       Aggiorna gateway
+      DELETE /api/gateways/:id       Elimina (fallisce se connessioni lo referenziano)
+      POST   /api/gateways/:id/test  Test connettivita' (TCP connect a host:port)
+    - Isolamento tenant: tutte le query filtrate per tenantId (pattern GUARD-026)
+  File coinvolti:
+    MODIFICARE: server/prisma/schema.prisma (Gateway, GatewayType, Connection.gatewayId)
+    MODIFICARE: server/src/app.ts (montare gateway routes)
+    CREARE:     server/src/routes/gateway.routes.ts
+    CREARE:     server/src/controllers/gateway.controller.ts
+    CREARE:     server/src/services/gateway.service.ts
+
+
+------------------------------------------------------------------------------
+[ ] GATE-037 — Routing RDP tramite gateway guacd dinamico
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: GATE-036
+
+  DESCRIZIONE:
+  Instradare le connessioni RDP attraverso l'istanza guacd specificata nel
+  gateway della connessione, invece di usare l'unica istanza guacd globale.
+  guacamole-lite supporta gia' il routing dinamico: basta includere
+  guacdHost e guacdPort nel token cifrato per ogni connessione.
+  Se nessun gateway e' assegnato, si usa il guacd di default da env vars
+  (comportamento attuale preservato).
+
+  DETTAGLI TECNICI:
+  Backend:
+    - rdp.service.ts generateGuacamoleToken(): aggiungere parametri opzionali
+      guacdHost e guacdPort. Se presenti, includerli nell'oggetto connection
+      del token: { connection: { type: 'rdp', guacdHost, guacdPort, settings } }
+    - connection.controller.ts (endpoint sessione RDP): quando la connessione
+      ha un gatewayId, caricare il Gateway e passare host/port del gateway
+      a generateGuacamoleToken()
+    - connection.service.ts: includere relazione gateway nelle query connessioni
+    - Fallback: nessun gateway = guacd da config (GUACD_HOST/GUACD_PORT)
+    - NOTA: guacamole-lite gestisce tutto internamente — un singolo server
+      WebSocket (porta 3002) instrada verso guacd diversi in base al token
+  File coinvolti:
+    MODIFICARE: server/src/services/rdp.service.ts
+    MODIFICARE: server/src/controllers/connection.controller.ts
+    MODIFICARE: server/src/services/connection.service.ts
+
+
+------------------------------------------------------------------------------
+[ ] GATE-038 — Routing SSH tramite bastion/jump host
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: GATE-036
+
+  DESCRIZIONE:
+  Instradare le connessioni SSH attraverso un bastion host (jump host) quando
+  la connessione ha un gateway di tipo SSH_BASTION. Il server apre prima una
+  connessione SSH verso il bastion, poi un tunnel TCP verso l'host target,
+  e infine stabilisce la sessione SSH finale attraverso il tunnel.
+  Se nessun gateway e' assegnato, connessione diretta (comportamento attuale).
+
+  DETTAGLI TECNICI:
+  Backend:
+    - ssh.service.ts: nuova funzione createSshConnectionViaBastion() che:
+      1. Connette al bastion host con credenziali del Gateway (decifrate dalla vault)
+      2. Apre un canale TCP forwarded (client.forwardOut()) verso target host:port
+      3. Crea un secondo SSH2 Client sullo stream forwarded verso il target
+      4. Restituisce la sessione finale (stessa interfaccia SshSession)
+    - ssh.handler.ts: controllare se la connessione ha un gateway SSH_BASTION;
+      se si', usare createSshConnectionViaBastion() al posto di createSshConnection()
+    - SFTP: funziona automaticamente (stesso client SSH2 sottostante)
+    - Gestione cleanup: chiudere entrambi i client SSH (bastion + target)
+      quando la sessione termina
+    - Fallback: nessun gateway = connessione diretta (createSshConnection)
+  File coinvolti:
+    MODIFICARE: server/src/services/ssh.service.ts
+    MODIFICARE: server/src/socket/ssh.handler.ts
+    MODIFICARE: server/src/services/connection.service.ts
+
+
+------------------------------------------------------------------------------
+[ ] GATE-039 — Frontend gestione gateway e assegnazione connessioni
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: GATE-036, GATE-037, GATE-038
+
+  DESCRIZIONE:
+  Interfaccia frontend per gestire i gateway e assegnarli alle connessioni.
+  Include: pagina di gestione gateway (CRUD + test connettivita') e
+  selettore gateway opzionale nel dialog di creazione/modifica connessione.
+
+  DETTAGLI TECNICI:
+  Frontend:
+    - API layer: client/src/api/gateway.api.ts (CRUD + test endpoint)
+    - Store: client/src/store/gatewayStore.ts (Zustand, lista gateway)
+    - Pagina gestione gateway (admin area o Settings):
+      - Lista gateway: nome, tipo (GUACD/SSH_BASTION), host:port, descrizione
+      - Dialog crea/modifica gateway (campi: nome, tipo, host, porta,
+        credenziali per SSH_BASTION, descrizione, flag default)
+      - Bottone "Test connessione" per ogni gateway
+      - Indicatore visuale per gateway default
+    - ConnectionDialog.tsx: aggiungere dropdown opzionale "Gateway"
+      - Filtrato per tipo connessione: gateway GUACD per RDP, SSH_BASTION per SSH
+      - Opzione "Nessuno (connessione diretta)" come default
+      - Mostrare host:port del gateway selezionato come hint
+  File coinvolti:
+    CREARE:     client/src/api/gateway.api.ts
+    CREARE:     client/src/store/gatewayStore.ts
+    CREARE:     client/src/components/gateway/GatewayList.tsx
+    CREARE:     client/src/components/gateway/GatewayDialog.tsx
+    MODIFICARE: client/src/components/connections/ConnectionDialog.tsx
+
+
+================================================================================
+  SEZIONE E — ZERO TRUST HARDENING
+================================================================================
+
+
+------------------------------------------------------------------------------
+  TIER 1 — Baseline obbligatorio
+------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------
+[ ] ZT-036 — Security headers (helmet middleware)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Aggiungere il middleware helmet per impostare gli header HTTP di sicurezza
+  standard. Attualmente l'app non invia nessun header di sicurezza (CSP, HSTS,
+  X-Frame-Options, X-Content-Type-Options, Referrer-Policy), esponendola a
+  attacchi XSS, clickjacking e content sniffing.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Installare helmet: npm install helmet
+    - Aggiungere app.use(helmet({...})) in server/src/app.ts prima delle routes
+    - Configurare Content-Security-Policy per permettere le risorse del client
+    - Configurare HSTS con max-age appropriato (31536000s = 1 anno)
+    - Abilitare X-Frame-Options: DENY (l'app non deve essere in iframe)
+    - Abilitare X-Content-Type-Options: nosniff
+    - Configurare Referrer-Policy: strict-origin-when-cross-origin
+  File coinvolti:
+    - server/src/app.ts
+    - server/package.json
+
+
+------------------------------------------------------------------------------
+[ ] ZT-037 — Rate limiting login e account lockout
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Aggiungere rate limiting sull'endpoint POST /api/auth/login per prevenire
+  attacchi brute-force. Attualmente non c'e' nessun limite ai tentativi
+  di login, permettendo attacchi automatizzati illimitati.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Creare middleware server/src/middleware/loginRateLimit.middleware.ts
+    - Usare express-rate-limit (gia' pattern esistente in smsRateLimit.middleware.ts)
+    - Limiti: 5 tentativi per 15 minuti per IP (configurabile via env vars)
+    - Window sliding, risposta 429 con Retry-After header
+    - Opzionale: tracciare tentativi falliti per email per lockout account
+      (es. 10 fallimenti consecutivi → lockout 30 minuti)
+    - Applicare il middleware su POST /login in auth.routes.ts
+  File coinvolti:
+    - server/src/middleware/loginRateLimit.middleware.ts (nuovo)
+    - server/src/routes/auth.routes.ts
+
+
+------------------------------------------------------------------------------
+[ ] ZT-038 — Audit sessioni SSH/RDP (session start/end)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: AUDIT-013 (completato)
+
+  DESCRIZIONE:
+  Registrare nel log audit l'inizio e la fine di ogni sessione SSH e RDP.
+  Attualmente le sessioni remote non vengono loggate: non si puo' sapere
+  chi si e' connesso a quale host, quando, e per quanto tempo.
+  Questo e' un requisito fondamentale Zero Trust.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Aggiungere SESSION_START e SESSION_END all'enum AuditAction in schema.prisma
+    - Eseguire migrazione Prisma (db:push o db:migrate)
+    - SSH handler (server/src/socket/ssh.handler.ts):
+      - Loggare SESSION_START quando la connessione SSH e' stabilita
+        (details: { connectionId, host, port, protocol: 'SSH' })
+      - Loggare SESSION_END su disconnect/cleanup
+        (details: { connectionId, duration, protocol: 'SSH' })
+    - RDP handler (server/src/socket/rdp.handler.ts o rdp.service.ts):
+      - Loggare SESSION_START quando il token Guacamole viene generato
+        (details: { connectionId, host, port, protocol: 'RDP' })
+      - Loggare SESSION_END quando la sessione WebSocket viene chiusa
+        (details: { connectionId, duration, protocol: 'RDP' })
+  File coinvolti:
+    - server/prisma/schema.prisma (enum AuditAction)
+    - server/src/socket/ssh.handler.ts
+    - server/src/socket/rdp.handler.ts o server/src/services/rdp.service.ts
+
+
+------------------------------------------------------------------------------
+[ ] ZT-039 — Audit tentativi di login falliti
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: AUDIT-013 (completato)
+
+  DESCRIZIONE:
+  Registrare nel log audit ogni tentativo di login fallito (password errata,
+  email non trovata, email non verificata). Attualmente i login falliti
+  non vengono tracciati, rendendo impossibile rilevare attacchi brute-force
+  o compromissioni di account.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Aggiungere LOGIN_FAILURE all'enum AuditAction in schema.prisma
+    - Eseguire migrazione Prisma
+    - In auth.service.ts login():
+      - Loggare LOGIN_FAILURE prima di lanciare l'errore per password errata
+        (details: { reason: 'invalid_password', email }, ipAddress da req)
+      - Loggare LOGIN_FAILURE per email non trovata
+        (details: { reason: 'user_not_found', email })
+      - Loggare LOGIN_FAILURE per email non verificata
+        (details: { reason: 'email_not_verified', email })
+    - Nota: il login fallito non ha un userId valido (l'utente potrebbe non
+      esistere), quindi usare userId null o un valore speciale
+  File coinvolti:
+    - server/prisma/schema.prisma (enum AuditAction)
+    - server/src/services/auth.service.ts
+    - server/src/controllers/auth.controller.ts (passare IP al service)
+
+
+------------------------------------------------------------------------------
+[ ] ZT-040 — Lock vault al logout
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Bloccare la vault (rimuovere la master key dalla memoria) quando l'utente
+  effettua il logout. Attualmente la funzione logout() cancella solo il
+  refresh token dal DB, ma la master key resta in memoria fino alla scadenza
+  del TTL (default 30 minuti), creando una finestra di esposizione.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - In auth.service.ts logout(): dopo aver cancellato il refresh token,
+      chiamare la funzione di lock vault dal crypto.service.ts
+    - Verificare che deleteVaultSession() o lockVault() azzeri il buffer
+      della master key (fill(0)) prima di rimuoverlo dalla Map
+    - Considerare anche il lock della team vault se presente
+    - Loggare VAULT_LOCK nell'audit (gia' presente nell'enum)
+  File coinvolti:
+    - server/src/services/auth.service.ts (logout function)
+    - server/src/services/crypto.service.ts (importare lockVault)
+
+
+------------------------------------------------------------------------------
+  TIER 2 — Core Zero Trust
+------------------------------------------------------------------------------
+
+
+------------------------------------------------------------------------------
+[ ] ZT-041 — Policy MFA obbligatorio a livello tenant
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: 2FA-012 (completato), TENANT-020 (completato)
+
+  DESCRIZIONE:
+  Permettere ai tenant owner/admin di rendere obbligatorio l'MFA per tutti
+  i membri del tenant. Attualmente l'MFA e' solo opzionale: ogni utente
+  decide individualmente se attivarlo. In un modello Zero Trust, l'MFA
+  deve essere enforcement a livello di policy organizzativa.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Aggiungere campo mfaRequired Boolean @default(false) al modello Tenant
+      in schema.prisma
+    - Migrazione Prisma
+    - In auth.service.ts login(): se il tenant dell'utente ha mfaRequired=true
+      e l'utente non ha ne' TOTP ne' SMS MFA configurato, restituire un
+      response speciale (es. { mfaSetupRequired: true }) invece di completare
+      il login
+    - Nuovo endpoint o estendere tenant.controller.ts per toggle mfaRequired
+      (solo OWNER/ADMIN)
+  Frontend:
+    - Pagina impostazioni tenant: toggle per MFA obbligatorio
+    - Flusso login: se mfaSetupRequired, redirect a pagina setup MFA
+      prima di permettere l'accesso
+    - Mostrare avviso ai membri del tenant quando MFA diventa obbligatorio
+  File coinvolti:
+    - server/prisma/schema.prisma (modello Tenant)
+    - server/src/services/auth.service.ts
+    - server/src/controllers/tenant.controller.ts
+    - client/src/ (pagina settings tenant, flusso login)
+
+
+------------------------------------------------------------------------------
+[ ] ZT-042 — Rotazione refresh token
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Implementare la rotazione dei refresh token: ogni volta che un refresh
+  token viene usato, deve essere invalidato e sostituito con uno nuovo.
+  Attualmente lo stesso refresh token resta valido per tutta la sua durata
+  (7 giorni), e se rubato puo' essere usato indefinitamente.
+  Aggiungere anche reuse detection: se un token gia' ruotato viene riutilizzato,
+  revocare tutti i token della famiglia (indicatore di furto token).
+
+  DETTAGLI TECNICI:
+  Backend:
+    - In auth.service.ts refreshAccessToken():
+      1. Trovare il refresh token nel DB
+      2. Cancellare il vecchio token
+      3. Generare un nuovo refresh token (UUID)
+      4. Salvare il nuovo token nel DB con stessa scadenza relativa
+      5. Restituire sia accessToken che newRefreshToken nella response
+    - Aggiungere campo tokenFamily String? al modello RefreshToken per
+      raggruppare i token della stessa sessione
+    - Reuse detection: se il token usato e' gia' stato ruotato (non esiste
+      nel DB), cancellare TUTTI i token della stessa famiglia → forza
+      re-login su tutti i dispositivi
+  Frontend:
+    - Aggiornare il client Axios interceptor per salvare il nuovo refresh
+      token ricevuto nella response
+  File coinvolti:
+    - server/src/services/auth.service.ts (refreshAccessToken)
+    - server/prisma/schema.prisma (RefreshToken model)
+    - client/src/api/client.ts o equivalente (interceptor)
+
+
+------------------------------------------------------------------------------
+[ ] ZT-043 — Fix validazione certificato RDP (default ignoreCert)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Cambiare il default di ignoreCert da true a false per le connessioni RDP.
+  Attualmente tutte le connessioni RDP ignorano la validazione del certificato
+  del server remoto, rendendo possibili attacchi man-in-the-middle.
+  L'override per connessione (per certificati self-signed) e' gia' disponibile.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - In server/src/services/rdp.service.ts mergeRdpSettings():
+      cambiare ignoreCert: true → ignoreCert: false nei default
+    - In generateGuacamoleToken(): cambiare il fallback da true a false
+    - Connessioni esistenti che richiedono self-signed cert possono
+      impostare ignoreCert: true individualmente nelle impostazioni RDP
+  Frontend:
+    - Verificare che il toggle ignoreCert sia visibile nel dialog
+      impostazioni connessione RDP (dovrebbe gia' esserci)
+    - Opzionale: mostrare un avviso quando l'utente abilita ignoreCert
+  File coinvolti:
+    - server/src/services/rdp.service.ts
+
+
+------------------------------------------------------------------------------
+[ ] ZT-044 — Cifratura TOTP secret a riposo
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Cifrare il segreto TOTP con la master key dell'utente invece di salvarlo
+  in chiaro nel database. Attualmente il campo totpSecret e' un String?
+  in chiaro, il che significa che una compromissione del DB espone i seed
+  MFA di tutti gli utenti, permettendo di generare codici TOTP validi.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - In schema.prisma, sostituire totpSecret String? con:
+      encryptedTotpSecret String?
+      totpSecretIV        String?
+      totpSecretTag       String?
+    - Migrazione Prisma (richiede script di migrazione per re-cifrare
+      i segreti TOTP esistenti)
+    - In totp.service.ts:
+      - enableTotp(): cifrare il secret con la master key dell'utente
+        prima di salvarlo (stesso pattern di encryption.service.ts)
+      - verifyTotp(): decifrare il secret dalla vault prima di verificare
+      - Richiede vault sbloccata per operazioni TOTP
+    - Script di migrazione: per ogni utente con totpSecret non-null,
+      richiedere la master key (o eseguire al prossimo vault unlock)
+  File coinvolti:
+    - server/prisma/schema.prisma (modello User)
+    - server/src/services/totp.service.ts
+    - server/src/services/crypto.service.ts
+
+
+------------------------------------------------------------------------------
+[ ] ZT-045 — Vista audit log per admin tenant
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: AUDIT-013 (completato), TENANT-020 (completato)
+
+  DESCRIZIONE:
+  Aggiungere un endpoint per permettere ai tenant OWNER e ADMIN di consultare
+  i log audit di tutti gli utenti del proprio tenant. Attualmente ogni utente
+  vede solo i propri log, rendendo impossibile per gli admin investigare
+  incidenti di sicurezza o monitorare l'attivita' del tenant.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Nuovo endpoint GET /api/audit/tenant in audit.routes.ts
+    - Proteggere con middleware: authenticate + requireTenantRole('ADMIN')
+    - audit.service.ts: nuova funzione getTenantAuditLogs() che filtra per
+      tutti gli userId del tenant (JOIN su User.tenantId)
+    - Supportare filtri: userId specifico, action, dateRange, paginazione
+    - Restituire anche il nome/email dell'utente per ogni log entry
+  Frontend:
+    - Nuova pagina/tab nelle impostazioni tenant per admin audit log
+    - Tabella con filtri: utente, azione, data
+    - Export CSV opzionale
+  File coinvolti:
+    - server/src/routes/audit.routes.ts
+    - server/src/controllers/audit.controller.ts
+    - server/src/services/audit.service.ts
+    - client/src/ (pagina admin audit)
+
+
+================================================================================
   ORDINE DI IMPLEMENTAZIONE CONSIGLIATO
 ================================================================================
 
@@ -133,8 +583,28 @@
 
   Fase 7 — Comunicazioni cloud:
    30. CLOUD-033  Integrazione provider email cloud (alternativa a SMTP)    [COMPLETATO]
-   31. SMS-034   Autenticazione MFA via SMS
+   31. SMS-034   Autenticazione MFA via SMS                                      [COMPLETATO]
    32. OIDC-035  Supporto provider OAuth2/OIDC generico (Authentik, Keycloak, etc.)
+
+  Fase 8 — Multi-backend / Multi-gateway:
+   33. GATE-036  Modello Gateway e CRUD backend (Prisma + API)
+   34. GATE-037  Routing RDP tramite gateway guacd dinamico
+   35. GATE-038  Routing SSH tramite bastion/jump host (parallelizzabile con 34)
+   36. GATE-039  Frontend gestione gateway e assegnazione connessioni
+
+  Fase 9 — Zero Trust hardening (Tier 1, priorita' alta):
+   37. ZT-036   Security headers (helmet middleware)
+   38. ZT-037   Rate limiting login e account lockout
+   39. ZT-038   Audit sessioni SSH/RDP (session start/end)
+   40. ZT-039   Audit tentativi di login falliti
+   41. ZT-040   Lock vault al logout
+
+  Fase 10 — Zero Trust hardening (Tier 2, core ZT):
+   42. ZT-041   Policy MFA obbligatorio a livello tenant
+   43. ZT-042   Rotazione refresh token
+   44. ZT-043   Fix validazione certificato RDP (default ignoreCert)
+   45. ZT-044   Cifratura TOTP secret a riposo
+   46. ZT-045   Vista audit log per admin tenant
 
 ================================================================================
   NOTE
@@ -195,4 +665,36 @@
   - OIDC-035 richiede migrazione Prisma per aggiungere OIDC all'enum AuthProvider
   - OIDC-035 singolo provider generico via env vars; multi-provider via admin UI e' estensione futura
   - OIDC-035 compatibile con qualsiasi IdP OIDC-compliant: Authentik, Keycloak, Authelia, Zitadel, etc.
+  - GATE-036 dipende da TENANT-020 e GUARD-026: i gateway sono tenant-scoped
+  - GATE-036 credenziali cifrate solo per SSH_BASTION (nullable per GUACD)
+  - GATE-036 un gateway default per tipo (GUACD/SSH_BASTION) per tenant
+  - GATE-036 endpoint DELETE fallisce se connessioni referenziano il gateway
+  - GATE-037 scoperta chiave: guacamole-lite supporta gia' routing dinamico
+    per-connessione via guacdHost/guacdPort nel token cifrato
+  - GATE-037 nessuna istanza GuacamoleLite aggiuntiva necessaria: un solo
+    server WebSocket (porta 3002) instrada verso guacd diversi
+  - GATE-037 backward compatible: senza gateway = guacd da GUACD_HOST/GUACD_PORT
+  - GATE-038 usa SSH2 client.forwardOut() per creare tunnel TCP attraverso
+    il bastion, poi secondo SSH2 Client sullo stream forwarded
+  - GATE-038 cleanup: chiudere entrambi i client SSH (bastion + target) a fine sessione
+  - GATE-038 SFTP funziona automaticamente sullo stesso client SSH2
+  - GATE-039 dropdown gateway nel ConnectionDialog filtrato per tipo connessione
+    (GUACD per RDP, SSH_BASTION per SSH)
+  - GATE-039 opzione "Nessuno (connessione diretta)" come default nel dropdown
+  - ZT-036 non ha dipendenze: puo' essere implementato immediatamente
+  - ZT-037 puo' riutilizzare il pattern di smsRateLimit.middleware.ts (express-rate-limit)
+  - ZT-038 richiede migrazione Prisma per nuovi valori enum AuditAction
+  - ZT-039 richiede migrazione Prisma per LOGIN_FAILURE nell'enum AuditAction
+  - ZT-039 nota: login falliti non hanno userId valido, gestire con userId nullable
+  - ZT-040 e' un fix semplice: aggiungere una chiamata lockVault() in logout()
+  - ZT-041 dipende da 2FA-012 e TENANT-020: estende il modello Tenant con mfaRequired
+  - ZT-041 utenti senza MFA in un tenant con policy attiva vengono forzati al setup MFA
+  - ZT-042 implementa token rotation + reuse detection (famiglia di token)
+  - ZT-042 richiede aggiornamento anche del client Axios interceptor
+  - ZT-043 e' un cambio di default: da ignoreCert=true a ignoreCert=false
+  - ZT-043 connessioni con certificati self-signed possono fare override individualmente
+  - ZT-044 richiede vault sbloccata per operazioni TOTP (enable, verify, login)
+  - ZT-044 richiede script di migrazione per re-cifrare segreti TOTP esistenti
+  - ZT-045 nuovo endpoint /api/audit/tenant protetto da requireTenantRole('ADMIN')
+  - ZT-045 permette a OWNER/ADMIN di vedere i log di tutti gli utenti del tenant
 ================================================================================

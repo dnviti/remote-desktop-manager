@@ -701,6 +701,30 @@
     - Sezione impostazioni admin per selezione provider e configurazione
     - Test di invio email dalla UI per verificare la configurazione
 
+------------------------------------------------------------------------------
+[x] SMS-034 — Autenticazione MFA via SMS
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: 2FA-012 (completato)
+  COMPLETATO: SMS OTP as second MFA method alongside TOTP. Three providers (Twilio, AWS SNS, Vonage) via factory pattern mirroring email providers. OTP codes stored as SHA-256 hashes on User model with 5-min expiry. Login flow extended to support method choice when both TOTP and SMS are enabled. Rate limiting via express-rate-limit on SMS-sending endpoints. SmsMfaSection in Settings for phone registration/verification/enable/disable.
+
+  DESCRIZIONE:
+  Abilitare l'invio di codici OTP via SMS come metodo di autenticazione
+  a due fattori, in alternativa o in aggiunta al TOTP gia' implementato.
+  L'utente puo' scegliere SMS, TOTP o entrambi.
+
+  DETTAGLI TECNICI:
+  Backend:
+    - Integrare un provider SMS (Twilio, AWS SNS, Vonage)
+    - Nuove env vars: SMS_PROVIDER (twilio|sns|vonage), credenziali provider
+    - Endpoint per: registrazione numero di telefono, invio OTP,
+      verifica OTP, rimozione numero
+    - Rate limiting per prevenire abusi (costo per SMS)
+    - Modello Prisma: aggiungere phoneNumber e smsVerified a User
+  Frontend:
+    - UI per aggiungere/verificare numero di telefono nelle impostazioni account
+    - Step SMS nel flusso di login MFA (scelta tra TOTP e SMS se entrambi attivi)
+
 
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
