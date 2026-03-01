@@ -47,6 +47,7 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'rdm-auth',
       partialize: (state) => ({
+        accessToken: state.accessToken,
         refreshToken: state.refreshToken,
         user: state.user,
         isAuthenticated: state.isAuthenticated,
