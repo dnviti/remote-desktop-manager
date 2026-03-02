@@ -1,4 +1,4 @@
-import { Box, Tab, Tabs, IconButton } from '@mui/material';
+import { Box, Tab, Tabs } from '@mui/material';
 import {
   Close as CloseIcon,
   Computer as RdpIcon,
@@ -39,16 +39,31 @@ export default function TabBar() {
                   <SshIcon sx={{ fontSize: 16 }} />
                 )}
                 <span>{tab.connection.name}</span>
-                <IconButton
-                  size="small"
-                  onClick={(e) => {
+                <Box
+                  component="span"
+                  role="button"
+                  tabIndex={-1}
+                  onClick={(e: React.MouseEvent) => {
                     e.stopPropagation();
                     closeTab(tab.id);
                   }}
-                  sx={{ ml: 0.5, p: 0.25 }}
+                  onMouseDown={(e: React.MouseEvent) => {
+                    // Prevent tab from activating when clicking close
+                    e.stopPropagation();
+                  }}
+                  sx={{
+                    ml: 0.5,
+                    p: 0.25,
+                    borderRadius: '50%',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    '&:hover': { bgcolor: 'action.hover' },
+                  }}
                 >
                   <CloseIcon sx={{ fontSize: 14 }} />
-                </IconButton>
+                </Box>
               </Box>
             }
           />

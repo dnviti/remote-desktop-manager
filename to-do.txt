@@ -157,6 +157,79 @@
     MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx (filter)
 
 
+------------------------------------------------------------------------------
+[ ] SSHGW-053 — Push chiave pubblica SSH al gateway tramite API HTTP sidecar
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: SSHGW-050
+
+  DESCRIZIONE:
+  Aggiungere un meccanismo per inviare la chiave pubblica SSH del tenant
+  direttamente al container SSH gateway dalla Web UI, eliminando la necessita'
+  di configurare manualmente la variabile d'ambiente SSH_AUTHORIZED_KEYS o
+  montare il file /config/authorized_keys. Il container SSH gateway espone
+  un piccolo server HTTP interno (sidecar) protetto da un token condiviso
+  (GATEWAY_API_TOKEN). Il server RDM chiama questo endpoint per iniettare
+  la chiave pubblica. L'admin clicca "Push Key" nella UI e la chiave viene
+  deployata automaticamente. Questo task e' indipendente dai task di
+  orchestrazione automatica (ORCH-060+).
+
+  DETTAGLI TECNICI:
+  SSH Gateway container (sidecar HTTP):
+    - Aggiungere un server HTTP leggero nel container ssh-gateway
+      (BusyBox httpd + CGI script, oppure piccolo binario Go/Python)
+    - Porta interna: 8022 (non esposta all'host in produzione)
+    - Endpoints:
+        POST /authorized-keys — body JSON { "publicKey": "ssh-ed25519 ..." }
+          - Scrive la chiave in /home/tunnel/.ssh/authorized_keys
+          - Risponde 200 { "ok": true }
+        GET  /authorized-keys — restituisce le chiavi attualmente configurate
+          - Risponde 200 { "keys": ["ssh-ed25519 ..."] }
+    - Sicurezza: shared secret token
+        - Env var GATEWAY_API_TOKEN sul container gateway
+          (stringa random crittografica, es. 64 caratteri hex)
+        - Ogni richiesta deve includere header Authorization: Bearer <token>
+        - Richieste senza token valido ricevono 401 Unauthorized
+        - Il server RDM usa lo stesso token (dalla propria config)
+          per autenticarsi verso il sidecar
+    - Entrypoint: avviare il server HTTP in background prima di sshd
+    - Dockerfile: installare dipendenze per il server HTTP
+  Server — nuovo endpoint:
+    - POST /api/gateways/:id/push-key
+        - Recupera la chiave pubblica del tenant da SshKeyPair
+        - Legge host e porta API del gateway (campo apiPort sul modello
+          Gateway, oppure convenzione: porta SSH + offset)
+        - Chiama POST http://<gateway-host>:<apiPort>/authorized-keys
+          con Authorization: Bearer <GATEWAY_API_TOKEN>
+        - Restituisce successo/errore al client
+        - Timeout: 5 secondi
+    - Nuovo AuditAction: SSH_KEY_PUSH
+    - Zod validation per gatewayId
+  Client — bottone "Push Key to Gateway":
+    - Nella GatewaySection, per ogni gateway di tipo MANAGED_SSH nella
+      tabella, aggiungere un'azione "Push Key" (icona o bottone)
+    - Mostra spinner durante l'operazione, toast di successo, alert errore
+    - Aggiornare il testo dell'Accordion "How to use this key" per
+      menzionare il push automatico come metodo principale
+  Configurazione:
+    - Nuova env var: GATEWAY_API_TOKEN (in .env e .env.example)
+    - Nuova env var nel container gateway: stessa GATEWAY_API_TOKEN
+    - server/src/config.ts: aggiungere GATEWAY_API_TOKEN (obbligatorio
+      quando si usano gateway MANAGED_SSH)
+  File coinvolti:
+    MODIFICARE: ssh-gateway/Dockerfile (aggiungere server HTTP)
+    CREARE:     ssh-gateway/key-api.sh (o equivalente — handler HTTP)
+    MODIFICARE: ssh-gateway/entrypoint.sh (avvio server HTTP + sshd)
+    MODIFICARE: docker-compose.dev.yml (porta sidecar, token env)
+    MODIFICARE: .env.example (GATEWAY_API_TOKEN)
+    MODIFICARE: server/src/config.ts (GATEWAY_API_TOKEN)
+    MODIFICARE: server/src/routes/gateway.routes.ts (push-key route)
+    MODIFICARE: server/src/controllers/gateway.controller.ts (push-key)
+    MODIFICARE: server/src/services/gateway.service.ts (push-key logic)
+    MODIFICARE: client/src/api/gateway.api.ts (pushKeyToGateway())
+    MODIFICARE: client/src/components/Settings/GatewaySection.tsx (bottone)
+
+
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
 ================================================================================
@@ -2013,37 +2086,38 @@
    39. SSHGW-050  Generazione e gestione chiavi SSH server-side
    40. SSHGW-051  Integrazione gateway managed nel backend (MANAGED_SSH + key auth)
    41. SSHGW-052  Frontend gateway SSH gestito: UI, status e configurazione
+   42. SSHGW-053  Push chiave pubblica SSH al gateway tramite HTTP sidecar
 
   Fase 8d — Password Keychain / Secret Vault:
-   42. VAULT-053  Modelli Prisma e servizio CRUD backend secrets
-   43. VAULT-054  API routes, controller e sharing secrets
-   44. VAULT-055  Integrazione backend connessioni con vault secrets
-   45. VAULT-056  Frontend pagina Keychain, store e componenti
-   46. VAULT-057  Integrazione frontend ConnectionDialog con secret picker
-   47. VAULT-058  External sharing: link temporanei condivisione esterna
-   48. VAULT-059  Secret versioning UI, scadenza alert, audit migliorato
+   43. VAULT-053  Modelli Prisma e servizio CRUD backend secrets
+   44. VAULT-054  API routes, controller e sharing secrets
+   45. VAULT-055  Integrazione backend connessioni con vault secrets
+   46. VAULT-056  Frontend pagina Keychain, store e componenti
+   47. VAULT-057  Integrazione frontend ConnectionDialog con secret picker
+   48. VAULT-058  External sharing: link temporanei condivisione esterna
+   49. VAULT-059  Secret versioning UI, scadenza alert, audit migliorato
 
   Fase 8e — Gateway Orchestration e Auto-Scaling:
-   49. ORCH-060  Session tracking persistente e monitoraggio sessioni attive
-   50. ORCH-061  Cleanup sessioni inattive con timeout configurabile
-   51. ORCH-062  Container orchestrator abstraction layer (Docker + K8s)
-   52. ORCH-063  Deploy e lifecycle management gateway containers
-   53. ORCH-064  Auto-scaling gateway basato su sessioni attive
-   54. ORCH-065  Frontend dashboard sessioni, scaling controls, monitoring
+   50. ORCH-060  Session tracking persistente e monitoraggio sessioni attive
+   51. ORCH-061  Cleanup sessioni inattive con timeout configurabile
+   52. ORCH-062  Container orchestrator abstraction layer (Docker + K8s)
+   53. ORCH-063  Deploy e lifecycle management gateway containers
+   54. ORCH-064  Auto-scaling gateway basato su sessioni attive
+   55. ORCH-065  Frontend dashboard sessioni, scaling controls, monitoring
 
   Fase 9 — Zero Trust hardening (Tier 1, priorita' alta):
-   55. ZT-036   Security headers (helmet middleware)
-   56. ZT-037   Rate limiting login e account lockout
-   57. ZT-038   Audit sessioni SSH/RDP (session start/end)
-   58. ZT-039   Audit tentativi di login falliti
-   59. ZT-040   Lock vault al logout
+   56. ZT-036   Security headers (helmet middleware)
+   57. ZT-037   Rate limiting login e account lockout
+   58. ZT-038   Audit sessioni SSH/RDP (session start/end)
+   59. ZT-039   Audit tentativi di login falliti
+   60. ZT-040   Lock vault al logout
 
   Fase 10 — Zero Trust hardening (Tier 2, core ZT):
-   60. ZT-041   Policy MFA obbligatorio a livello tenant
-   61. ZT-042   Rotazione refresh token
-   62. ZT-043   Fix validazione certificato RDP (default ignoreCert)
-   63. ZT-044   Cifratura TOTP secret a riposo
-   64. ZT-045   Vista audit log per admin tenant
+   61. ZT-041   Policy MFA obbligatorio a livello tenant
+   62. ZT-042   Rotazione refresh token
+   63. ZT-043   Fix validazione certificato RDP (default ignoreCert)
+   64. ZT-044   Cifratura TOTP secret a riposo
+   65. ZT-045   Vista audit log per admin tenant
 
 ================================================================================
   NOTE
@@ -2185,6 +2259,15 @@
     e SSH_BASTION per connessioni SSH (entrambi validi)
   - SSHGW-052 nessuna nuova pagina/route: la gestione keypair vive nella
     pagina /settings/gateways esistente
+  - SSHGW-053 e' indipendente dai task di orchestrazione (ORCH-060+)
+  - SSHGW-053 il sidecar HTTP nel container gateway e' protetto da shared
+    secret token (GATEWAY_API_TOKEN), ogni richiesta richiede Bearer token
+  - SSHGW-053 il server HTTP sidecar gira sulla porta 8022, non esposta
+    all'host in produzione (solo rete interna Docker)
+  - SSHGW-053 endpoint POST /authorized-keys sovrascrive authorized_keys,
+    GET /authorized-keys verifica le chiavi attualmente configurate
+  - SSHGW-053 GATEWAY_API_TOKEN deve essere una stringa random crittografica
+    (64 caratteri hex), condivisa tra .env del server e del container gateway
   - VAULT-053 il tenant key segue lo stesso pattern esatto del team key:
     AES-256 random, cifrato per-membro con master key, cached in memory con TTL
   - VAULT-053 i secrets usano un singolo blob JSON cifrato (encryptedData) invece

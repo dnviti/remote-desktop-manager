@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { utils } from 'ssh2';
 import prisma from '../lib/prisma';
 import { encryptWithServerKey, decryptWithServerKey } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
@@ -12,9 +13,15 @@ export interface SshKeyPairResponse {
   updatedAt: Date;
 }
 
-function computeFingerprint(publicKeyDer: Buffer): string {
-  const hash = crypto.createHash('sha256').update(publicKeyDer).digest('base64');
-  return `SHA256:${hash}`;
+function generateEd25519KeyPair(): { privateKey: string; publicKey: string; fingerprint: string } {
+  const keyPair = utils.generateKeyPairSync('ed25519');
+
+  // Compute standard SSH fingerprint from the public key blob (matches ssh-keygen -l output)
+  const parts = keyPair.public.split(' ');
+  const pubKeyBlob = Buffer.from(parts[1], 'base64');
+  const fingerprint = `SHA256:${crypto.createHash('sha256').update(pubKeyBlob).digest('base64')}`;
+
+  return { privateKey: keyPair.private, publicKey: keyPair.public, fingerprint };
 }
 
 export async function generateKeyPair(tenantId: string): Promise<SshKeyPairResponse> {
@@ -23,23 +30,9 @@ export async function generateKeyPair(tenantId: string): Promise<SshKeyPairRespo
     throw new AppError('SSH key pair already exists for this tenant. Use rotate to replace it.', 409);
   }
 
-  const { publicKey: pubKeyObject, privateKey: privKeyObject } = crypto.generateKeyPairSync(
-    'ed25519',
-    {
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    },
-  );
+  const { privateKey, publicKey, fingerprint } = generateEd25519KeyPair();
 
-  const publicKeyPem = pubKeyObject as unknown as string;
-  const privateKeyPem = privKeyObject as unknown as string;
-
-  // Compute fingerprint from DER-encoded public key
-  const pubKeyDer = crypto.createPublicKey(publicKeyPem).export({ type: 'spki', format: 'der' });
-  const fingerprint = computeFingerprint(pubKeyDer);
-
-  // Encrypt private key with server-level key
-  const encrypted = encryptWithServerKey(privateKeyPem);
+  const encrypted = encryptWithServerKey(privateKey);
 
   const record = await prisma.sshKeyPair.create({
     data: {
@@ -47,7 +40,7 @@ export async function generateKeyPair(tenantId: string): Promise<SshKeyPairRespo
       encryptedPrivateKey: encrypted.ciphertext,
       privateKeyIV: encrypted.iv,
       privateKeyTag: encrypted.tag,
-      publicKey: publicKeyPem,
+      publicKey,
       fingerprint,
       algorithm: 'ed25519',
     },
@@ -93,21 +86,9 @@ export async function getPrivateKey(tenantId: string): Promise<Buffer> {
 }
 
 export async function rotateKeyPair(tenantId: string): Promise<SshKeyPairResponse> {
-  const { publicKey: pubKeyObject, privateKey: privKeyObject } = crypto.generateKeyPairSync(
-    'ed25519',
-    {
-      publicKeyEncoding: { type: 'spki', format: 'pem' },
-      privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
-    },
-  );
+  const { privateKey, publicKey, fingerprint } = generateEd25519KeyPair();
 
-  const publicKeyPem = pubKeyObject as unknown as string;
-  const privateKeyPem = privKeyObject as unknown as string;
-
-  const pubKeyDer = crypto.createPublicKey(publicKeyPem).export({ type: 'spki', format: 'der' });
-  const fingerprint = computeFingerprint(pubKeyDer);
-
-  const encrypted = encryptWithServerKey(privateKeyPem);
+  const encrypted = encryptWithServerKey(privateKey);
 
   const record = await prisma.$transaction(async (tx) => {
     await tx.sshKeyPair.deleteMany({ where: { tenantId } });
@@ -117,7 +98,7 @@ export async function rotateKeyPair(tenantId: string): Promise<SshKeyPairRespons
         encryptedPrivateKey: encrypted.ciphertext,
         privateKeyIV: encrypted.iv,
         privateKeyTag: encrypted.tag,
-        publicKey: publicKeyPem,
+        publicKey,
         fingerprint,
         algorithm: 'ed25519',
       },

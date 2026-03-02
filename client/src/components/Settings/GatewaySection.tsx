@@ -229,8 +229,8 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                 value={sshKeyPair.publicKey}
                 fullWidth
                 multiline
-                minRows={3}
-                maxRows={5}
+                minRows={1}
+                maxRows={3}
                 slotProps={{ input: { readOnly: true } }}
                 sx={{ mb: 2, '& .MuiInputBase-input': { fontFamily: 'monospace', fontSize: '0.75rem' } }}
               />
