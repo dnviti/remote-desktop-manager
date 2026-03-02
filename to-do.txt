@@ -235,63 +235,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] VAULT-055 — Integrazione backend connessioni con secrets del vault
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: VAULT-053
-
-  DESCRIZIONE:
-  Permettere alle connessioni di fare riferimento a un secret del vault
-  invece di memorizzare credenziali inline. Il campo Connection.credentialSecretId
-  (opzionale) punta a un VaultSecret di tipo LOGIN o SSH_KEY. Al momento
-  della connessione (SSH o RDP), il sistema risolve il secretId, decifra le
-  credenziali dal vault, e le usa per connettersi. Le connessioni esistenti
-  con credenziali inline continuano a funzionare senza modifiche (backward
-  compatible). Per le connessioni SSH, se il secret e' di tipo SSH_KEY, il
-  sistema usa l'autenticazione basata su chiave privata invece che password.
-
-  DETTAGLI TECNICI:
-  Prisma (server/prisma/schema.prisma):
-    - Aggiungere a Connection:
-        credentialSecretId  String?
-        credentialSecret    VaultSecret? @relation("ConnectionVaultSecret",
-                            fields: [credentialSecretId], references: [id],
-                            onDelete: SetNull)
-    - Eseguire migrazione Prisma
-
-  connection.service.ts — modifiche:
-    - createConnection/updateConnection: accettare credentialSecretId opzionale,
-      validare tipo secret compatibile (LOGIN per RDP, LOGIN o SSH_KEY per SSH)
-    - getConnectionCredentials() — MODIFICA PRINCIPALE:
-        - Se connection.credentialSecretId e' definito:
-          1. Caricare VaultSecret e determinare la chiave di cifratura
-             (PERSONAL->master key, TEAM->team key, TENANT->tenant key,
-              SHARED->da SharedSecret.encryptedData)
-          2. Decifrare il secret payload
-          3. Se LOGIN: return { username, password }
-          4. Se SSH_KEY: return { username, password: '', privateKey, passphrase }
-        - Altrimenti: comportamento attuale invariato (inline credentials)
-    - Estendere return type: Promise<{ username, password, privateKey?, passphrase? }>
-
-  ssh.service.ts — modifiche:
-    - Estendere SshConnectionParams con privateKey?, passphrase?
-    - createSshConnection(): se privateKey presente, usare nel client.connect()
-    - createSshConnectionViaBastion(): supportare privateKey per target
-
-  ssh.handler.ts — modifiche:
-    - Dopo getConnectionCredentials(), passare privateKey se presente
-
-  connections.controller.ts — modifiche:
-    - Aggiungere credentialSecretId ai Zod schemas
-
-  File coinvolti:
-    MODIFICARE: server/prisma/schema.prisma (Connection.credentialSecretId)
-    MODIFICARE: server/src/services/connection.service.ts (credential resolution)
-    MODIFICARE: server/src/services/ssh.service.ts (privateKey auth support)
-    MODIFICARE: server/src/socket/ssh.handler.ts (privateKey flow)
-    MODIFICARE: server/src/socket/rdp.handler.ts (validation only)
-    MODIFICARE: server/src/controllers/connections.controller.ts (Zod schemas)
 
 
 ------------------------------------------------------------------------------
@@ -1748,7 +1691,7 @@
   Fase 8d — Password Keychain / Secret Vault:
    43. VAULT-053  Modelli Prisma e servizio CRUD backend secrets  [COMPLETATO]
    44. VAULT-054  API routes, controller e sharing secrets  [COMPLETATO]
-   45. VAULT-055  Integrazione backend connessioni con vault secrets
+   45. VAULT-055  Integrazione backend connessioni con vault secrets  [COMPLETATO]
    46. VAULT-056  Frontend pagina Keychain, store e componenti
    47. VAULT-057  Integrazione frontend ConnectionDialog con secret picker
    48. VAULT-058  External sharing: link temporanei condivisione esterna

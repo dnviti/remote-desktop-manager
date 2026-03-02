@@ -2,9 +2,11 @@ import prisma, { Prisma, ConnectionType } from '../lib/prisma';
 import { encrypt, decrypt, getMasterKey } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
 import { resolveTeamKey } from './team.service';
+import { resolveSecretEncryptionKey } from './secret.service';
 import * as permissionService from './permission.service';
 import { ROLE_HIERARCHY } from './permission.service';
 import { tenantScopedTeamFilter } from '../utils/tenantScope';
+import type { ResolvedCredentials, SecretPayload } from '../types';
 
 function requireMasterKey(userId: string): Buffer {
   const key = getMasterKey(userId);
@@ -17,8 +19,9 @@ export interface CreateConnectionInput {
   type: ConnectionType;
   host: string;
   port: number;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
+  credentialSecretId?: string;
   description?: string;
   folderId?: string;
   teamId?: string;
@@ -35,6 +38,7 @@ export interface UpdateConnectionInput {
   port?: number;
   username?: string;
   password?: string;
+  credentialSecretId?: string | null;
   description?: string | null;
   folderId?: string | null;
   enableDrive?: boolean;
@@ -44,18 +48,40 @@ export interface UpdateConnectionInput {
 }
 
 export async function createConnection(userId: string, input: CreateConnectionInput, tenantId?: string | null) {
-  let encryptionKey: Buffer;
+  // Validate: must provide EITHER credentialSecretId OR (username + password)
+  if (!input.credentialSecretId && (input.username === undefined || input.password === undefined)) {
+    throw new AppError('Either credentialSecretId or both username and password must be provided', 400);
+  }
 
+  // If credentialSecretId: validate access and type compatibility
+  if (input.credentialSecretId) {
+    const secretAccess = await permissionService.canViewSecret(userId, input.credentialSecretId, tenantId);
+    if (!secretAccess.allowed) throw new AppError('Credential secret not found or inaccessible', 404);
+    const secret = secretAccess.secret;
+    if (secret.type !== 'LOGIN' && secret.type !== 'SSH_KEY') {
+      throw new AppError('Credential secret must be of type LOGIN or SSH_KEY', 400);
+    }
+    if (input.type === 'RDP' && secret.type === 'SSH_KEY') {
+      throw new AppError('SSH_KEY secrets cannot be used with RDP connections', 400);
+    }
+  }
+
+  // Team permission check
   if (input.teamId) {
     const perm = await permissionService.canManageTeamResource(userId, input.teamId, 'TEAM_EDITOR', tenantId);
     if (!perm.allowed) throw new AppError('Insufficient team role to create connections', 403);
-    encryptionKey = await resolveTeamKey(input.teamId, userId);
-  } else {
-    encryptionKey = requireMasterKey(userId);
   }
 
-  const encUsername = encrypt(input.username, encryptionKey);
-  const encPassword = encrypt(input.password, encryptionKey);
+  // Encrypt inline credentials if provided
+  let encUsername = null;
+  let encPassword = null;
+  if (input.username !== undefined && input.password !== undefined) {
+    const encryptionKey = input.teamId
+      ? await resolveTeamKey(input.teamId, userId)
+      : requireMasterKey(userId);
+    encUsername = encrypt(input.username, encryptionKey);
+    encPassword = encrypt(input.password, encryptionKey);
+  }
 
   const connection = await prisma.connection.create({
     data: {
@@ -65,12 +91,13 @@ export async function createConnection(userId: string, input: CreateConnectionIn
       port: input.port,
       folderId: input.folderId || null,
       teamId: input.teamId || null,
-      encryptedUsername: encUsername.ciphertext,
-      usernameIV: encUsername.iv,
-      usernameTag: encUsername.tag,
-      encryptedPassword: encPassword.ciphertext,
-      passwordIV: encPassword.iv,
-      passwordTag: encPassword.tag,
+      credentialSecretId: input.credentialSecretId || null,
+      encryptedUsername: encUsername?.ciphertext ?? null,
+      usernameIV: encUsername?.iv ?? null,
+      usernameTag: encUsername?.tag ?? null,
+      encryptedPassword: encPassword?.ciphertext ?? null,
+      passwordIV: encPassword?.iv ?? null,
+      passwordTag: encPassword?.tag ?? null,
       description: input.description || null,
       enableDrive: input.enableDrive ?? false,
       gatewayId: input.gatewayId || null,
@@ -88,6 +115,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     port: connection.port,
     folderId: connection.folderId,
     teamId: connection.teamId,
+    credentialSecretId: connection.credentialSecretId,
     description: connection.description,
     enableDrive: connection.enableDrive,
     sshTerminalConfig: connection.sshTerminalConfig,
@@ -122,6 +150,33 @@ export async function updateConnection(
   if (input.sshTerminalConfig !== undefined) data.sshTerminalConfig = input.sshTerminalConfig;
   if (input.rdpSettings !== undefined) data.rdpSettings = input.rdpSettings;
 
+  // Handle credentialSecretId changes
+  if (input.credentialSecretId !== undefined) {
+    if (input.credentialSecretId === null) {
+      // Clearing vault secret reference
+      data.credentialSecretId = null;
+    } else {
+      // Setting vault secret reference: validate access and type
+      const secretAccess = await permissionService.canViewSecret(userId, input.credentialSecretId, tenantId);
+      if (!secretAccess.allowed) throw new AppError('Credential secret not found or inaccessible', 404);
+      const connType = input.type || connection.type;
+      if (secretAccess.secret.type !== 'LOGIN' && secretAccess.secret.type !== 'SSH_KEY') {
+        throw new AppError('Credential secret must be of type LOGIN or SSH_KEY', 400);
+      }
+      if (connType === 'RDP' && secretAccess.secret.type === 'SSH_KEY') {
+        throw new AppError('SSH_KEY secrets cannot be used with RDP connections', 400);
+      }
+      data.credentialSecretId = input.credentialSecretId;
+      // Clear inline credentials when switching to vault secret
+      data.encryptedUsername = null;
+      data.usernameIV = null;
+      data.usernameTag = null;
+      data.encryptedPassword = null;
+      data.passwordIV = null;
+      data.passwordTag = null;
+    }
+  }
+
   if (input.username !== undefined) {
     const enc = encrypt(input.username, encryptionKey);
     data.encryptedUsername = enc.ciphertext;
@@ -149,6 +204,7 @@ export async function updateConnection(
     port: updated.port,
     folderId: updated.folderId,
     teamId: updated.teamId,
+    credentialSecretId: updated.credentialSecretId,
     description: updated.description,
     enableDrive: updated.enableDrive,
     sshTerminalConfig: updated.sshTerminalConfig,
@@ -172,6 +228,11 @@ export async function getConnection(userId: string, connectionId: string, tenant
 
   const connection = access.connection;
 
+  const credSecret = connection.credentialSecret;
+  const credentialSecretId = connection.credentialSecretId ?? null;
+  const credentialSecretName = credSecret?.name ?? null;
+  const credentialSecretType = credSecret?.type ?? null;
+
   if (access.accessType === 'owner') {
     return {
       id: connection.id,
@@ -181,6 +242,9 @@ export async function getConnection(userId: string, connectionId: string, tenant
       port: connection.port,
       folderId: connection.folderId,
       teamId: connection.teamId,
+      credentialSecretId,
+      credentialSecretName,
+      credentialSecretType,
       description: connection.description,
       enableDrive: connection.enableDrive,
       sshTerminalConfig: connection.sshTerminalConfig,
@@ -203,6 +267,9 @@ export async function getConnection(userId: string, connectionId: string, tenant
       port: connection.port,
       folderId: connection.folderId,
       teamId: connection.teamId,
+      credentialSecretId,
+      credentialSecretName,
+      credentialSecretType,
       description: connection.description,
       enableDrive: connection.enableDrive,
       sshTerminalConfig: connection.sshTerminalConfig,
@@ -229,6 +296,9 @@ export async function getConnection(userId: string, connectionId: string, tenant
     port: connection.port,
     folderId: null,
     teamId: null,
+    credentialSecretId,
+    credentialSecretName,
+    credentialSecretType,
     description: connection.description,
     enableDrive: connection.enableDrive,
     sshTerminalConfig: connection.sshTerminalConfig,
@@ -254,6 +324,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       host: true,
       port: true,
       folderId: true,
+      credentialSecretId: true,
       description: true,
       isFavorite: true,
       enableDrive: true,
@@ -276,6 +347,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
           type: true,
           host: true,
           port: true,
+          credentialSecretId: true,
           description: true,
           enableDrive: true,
           sshTerminalConfig: true,
@@ -310,6 +382,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
         port: true,
         folderId: true,
         teamId: true,
+        credentialSecretId: true,
         description: true,
         isFavorite: true,
         enableDrive: true,
@@ -349,15 +422,91 @@ export async function listConnections(userId: string, tenantId?: string | null) 
   };
 }
 
+async function resolveCredentialsFromSecret(
+  userId: string,
+  credentialSecretId: string,
+  connectionType: ConnectionType,
+  tenantId?: string | null
+): Promise<ResolvedCredentials> {
+  const access = await permissionService.canViewSecret(userId, credentialSecretId, tenantId);
+  if (!access.allowed) throw new AppError('Credential secret not found or inaccessible', 404);
+
+  const secret = access.secret;
+  let decryptedData: SecretPayload;
+
+  if (access.accessType === 'shared') {
+    const sharedRecord = await prisma.sharedSecret.findFirst({
+      where: { secretId: credentialSecretId, sharedWithUserId: userId },
+    });
+    if (!sharedRecord) throw new AppError('Credential secret not found', 404);
+    const personalKey = requireMasterKey(userId);
+    decryptedData = JSON.parse(
+      decrypt({ ciphertext: sharedRecord.encryptedData, iv: sharedRecord.dataIV, tag: sharedRecord.dataTag }, personalKey)
+    );
+  } else {
+    const encryptionKey = await resolveSecretEncryptionKey(
+      userId, secret.scope, secret.teamId, secret.tenantId
+    );
+    decryptedData = JSON.parse(
+      decrypt({ ciphertext: secret.encryptedData, iv: secret.dataIV, tag: secret.dataTag }, encryptionKey)
+    );
+  }
+
+  if (decryptedData.type === 'LOGIN') {
+    return { username: decryptedData.username, password: decryptedData.password };
+  }
+
+  if (decryptedData.type === 'SSH_KEY') {
+    if (connectionType === 'RDP') {
+      throw new AppError('SSH_KEY secrets cannot be used with RDP connections', 400);
+    }
+    return {
+      username: decryptedData.username || '',
+      password: '',
+      privateKey: decryptedData.privateKey,
+      passphrase: decryptedData.passphrase,
+    };
+  }
+
+  throw new AppError(
+    `Secret type "${decryptedData.type}" is not compatible with connection credentials. Use LOGIN or SSH_KEY.`,
+    400
+  );
+}
+
 export async function getConnectionCredentials(
   userId: string,
   connectionId: string,
   tenantId?: string | null
-): Promise<{ username: string; password: string }> {
+): Promise<ResolvedCredentials> {
   const access = await permissionService.canViewConnection(userId, connectionId, tenantId);
   if (!access.allowed) throw new AppError('Connection not found or credentials unavailable', 404);
 
   const connection = access.connection;
+
+  // Vault secret reference: resolve credentials from keychain
+  if (connection.credentialSecretId) {
+    const creds = await resolveCredentialsFromSecret(
+      userId, connection.credentialSecretId, connection.type, tenantId
+    );
+    // If SSH_KEY secret has no username, fall back to inline encrypted username
+    if (!creds.username && connection.encryptedUsername && connection.usernameIV && connection.usernameTag) {
+      const key = access.accessType === 'team'
+        ? await resolveTeamKey(connection.teamId!, userId)
+        : requireMasterKey(userId);
+      creds.username = decrypt(
+        { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },
+        key
+      );
+    }
+    return creds;
+  }
+
+  // Inline credentials: guard against nulls
+  if (!connection.encryptedUsername || !connection.usernameIV || !connection.usernameTag ||
+      !connection.encryptedPassword || !connection.passwordIV || !connection.passwordTag) {
+    throw new AppError('Connection has no credentials configured', 400);
+  }
 
   if (access.accessType === 'owner') {
     const masterKey = requireMasterKey(userId);

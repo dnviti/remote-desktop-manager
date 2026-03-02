@@ -1543,3 +1543,36 @@
     MODIFICATO: server/src/app.ts (mount /api/secrets)
     MODIFICATO: server/src/services/permission.service.ts (shared secret access in canViewSecret)
     MODIFICATO: server/src/services/secret.service.ts (shared secret read + list support)
+
+------------------------------------------------------------------------------
+[x] VAULT-055 — Integrazione backend connessioni con secrets del vault
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: VAULT-053
+  COMPLETATO: Connections can now reference a VaultSecret (LOGIN or SSH_KEY) via
+    credentialSecretId instead of storing inline encrypted credentials. Added Prisma
+    migration making 6 credential columns nullable and adding credentialSecretId FK
+    with onDelete: SetNull. New resolveCredentialsFromSecret() in connection.service.ts
+    handles scope-based key resolution (PERSONAL/TEAM/TENANT/SHARED), decrypts secret
+    payload, validates type compatibility (LOGIN for RDP, LOGIN or SSH_KEY for SSH).
+    getConnectionCredentials() returns ResolvedCredentials with optional privateKey/passphrase.
+    SSH service supports private key authentication in both direct and bastion connections.
+    Sharing service skips credential re-encryption for vault-backed connections (recipient
+    resolves from vault secret at session time). Vault service revealPassword handles both
+    vault-backed and inline connections. Permission service includes credentialSecret in
+    canViewConnection. Client-side types updated with credentialSecretId fields. Fully
+    backward compatible — existing inline credential connections work unchanged.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/prisma/schema.prisma (nullable creds, credentialSecretId FK, VaultSecret relation)
+    MODIFICATO: server/src/types/index.ts (SshKeySecretData.username, ResolvedCredentials)
+    MODIFICATO: server/src/services/connection.service.ts (resolveCredentialsFromSecret, getConnectionCredentials, create/update/get/list)
+    MODIFICATO: server/src/services/ssh.service.ts (privateKey/passphrase in SshConnectionParams and BastionConnectionParams)
+    MODIFICATO: server/src/socket/ssh.handler.ts (pass privateKey/passphrase through)
+    MODIFICATO: server/src/socket/rdp.handler.ts (SSH_KEY rejection guard)
+    MODIFICATO: server/src/controllers/connections.controller.ts (credentialSecretId in Zod schemas)
+    MODIFICATO: server/src/controllers/secret.controller.ts (username in sshKeyDataSchema)
+    MODIFICATO: server/src/services/sharing.service.ts (vault-backed connection sharing flow)
+    MODIFICATO: server/src/services/vault.service.ts (revealPassword for vault-backed connections)
+    MODIFICATO: server/src/services/permission.service.ts (credentialSecret in canViewConnection include)
+    MODIFICATO: client/src/api/connections.api.ts (credentialSecretId in interfaces)

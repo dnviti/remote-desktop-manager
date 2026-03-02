@@ -106,6 +106,8 @@ export function setupSshHandler(io: Server) {
 
         let username: string;
         let password: string;
+        let privateKey: string | undefined;
+        let passphrase: string | undefined;
         if (data.username && data.password) {
           username = data.username;
           password = data.password;
@@ -113,6 +115,8 @@ export function setupSshHandler(io: Server) {
           const creds = await getConnectionCredentials(user.userId, data.connectionId, user.tenantId);
           username = creds.username;
           password = creds.password;
+          privateKey = creds.privateKey;
+          passphrase = creds.passphrase;
         }
 
         let session: SshSession;
@@ -163,6 +167,8 @@ export function setupSshHandler(io: Server) {
             targetPort: conn.port,
             targetUsername: username,
             targetPassword: password,
+            targetPrivateKey: privateKey,
+            targetPassphrase: passphrase,
           });
         } else {
           session = await createSshConnection({
@@ -170,6 +176,8 @@ export function setupSshHandler(io: Server) {
             port: conn.port,
             username,
             password,
+            privateKey,
+            passphrase,
           });
         }
 

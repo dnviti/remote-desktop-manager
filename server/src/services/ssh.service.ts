@@ -4,7 +4,9 @@ export interface SshConnectionParams {
   host: string;
   port: number;
   username: string;
-  password: string;
+  password?: string;
+  privateKey?: string;
+  passphrase?: string;
 }
 
 export interface SshSession {
@@ -22,7 +24,9 @@ export interface BastionConnectionParams {
   targetHost: string;
   targetPort: number;
   targetUsername: string;
-  targetPassword: string;
+  targetPassword?: string;
+  targetPrivateKey?: string;
+  targetPassphrase?: string;
 }
 
 export function createSshConnection(
@@ -56,7 +60,9 @@ export function createSshConnection(
       host: params.host,
       port: params.port,
       username: params.username,
-      password: params.password,
+      ...(params.privateKey
+        ? { privateKey: params.privateKey, passphrase: params.passphrase }
+        : { password: params.password }),
       readyTimeout: 10000,
       keepaliveInterval: 10000,
     });
@@ -105,7 +111,9 @@ export function createSshConnectionViaBastion(
           targetClient.connect({
             sock: tunnelStream,
             username: params.targetUsername,
-            password: params.targetPassword,
+            ...(params.targetPrivateKey
+              ? { privateKey: params.targetPrivateKey, passphrase: params.targetPassphrase }
+              : { password: params.targetPassword }),
             readyTimeout: 10000,
             keepaliveInterval: 10000,
           });

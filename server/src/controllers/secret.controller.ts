@@ -19,6 +19,7 @@ const loginDataSchema = z.object({
 
 const sshKeyDataSchema = z.object({
   type: z.literal('SSH_KEY'),
+  username: z.string().optional(),
   privateKey: z.string().min(1),
   publicKey: z.string().optional(),
   passphrase: z.string().optional(),

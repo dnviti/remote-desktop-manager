@@ -26,15 +26,19 @@ const createSchema = z.object({
   type: z.enum(['RDP', 'SSH']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
-  username: z.string(),
-  password: z.string(),
+  username: z.string().optional(),
+  password: z.string().optional(),
+  credentialSecretId: z.string().uuid().optional(),
   description: z.string().optional(),
   folderId: z.string().uuid().optional(),
   teamId: z.string().uuid().optional(),
   enableDrive: z.boolean().optional(),
   gatewayId: z.string().uuid().nullable().optional(),
   sshTerminalConfig: sshTerminalConfigSchema.optional(),
-});
+}).refine(
+  (data) => data.credentialSecretId || (data.username !== undefined && data.password !== undefined),
+  { message: 'Either credentialSecretId or both username and password must be provided' }
+);
 
 const updateSchema = z.object({
   name: z.string().min(1).optional(),
@@ -43,6 +47,7 @@ const updateSchema = z.object({
   port: z.number().int().min(1).max(65535).optional(),
   username: z.string().optional(),
   password: z.string().optional(),
+  credentialSecretId: z.string().uuid().nullable().optional(),
   description: z.string().nullable().optional(),
   folderId: z.string().uuid().nullable().optional(),
   enableDrive: z.boolean().optional(),

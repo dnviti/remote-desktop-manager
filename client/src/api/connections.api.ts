@@ -7,8 +7,9 @@ export interface ConnectionInput {
   type: 'RDP' | 'SSH';
   host: string;
   port: number;
-  username: string;
-  password: string;
+  username?: string;
+  password?: string;
+  credentialSecretId?: string;
   description?: string;
   folderId?: string;
   teamId?: string;
@@ -29,6 +30,9 @@ export interface ConnectionData {
   teamName?: string | null;
   teamRole?: string | null;
   scope?: 'private' | 'team' | 'shared';
+  credentialSecretId?: string | null;
+  credentialSecretName?: string | null;
+  credentialSecretType?: string | null;
   description: string | null;
   isFavorite: boolean;
   enableDrive: boolean;
@@ -65,6 +69,7 @@ export interface ConnectionUpdate {
   port?: number;
   username?: string;
   password?: string;
+  credentialSecretId?: string | null;
   description?: string | null;
   folderId?: string | null;
   enableDrive?: boolean;

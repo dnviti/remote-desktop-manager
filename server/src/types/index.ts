@@ -81,6 +81,7 @@ export interface LoginSecretData {
 
 export interface SshKeySecretData {
   type: 'SSH_KEY';
+  username?: string;
   privateKey: string;
   publicKey?: string;
   passphrase?: string;
@@ -117,3 +118,10 @@ export type SecretPayload =
   | CertificateSecretData
   | ApiKeySecretData
   | SecureNoteSecretData;
+
+export interface ResolvedCredentials {
+  username: string;
+  password: string;
+  privateKey?: string;
+  passphrase?: string;
+}

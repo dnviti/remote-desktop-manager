@@ -49,6 +49,9 @@ router.post('/rdp', async (req: AuthRequest, res: Response, next: NextFunction) 
       password = overridePass;
     } else {
       const creds = await getConnectionCredentials(req.user!.userId, connectionId, req.user!.tenantId);
+      if (creds.privateKey && !creds.password) {
+        throw new AppError('SSH key authentication is not supported for RDP connections', 400);
+      }
       username = creds.username;
       password = creds.password;
     }

@@ -56,7 +56,58 @@ export async function shareConnection(
     );
   }
 
-  // Decrypt with appropriate key (personal or team)
+  // Vault-backed connections: credentials resolved at session time from the vault secret.
+  // No inline credential re-encryption needed — the shared user must have access to the vault secret.
+  if (connection.credentialSecretId) {
+    const shared = await prisma.sharedConnection.upsert({
+      where: {
+        connectionId_sharedWithUserId: {
+          connectionId,
+          sharedWithUserId: targetUser.id,
+        },
+      },
+      create: {
+        connectionId,
+        sharedWithUserId: targetUser.id,
+        sharedByUserId: actingUserId,
+        permission,
+      },
+      update: { permission },
+    });
+
+    // Notify target user
+    const actor = await prisma.user.findUnique({
+      where: { id: actingUserId },
+      select: { username: true, email: true },
+    });
+    const actorName = actor?.username || actor?.email || 'Someone';
+    const msg = `${actorName} shared "${connection.name}" with you (${permission === 'FULL_ACCESS' ? 'Full Access' : 'Read Only'})`;
+
+    createNotificationAsync({
+      userId: targetUser.id,
+      type: 'CONNECTION_SHARED',
+      message: msg,
+      relatedId: connectionId,
+    });
+
+    emitNotification(targetUser.id, {
+      id: shared.id,
+      type: 'CONNECTION_SHARED',
+      message: msg,
+      read: false,
+      relatedId: connectionId,
+      createdAt: new Date(),
+    });
+
+    return { id: shared.id, permission: shared.permission, sharedWith: targetUser.email };
+  }
+
+  // Inline credentials: decrypt and re-encrypt for target user
+  if (!connection.encryptedUsername || !connection.usernameIV || !connection.usernameTag ||
+      !connection.encryptedPassword || !connection.passwordIV || !connection.passwordTag) {
+    throw new AppError('Connection has no credentials to share', 400);
+  }
+
   let decryptionKey: Buffer;
   if (connection.teamId) {
     decryptionKey = await resolveTeamKey(connection.teamId, actingUserId);

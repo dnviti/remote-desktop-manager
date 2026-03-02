@@ -48,6 +48,7 @@ export async function canViewConnection(
     include: {
       team: { select: { tenantId: true } },
       gateway: { select: { id: true, type: true, host: true, port: true } },
+      credentialSecret: { select: { id: true, name: true, type: true, scope: true, teamId: true, tenantId: true, encryptedData: true, dataIV: true, dataTag: true } },
     },
   });
   if (!connection) {

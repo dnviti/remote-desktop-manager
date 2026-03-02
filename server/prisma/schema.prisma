@@ -169,12 +169,13 @@ model Connection {
   port              Int
   folderId          String?
   teamId            String?
-  encryptedUsername  String
-  usernameIV        String
-  usernameTag       String
-  encryptedPassword String
-  passwordIV        String
-  passwordTag       String
+  encryptedUsername  String?
+  usernameIV        String?
+  usernameTag       String?
+  encryptedPassword String?
+  passwordIV        String?
+  passwordTag       String?
+  credentialSecretId String?
   description       String?
   isFavorite        Boolean        @default(false)
   enableDrive       Boolean        @default(false)
@@ -186,12 +187,13 @@ model Connection {
 
   gatewayId         String?
 
-  folder  Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  team    Team?    @relation(fields: [teamId], references: [id])
-  user    User     @relation(fields: [userId], references: [id])
-  gateway Gateway? @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
-  shares   SharedConnection[]
-  openTabs OpenTab[]
+  folder           Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  team             Team?         @relation(fields: [teamId], references: [id])
+  user             User          @relation(fields: [userId], references: [id])
+  gateway          Gateway?      @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+  credentialSecret VaultSecret?  @relation(fields: [credentialSecretId], references: [id], onDelete: SetNull)
+  shares           SharedConnection[]
+  openTabs         OpenTab[]
 }
 
 enum ConnectionType {
@@ -462,12 +464,13 @@ model VaultSecret {
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
-  user     User               @relation("VaultSecretOwner", fields: [userId], references: [id])
-  team     Team?              @relation(fields: [teamId], references: [id])
-  tenant   Tenant?            @relation(fields: [tenantId], references: [id])
-  folder   VaultFolder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  versions VaultSecretVersion[]
-  shares   SharedSecret[]
+  user        User               @relation("VaultSecretOwner", fields: [userId], references: [id])
+  team        Team?              @relation(fields: [teamId], references: [id])
+  tenant      Tenant?            @relation(fields: [tenantId], references: [id])
+  folder      VaultFolder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  versions    VaultSecretVersion[]
+  shares      SharedSecret[]
+  connections Connection[]
 
   @@index([userId, scope])
   @@index([teamId])

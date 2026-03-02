@@ -87,6 +87,15 @@ export async function revealPassword(
   });
 
   if (connection) {
+    // Vault-backed connection: resolve from secret
+    if (connection.credentialSecretId) {
+      const { getConnectionCredentials } = await import('./connection.service');
+      const creds = await getConnectionCredentials(userId, connectionId);
+      return { password: creds.password };
+    }
+    if (!connection.encryptedPassword || !connection.passwordIV || !connection.passwordTag) {
+      throw new AppError('Connection has no password configured', 400);
+    }
     const decryptedPassword = decrypt(
       {
         ciphertext: connection.encryptedPassword,
@@ -105,18 +114,27 @@ export async function revealPassword(
       sharedWithUserId: userId,
       permission: 'FULL_ACCESS',
     },
+    include: { connection: { select: { credentialSecretId: true } } },
   });
 
-  if (shared?.encryptedPassword && shared.passwordIV && shared.passwordTag) {
-    const decryptedPassword = decrypt(
-      {
-        ciphertext: shared.encryptedPassword,
-        iv: shared.passwordIV,
-        tag: shared.passwordTag,
-      },
-      masterKey
-    );
-    return { password: decryptedPassword };
+  if (shared) {
+    // Vault-backed shared connection: resolve from secret
+    if (shared.connection.credentialSecretId) {
+      const { getConnectionCredentials } = await import('./connection.service');
+      const creds = await getConnectionCredentials(userId, connectionId);
+      return { password: creds.password };
+    }
+    if (shared.encryptedPassword && shared.passwordIV && shared.passwordTag) {
+      const decryptedPassword = decrypt(
+        {
+          ciphertext: shared.encryptedPassword,
+          iv: shared.passwordIV,
+          tag: shared.passwordTag,
+        },
+        masterKey
+      );
+      return { password: decryptedPassword };
+    }
   }
 
   throw new AppError('Connection not found or insufficient permissions', 403);
