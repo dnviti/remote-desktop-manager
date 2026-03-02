@@ -10,6 +10,7 @@ import prisma from './lib/prisma';
 import { startKeyRotationJob, stopAllJobs } from './services/scheduler.service';
 import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
 import { cleanupExpiredShares } from './services/externalShare.service';
+import { checkExpiringSecrets } from './services/secretExpiry.service';
 import { markServerReady } from './services/health.service';
 import * as auditService from './services/audit.service';
 import { formatDuration } from './utils/format';
@@ -76,6 +77,13 @@ async function main() {
       logger.error('Failed to cleanup expired external shares:', err);
     });
   }, 60 * 60 * 1000);
+
+  // Check for expiring secrets every 6 hours
+  setInterval(() => {
+    checkExpiringSecrets().catch((err) => {
+      logger.error('Secret expiry check failed:', err);
+    });
+  }, 6 * 60 * 60 * 1000);
 
   // Setup guacamole-lite for RDP
   if (config.nodeEnv !== 'test') {

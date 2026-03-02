@@ -240,62 +240,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] VAULT-059 — Secret versioning UI, scadenza con alert, e audit migliorato
-------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: VAULT-056, VAULT-054
-
-  DESCRIZIONE:
-  Task di rifinitura che completa tre aspetti del keychain:
-  1. Versioning UI completo: vista diff tra versioni, restore con conferma,
-     visualizzazione dati decifrati di versioni precedenti.
-  2. Sistema scadenza con notifiche: backend job periodico che genera
-     notifiche/warning quando secrets stanno per scadere (30gg, 7gg, 1gg,
-     scaduto). Badge visivi nella lista e nella sidebar.
-  3. Audit trail migliorato: estendere la pagina AuditLog per mostrare
-     i nuovi AuditAction relativi ai secrets con descrizioni leggibili.
-
-  DETTAGLI TECNICI:
-  Backend — scadenza e notifiche:
-    - Nuovo servizio secretExpiry.service.ts:
-      checkExpiringSecrets(): query secrets con expiresAt, genera notifiche
-      per fasce (30gg, 7gg, 1gg, scaduto), evita duplicati 24h,
-      destinatario basato su scope (PERSONAL->owner, TEAM->admin, TENANT->admin)
-    - Cron job: setInterval ogni 6 ore, avviare in server/src/index.ts
-    - Nuovi NotificationType: SECRET_EXPIRING, SECRET_EXPIRED
-
-  Backend — versioning:
-    - Nuovo endpoint GET /api/secrets/:id/versions/:version/data
-    - getSecretVersionData(): decifra dati versione specifica
-
-  Frontend — versioning:
-    - SecretVersionHistory.tsx: timeline MUI, "View" per espandere dati
-      decifrati, "Restore" con conferma, visual diff (changed/unchanged)
-
-  Frontend — scadenza:
-    - SecretListPanel: chip "Expires in N days" (arancione 7-30gg, rosso <7gg)
-    - SecretDetailView: banner warning scadenza, modifica data inline
-    - KeychainPage: badge numerico sidebar per secrets in scadenza entro 7gg
-
-  Frontend — audit:
-    - AuditLogPage: nuove descrizioni leggibili per SECRET_* e TENANT_VAULT_*
-      actions, link cliccabile al secret, gestione log anonimi (external access)
-
-  File coinvolti:
-    CREARE:     server/src/services/secretExpiry.service.ts
-    MODIFICARE: server/prisma/schema.prisma (NotificationType values)
-    MODIFICARE: server/src/index.ts (avvio cron job)
-    MODIFICARE: server/src/services/secret.service.ts (getSecretVersionData)
-    MODIFICARE: server/src/controllers/secret.controller.ts (getVersionData)
-    MODIFICARE: server/src/routes/secret.routes.ts (version data endpoint)
-    MODIFICARE: client/src/components/Keychain/SecretVersionHistory.tsx
-    MODIFICARE: client/src/components/Keychain/SecretListPanel.tsx
-    MODIFICARE: client/src/components/Keychain/SecretDetailView.tsx
-    MODIFICARE: client/src/pages/KeychainPage.tsx
-    MODIFICARE: client/src/pages/AuditLogPage.tsx
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx (keychain badge)
-
 
 ================================================================================
   SEZIONE G — GATEWAY ORCHESTRATION / AUTO-SCALING
@@ -1399,6 +1343,312 @@
 
 
 ================================================================================
+  SEZIONE I — SSO & DOMAIN CREDENTIAL PASSTHROUGH (Scouted 2026-03-02)
+================================================================================
+
+
+------------------------------------------------------------------------------
+[ ] SSO-073 — RDP domain field: schema, dialogs, Guacamole token
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Aggiungere il campo `domain` alle connessioni RDP. Guacamole supporta
+  nativamente il parametro `domain` per l'autenticazione NLA, ma attualmente
+  l'app non lo passa mai. Questo task aggiunge domain come campo opzionale
+  cifrato su Connection, estende ConnectionDialog e ConnectAsDialog con un
+  input Domain (visibile solo per RDP), e lo propaga a generateGuacamoleToken().
+  Il campo domain viene anche aggiunto ai vault secrets di tipo LOGIN.
+
+  DETTAGLI TECNICI:
+  Prisma (server/prisma/schema.prisma):
+    - Aggiungere al modello Connection:
+        encryptedDomain  String?
+        domainIV         String?
+        domainTag        String?
+    - Migrazione Prisma (colonne nullable, nessuna perdita dati)
+
+  Server types (server/src/types/index.ts):
+    - Aggiungere `domain?: string` a LoginSecretData
+    - Aggiungere `domain?: string` a ResolvedCredentials (o equivalente)
+
+  Server services:
+    - server/src/services/rdp.service.ts:
+      - Aggiungere `domain?: string` a RdpConnectionParams
+      - In generateGuacamoleToken(): se params.domain e' truthy, aggiungere
+        `settings.domain = params.domain` all'oggetto config (riga 82)
+    - server/src/services/connection.service.ts:
+      - createConnection(): cifrare domain insieme a username/password
+      - updateConnection(): cifrare domain se fornito
+      - getConnectionCredentials(): decifrare domain da Connection o da
+        LoginSecretData quando si usa un vault secret
+
+  Server handler (server/src/socket/rdp.handler.ts):
+    - sessionSchema: aggiungere `domain: z.string().optional()`
+    - POST /rdp: passare domain override o domain risolto a
+      generateGuacamoleToken()
+
+  Client:
+    - client/src/store/tabsStore.ts: aggiungere `domain?: string` a
+      CredentialOverride
+    - client/src/api/connections.api.ts: aggiungere `domain?: string`
+      a ConnectionInput, ConnectionUpdate, ConnectionData
+    - client/src/components/Dialogs/ConnectionDialog.tsx: aggiungere
+      TextField "Domain (optional)" visibile quando type=RDP
+    - client/src/components/Dialogs/ConnectAsDialog.tsx: aggiungere
+      TextField "Domain (optional)" in modalita' manual per RDP
+    - client/src/components/RDP/RdpViewer.tsx: passare credentials.domain
+      nel body POST /sessions/rdp
+
+  File coinvolti:
+    MODIFICARE: server/prisma/schema.prisma (Connection domain fields)
+    MODIFICARE: server/src/types/index.ts (LoginSecretData, ResolvedCredentials)
+    MODIFICARE: server/src/services/rdp.service.ts (RdpConnectionParams, token)
+    MODIFICARE: server/src/services/connection.service.ts (encrypt/decrypt domain)
+    MODIFICARE: server/src/socket/rdp.handler.ts (sessionSchema, domain param)
+    MODIFICARE: client/src/store/tabsStore.ts (CredentialOverride)
+    MODIFICARE: client/src/api/connections.api.ts (domain field)
+    MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx (Domain input)
+    MODIFICARE: client/src/components/Dialogs/ConnectAsDialog.tsx (Domain input)
+    MODIFICARE: client/src/components/RDP/RdpViewer.tsx (domain nel POST body)
+
+
+------------------------------------------------------------------------------
+[ ] SSO-074 — SAML 2.0 SSO authentication via Passport.js
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: OAUTH-029 (completato), OIDC-035 (completato)
+
+  DESCRIZIONE:
+  Aggiungere SAML 2.0 come metodo di autenticazione enterprise accanto ai
+  provider OAuth2/OIDC esistenti. Usa @node-saml/passport-saml con IdP
+  metadata URL per configurazione automatica. Cattura attributi SAML
+  inclusi UPN (User Principal Name), domain e group memberships dalla
+  assertion. Salva le informazioni domain estratte su OAuthAccount (nuova
+  colonna JSON samlAttributes) per permettere alle feature downstream di
+  inferire il dominio AD dell'utente. Supporta SP-initiated e IdP-initiated
+  SSO. Compatibile con Azure AD/Entra ID, Okta, OneLogin, ADFS, FreeIPA
+  (via Ipsilon), Keycloak, Authentik, e qualsiasi IdP SAML 2.0.
+
+  DETTAGLI TECNICI:
+  Dipendenza npm (server/package.json):
+    - @node-saml/passport-saml (successore di passport-saml)
+
+  Variabili ambiente (.env.example):
+    SAML_ENTRY_POINT=             # IdP SSO URL
+    SAML_ISSUER=rdm-app           # SP Entity ID
+    SAML_CALLBACK_URL=http://localhost:3001/api/auth/saml/callback
+    SAML_CERT=                    # IdP signing certificate (PEM, single line)
+    SAML_METADATA_URL=            # Opzionale: auto-fetch IdP metadata
+    SAML_WANT_AUTHN_RESPONSE_SIGNED=true
+    SAML_PROVIDER_NAME=SAML SSO
+
+  Config (server/src/config.ts):
+    - Aggiungere blocco `saml` sotto `oauth`:
+      saml: { enabled, entryPoint, issuer, callbackUrl, cert, metadataUrl,
+              wantAuthnResponseSigned, providerName }
+
+  Prisma schema:
+    - Aggiungere SAML all'enum AuthProvider: LOCAL | GOOGLE | MICROSOFT |
+      GITHUB | OIDC | SAML
+    - Aggiungere al modello OAuthAccount:
+        samlAttributes  Json?   // UPN, domain, groups dall'assertion
+    - Migrazione Prisma
+
+  Passport strategy (server/src/config/passport.ts):
+    - Registrare nuova strategia SAML con claim mapping:
+      - Email da nameID o claim emailaddress
+      - UPN da claim upn
+      - Domain da UPN (user@domain.com -> domain.com) o da claim
+        windowsdomainname
+      - Groups da claim Group (array)
+    - Nota: il verify callback SAML ha firma diversa (profile, done) vs
+      OAuth (accessToken, refreshToken, profile, done) — creare
+      makeSamlVerifyCallback() separato
+
+  Routes (server/src/routes/oauth.routes.ts):
+    - GET /api/auth/saml -> avvia login SAML (passport.authenticate('saml'))
+    - POST /api/auth/saml/callback -> gestisce assertion response SAML
+      (SAML usa POST per ACS, non GET come OAuth)
+    - GET /api/auth/saml/metadata -> serve SP metadata XML per config IdP
+    - Nota: aggiungere express.urlencoded() solo sulla route SAML callback
+
+  Frontend:
+    - client/src/components/Auth/OAuthButtons.tsx: aggiungere bottone SAML
+      con label dal providerName dell'endpoint /api/auth/oauth/providers
+    - Callback flow: stesso flusso di OIDC (redirect → server handles →
+      redirect back con token)
+
+  File coinvolti:
+    MODIFICARE: server/package.json (@node-saml/passport-saml)
+    MODIFICARE: server/prisma/schema.prisma (AuthProvider enum, samlAttributes)
+    MODIFICARE: server/src/config.ts (blocco config SAML)
+    MODIFICARE: server/src/config/passport.ts (registrazione strategia SAML)
+    MODIFICARE: server/src/routes/oauth.routes.ts (route SAML + POST callback)
+    MODIFICARE: server/src/controllers/oauth.controller.ts (gestione provider SAML)
+    MODIFICARE: server/src/services/oauth.service.ts (storage samlAttributes)
+    MODIFICARE: server/src/app.ts (express.urlencoded per SAML callback)
+    MODIFICARE: client/src/components/Auth/OAuthButtons.tsx (bottone SAML)
+    MODIFICARE: .env.example (variabili SAML)
+
+
+------------------------------------------------------------------------------
+[ ] SSO-075 — User domain credential profile (domain identity)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: SSO-073
+
+  DESCRIZIONE:
+  Permettere agli utenti di configurare una "identita' di dominio" sul loro
+  profilo: nome dominio AD, username di dominio, e opzionalmente una password
+  di dominio salvata cifrata nel vault. Questo profilo serve come source of
+  truth per le credenziali domain quando si usa la modalita' "domain
+  passthrough" (SSO-076). Auto-inferenza: quando un utente SAML/OIDC fa login
+  con un UPN (es. john@contoso.com), il sistema suggerisce automaticamente
+  domain=CONTOSO, username=john. Gli utenti possono anche configurare
+  manualmente la loro identita' di dominio nelle Settings. La password domain,
+  se salvata, e' cifrata con la master key del vault e segue lo stesso
+  lifecycle lock/unlock.
+
+  DETTAGLI TECNICI:
+  Prisma schema (server/prisma/schema.prisma):
+    - Aggiungere al modello User:
+        domainName               String?   // es. "CONTOSO" o "contoso.com"
+        domainUsername           String?   // es. "john.doe"
+        encryptedDomainPassword  String?
+        domainPasswordIV         String?
+        domainPasswordTag        String?
+        domainAutoInferred       Boolean   @default(false)
+    - Aggiungere a AuditAction enum:
+        DOMAIN_PROFILE_UPDATE, DOMAIN_PROFILE_CLEAR
+
+  Server service (server/src/services/domain.service.ts) — NUOVO:
+    - resolveDomainCredentials(userId): restituisce { domain, username,
+      password }. Decifra password da User con vault master key. Lancia
+      errore se vault e' locked.
+    - inferDomainIdentity(email, samlAttributes?): euristica per derivare
+      NETBIOS domain + username:
+        1. SAML claim windowsdomainname -> domain (priorita' massima)
+        2. SAML claim UPN -> split a @ -> domain dal suffisso, username
+           dal prefisso
+        3. Email -> split a @ -> domain = uppercase primo segmento
+           (es. CONTOSO da contoso.com), username = local part
+
+  Server controller (server/src/controllers/user.controller.ts):
+    - GET  /api/user/domain-profile -> getDomainProfile
+    - PUT  /api/user/domain-profile -> updateDomainProfile
+    - DELETE /api/user/domain-profile -> clearDomainProfile
+    - POST /api/user/domain-profile/infer -> inferDomainIdentity
+    - Zod schemas per validazione
+
+  Server routes (server/src/routes/user.routes.ts):
+    - Aggiungere 4 route sotto authenticate middleware
+
+  OAuth service (server/src/services/oauth.service.ts):
+    - findOrCreateOAuthUser: dopo login SAML, se utente non ha domain
+      profile e SAML attributes contengono UPN/domain, auto-impostare
+      domainName + domainUsername con domainAutoInferred=true (solo al
+      primo login, non sovrascrivere config manuale)
+
+  Frontend:
+    - client/src/components/Settings/DomainProfileSection.tsx — NUOVO:
+      - Mostra identita' domain corrente (domain\username) o "Not configured"
+      - Bottone "Auto-detect" -> chiama endpoint infer, mostra suggerimento
+      - Campi: Domain, Username, Password (opzionale, salvata nel vault)
+      - Bottoni Save / Clear
+    - client/src/pages/SettingsPage.tsx: aggiungere DomainProfileSection
+    - client/src/api/user.api.ts: getDomainProfile(), updateDomainProfile(),
+      clearDomainProfile(), inferDomainProfile()
+
+  File coinvolti:
+    MODIFICARE: server/prisma/schema.prisma (User domain fields, AuditAction)
+    CREARE:     server/src/services/domain.service.ts
+    MODIFICARE: server/src/services/user.service.ts (domain profile CRUD)
+    MODIFICARE: server/src/controllers/user.controller.ts (domain endpoints)
+    MODIFICARE: server/src/routes/user.routes.ts (domain routes)
+    MODIFICARE: server/src/services/oauth.service.ts (auto-infer su SAML login)
+    MODIFICARE: server/src/types/index.ts (DomainProfile interface)
+    CREARE:     client/src/components/Settings/DomainProfileSection.tsx
+    MODIFICARE: client/src/api/user.api.ts (domain profile API)
+    MODIFICARE: client/src/pages/SettingsPage.tsx (domain profile section)
+
+
+------------------------------------------------------------------------------
+[ ] SSO-076 — Credential passthrough: domain profile to RDP/SSH connections
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: SSO-073, SSO-075
+
+  DESCRIZIONE:
+  Aggiungere una nuova modalita' ConnectAs "Use domain credentials" che applica
+  automaticamente il domain credential profile dell'utente (SSO-075) quando si
+  connette a target RDP o SSH. Per RDP, domain/username/password vengono passati
+  a Guacamole. Per SSH, il formato domain\username viene usato per target Windows.
+  Aggiungere anche un'impostazione per connessione "default credential mode"
+  (saved/domain/prompt) cosi' le connessioni possono essere configurate per
+  usare automaticamente il profilo domain. Quando l'utente clicca Connect su una
+  connessione con defaultCredentialMode='domain', il sistema risolve il domain
+  profile senza mostrare alcun dialog.
+
+  DETTAGLI TECNICI:
+  Prisma schema (server/prisma/schema.prisma):
+    - Aggiungere al modello Connection:
+        defaultCredentialMode  String?  // 'saved' | 'domain' | 'prompt' | null
+
+  Server handler (server/src/socket/rdp.handler.ts):
+    - sessionSchema: aggiungere credentialMode: z.enum(['saved','domain',
+      'manual']).optional()
+    - POST /rdp: quando credentialMode='domain':
+      1. Chiamare domain.service.resolveDomainCredentials(userId)
+      2. Usare domain, username, password restituiti
+      3. Passare a generateGuacamoleToken() con parametro domain
+
+  Server handler (server/src/socket/ssh.handler.ts):
+    - session:start data: aggiungere credentialMode?: string
+    - Quando credentialMode='domain': risolvere da domain.service
+
+  Client dialogs:
+    - client/src/components/Dialogs/ConnectAsDialog.tsx:
+      - Aggiungere quarta radio: 'domain' — "Use domain credentials"
+      - Mostra anteprima read-only domain\username dal profilo
+      - Se profilo non configurato, mostrare helper text con link a Settings
+    - client/src/components/Dialogs/ConnectionDialog.tsx:
+      - Aggiungere select "Default Credential Mode" nelle impostazioni:
+        "Use saved credentials" (default), "Use domain credentials",
+        "Always prompt"
+
+  Client store e viewers:
+    - client/src/store/tabsStore.ts: aggiungere credentialMode? a
+      CredentialOverride
+    - client/src/components/RDP/RdpViewer.tsx: quando credentialMode='domain',
+      POST a /sessions/rdp con { connectionId, credentialMode: 'domain' }
+    - client/src/components/Terminal/SshTerminal.tsx: emettere session:start
+      con { connectionId, credentialMode: 'domain' }
+    - client/src/store/authStore.ts: cacheare domain profile info
+      (domain, username, hasDomainPassword) per ConnectAsDialog
+
+  Comportamento quick-connect:
+    - Doppio click su connessione con defaultCredentialMode='domain':
+      applica credenziali domain automaticamente senza aprire ConnectAsDialog
+    - defaultCredentialMode='prompt': apre sempre ConnectAsDialog
+
+  File coinvolti:
+    MODIFICARE: server/prisma/schema.prisma (Connection.defaultCredentialMode)
+    MODIFICARE: server/src/services/connection.service.ts (CRUD credential mode)
+    MODIFICARE: server/src/socket/rdp.handler.ts (domain credential resolution)
+    MODIFICARE: server/src/socket/ssh.handler.ts (domain credential resolution)
+    MODIFICARE: server/src/types/index.ts (CredentialMode type)
+    MODIFICARE: client/src/store/tabsStore.ts (credentialMode in override)
+    MODIFICARE: client/src/components/Dialogs/ConnectAsDialog.tsx (4a modalita')
+    MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx (default mode)
+    MODIFICARE: client/src/components/RDP/RdpViewer.tsx (domain mode)
+    MODIFICARE: client/src/components/Terminal/SshTerminal.tsx (domain mode)
+    MODIFICARE: client/src/store/authStore.ts (domain profile cache)
+    MODIFICARE: client/src/api/connections.api.ts (defaultCredentialMode)
+
+
+================================================================================
   ORDINE DI IMPLEMENTAZIONE CONSIGLIATO
 ================================================================================
 
@@ -1475,7 +1725,7 @@
    46. VAULT-056  Frontend pagina Keychain, store e componenti  [COMPLETATO]
    47. VAULT-057  Integrazione frontend ConnectionDialog con secret picker  [COMPLETATO]
    48. VAULT-058  External sharing: link temporanei condivisione esterna  [COMPLETATO]
-   49. VAULT-059  Secret versioning UI, scadenza alert, audit migliorato
+   49. VAULT-059  Secret versioning UI, scadenza alert, audit migliorato  [COMPLETATO]
 
   Fase 8e — Gateway Orchestration e Auto-Scaling:
    50. ORCH-060  Session tracking persistente e monitoraggio sessioni attive
@@ -1498,6 +1748,12 @@
    63. ZT-043   Fix validazione certificato RDP (default ignoreCert)
    64. ZT-044   Cifratura TOTP secret a riposo
    65. ZT-045   Vista audit log per admin tenant
+
+  Fase 11 — SSO & Domain Credential Passthrough:
+   66. SSO-073  RDP domain field: schema, dialogs, Guacamole token
+   67. SSO-074  SAML 2.0 SSO authentication via Passport.js
+   68. SSO-075  User domain credential profile (domain identity)
+   69. SSO-076  Credential passthrough: domain profile to connections
 
 ================================================================================
   NOTE
@@ -1727,4 +1983,31 @@
   - ORCH-065 tab "Orchestration" visibile solo a OWNER/ADMIN del tenant
   - ORCH-065 GatewayDialog diventa significativamente piu' complesso con i
     controlli managed/scaling; considerare split in sotto-componenti
+  - SSO-073 il parametro domain Guacamole e' nativo: basta aggiungere
+    settings.domain nel token cifrato (stessa logica di username/password)
+  - SSO-073 il domain e' cifrato a riposo come username/password (AES-256-GCM)
+  - SSO-073 per SSH, il formato domain\username e' supportato solo da Windows
+    OpenSSH; non prependere su target Linux
+  - SSO-074 SAML usa POST per l'ACS callback (non GET come OAuth) — richiede
+    express.urlencoded() scoped solo sulla route SAML
+  - SSO-074 il verify callback SAML ha firma diversa da OAuth: (profile, done)
+    vs (accessToken, refreshToken, profile, done) — creare callback dedicato
+  - SSO-074 compatibile con: Azure AD/Entra, Okta, OneLogin, ADFS, FreeIPA
+    (via Ipsilon), Keycloak, Authentik, e qualsiasi IdP SAML 2.0
+  - SSO-074 FreeIPA puo' anche usare OIDC-035 via Keycloak federato — due
+    percorsi di integrazione possibili senza LDAP diretto
+  - SSO-074 richiede migrazione Prisma per aggiungere SAML all'enum AuthProvider
+  - SSO-075 la password domain e' cifrata con la vault master key (stesso
+    pattern di connection credentials) — vault deve essere unlocked
+  - SSO-075 se l'utente cambia vault password, la domain password deve essere
+    ri-cifrata nella stessa transazione (aggiungere a changePassword flow)
+  - SSO-075 auto-inferenza: SAML UPN john@contoso.com -> domain=CONTOSO,
+    username=john; email fallback con stesso algoritmo
+  - SSO-075 domainAutoInferred=true solo al primo login SAML; non sovrascrive
+    configurazione manuale dell'utente
+  - SSO-076 il quick-connect (doppio click) su connessione con
+    defaultCredentialMode='domain' bypassa il ConnectAsDialog
+  - SSO-076 defaultCredentialMode='prompt' forza sempre l'apertura del dialog
+  - SSO-076 audit: aggiungere credentialSource ('saved'|'domain'|'manual')
+    nei details di SESSION_START per tracciabilita' admin
 ================================================================================

@@ -24,6 +24,7 @@ interface SecretState {
   error: string | null;
   filters: SecretListFilters;
   tenantVaultStatus: TenantVaultStatus | null;
+  expiringCount: number;
 
   fetchSecrets: () => Promise<void>;
   fetchSecret: (id: string) => Promise<void>;
@@ -35,6 +36,7 @@ interface SecretState {
   clearSelectedSecret: () => void;
   fetchTenantVaultStatus: () => Promise<void>;
   initTenantVault: () => Promise<void>;
+  fetchExpiringCount: () => Promise<void>;
 }
 
 export const useSecretStore = create<SecretState>((set, get) => ({
@@ -44,6 +46,7 @@ export const useSecretStore = create<SecretState>((set, get) => ({
   error: null,
   filters: {},
   tenantVaultStatus: null,
+  expiringCount: 0,
 
   fetchSecrets: async () => {
     set({ loading: true, error: null });
@@ -123,5 +126,21 @@ export const useSecretStore = create<SecretState>((set, get) => ({
   initTenantVault: async () => {
     await apiInitTenantVault();
     await get().fetchTenantVaultStatus();
+  },
+
+  fetchExpiringCount: async () => {
+    try {
+      const allSecrets = await listSecrets({});
+      const sevenDays = 7 * 24 * 60 * 60 * 1000;
+      const now = Date.now();
+      const count = allSecrets.filter((s) => {
+        if (!s.expiresAt) return false;
+        const diff = new Date(s.expiresAt).getTime() - now;
+        return diff <= sevenDays;
+      }).length;
+      set({ expiringCount: count });
+    } catch {
+      // ignore — vault may be locked
+    }
   },
 }));

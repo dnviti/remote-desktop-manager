@@ -24,6 +24,7 @@ router.delete('/:id', secretController.remove);
 
 // Versions
 router.get('/:id/versions', secretController.listVersions);
+router.get('/:id/versions/:version/data', secretController.getVersionData);
 router.post('/:id/versions/:version/restore', secretController.restoreVersion);
 
 // Sharing

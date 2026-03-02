@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   Box, Typography, Chip, IconButton, Accordion, AccordionSummary,
-  AccordionDetails, Divider, Tooltip,
+  AccordionDetails, Divider, Tooltip, Alert,
 } from '@mui/material';
 import {
   Edit as EditIcon, Share as ShareIcon, Delete as DeleteIcon,
@@ -255,6 +255,17 @@ export default function SecretDetailView({
         )}
       </Box>
 
+      {daysUntilExpiry !== null && daysUntilExpiry <= 30 && (
+        <Alert
+          severity={daysUntilExpiry <= 0 ? 'error' : daysUntilExpiry <= 7 ? 'warning' : 'info'}
+          sx={{ mb: 2 }}
+        >
+          {daysUntilExpiry <= 0
+            ? 'This secret has expired. Update the credentials or the expiry date.'
+            : `This secret expires in ${daysUntilExpiry} day(s). Consider rotating credentials.`}
+        </Alert>
+      )}
+
       {secret.description && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {secret.description}
@@ -303,6 +314,7 @@ export default function SecretDetailView({
           <SecretVersionHistory
             secretId={secret.id}
             currentVersion={secret.currentVersion}
+            currentData={secret.data}
             onRestore={onRestore}
           />
         </AccordionDetails>

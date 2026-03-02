@@ -279,6 +279,34 @@ export async function restoreVersion(req: AuthRequest, res: Response, next: Next
   }
 }
 
+export async function getVersionData(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const version = parseInt(req.params.version as string, 10);
+    if (isNaN(version) || version < 1) {
+      return next(new AppError('Invalid version number', 400));
+    }
+    const result = await secretService.getSecretVersionData(
+      req.user!.userId,
+      req.params.id as string,
+      version,
+      req.user!.tenantId
+    );
+
+    auditService.log({
+      userId: req.user!.userId,
+      action: 'SECRET_READ',
+      targetType: 'VaultSecret',
+      targetId: req.params.id as string,
+      details: { version },
+      ipAddress: req.ip,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
 // --- Sharing handlers ---
 
 export async function share(req: AuthRequest, res: Response, next: NextFunction) {

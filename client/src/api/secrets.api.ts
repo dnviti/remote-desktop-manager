@@ -183,6 +183,11 @@ export async function listVersions(id: string): Promise<SecretVersion[]> {
   return res.data;
 }
 
+export async function getSecretVersionData(id: string, version: number): Promise<SecretPayload> {
+  const res = await api.get(`/secrets/${id}/versions/${version}/data`);
+  return res.data.data;
+}
+
 export async function restoreVersion(id: string, version: number): Promise<SecretListItem> {
   const res = await api.post(`/secrets/${id}/versions/${version}/restore`);
   return res.data;

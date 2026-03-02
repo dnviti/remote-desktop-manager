@@ -1666,3 +1666,45 @@
     MODIFICATO: client/src/App.tsx (public route /share/:token)
     MODIFICATO: client/src/components/Keychain/SecretDetailView.tsx (External Share button)
     MODIFICATO: client/src/pages/KeychainPage.tsx (ExternalShareDialog integration)
+
+
+------------------------------------------------------------------------------
+[x] VAULT-059 — Secret versioning UI, scadenza con alert, e audit migliorato
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: VAULT-056, VAULT-054
+  COMPLETATO: Implemented three keychain refinements. (1) Version data endpoint:
+    added GET /api/secrets/:id/versions/:version/data to decrypt and return specific
+    version data; added getSecretVersionData() in secret.service.ts with permission
+    checks and scope-aware decryption; shared secret users get 403 (correct security
+    behavior). (2) Secret expiry notifications: created secretExpiry.service.ts with
+    checkExpiringSecrets() that queries secrets expiring within 30 days, determines
+    recipients by scope (PERSONAL->owner, TEAM->team admin, TENANT->tenant admin),
+    deduplicates notifications within 24h, creates SECRET_EXPIRING/SECRET_EXPIRED
+    notifications with real-time Socket.IO push; registered 6-hour interval in index.ts;
+    added SECRET_EXPIRING and SECRET_EXPIRED to NotificationType enum with migration.
+    (3) Enhanced frontend: rewrote SecretVersionHistory.tsx with timeline layout (dots +
+    connector lines), "View" button that fetches decrypted version data, field-by-field
+    diff highlighting (changed fields in orange); added Alert banner in SecretDetailView
+    for secrets expiring within 30 days; improved chip label in SecretListPanel; added
+    Badge on keychain icon in MainLayout showing count of secrets expiring within 7 days;
+    expanded AuditLogDialog with 30+ new audit action labels and color coding for
+    SECRET_*, TENANT_VAULT_*, TENANT_*, TEAM_*, GATEWAY_*, SSH_KEY_*, SESSION_*, and
+    SMS_* actions; expanded AuditAction type union in audit.api.ts; added expiringCount
+    state and fetchExpiringCount() to secretStore.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/prisma/schema.prisma (SECRET_EXPIRING, SECRET_EXPIRED in NotificationType)
+    CREATO:     server/src/services/secretExpiry.service.ts
+    MODIFICATO: server/src/index.ts (6-hour expiry check interval)
+    MODIFICATO: server/src/services/secret.service.ts (getSecretVersionData)
+    MODIFICATO: server/src/controllers/secret.controller.ts (getVersionData handler)
+    MODIFICATO: server/src/routes/secret.routes.ts (GET /:id/versions/:version/data)
+    MODIFICATO: client/src/api/secrets.api.ts (getSecretVersionData function)
+    MODIFICATO: client/src/api/audit.api.ts (expanded AuditAction type)
+    MODIFICATO: client/src/store/secretStore.ts (expiringCount, fetchExpiringCount)
+    MODIFICATO: client/src/components/Keychain/SecretVersionHistory.tsx (timeline UI, view, diff)
+    MODIFICATO: client/src/components/Keychain/SecretDetailView.tsx (Alert banner, currentData prop)
+    MODIFICATO: client/src/components/Keychain/SecretListPanel.tsx (chip label improvement)
+    MODIFICATO: client/src/components/Layout/MainLayout.tsx (Badge on keychain icon)
+    MODIFICATO: client/src/components/Dialogs/AuditLogDialog.tsx (30+ new action labels and colors)

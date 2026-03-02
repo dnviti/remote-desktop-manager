@@ -592,6 +592,43 @@ export async function listSecretVersions(
   return versions;
 }
 
+export async function getSecretVersionData(
+  userId: string,
+  secretId: string,
+  targetVersion: number,
+  tenantId?: string | null
+) {
+  const access = await permissionService.canViewSecret(userId, secretId, tenantId);
+  if (!access.allowed) throw new AppError('Secret not found', 404);
+
+  // Shared users cannot view version data (encrypted with scope key, not share key)
+  if (access.accessType === 'shared') {
+    throw new AppError('Version data is not available for shared secrets', 403);
+  }
+
+  const secret = access.secret;
+
+  const version = await prisma.vaultSecretVersion.findUnique({
+    where: { secretId_version: { secretId, version: targetVersion } },
+  });
+  if (!version) throw new AppError('Version not found', 404);
+
+  const encryptionKey = await resolveSecretEncryptionKey(
+    userId,
+    secret.scope,
+    secret.teamId,
+    secret.tenantId
+  );
+
+  const decryptedJson = decrypt(
+    { ciphertext: version.encryptedData, iv: version.dataIV, tag: version.dataTag },
+    encryptionKey
+  );
+  const data: SecretPayload = JSON.parse(decryptedJson);
+
+  return { data };
+}
+
 export async function restoreSecretVersion(
   userId: string,
   secretId: string,

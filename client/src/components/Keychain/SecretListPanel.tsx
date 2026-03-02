@@ -202,7 +202,7 @@ export default function SecretListPanel({
                         </Typography>
                         {daysUntilExpiry !== null && daysUntilExpiry <= 30 && (
                           <Chip
-                            label={daysUntilExpiry <= 0 ? 'Expired' : `${daysUntilExpiry}d`}
+                            label={daysUntilExpiry <= 0 ? 'Expired' : `${daysUntilExpiry}d left`}
                             size="small"
                             color={daysUntilExpiry <= 7 ? 'error' : 'warning'}
                             sx={{ height: 16, fontSize: '0.6rem' }}

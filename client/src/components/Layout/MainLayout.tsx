@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, IconButton, Box, Chip, Menu, MenuItem,
-  Snackbar, Alert, Avatar, Button,
+  Snackbar, Alert, Avatar, Button, Badge,
 } from '@mui/material';
 import {
   Lock as LockIcon,
@@ -37,6 +37,7 @@ import { useThemeStore } from '../../store/themeStore';
 import { useTerminalSettingsStore } from '../../store/terminalSettingsStore';
 import { useTabsStore } from '../../store/tabsStore';
 import { useGatewayMonitor } from '../../hooks/useGatewayMonitor';
+import { useSecretStore } from '../../store/secretStore';
 
 const SIDEBAR_WIDTH = 280;
 
@@ -56,6 +57,9 @@ export default function MainLayout() {
   const fetchTerminalDefaults = useTerminalSettingsStore((s) => s.fetchDefaults);
   const terminalDefaultsLoaded = useTerminalSettingsStore((s) => s.loaded);
 
+  const expiringCount = useSecretStore((s) => s.expiringCount);
+  const fetchExpiringCount = useSecretStore((s) => s.fetchExpiringCount);
+
   useGatewayMonitor();
 
   useEffect(() => {
@@ -63,6 +67,12 @@ export default function MainLayout() {
       fetchTerminalDefaults();
     }
   }, [terminalDefaultsLoaded, fetchTerminalDefaults]);
+
+  useEffect(() => {
+    if (vaultUnlocked) {
+      fetchExpiringCount();
+    }
+  }, [vaultUnlocked, fetchExpiringCount]);
 
   const [connectionDialogOpen, setConnectionDialogOpen] = useState(false);
   const [editingConnection, setEditingConnection] = useState<ConnectionData | null>(null);
@@ -181,7 +191,9 @@ export default function MainLayout() {
             title="Keychain"
             sx={{ mr: 1 }}
           >
-            <KeychainIcon />
+            <Badge badgeContent={expiringCount} color="error" max={99}>
+              <KeychainIcon />
+            </Badge>
           </IconButton>
           <Box sx={{ flexGrow: 1 }} />
           <NotificationBell />

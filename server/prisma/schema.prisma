@@ -412,6 +412,8 @@ enum NotificationType {
   SHARE_REVOKED
   SECRET_SHARED
   SECRET_SHARE_REVOKED
+  SECRET_EXPIRING
+  SECRET_EXPIRED
 }
 
 model Notification {
