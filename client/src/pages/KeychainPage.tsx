@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
-  Box, AppBar, Toolbar, Typography, IconButton, Chip,
+  Box, AppBar, Toolbar, Typography, IconButton, Chip, Alert, Button as MuiButton,
   Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button,
 } from '@mui/material';
 import {
@@ -18,6 +18,7 @@ import ShareSecretDialog from '../components/Keychain/ShareSecretDialog';
 import { useSecretStore } from '../store/secretStore';
 import { useVaultStore } from '../store/vaultStore';
 import { useThemeStore } from '../store/themeStore';
+import { useAuthStore } from '../store/authStore';
 import type { SecretListItem, SecretDetail } from '../api/secrets.api';
 import { getSecret } from '../api/secrets.api';
 
@@ -29,9 +30,34 @@ export default function KeychainPage() {
   const fetchSecret = useSecretStore((s) => s.fetchSecret);
   const deleteSecretAction = useSecretStore((s) => s.deleteSecret);
   const toggleFavorite = useSecretStore((s) => s.toggleFavorite);
+  const tenantVaultStatus = useSecretStore((s) => s.tenantVaultStatus);
+  const fetchTenantVaultStatus = useSecretStore((s) => s.fetchTenantVaultStatus);
+  const initTenantVault = useSecretStore((s) => s.initTenantVault);
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
   const themeMode = useThemeStore((s) => s.mode);
   const toggleTheme = useThemeStore((s) => s.toggle);
+  const user = useAuthStore((s) => s.user);
+
+  const isAdmin = user?.tenantRole === 'OWNER' || user?.tenantRole === 'ADMIN';
+  const hasTenant = !!user?.tenantId;
+
+  const [initializingVault, setInitializingVault] = useState(false);
+
+  useEffect(() => {
+    if (hasTenant) fetchTenantVaultStatus();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount
+  }, [hasTenant]);
+
+  const handleInitTenantVault = async () => {
+    setInitializingVault(true);
+    try {
+      await initTenantVault();
+    } catch {
+      // error handled by store
+    } finally {
+      setInitializingVault(false);
+    }
+  };
 
   // Dialog state
   const [secretDialogOpen, setSecretDialogOpen] = useState(false);
@@ -112,6 +138,31 @@ export default function KeychainPage() {
           </IconButton>
         </Toolbar>
       </AppBar>
+
+      {/* Tenant vault banner */}
+      {hasTenant && tenantVaultStatus && !tenantVaultStatus.initialized && isAdmin && (
+        <Alert
+          severity="info"
+          action={
+            <MuiButton
+              color="inherit"
+              size="small"
+              onClick={handleInitTenantVault}
+              disabled={initializingVault}
+            >
+              {initializingVault ? 'Initializing...' : 'Initialize Now'}
+            </MuiButton>
+          }
+          sx={{ borderRadius: 0 }}
+        >
+          Organization vault is not initialized. Initialize it to create and share organization-scoped secrets.
+        </Alert>
+      )}
+      {hasTenant && tenantVaultStatus && tenantVaultStatus.initialized && !tenantVaultStatus.hasAccess && (
+        <Alert severity="warning" sx={{ borderRadius: 0 }}>
+          You don&apos;t have access to the organization vault yet. Ask an admin to distribute the key to you.
+        </Alert>
+      )}
 
       {/* Main content */}
       <Box sx={{ display: 'flex', flex: 1, overflow: 'hidden' }}>

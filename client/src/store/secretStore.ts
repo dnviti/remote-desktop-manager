@@ -5,6 +5,8 @@ import {
   createSecret as apiCreateSecret,
   updateSecret as apiUpdateSecret,
   deleteSecret as apiDeleteSecret,
+  getTenantVaultStatus,
+  initTenantVault as apiInitTenantVault,
 } from '../api/secrets.api';
 import type {
   SecretListItem,
@@ -12,6 +14,7 @@ import type {
   SecretListFilters,
   CreateSecretInput,
   UpdateSecretInput,
+  TenantVaultStatus,
 } from '../api/secrets.api';
 
 interface SecretState {
@@ -20,6 +23,7 @@ interface SecretState {
   loading: boolean;
   error: string | null;
   filters: SecretListFilters;
+  tenantVaultStatus: TenantVaultStatus | null;
 
   fetchSecrets: () => Promise<void>;
   fetchSecret: (id: string) => Promise<void>;
@@ -29,6 +33,8 @@ interface SecretState {
   toggleFavorite: (id: string) => Promise<void>;
   setFilters: (filters: Partial<SecretListFilters>) => void;
   clearSelectedSecret: () => void;
+  fetchTenantVaultStatus: () => Promise<void>;
+  initTenantVault: () => Promise<void>;
 }
 
 export const useSecretStore = create<SecretState>((set, get) => ({
@@ -37,6 +43,7 @@ export const useSecretStore = create<SecretState>((set, get) => ({
   loading: false,
   error: null,
   filters: {},
+  tenantVaultStatus: null,
 
   fetchSecrets: async () => {
     set({ loading: true, error: null });
@@ -102,4 +109,19 @@ export const useSecretStore = create<SecretState>((set, get) => ({
   },
 
   clearSelectedSecret: () => set({ selectedSecret: null }),
+
+  fetchTenantVaultStatus: async () => {
+    try {
+      const status = await getTenantVaultStatus();
+      set({ tenantVaultStatus: status });
+    } catch {
+      // Not in a tenant or endpoint unavailable
+      set({ tenantVaultStatus: null });
+    }
+  },
+
+  initTenantVault: async () => {
+    await apiInitTenantVault();
+    await get().fetchTenantVaultStatus();
+  },
 }));

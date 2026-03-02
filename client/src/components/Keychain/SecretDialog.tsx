@@ -12,6 +12,7 @@ import { useSecretStore } from '../../store/secretStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTeamStore } from '../../store/teamStore';
 import type { SecretDetail, SecretType, SecretScope, SecretPayload } from '../../api/secrets.api';
+import type { TenantVaultStatus } from '../../api/secrets.api';
 
 interface SecretDialogProps {
   open: boolean;
@@ -29,6 +30,7 @@ function generatePassword(length = 20): string {
 export default function SecretDialog({ open, onClose, secret }: SecretDialogProps) {
   const createSecret = useSecretStore((s) => s.createSecret);
   const updateSecret = useSecretStore((s) => s.updateSecret);
+  const tenantVaultStatus: TenantVaultStatus | null = useSecretStore((s) => s.tenantVaultStatus);
   const user = useAuthStore((s) => s.user);
   const teams = useTeamStore((s) => s.teams);
   const fetchTeams = useTeamStore((s) => s.fetchTeams);
@@ -271,6 +273,7 @@ export default function SecretDialog({ open, onClose, secret }: SecretDialogProp
 
   const canSelectTeam = user?.tenantId && teams.length > 0;
   const canSelectTenant = user?.tenantId && (user.tenantRole === 'OWNER' || user.tenantRole === 'ADMIN');
+  const tenantVaultReady = tenantVaultStatus?.initialized && tenantVaultStatus?.hasAccess;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -303,7 +306,11 @@ export default function SecretDialog({ open, onClose, secret }: SecretDialogProp
               <Select value={scope} label="Scope" onChange={(e) => setScope(e.target.value as SecretScope)}>
                 <MenuItem value="PERSONAL">Personal</MenuItem>
                 {canSelectTeam && <MenuItem value="TEAM">Team</MenuItem>}
-                {canSelectTenant && <MenuItem value="TENANT">Organization</MenuItem>}
+                {canSelectTenant && (
+                  <MenuItem value="TENANT" disabled={!tenantVaultReady}>
+                    Organization{!tenantVaultReady ? ' (vault not initialized)' : ''}
+                  </MenuItem>
+                )}
               </Select>
             </FormControl>
           )}
