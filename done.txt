@@ -1473,6 +1473,27 @@
     MODIFICATO: client/src/components/Terminal/SshTerminal.tsx (session:timeout event)
 
 
+------------------------------------------------------------------------------
+[x] ORCH-062 — Container orchestrator abstraction layer (Docker + K8s)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: SSHGW-051
+  COMPLETATO: Created pluggable container orchestration abstraction layer with IOrchestratorProvider interface (8 methods: isAvailable, deployContainer, removeContainer, listContainers, getContainerStatus, restartContainer, updateContainerEnv, getContainerLogs). Three providers: DockerProvider (dockerode with socket-based communication, image pull, port bindings, healthchecks, SSH key exec, container recreation for env updates, multiplexed log demuxing), KubernetesProvider (@kubernetes/client-node v1.4.0 with Deployment+ClusterIP Service per container, rolling restarts via annotation patch, pod log retrieval), NoneProvider (safe fallback, 501 on mutations). Auto-detection factory (detectOrchestrator) with configurable override via ORCHESTRATOR_TYPE env var. Prisma ManagedGatewayInstance model for tracking deployed containers. 6 config properties for Docker socket path, K8s namespace, container images.
+
+  FILE COINVOLTI:
+    CREATO:     server/src/orchestrator/types.ts
+    CREATO:     server/src/orchestrator/docker.provider.ts
+    CREATO:     server/src/orchestrator/kubernetes.provider.ts
+    CREATO:     server/src/orchestrator/index.ts
+    CREATO:     server/src/orchestrator/none.provider.ts
+    MODIFICATO: server/prisma/schema.prisma (ManagedInstanceStatus enum, ManagedGatewayInstance model, Gateway.managedInstances)
+    MODIFICATO: server/src/config.ts (6 orchestrator env var configs)
+    MODIFICATO: server/src/index.ts (orchestrator init at startup)
+    MODIFICATO: server/src/lib/prisma.ts (ManagedInstanceStatus re-export)
+    MODIFICATO: server/package.json (dockerode, @kubernetes/client-node, @types/dockerode)
+    MODIFICATO: .env.example (Container Orchestrator section with 7 env vars)
+
+
 ================================================================================
   SEZIONE E — ZERO TRUST HARDENING
 ================================================================================

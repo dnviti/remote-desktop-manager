@@ -14,6 +14,7 @@ import { checkExpiringSecrets } from './services/secretExpiry.service';
 import { markServerReady } from './services/health.service';
 import * as sessionService from './services/session.service';
 import { initSessionCleanup, checkAndCloseInactiveSessions } from './services/sessionCleanup.service';
+import { detectOrchestrator } from './orchestrator';
 
 async function runDatabaseMigrations() {
   const serverDir = path.resolve(__dirname, '..');
@@ -80,6 +81,10 @@ async function main() {
 
   // Start gateway health monitors
   startAllMonitors();
+
+  // Detect and initialize container orchestrator
+  const orchestrator = await detectOrchestrator();
+  logger.info(`Orchestrator provider: ${orchestrator.type}`);
 
   // Cleanup expired external shares every hour
   setInterval(() => {

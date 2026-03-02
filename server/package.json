@@ -16,6 +16,7 @@
   "dependencies": {
     "@aws-sdk/client-ses": "^3.1000.0",
     "@aws-sdk/client-sns": "^3.1000.0",
+    "@kubernetes/client-node": "^1.4.0",
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
     "@sendgrid/mail": "^8.1.6",
@@ -23,6 +24,7 @@
     "argon2": "^0.44.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
+    "dockerode": "^4.0.9",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
     "express-rate-limit": "^8.2.1",
@@ -49,6 +51,7 @@
   "devDependencies": {
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
+    "@types/dockerode": "^4.0.1",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",

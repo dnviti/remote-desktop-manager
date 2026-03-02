@@ -228,6 +228,14 @@ enum SessionStatus {
   CLOSED
 }
 
+enum ManagedInstanceStatus {
+  PROVISIONING
+  RUNNING
+  STOPPED
+  ERROR
+  REMOVING
+}
+
 model Gateway {
   id          String      @id @default(uuid())
   name        String
@@ -264,8 +272,9 @@ model Gateway {
 
   tenant         Tenant          @relation(fields: [tenantId], references: [id])
   createdBy      User            @relation("GatewayCreator", fields: [createdById], references: [id])
-  connections    Connection[]
-  activeSessions ActiveSession[]
+  connections        Connection[]
+  activeSessions     ActiveSession[]
+  managedInstances   ManagedGatewayInstance[]
 
   @@index([tenantId])
   @@index([tenantId, type, isDefault])
@@ -624,4 +633,25 @@ model ActiveSession {
   @@index([lastActivityAt])
   @@index([socketId])
   @@index([guacTokenHash])
+}
+
+model ManagedGatewayInstance {
+  id               String                @id @default(uuid())
+  gatewayId        String
+  containerId      String                @unique
+  containerName    String
+  host             String
+  port             Int
+  status           ManagedInstanceStatus @default(PROVISIONING)
+  orchestratorType String
+  healthStatus     String?
+  lastHealthCheck  DateTime?
+  errorMessage     String?
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+
+  gateway          Gateway               @relation(fields: [gatewayId], references: [id], onDelete: Cascade)
+
+  @@index([gatewayId])
+  @@index([status])
 }

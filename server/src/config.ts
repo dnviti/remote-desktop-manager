@@ -118,4 +118,11 @@ export const config = {
   sessionIdleThresholdMinutes: parseInt(process.env.SESSION_IDLE_THRESHOLD_MINUTES || '5', 10),
   sessionCleanupRetentionDays: parseInt(process.env.SESSION_CLEANUP_RETENTION_DAYS || '30', 10),
   sessionInactivityTimeoutSeconds: parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_SECONDS || '3600', 10),
+  // Container orchestrator
+  orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'kubernetes' | 'none',
+  dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',
+  dockerNetwork: process.env.DOCKER_NETWORK || '',
+  orchestratorK8sNamespace: process.env.ORCHESTRATOR_K8S_NAMESPACE || 'rdm',
+  orchestratorSshGatewayImage: process.env.ORCHESTRATOR_SSH_GATEWAY_IMAGE || 'ghcr.io/dnviti/remote-desktop-manager/ssh-gateway:latest',
+  orchestratorGuacdImage: process.env.ORCHESTRATOR_GUACD_IMAGE || 'guacamole/guacd:latest',
 };
