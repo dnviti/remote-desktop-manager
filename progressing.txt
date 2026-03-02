@@ -14,6 +14,72 @@
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================
 
+------------------------------------------------------------------------------
+[~] SSHGW-049 — Container image SSH Gateway gestito (Alpine + OpenSSH)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Creare un container Docker leggero basato su Alpine che esegue un demone
+  OpenSSH configurato esclusivamente per il TCP port forwarding. Il container
+  NON concede accesso shell — serve solo come tunnel SSH sicuro per instradare
+  connessioni verso reti interne, analogo a quanto guacd fa per RDP.
+  Il container e' interamente configurabile tramite variabili d'ambiente e
+  volume mount (authorized_keys). Include health check e si integra nel
+  workflow CI/CD esistente per build e push su GHCR.
+
+  DETTAGLI TECNICI:
+  Container:
+    - Base image: alpine:3.19 (o latest stable)
+    - Installare openssh-server, nessun pacchetto aggiuntivo
+    - Utente dedicato "tunnel" (no root login) con shell /sbin/nologin
+    - sshd_config restrittivo:
+        PermitRootLogin no
+        PasswordAuthentication no
+        PubkeyAuthentication yes
+        AllowTcpForwarding yes
+        GatewayPorts no
+        X11Forwarding no
+        PermitTTY no
+        ForceCommand /usr/sbin/nologin
+        AllowUsers tunnel
+    - Entrypoint script (entrypoint.sh):
+        - Generare host keys se non presenti (/etc/ssh/ssh_host_*)
+        - Creare /home/tunnel/.ssh/authorized_keys da:
+          a) variabile env SSH_AUTHORIZED_KEYS (stringa con chiavi separate
+             da newline)
+          b) volume mount /config/authorized_keys (se il file esiste)
+        - Impostare permessi corretti (700 su .ssh, 600 su authorized_keys)
+        - Avviare sshd in foreground (exec /usr/sbin/sshd -D -e)
+    - Porta esposta: 2222 (default, configurabile via SSH_PORT env var)
+    - Health check: nc -z localhost ${SSH_PORT:-2222} (ogni 10s, 3 retry)
+    - Label OCI standard per GHCR (org.opencontainers.image.*)
+  CI/CD:
+    - Aggiungere job "build-ssh-gateway" in .github/workflows/docker-build.yml
+    - Stesso pattern di build-server e build-client:
+      - checkout, buildx, login GHCR, metadata-action, build-push-action
+      - Image: ghcr.io/${{ github.repository }}/ssh-gateway
+      - Tags: latest (default branch), sha, semver
+      - Cache: type=gha
+  Docker Compose:
+    - docker-compose.dev.yml: aggiungere servizio ssh-gateway (commentato
+      per default — utile per testing locale)
+    - docker-compose.yml: aggiungere servizio ssh-gateway con build context
+    - docker-compose.prod.yml: aggiungere servizio ssh-gateway con image
+      da GHCR, authorized_keys via volume, porta configurabile
+    - Il servizio e' opzionale: chi non lo usa puo' rimuoverlo o commentarlo
+    - Esempio di scaling multiplo nei commenti:
+      ssh-gateway-dmz, ssh-gateway-internal con porte diverse
+  File coinvolti:
+    CREARE:     ssh-gateway/Dockerfile
+    CREARE:     ssh-gateway/entrypoint.sh
+    CREARE:     ssh-gateway/sshd_config
+    MODIFICARE: .github/workflows/docker-build.yml (job build-ssh-gateway)
+    MODIFICARE: docker-compose.dev.yml (servizio ssh-gateway)
+    MODIFICARE: docker-compose.yml (servizio ssh-gateway)
+    MODIFICARE: docker-compose.prod.yml (servizio ssh-gateway)
+    MODIFICARE: .env.example (SSH_GATEWAY_PORT, SSH_AUTHORIZED_KEYS)
 
 
 

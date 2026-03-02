@@ -13,6 +13,7 @@ export interface CreateGatewayInput {
   isDefault?: boolean;
   username?: string;
   password?: string;
+  sshPrivateKey?: string;
 }
 
 export interface UpdateGatewayInput {
@@ -23,6 +24,7 @@ export interface UpdateGatewayInput {
   isDefault?: boolean;
   username?: string;
   password?: string;
+  sshPrivateKey?: string;
 }
 
 // Fields returned for public gateway responses (no credential columns)
@@ -38,6 +40,7 @@ const publicSelect = {
   createdById: true,
   createdAt: true,
   updatedAt: true,
+  encryptedSshKey: true,
 } as const;
 
 function requireMasterKey(userId: string): Buffer {
@@ -47,11 +50,15 @@ function requireMasterKey(userId: string): Buffer {
 }
 
 export async function listGateways(tenantId: string) {
-  return prisma.gateway.findMany({
+  const gateways = await prisma.gateway.findMany({
     where: { tenantId },
     select: publicSelect,
     orderBy: [{ type: 'asc' }, { name: 'asc' }],
   });
+  return gateways.map(({ encryptedSshKey, ...gw }) => ({
+    ...gw,
+    hasSshKey: encryptedSshKey != null,
+  }));
 }
 
 export async function createGateway(
@@ -66,10 +73,13 @@ export async function createGateway(
     encryptedPassword: null,
     passwordIV: null,
     passwordTag: null,
+    encryptedSshKey: null,
+    sshKeyIV: null,
+    sshKeyTag: null,
   };
 
   if (input.type === 'SSH_BASTION') {
-    if (input.username || input.password) {
+    if (input.username || input.password || input.sshPrivateKey) {
       const masterKey = requireMasterKey(userId);
       if (input.username) {
         const enc = encrypt(input.username, masterKey);
@@ -83,8 +93,14 @@ export async function createGateway(
         encData.passwordIV = enc.iv;
         encData.passwordTag = enc.tag;
       }
+      if (input.sshPrivateKey) {
+        const enc = encrypt(input.sshPrivateKey, masterKey);
+        encData.encryptedSshKey = enc.ciphertext;
+        encData.sshKeyIV = enc.iv;
+        encData.sshKeyTag = enc.tag;
+      }
     }
-  } else if (input.username || input.password) {
+  } else if (input.username || input.password || input.sshPrivateKey) {
     throw new AppError('Credentials can only be set for SSH_BASTION gateways', 400);
   }
 
@@ -96,7 +112,7 @@ export async function createGateway(
       });
     }
 
-    return tx.gateway.create({
+    const row = await tx.gateway.create({
       data: {
         name: input.name,
         type: input.type,
@@ -110,6 +126,8 @@ export async function createGateway(
       },
       select: publicSelect,
     });
+    const { encryptedSshKey: _k, ...rest } = row;
+    return { ...rest, hasSshKey: _k != null };
   });
 
   return gateway;
@@ -132,7 +150,7 @@ export async function updateGateway(
   if (input.port !== undefined) data.port = input.port;
   if (input.description !== undefined) data.description = input.description;
 
-  if (input.username !== undefined || input.password !== undefined) {
+  if (input.username !== undefined || input.password !== undefined || input.sshPrivateKey !== undefined) {
     if (existing.type !== 'SSH_BASTION') {
       throw new AppError('Credentials can only be set for SSH_BASTION gateways', 400);
     }
@@ -149,6 +167,12 @@ export async function updateGateway(
       data.passwordIV = enc.iv;
       data.passwordTag = enc.tag;
     }
+    if (input.sshPrivateKey !== undefined) {
+      const enc = encrypt(input.sshPrivateKey, masterKey);
+      data.encryptedSshKey = enc.ciphertext;
+      data.sshKeyIV = enc.iv;
+      data.sshKeyTag = enc.tag;
+    }
   }
 
   const updated = await prisma.$transaction(async (tx) => {
@@ -162,11 +186,13 @@ export async function updateGateway(
       data.isDefault = false;
     }
 
-    return tx.gateway.update({
+    const row = await tx.gateway.update({
       where: { id: gatewayId },
       data,
       select: publicSelect,
     });
+    const { encryptedSshKey: _k, ...rest } = row;
+    return { ...rest, hasSshKey: _k != null };
   });
 
   return updated;
@@ -196,13 +222,13 @@ export async function getGatewayCredentials(
   userId: string,
   tenantId: string,
   gatewayId: string,
-): Promise<{ username: string | null; password: string | null }> {
+): Promise<{ username: string | null; password: string | null; sshPrivateKey: string | null }> {
   const gateway = await prisma.gateway.findFirst({
     where: { id: gatewayId, tenantId },
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
   if (gateway.type !== 'SSH_BASTION') {
-    return { username: null, password: null };
+    return { username: null, password: null, sshPrivateKey: null };
   }
 
   const masterKey = requireMasterKey(userId);
@@ -223,7 +249,15 @@ export async function getGatewayCredentials(
         )
       : null;
 
-  return { username, password };
+  const sshPrivateKey =
+    gateway.encryptedSshKey && gateway.sshKeyIV && gateway.sshKeyTag
+      ? decrypt(
+          { ciphertext: gateway.encryptedSshKey, iv: gateway.sshKeyIV, tag: gateway.sshKeyTag },
+          masterKey,
+        )
+      : null;
+
+  return { username, password, sshPrivateKey };
 }
 
 export async function testGatewayConnectivity(

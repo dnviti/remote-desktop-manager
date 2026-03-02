@@ -14,6 +14,7 @@ const createSchema = z.object({
   isDefault: z.boolean().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
+  sshPrivateKey: z.string().optional(),
 });
 
 const updateSchema = z.object({
@@ -24,6 +25,7 @@ const updateSchema = z.object({
   isDefault: z.boolean().optional(),
   username: z.string().optional(),
   password: z.string().optional(),
+  sshPrivateKey: z.string().optional(),
 });
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {

@@ -120,9 +120,9 @@ export function setupSshHandler(io: Server) {
           }
 
           const gatewayCreds = await getGatewayCredentials(user.userId, user.tenantId, conn.gateway.id);
-          if (!gatewayCreds.username || !gatewayCreds.password) {
+          if (!gatewayCreds.username || (!gatewayCreds.password && !gatewayCreds.sshPrivateKey)) {
             socket.emit('session:error', {
-              message: 'Gateway credentials are incomplete. Please configure username and password on the gateway.',
+              message: 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.',
             });
             return;
           }
@@ -131,7 +131,8 @@ export function setupSshHandler(io: Server) {
             bastionHost: conn.gateway.host,
             bastionPort: conn.gateway.port,
             bastionUsername: gatewayCreds.username,
-            bastionPassword: gatewayCreds.password,
+            bastionPassword: gatewayCreds.password ?? undefined,
+            bastionPrivateKey: gatewayCreds.sshPrivateKey ?? undefined,
             targetHost: conn.host,
             targetPort: conn.port,
             targetUsername: username,

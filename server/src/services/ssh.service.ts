@@ -17,7 +17,8 @@ export interface BastionConnectionParams {
   bastionHost: string;
   bastionPort: number;
   bastionUsername: string;
-  bastionPassword: string;
+  bastionPassword?: string;
+  bastionPrivateKey?: string;
   targetHost: string;
   targetPort: number;
   targetUsername: string;
@@ -120,7 +121,9 @@ export function createSshConnectionViaBastion(
       host: params.bastionHost,
       port: params.bastionPort,
       username: params.bastionUsername,
-      password: params.bastionPassword,
+      ...(params.bastionPrivateKey
+        ? { privateKey: params.bastionPrivateKey }
+        : { password: params.bastionPassword }),
       readyTimeout: 10000,
       keepaliveInterval: 10000,
     });

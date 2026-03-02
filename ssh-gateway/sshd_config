@@ -1,0 +1,26 @@
+# RDM SSH Gateway — port-forwarding-only configuration
+# No shell access, no root login, public key auth only
+
+Port 2222
+
+PermitRootLogin no
+PasswordAuthentication no
+PubkeyAuthentication yes
+AuthorizedKeysFile /home/tunnel/.ssh/authorized_keys
+
+AllowTcpForwarding yes
+GatewayPorts no
+X11Forwarding no
+PermitTTY no
+ForceCommand /sbin/nologin
+AllowUsers tunnel
+
+# Logging
+SyslogFacility AUTH
+LogLevel INFO
+
+# Security hardening
+MaxAuthTries 3
+LoginGraceTime 30
+ClientAliveInterval 60
+ClientAliveCountMax 3

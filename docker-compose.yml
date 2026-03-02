@@ -56,6 +56,22 @@ services:
       - server
     restart: unless-stopped
 
+  # SSH Gateway (optional — remove or comment out if not needed)
+  # For multiple gateways, duplicate with different names and ports:
+  #   ssh-gateway-dmz:  ports: ["2222:2222"]
+  #   ssh-gateway-lan:  ports: ["2223:2222"]
+  ssh-gateway:
+    build:
+      context: .
+      dockerfile: ssh-gateway/Dockerfile
+    ports:
+      - "${SSH_GATEWAY_PORT:-2222}:2222"
+    environment:
+      SSH_AUTHORIZED_KEYS: ${SSH_AUTHORIZED_KEYS:-}
+    volumes:
+      - ./config/ssh-gateway/authorized_keys:/config/authorized_keys:ro
+    restart: unless-stopped
+
 volumes:
   pgdata:
   rdm_drive:

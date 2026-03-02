@@ -8,6 +8,7 @@ export interface GatewayData {
   port: number;
   description: string | null;
   isDefault: boolean;
+  hasSshKey: boolean;
   tenantId: string;
   createdById: string;
   createdAt: string;
@@ -23,6 +24,7 @@ export interface GatewayInput {
   isDefault?: boolean;
   username?: string;
   password?: string;
+  sshPrivateKey?: string;
 }
 
 export interface GatewayUpdate {
@@ -33,6 +35,7 @@ export interface GatewayUpdate {
   isDefault?: boolean;
   username?: string;
   password?: string;
+  sshPrivateKey?: string;
 }
 
 export interface TestResult {

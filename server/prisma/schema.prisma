@@ -207,6 +207,9 @@ model Gateway {
   encryptedPassword  String?
   passwordIV         String?
   passwordTag        String?
+  encryptedSshKey    String?
+  sshKeyIV           String?
+  sshKeyTag          String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -21,6 +21,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
   const [isDefault, setIsDefault] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [sshPrivateKey, setSshPrivateKey] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const createGateway = useGatewayStore((s) => s.createGateway);
@@ -38,6 +39,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setIsDefault(gateway.isDefault);
       setUsername('');
       setPassword('');
+      setSshPrivateKey('');
     } else if (open) {
       setName('');
       setType('GUACD');
@@ -47,6 +49,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setIsDefault(false);
       setUsername('');
       setPassword('');
+      setSshPrivateKey('');
     }
     setError('');
   }, [open, gateway]);
@@ -88,6 +91,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
         if (type === 'SSH_BASTION') {
           if (username) data.username = username;
           if (password) data.password = password;
+          if (sshPrivateKey) data.sshPrivateKey = sshPrivateKey;
         }
         await updateGateway(gateway.id, data);
       } else {
@@ -100,6 +104,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           isDefault: isDefault || undefined,
           ...(type === 'SSH_BASTION' && username ? { username } : {}),
           ...(type === 'SSH_BASTION' && password ? { password } : {}),
+          ...(type === 'SSH_BASTION' && sshPrivateKey ? { sshPrivateKey } : {}),
         });
       }
       handleClose();
@@ -122,6 +127,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
     setIsDefault(false);
     setUsername('');
     setPassword('');
+    setSshPrivateKey('');
     setError('');
     onClose();
   };
@@ -185,6 +191,22 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                 type="password"
                 fullWidth
                 placeholder={isEditMode ? 'Leave blank to keep unchanged' : undefined}
+              />
+              <TextField
+                label="SSH Private Key (PEM)"
+                value={sshPrivateKey}
+                onChange={(e) => setSshPrivateKey(e.target.value)}
+                fullWidth
+                multiline
+                rows={4}
+                placeholder={
+                  isEditMode
+                    ? gateway?.hasSshKey
+                      ? 'Key configured — leave blank to keep unchanged'
+                      : 'Paste PEM-encoded private key'
+                    : 'Paste PEM-encoded private key (optional)'
+                }
+                slotProps={{ htmlInput: { style: { fontFamily: 'monospace', fontSize: '0.8rem' } } }}
               />
             </>
           )}

@@ -24,5 +24,14 @@ services:
       timeout: 5s
       retries: 5
 
+  # SSH Gateway (optional — uncomment to enable for local testing)
+  ssh-gateway:
+    build: ./ssh-gateway
+    environment:
+      - SSH_AUTHORIZED_KEYS=ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDGfvEXH/0EE8/UxBkf4Ecm0sN+KUKmP4EiMKVuC3OH03D4JQbtW8kCNkXJ7fdo15F0sSsHka50tDXyy+MJyWhXO7W7rsIH1+AyYXopDck/bupofuVX8ao0SYpzrNy/sv8WDS9Lfuf5EFchTLGCX/tRKmZkZ/cZNL2o54b57KoSNtMYQMEMjf58f8AbW8JrCUMl6ca4JjOLma21W8/ESjx1HJlJWdrqX606u5u9rr0rI960NOo5GX75kVv48hNVkiJRiVYVexZBsbsM1ByQT0tWbQGb3r36uaIP4sSJFs3cLINfzA28EC9Xaiy4LrWU2g9RtzHEDqXrk/dDZvg3JODWVnzJbgnbPlB51Fl0Co/G63mcY/Dx0gg+7siAYNpV2oofswBWKd6ld0uYttTpE2w7TEDe4CZk1m93sIjO3vo8j1WUWzYxpfXX4vscRQKeHGuDwDkHzPsg/DL7PvKlu4n19eytqD4QRdCcuHqxP/WlfX0dBVsJJSWdZbRIChOFIQ8=
+    ports:
+      - "${SSH_GATEWAY_PORT:-2222}:2222"
+    restart: unless-stopped
+
 volumes:
   pgdata_dev:
