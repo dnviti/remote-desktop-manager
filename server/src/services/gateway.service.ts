@@ -1,9 +1,10 @@
-import net from 'net';
 import prisma from '../lib/prisma';
 import type { GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { encrypt, decrypt, getMasterKey } from './crypto.service';
 import { config } from '../config';
+import { tcpProbe } from '../utils/tcpProbe';
+import { startMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 
 export interface CreateGatewayInput {
   name: string;
@@ -16,6 +17,8 @@ export interface CreateGatewayInput {
   password?: string;
   sshPrivateKey?: string;
   apiPort?: number;
+  monitoringEnabled?: boolean;
+  monitorIntervalMs?: number;
 }
 
 export interface UpdateGatewayInput {
@@ -28,6 +31,8 @@ export interface UpdateGatewayInput {
   password?: string;
   sshPrivateKey?: string;
   apiPort?: number | null;
+  monitoringEnabled?: boolean;
+  monitorIntervalMs?: number;
 }
 
 // Fields returned for public gateway responses (no credential columns)
@@ -45,6 +50,12 @@ const publicSelect = {
   updatedAt: true,
   encryptedSshKey: true,
   apiPort: true,
+  monitoringEnabled: true,
+  monitorIntervalMs: true,
+  lastHealthStatus: true,
+  lastCheckedAt: true,
+  lastLatencyMs: true,
+  lastError: true,
 } as const;
 
 function requireMasterKey(userId: string): Buffer {
@@ -133,6 +144,8 @@ export async function createGateway(
         description: input.description ?? null,
         isDefault: input.isDefault ?? false,
         apiPort: input.type === 'MANAGED_SSH' ? (input.apiPort ?? null) : null,
+        monitoringEnabled: input.monitoringEnabled ?? true,
+        monitorIntervalMs: input.monitorIntervalMs ?? 5000,
         tenantId,
         createdById: userId,
         ...encData,
@@ -142,6 +155,10 @@ export async function createGateway(
     const { encryptedSshKey: _k, ...rest } = row;
     return { ...rest, hasSshKey: _k != null };
   });
+
+  if (input.monitoringEnabled ?? true) {
+    startMonitor(gateway.id, input.host, input.port, tenantId, input.monitorIntervalMs ?? 5000);
+  }
 
   return gateway;
 }
@@ -163,6 +180,8 @@ export async function updateGateway(
   if (input.port !== undefined) data.port = input.port;
   if (input.description !== undefined) data.description = input.description;
   if (input.apiPort !== undefined) data.apiPort = input.apiPort;
+  if (input.monitoringEnabled !== undefined) data.monitoringEnabled = input.monitoringEnabled;
+  if (input.monitorIntervalMs !== undefined) data.monitorIntervalMs = input.monitorIntervalMs;
 
   if (input.username !== undefined || input.password !== undefined || input.sshPrivateKey !== undefined) {
     if (existing.type !== 'SSH_BASTION') {
@@ -209,6 +228,20 @@ export async function updateGateway(
     return { ...rest, hasSshKey: _k != null };
   });
 
+  const needsMonitorRestart =
+    input.host !== undefined || input.port !== undefined ||
+    input.monitorIntervalMs !== undefined || input.monitoringEnabled !== undefined;
+
+  if (needsMonitorRestart) {
+    const current = await prisma.gateway.findUnique({
+      where: { id: gatewayId },
+      select: { host: true, port: true, monitorIntervalMs: true, monitoringEnabled: true, tenantId: true },
+    });
+    if (current) {
+      restartMonitor(gatewayId, current.host, current.port, current.tenantId, current.monitorIntervalMs, current.monitoringEnabled);
+    }
+  }
+
   return updated;
 }
 
@@ -229,6 +262,7 @@ export async function deleteGateway(tenantId: string, gatewayId: string) {
   }
 
   await prisma.gateway.delete({ where: { id: gatewayId } });
+  stopMonitor(gatewayId);
   return { deleted: true };
 }
 
@@ -284,31 +318,19 @@ export async function testGatewayConnectivity(
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
 
-  const TIMEOUT_MS = 5000;
-  const start = Date.now();
+  const result = await tcpProbe(gateway.host, gateway.port, 5000);
 
-  return new Promise((resolve) => {
-    const socket = new net.Socket();
-    let settled = false;
-
-    const finish = (reachable: boolean, error: string | null) => {
-      if (settled) return;
-      settled = true;
-      socket.destroy();
-      resolve({
-        reachable,
-        latencyMs: reachable ? Date.now() - start : null,
-        error,
-      });
-    };
-
-    socket.setTimeout(TIMEOUT_MS);
-    socket.on('connect', () => finish(true, null));
-    socket.on('timeout', () => finish(false, 'Connection timed out'));
-    socket.on('error', (err) => finish(false, err.message));
-
-    socket.connect(gateway.port, gateway.host);
+  await prisma.gateway.update({
+    where: { id: gatewayId },
+    data: {
+      lastHealthStatus: result.reachable ? 'REACHABLE' : 'UNREACHABLE',
+      lastCheckedAt: new Date(),
+      lastLatencyMs: result.latencyMs,
+      lastError: result.error,
+    },
   });
+
+  return result;
 }
 
 export async function pushKeyToAllManagedGateways(

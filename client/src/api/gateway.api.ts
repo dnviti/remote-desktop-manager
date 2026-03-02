@@ -1,5 +1,7 @@
 import api from './client';
 
+export type GatewayHealthStatus = 'UNKNOWN' | 'REACHABLE' | 'UNREACHABLE';
+
 export interface GatewayData {
   id: string;
   name: string;
@@ -14,6 +16,12 @@ export interface GatewayData {
   createdById: string;
   createdAt: string;
   updatedAt: string;
+  monitoringEnabled: boolean;
+  monitorIntervalMs: number;
+  lastHealthStatus: GatewayHealthStatus;
+  lastCheckedAt: string | null;
+  lastLatencyMs: number | null;
+  lastError: string | null;
 }
 
 export interface GatewayInput {
@@ -27,6 +35,8 @@ export interface GatewayInput {
   password?: string;
   sshPrivateKey?: string;
   apiPort?: number;
+  monitoringEnabled?: boolean;
+  monitorIntervalMs?: number;
 }
 
 export interface GatewayUpdate {
@@ -39,12 +49,22 @@ export interface GatewayUpdate {
   password?: string;
   sshPrivateKey?: string;
   apiPort?: number | null;
+  monitoringEnabled?: boolean;
+  monitorIntervalMs?: number;
 }
 
 export interface TestResult {
   reachable: boolean;
   latencyMs: number | null;
   error: string | null;
+}
+
+export interface GatewayHealthEvent {
+  gatewayId: string;
+  status: GatewayHealthStatus;
+  latencyMs: number | null;
+  error: string | null;
+  checkedAt: string;
 }
 
 export interface SshKeyPairData {

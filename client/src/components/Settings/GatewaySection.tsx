@@ -50,6 +50,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   const generateSshKeyPairAction = useGatewayStore((s) => s.generateSshKeyPair);
   const rotateSshKeyPairAction = useGatewayStore((s) => s.rotateSshKeyPair);
   const pushKeyToGatewayAction = useGatewayStore((s) => s.pushKeyToGateway);
+  const applyHealthUpdate = useGatewayStore((s) => s.applyHealthUpdate);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGateway, setEditingGateway] = useState<GatewayData | null>(null);
@@ -106,6 +107,13 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
         ...prev,
         [gw.id]: { gatewayId: gw.id, loading: false, result },
       }));
+      applyHealthUpdate({
+        gatewayId: gw.id,
+        status: result.reachable ? 'REACHABLE' : 'UNREACHABLE',
+        latencyMs: result.latencyMs,
+        error: result.error,
+        checkedAt: new Date().toISOString(),
+      });
     } catch {
       setTestStates((prev) => ({
         ...prev,
@@ -416,22 +424,26 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                     <TableCell>
                       {test?.loading ? (
                         <CircularProgress size={16} />
-                      ) : test?.result ? (
-                        test.result.reachable ? (
+                      ) : gw.lastHealthStatus === 'REACHABLE' ? (
+                        <Tooltip title={gw.lastCheckedAt ? `Last checked: ${new Date(gw.lastCheckedAt).toLocaleTimeString()}` : ''}>
                           <Chip
-                            label={`Reachable${test.result.latencyMs != null ? ` (${test.result.latencyMs}ms)` : ''}`}
+                            label={`Reachable${gw.lastLatencyMs != null ? ` (${gw.lastLatencyMs}ms)` : ''}`}
                             size="small"
                             color="success"
                           />
-                        ) : (
+                        </Tooltip>
+                      ) : gw.lastHealthStatus === 'UNREACHABLE' ? (
+                        <Tooltip title={gw.lastCheckedAt ? `Last checked: ${new Date(gw.lastCheckedAt).toLocaleTimeString()}` : ''}>
                           <Chip
-                            label={test.result.error || 'Unreachable'}
+                            label={gw.lastError || 'Unreachable'}
                             size="small"
                             color="error"
                           />
-                        )
+                        </Tooltip>
                       ) : (
-                        <Typography variant="caption" color="text.secondary">Not tested</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {gw.monitoringEnabled ? 'Checking...' : 'Not monitored'}
+                        </Typography>
                       )}
                     </TableCell>
                     <TableCell align="right">

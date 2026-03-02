@@ -1361,3 +1361,27 @@
     MODIFICATO: server/src/routes/gateway.routes.ts (PATCH/GET /ssh-keypair/rotation)
     MODIFICATO: server/src/index.ts (startKeyRotationJob, graceful shutdown)
     MODIFICATO: .env.example (KEY_ROTATION_CRON, KEY_ROTATION_ADVANCE_DAYS)
+
+------------------------------------------------------------------------------
+[x] GATE-067 — Monitoraggio continuo e automatico della raggiungibilita' dei gateway
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+  COMPLETATO: Added continuous server-side gateway health monitoring with configurable TCP probe intervals. Schema extended with GatewayHealthStatus enum, monitoringEnabled, monitorIntervalMs, lastHealthStatus, lastCheckedAt, lastLatencyMs, lastError fields. New tcpProbe.ts utility extracted from existing inline net.Socket logic. New gatewayMonitor.service.ts with interval-based probe engine (Map<gatewayId, Timeout>), persists results to DB and broadcasts via Socket.IO. New /gateway-monitor Socket.IO namespace with JWT auth and tenant-scoped rooms. Monitors auto-start on server boot and stop on shutdown. Gateway CRUD operations trigger start/stop/restart of monitors. Manual test now also persists results. Frontend: real-time Status column reads from store (updated via Socket.IO), GatewayDialog has monitoring toggle and interval field, useGatewayMonitor hook mounted in MainLayout.
+
+  FILE COINVOLTI:
+    CREATO:     server/src/utils/tcpProbe.ts
+    CREATO:     server/src/services/gatewayMonitor.service.ts
+    CREATO:     server/src/socket/gatewayMonitor.handler.ts
+    CREATO:     client/src/hooks/useGatewayMonitor.ts
+    MODIFICATO: server/prisma/schema.prisma (GatewayHealthStatus enum, monitoring fields)
+    MODIFICATO: server/src/lib/prisma.ts (GatewayHealthStatus export)
+    MODIFICATO: server/src/index.ts (startAllMonitors, stopAllMonitors lifecycle)
+    MODIFICATO: server/src/socket/index.ts (setupGatewayMonitorHandler)
+    MODIFICATO: server/src/services/gateway.service.ts (publicSelect, input types, monitor lifecycle, tcpProbe refactor)
+    MODIFICATO: server/src/controllers/gateway.controller.ts (Zod validation for monitoring fields)
+    MODIFICATO: client/src/api/gateway.api.ts (GatewayHealthStatus, GatewayHealthEvent, monitoring fields)
+    MODIFICATO: client/src/store/gatewayStore.ts (applyHealthUpdate action)
+    MODIFICATO: client/src/components/Layout/MainLayout.tsx (useGatewayMonitor hook)
+    MODIFICATO: client/src/components/Settings/GatewaySection.tsx (real-time Status column)
+    MODIFICATO: client/src/components/gateway/GatewayDialog.tsx (monitoring config fields)

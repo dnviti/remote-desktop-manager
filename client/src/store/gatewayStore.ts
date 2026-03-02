@@ -7,6 +7,7 @@ import {
   rotateSshKeyPair as rotateSshKeyPairApi,
   pushKeyToGateway as pushKeyToGatewayApi,
   type RotateKeyPairResponse,
+  type GatewayHealthEvent,
 } from '../api/gateway.api';
 
 interface GatewayState {
@@ -19,6 +20,7 @@ interface GatewayState {
   createGateway: (data: GatewayInput) => Promise<GatewayData>;
   updateGateway: (id: string, data: GatewayUpdate) => Promise<void>;
   deleteGateway: (id: string) => Promise<void>;
+  applyHealthUpdate: (event: GatewayHealthEvent) => void;
   fetchSshKeyPair: () => Promise<void>;
   generateSshKeyPair: () => Promise<SshKeyPairData>;
   rotateSshKeyPair: () => Promise<RotateKeyPairResponse>;
@@ -60,6 +62,22 @@ export const useGatewayStore = create<GatewayState>((set) => ({
     await deleteGatewayApi(id);
     set((state) => ({
       gateways: state.gateways.filter((g) => g.id !== id),
+    }));
+  },
+
+  applyHealthUpdate: (event) => {
+    set((state) => ({
+      gateways: state.gateways.map((g) =>
+        g.id === event.gatewayId
+          ? {
+              ...g,
+              lastHealthStatus: event.status,
+              lastLatencyMs: event.latencyMs,
+              lastError: event.error,
+              lastCheckedAt: event.checkedAt,
+            }
+          : g,
+      ),
     }));
   },
 

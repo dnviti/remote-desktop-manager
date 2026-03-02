@@ -192,6 +192,12 @@ enum GatewayType {
   MANAGED_SSH
 }
 
+enum GatewayHealthStatus {
+  UNKNOWN
+  REACHABLE
+  UNREACHABLE
+}
+
 model Gateway {
   id          String      @id @default(uuid())
   name        String
@@ -213,6 +219,13 @@ model Gateway {
   sshKeyIV           String?
   sshKeyTag          String?
   apiPort            Int?
+
+  monitoringEnabled   Boolean             @default(true)
+  monitorIntervalMs   Int                 @default(5000)
+  lastHealthStatus    GatewayHealthStatus @default(UNKNOWN)
+  lastCheckedAt       DateTime?
+  lastLatencyMs       Int?
+  lastError           String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

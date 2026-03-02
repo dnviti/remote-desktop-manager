@@ -34,6 +34,7 @@ import { useNotificationStore } from '../../store/notificationStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useTerminalSettingsStore } from '../../store/terminalSettingsStore';
 import { useTabsStore } from '../../store/tabsStore';
+import { useGatewayMonitor } from '../../hooks/useGatewayMonitor';
 
 const SIDEBAR_WIDTH = 280;
 
@@ -51,6 +52,8 @@ export default function MainLayout() {
   const toggleTheme = useThemeStore((s) => s.toggle);
   const fetchTerminalDefaults = useTerminalSettingsStore((s) => s.fetchDefaults);
   const terminalDefaultsLoaded = useTerminalSettingsStore((s) => s.loaded);
+
+  useGatewayMonitor();
 
   useEffect(() => {
     if (!terminalDefaultsLoaded) {

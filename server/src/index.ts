@@ -8,6 +8,8 @@ import { setupSocketIO } from './socket';
 import { logger, toGuacamoleLogLevel } from './utils/logger';
 import prisma from './lib/prisma';
 import { startKeyRotationJob, stopAllJobs } from './services/scheduler.service';
+import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
+import { markServerReady } from './services/health.service';
 
 async function runDatabaseMigrations() {
   const serverDir = path.resolve(__dirname, '..');
@@ -62,6 +64,9 @@ async function main() {
   // Start scheduled jobs (SSH key rotation cron)
   startKeyRotationJob();
 
+  // Start gateway health monitors
+  startAllMonitors();
+
   // Setup guacamole-lite for RDP
   if (config.nodeEnv !== 'test') {
     try {
@@ -107,10 +112,12 @@ async function main() {
   server.listen(config.port, () => {
     logger.info(`Server running on port ${config.port}`);
     logger.info(`Environment: ${config.nodeEnv}`);
+    markServerReady();
   });
 
   const shutdown = () => {
     logger.info('Shutting down...');
+    stopAllMonitors();
     stopAllJobs();
     server.close(() => {
       logger.info('HTTP server closed.');

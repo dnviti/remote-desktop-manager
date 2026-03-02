@@ -17,6 +17,8 @@ const createSchema = z.object({
   password: z.string().optional(),
   sshPrivateKey: z.string().optional(),
   apiPort: z.number().int().min(1).max(65535).optional(),
+  monitoringEnabled: z.boolean().optional(),
+  monitorIntervalMs: z.number().int().min(1000).max(3600000).optional(),
 });
 
 const rotationPolicySchema = z.object({
@@ -35,6 +37,8 @@ const updateSchema = z.object({
   password: z.string().optional(),
   sshPrivateKey: z.string().optional(),
   apiPort: z.number().int().min(1).max(65535).nullable().optional(),
+  monitoringEnabled: z.boolean().optional(),
+  monitorIntervalMs: z.number().int().min(1000).max(3600000).optional(),
 });
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {

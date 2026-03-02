@@ -23,6 +23,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
   const [password, setPassword] = useState('');
   const [sshPrivateKey, setSshPrivateKey] = useState('');
   const [apiPort, setApiPort] = useState('');
+  const [monitoringEnabled, setMonitoringEnabled] = useState(true);
+  const [monitorIntervalMs, setMonitorIntervalMs] = useState('5000');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const createGateway = useGatewayStore((s) => s.createGateway);
@@ -42,6 +44,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setPassword('');
       setSshPrivateKey('');
       setApiPort(gateway.apiPort ? String(gateway.apiPort) : '');
+      setMonitoringEnabled(gateway.monitoringEnabled);
+      setMonitorIntervalMs(String(gateway.monitorIntervalMs));
     } else if (open) {
       setName('');
       setType('GUACD');
@@ -53,6 +57,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setPassword('');
       setSshPrivateKey('');
       setApiPort('');
+      setMonitoringEnabled(true);
+      setMonitorIntervalMs('5000');
     }
     setError('');
   }, [open, gateway]);
@@ -106,6 +112,9 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           if (password) data.password = password;
           if (sshPrivateKey) data.sshPrivateKey = sshPrivateKey;
         }
+        if (monitoringEnabled !== gateway.monitoringEnabled) data.monitoringEnabled = monitoringEnabled;
+        const intervalNum = parseInt(monitorIntervalMs, 10);
+        if (intervalNum && intervalNum !== gateway.monitorIntervalMs) data.monitorIntervalMs = intervalNum;
         await updateGateway(gateway.id, data);
       } else {
         const apiPortNum = apiPort ? parseInt(apiPort, 10) : undefined;
@@ -116,6 +125,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           port: portNum,
           description: description.trim() || undefined,
           isDefault: isDefault || undefined,
+          monitoringEnabled,
+          monitorIntervalMs: parseInt(monitorIntervalMs, 10) || 5000,
           ...(type === 'SSH_BASTION' && username ? { username } : {}),
           ...(type === 'SSH_BASTION' && password ? { password } : {}),
           ...(type === 'SSH_BASTION' && sshPrivateKey ? { sshPrivateKey } : {}),
@@ -144,6 +155,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
     setPassword('');
     setSshPrivateKey('');
     setApiPort('');
+    setMonitoringEnabled(true);
+    setMonitorIntervalMs('5000');
     setError('');
     onClose();
   };
@@ -260,6 +273,26 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
             }
             label={`Set as default ${type === 'GUACD' ? 'GUACD' : type === 'MANAGED_SSH' ? 'Managed SSH' : 'SSH Bastion'} gateway`}
           />
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={monitoringEnabled}
+                onChange={(e) => setMonitoringEnabled(e.target.checked)}
+              />
+            }
+            label="Enable health monitoring"
+          />
+          {monitoringEnabled && (
+            <TextField
+              label="Monitor interval (ms)"
+              value={monitorIntervalMs}
+              onChange={(e) => setMonitorIntervalMs(e.target.value)}
+              type="number"
+              fullWidth
+              helperText="How often to check connectivity (1000-3600000ms)"
+              inputProps={{ min: 1000, max: 3600000 }}
+            />
+          )}
         </Box>
       </DialogContent>
       <DialogActions>
