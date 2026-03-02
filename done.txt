@@ -1405,3 +1405,20 @@
     MODIFICATO: server/Dockerfile (HEALTHCHECK instruction)
     MODIFICATO: client/Dockerfile (HEALTHCHECK instruction)
     MODIFICATO: package.json (wait-on devDep, dev:client:wait script, updated dev script)
+
+
+================================================================================
+  SEZIONE E — ZERO TRUST HARDENING
+================================================================================
+
+
+------------------------------------------------------------------------------
+[x] ZT-036 — Security headers (helmet middleware)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Added helmet middleware to Express server for comprehensive HTTP security headers. Configured CSP (restrictive 'self' for all resource types, 'none' for objects/frame-ancestors), HSTS (1-year max-age with includeSubDomains), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin. Helmet placed before all route handlers in app.ts.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/src/app.ts (import helmet, app.use(helmet({...})) before routes)
+    MODIFICATO: server/package.json (added helmet dependency)

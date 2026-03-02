@@ -56,31 +56,6 @@
 ------------------------------------------------------------------------------
 
 
-------------------------------------------------------------------------------
-[ ] ZT-036 — Security headers (helmet middleware)
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Aggiungere il middleware helmet per impostare gli header HTTP di sicurezza
-  standard. Attualmente l'app non invia nessun header di sicurezza (CSP, HSTS,
-  X-Frame-Options, X-Content-Type-Options, Referrer-Policy), esponendola a
-  attacchi XSS, clickjacking e content sniffing.
-
-  DETTAGLI TECNICI:
-  Backend:
-    - Installare helmet: npm install helmet
-    - Aggiungere app.use(helmet({...})) in server/src/app.ts prima delle routes
-    - Configurare Content-Security-Policy per permettere le risorse del client
-    - Configurare HSTS con max-age appropriato (31536000s = 1 anno)
-    - Abilitare X-Frame-Options: DENY (l'app non deve essere in iframe)
-    - Abilitare X-Content-Type-Options: nosniff
-    - Configurare Referrer-Policy: strict-origin-when-cross-origin
-  File coinvolti:
-    - server/src/app.ts
-    - server/package.json
-
 
 ------------------------------------------------------------------------------
 [ ] ZT-037 — Rate limiting login e account lockout

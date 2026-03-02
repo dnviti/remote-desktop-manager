@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import passport from 'passport';
 import authRoutes from './routes/auth.routes';
 import oauthRoutes from './routes/oauth.routes';
@@ -24,6 +25,23 @@ import { errorHandler } from './middleware/error.middleware';
 
 const app = express();
 
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'"],
+      imgSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+    },
+  },
+  hsts: { maxAge: 31536000, includeSubDomains: true },
+  frameguard: { action: 'deny' },
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+}));
 app.use(cors({ origin: ['http://localhost:3000'], credentials: true }));
 app.use(express.json({ limit: '500kb' }));
 app.use(passport.initialize());
