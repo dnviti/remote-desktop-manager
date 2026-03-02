@@ -1269,3 +1269,77 @@
     ELIMINATO:  client/src/pages/AuditLogPage.tsx
     ELIMINATO:  client/src/components/Settings/OrganizationSection.tsx
     ELIMINATO:  client/src/components/gateway/GatewayList.tsx
+
+
+------------------------------------------------------------------------------
+[x] SSHGW-050 — Generazione e gestione chiavi SSH server-side per gateway gestiti
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: SSHGW-049
+  COMPLETATO: Server-side SSH key pair generation and lifecycle management for managed gateways. SshKeyPair Prisma model (Ed25519, per-tenant, encrypted private key with server-level AES-256-GCM). sshkey.service.ts with generateKeyPair, getPublicKey, getPrivateKey, rotateKeyPair. Server-level encryption via SERVER_ENCRYPTION_KEY (config.ts, crypto.service.ts encryptWithServerKey/decryptWithServerKey). API endpoints: POST/GET /api/gateways/ssh-keypair, POST /ssh-keypair/rotate, GET /ssh-keypair/private. Protected with requireTenantRole('ADMIN'). Audit actions SSH_KEY_GENERATE, SSH_KEY_ROTATE.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/prisma/schema.prisma (SshKeyPair model, Tenant rel.)
+    CREATO:     server/src/services/sshkey.service.ts
+    MODIFICATO: server/src/services/crypto.service.ts (encryptWithServerKey)
+    MODIFICATO: server/src/routes/gateway.routes.ts (keypair endpoints)
+    MODIFICATO: server/src/controllers/gateway.controller.ts (keypair)
+    MODIFICATO: server/src/config.ts (SERVER_ENCRYPTION_KEY)
+    MODIFICATO: .env.example (SERVER_ENCRYPTION_KEY)
+
+
+------------------------------------------------------------------------------
+[x] SSHGW-051 — Integrazione gateway SSH gestito nel backend (MANAGED_SSH)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: SSHGW-049, SSHGW-050
+  COMPLETATO: Added MANAGED_SSH gateway type for server-managed SSH gateways. Prisma GatewayType enum extended + migration. SSH handler routes MANAGED_SSH connections using tenant's server-managed SSH key pair (via sshkey.service.getPrivateKey) with fixed username "tunnel", bypassing vault credential decryption. Gateway service validates tenant has SSH key pair on MANAGED_SSH creation and rejects user-supplied credentials. Zod schema updated. Client: GatewayDialog with MANAGED_SSH option (default port 2222, info alert, no credential fields), ConnectionDialog filters MANAGED_SSH for SSH connections, GatewaySection shows green "Managed SSH" chip.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/prisma/schema.prisma (GatewayType enum + migration)
+    MODIFICATO: server/src/controllers/gateway.controller.ts (Zod schema)
+    MODIFICATO: server/src/services/gateway.service.ts (MANAGED_SSH validation)
+    MODIFICATO: server/src/socket/ssh.handler.ts (MANAGED_SSH routing with key-based auth)
+    MODIFICATO: client/src/api/gateway.api.ts (MANAGED_SSH type)
+    MODIFICATO: client/src/components/gateway/GatewayDialog.tsx (MANAGED_SSH UI)
+    MODIFICATO: client/src/components/Dialogs/ConnectionDialog.tsx (gateway filter)
+    MODIFICATO: client/src/components/Settings/GatewaySection.tsx (Managed SSH chip)
+
+
+------------------------------------------------------------------------------
+[x] SSHGW-052 — Frontend gateway SSH gestito: UI, status e configurazione
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: SSHGW-050, SSHGW-051
+  COMPLETATO: Already fully implemented as part of SSHGW-050 and SSHGW-051. All frontend MANAGED_SSH support verified: gateway.api.ts (MANAGED_SSH type, SshKeyPairData interface, 4 keypair API functions), GatewayDialog.tsx (MANAGED_SSH MenuItem, info alert, hidden credentials, default port 2222), GatewaySection.tsx (admin-only SSH Key Pair section with generate/rotate/copy/download/accordion, green Managed SSH chip), ConnectionDialog.tsx (MANAGED_SSH in SSH gateway filter), gatewayStore.ts (sshKeyPair state, fetch/generate/rotate actions).
+
+  FILE COINVOLTI:
+    MODIFICATO: client/src/api/gateway.api.ts (MANAGED_SSH, keypair API)
+    MODIFICATO: client/src/store/gatewayStore.ts (keypair state/actions)
+    MODIFICATO: client/src/components/gateway/GatewayDialog.tsx (MANAGED_SSH)
+    MODIFICATO: client/src/components/Settings/GatewaySection.tsx (managed chip, keypair section)
+    MODIFICATO: client/src/components/Dialogs/ConnectionDialog.tsx (filter)
+
+
+------------------------------------------------------------------------------
+[x] SSHGW-053 — Push chiave pubblica SSH al gateway tramite API HTTP sidecar
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: SSHGW-050
+  COMPLETATO: Added HTTP sidecar API to SSH gateway container (BusyBox httpd + CGI script key-api.sh on port 8022, Bearer token auth via GATEWAY_API_TOKEN). Server: pushKeyToGateway() and pushKeyToAllManagedGateways() in gateway.service.ts, push-key route, auto-push on MANAGED_SSH gateway creation and on key rotation. Client: Push Key button per gateway row with success/error feedback, apiPort field in GatewayDialog, rotation auto-push with Alert showing results. Added apiPort column to Gateway model, SSH_KEY_PUSH audit action, busybox-extras to Alpine container.
+
+  FILE COINVOLTI:
+    CREATO:     ssh-gateway/key-api.sh (CGI handler for BusyBox httpd)
+    MODIFICATO: ssh-gateway/Dockerfile (busybox-extras, CGI dir, expose 8022)
+    MODIFICATO: ssh-gateway/entrypoint.sh (start httpd sidecar)
+    MODIFICATO: docker-compose.dev.yml (sidecar port, env_file)
+    MODIFICATO: .env.example (GATEWAY_API_TOKEN)
+    MODIFICATO: server/prisma/schema.prisma (Gateway.apiPort, SSH_KEY_PUSH)
+    MODIFICATO: server/src/config.ts (gatewayApiToken)
+    MODIFICATO: server/src/services/gateway.service.ts (pushKey, pushAll, apiPort)
+    MODIFICATO: server/src/controllers/gateway.controller.ts (pushKey, auto-push)
+    MODIFICATO: server/src/routes/gateway.routes.ts (push-key route)
+    MODIFICATO: client/src/api/gateway.api.ts (apiPort, pushKey, RotateKeyPairResponse)
+    MODIFICATO: client/src/store/gatewayStore.ts (pushKey action, rotate response)
+    MODIFICATO: client/src/components/gateway/GatewayDialog.tsx (apiPort field)
+    MODIFICATO: client/src/components/Settings/GatewaySection.tsx (Push Key button, rotation push results)

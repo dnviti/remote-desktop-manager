@@ -27,10 +27,13 @@ services:
   # SSH Gateway (optional — uncomment to enable for local testing)
   ssh-gateway:
     build: ./ssh-gateway
-    env_file:
-      - .env
     ports:
       - "${SSH_GATEWAY_PORT:-2222}:2222"
+      - "${SSH_GATEWAY_API_PORT:-8022}:8022"
+    env_file:
+      - .env
+    # environment:
+    #   - GATEWAY_API_TOKEN=${GATEWAY_API_TOKEN:-}
     restart: unless-stopped
 
 volumes:

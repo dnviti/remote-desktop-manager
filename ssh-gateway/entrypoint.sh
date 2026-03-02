@@ -32,5 +32,14 @@ fi
 chown tunnel:tunnel "$AUTH_KEYS_FILE"
 chmod 600 "$AUTH_KEYS_FILE"
 
+# Start HTTP key management API (sidecar) if token is configured
+API_PORT="${GATEWAY_API_PORT:-8022}"
+if [ -n "$GATEWAY_API_TOKEN" ]; then
+  echo "Starting key management API on port $API_PORT..."
+  httpd -p "$API_PORT" -h /var/www
+else
+  echo "WARNING: GATEWAY_API_TOKEN not set — key management API disabled"
+fi
+
 echo "Starting SSH gateway on port ${SSH_PORT:-2222}..."
 exec /usr/sbin/sshd -D -e -p "${SSH_PORT:-2222}"

@@ -39,6 +39,7 @@ export const config = {
   guacdPort: parseInt(process.env.GUACD_PORT || '4822', 10),
   guacamoleSecret: process.env.GUACAMOLE_SECRET || 'dev-guac-secret',
   serverEncryptionKey: resolveServerEncryptionKey(),
+  gatewayApiToken: process.env.GATEWAY_API_TOKEN || '',
   vaultTtlMinutes: parseInt(process.env.VAULT_TTL_MINUTES || '30', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
   logLevel: (process.env.LOG_LEVEL || 'info') as 'error' | 'warn' | 'info' | 'debug',

@@ -20,5 +20,6 @@ router.post('/ssh-keypair/rotate', requireTenantRole('ADMIN'), gatewayController
 router.put('/:id', requireTenantRole('ADMIN'), gatewayController.update);
 router.delete('/:id', requireTenantRole('ADMIN'), gatewayController.remove);
 router.post('/:id/test', gatewayController.testConnectivity);
+router.post('/:id/push-key', requireTenantRole('ADMIN'), gatewayController.pushKey);
 
 export default router;

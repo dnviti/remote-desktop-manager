@@ -3,12 +3,13 @@ import api from './client';
 export interface GatewayData {
   id: string;
   name: string;
-  type: 'GUACD' | 'SSH_BASTION';
+  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH';
   host: string;
   port: number;
   description: string | null;
   isDefault: boolean;
   hasSshKey: boolean;
+  apiPort: number | null;
   tenantId: string;
   createdById: string;
   createdAt: string;
@@ -17,7 +18,7 @@ export interface GatewayData {
 
 export interface GatewayInput {
   name: string;
-  type: 'GUACD' | 'SSH_BASTION';
+  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH';
   host: string;
   port: number;
   description?: string;
@@ -25,6 +26,7 @@ export interface GatewayInput {
   username?: string;
   password?: string;
   sshPrivateKey?: string;
+  apiPort?: number;
 }
 
 export interface GatewayUpdate {
@@ -36,6 +38,7 @@ export interface GatewayUpdate {
   username?: string;
   password?: string;
   sshPrivateKey?: string;
+  apiPort?: number | null;
 }
 
 export interface TestResult {
@@ -88,8 +91,24 @@ export async function generateSshKeyPair(): Promise<SshKeyPairData> {
   return res.data;
 }
 
-export async function rotateSshKeyPair(): Promise<SshKeyPairData> {
+export interface KeyPushResult {
+  gatewayId: string;
+  name: string;
+  ok: boolean;
+  error?: string;
+}
+
+export interface RotateKeyPairResponse extends SshKeyPairData {
+  pushResults?: KeyPushResult[];
+}
+
+export async function rotateSshKeyPair(): Promise<RotateKeyPairResponse> {
   const res = await api.post('/gateways/ssh-keypair/rotate');
+  return res.data;
+}
+
+export async function pushKeyToGateway(id: string): Promise<{ ok: boolean; error?: string }> {
+  const res = await api.post(`/gateways/${id}/push-key`);
   return res.data;
 }
 

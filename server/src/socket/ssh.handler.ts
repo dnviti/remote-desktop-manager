@@ -8,6 +8,7 @@ import { AuthPayload, SftpEntry } from '../types';
 import { createSshConnection, createSshConnectionViaBastion, createSftpSession, resizeSshTerminal, SshSession } from '../services/ssh.service';
 import { getConnectionCredentials, getConnection } from '../services/connection.service';
 import { getGatewayCredentials } from '../services/gateway.service';
+import { getPrivateKey as getTenantPrivateKey } from '../services/sshkey.service';
 
 interface ActiveTransfer {
   stream: NodeJS.ReadableStream | NodeJS.WritableStream;
@@ -107,9 +108,9 @@ export function setupSshHandler(io: Server) {
         let session: SshSession;
 
         if (conn.gateway) {
-          if (conn.gateway.type !== 'SSH_BASTION') {
+          if (conn.gateway.type !== 'SSH_BASTION' && conn.gateway.type !== 'MANAGED_SSH') {
             socket.emit('session:error', {
-              message: 'Connection gateway must be of type SSH_BASTION for SSH connections',
+              message: 'Connection gateway must be SSH_BASTION or MANAGED_SSH for SSH connections',
             });
             return;
           }
@@ -119,20 +120,35 @@ export function setupSshHandler(io: Server) {
             return;
           }
 
-          const gatewayCreds = await getGatewayCredentials(user.userId, user.tenantId, conn.gateway.id);
-          if (!gatewayCreds.username || (!gatewayCreds.password && !gatewayCreds.sshPrivateKey)) {
-            socket.emit('session:error', {
-              message: 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.',
-            });
-            return;
+          let bastionUsername: string;
+          let bastionPassword: string | undefined;
+          let bastionPrivateKey: string | undefined;
+
+          if (conn.gateway.type === 'MANAGED_SSH') {
+            // Managed SSH gateway: use server-managed key pair, fixed username "tunnel"
+            const privateKeyBuf = await getTenantPrivateKey(user.tenantId);
+            bastionUsername = 'tunnel';
+            bastionPrivateKey = privateKeyBuf.toString('utf8');
+          } else {
+            // SSH_BASTION: decrypt user-supplied credentials from the gateway
+            const gatewayCreds = await getGatewayCredentials(user.userId, user.tenantId, conn.gateway.id);
+            if (!gatewayCreds.username || (!gatewayCreds.password && !gatewayCreds.sshPrivateKey)) {
+              socket.emit('session:error', {
+                message: 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.',
+              });
+              return;
+            }
+            bastionUsername = gatewayCreds.username;
+            bastionPassword = gatewayCreds.password ?? undefined;
+            bastionPrivateKey = gatewayCreds.sshPrivateKey ?? undefined;
           }
 
           session = await createSshConnectionViaBastion({
             bastionHost: conn.gateway.host,
             bastionPort: conn.gateway.port,
-            bastionUsername: gatewayCreds.username,
-            bastionPassword: gatewayCreds.password ?? undefined,
-            bastionPrivateKey: gatewayCreds.sshPrivateKey ?? undefined,
+            bastionUsername,
+            bastionPassword,
+            bastionPrivateKey,
             targetHost: conn.host,
             targetPort: conn.port,
             targetUsername: username,

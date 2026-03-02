@@ -14,7 +14,7 @@ interface GatewayDialogProps {
 
 export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'GUACD' | 'SSH_BASTION'>('GUACD');
+  const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH'>('GUACD');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [description, setDescription] = useState('');
@@ -22,6 +22,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [sshPrivateKey, setSshPrivateKey] = useState('');
+  const [apiPort, setApiPort] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const createGateway = useGatewayStore((s) => s.createGateway);
@@ -40,6 +41,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setUsername('');
       setPassword('');
       setSshPrivateKey('');
+      setApiPort(gateway.apiPort ? String(gateway.apiPort) : '');
     } else if (open) {
       setName('');
       setType('GUACD');
@@ -50,14 +52,21 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setUsername('');
       setPassword('');
       setSshPrivateKey('');
+      setApiPort('');
     }
     setError('');
   }, [open, gateway]);
 
-  const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION') => {
+  const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH') => {
     setType(newType);
-    if (!port || (newType === 'GUACD' && port === '22') || (newType === 'SSH_BASTION' && port === '4822')) {
-      setPort(newType === 'GUACD' ? '4822' : '22');
+    const defaultPort = newType === 'GUACD' ? '4822' : newType === 'MANAGED_SSH' ? '2222' : '22';
+    if (!port || port === '4822' || port === '22' || port === '2222') {
+      setPort(defaultPort);
+    }
+    if (newType === 'MANAGED_SSH' && !apiPort) {
+      setApiPort('8022');
+    } else if (newType !== 'MANAGED_SSH') {
+      setApiPort('');
     }
   };
 
@@ -88,6 +97,10 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           data.description = description.trim() || null;
         }
         if (isDefault !== gateway.isDefault) data.isDefault = isDefault;
+        if (gateway.type === 'MANAGED_SSH') {
+          const newApiPort = apiPort ? parseInt(apiPort, 10) : null;
+          if (newApiPort !== gateway.apiPort) data.apiPort = newApiPort;
+        }
         if (type === 'SSH_BASTION') {
           if (username) data.username = username;
           if (password) data.password = password;
@@ -95,6 +108,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
         }
         await updateGateway(gateway.id, data);
       } else {
+        const apiPortNum = apiPort ? parseInt(apiPort, 10) : undefined;
         await createGateway({
           name: name.trim(),
           type,
@@ -105,6 +119,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           ...(type === 'SSH_BASTION' && username ? { username } : {}),
           ...(type === 'SSH_BASTION' && password ? { password } : {}),
           ...(type === 'SSH_BASTION' && sshPrivateKey ? { sshPrivateKey } : {}),
+          ...(type === 'MANAGED_SSH' && apiPortNum ? { apiPort: apiPortNum } : {}),
         });
       }
       handleClose();
@@ -128,6 +143,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
     setUsername('');
     setPassword('');
     setSshPrivateKey('');
+    setApiPort('');
     setError('');
     onClose();
   };
@@ -152,13 +168,29 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
             <Select
               value={type}
               label="Type"
-              onChange={(e) => handleTypeChange(e.target.value as 'GUACD' | 'SSH_BASTION')}
+              onChange={(e) => handleTypeChange(e.target.value as 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH')}
               disabled={isEditMode}
             >
               <MenuItem value="GUACD">GUACD (RDP Gateway)</MenuItem>
               <MenuItem value="SSH_BASTION">SSH Bastion (Jump Host)</MenuItem>
+              <MenuItem value="MANAGED_SSH">Managed SSH Gateway</MenuItem>
             </Select>
           </FormControl>
+          {type === 'MANAGED_SSH' && (
+            <Alert severity="info">
+              This gateway uses the server&apos;s SSH key pair for authentication. No credentials needed.
+            </Alert>
+          )}
+          {type === 'MANAGED_SSH' && (
+            <TextField
+              label="API Port (sidecar)"
+              value={apiPort}
+              onChange={(e) => setApiPort(e.target.value)}
+              type="number"
+              fullWidth
+              helperText="HTTP port for the key management sidecar (default: 8022)"
+            />
+          )}
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
               label="Host"
@@ -226,7 +258,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                 onChange={(e) => setIsDefault(e.target.checked)}
               />
             }
-            label={`Set as default ${type === 'GUACD' ? 'GUACD' : 'SSH Bastion'} gateway`}
+            label={`Set as default ${type === 'GUACD' ? 'GUACD' : type === 'MANAGED_SSH' ? 'Managed SSH' : 'SSH Bastion'} gateway`}
           />
         </Box>
       </DialogContent>

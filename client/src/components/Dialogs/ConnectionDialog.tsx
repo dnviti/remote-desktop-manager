@@ -90,7 +90,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   };
 
   const availableGateways = gateways.filter((g) => {
-    if (type === 'SSH') return g.type === 'SSH_BASTION';
+    if (type === 'SSH') return g.type === 'SSH_BASTION' || g.type === 'MANAGED_SSH';
     if (type === 'RDP') return g.type === 'GUACD';
     return false;
   });

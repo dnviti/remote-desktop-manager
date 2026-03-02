@@ -3,6 +3,7 @@ import prisma from '../lib/prisma';
 import type { GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { config } from '../config';
 
 export interface CreateGatewayInput {
   name: string;
@@ -14,6 +15,7 @@ export interface CreateGatewayInput {
   username?: string;
   password?: string;
   sshPrivateKey?: string;
+  apiPort?: number;
 }
 
 export interface UpdateGatewayInput {
@@ -25,6 +27,7 @@ export interface UpdateGatewayInput {
   username?: string;
   password?: string;
   sshPrivateKey?: string;
+  apiPort?: number | null;
 }
 
 // Fields returned for public gateway responses (no credential columns)
@@ -41,6 +44,7 @@ const publicSelect = {
   createdAt: true,
   updatedAt: true,
   encryptedSshKey: true,
+  apiPort: true,
 } as const;
 
 function requireMasterKey(userId: string): Buffer {
@@ -100,6 +104,14 @@ export async function createGateway(
         encData.sshKeyTag = enc.tag;
       }
     }
+  } else if (input.type === 'MANAGED_SSH') {
+    if (input.username || input.password || input.sshPrivateKey) {
+      throw new AppError('MANAGED_SSH gateways use the server-managed key pair. Do not supply credentials.', 400);
+    }
+    const keyPair = await prisma.sshKeyPair.findUnique({ where: { tenantId } });
+    if (!keyPair) {
+      throw new AppError('Cannot create MANAGED_SSH gateway: no SSH key pair generated for this tenant. Generate one first.', 400);
+    }
   } else if (input.username || input.password || input.sshPrivateKey) {
     throw new AppError('Credentials can only be set for SSH_BASTION gateways', 400);
   }
@@ -120,6 +132,7 @@ export async function createGateway(
         port: input.port,
         description: input.description ?? null,
         isDefault: input.isDefault ?? false,
+        apiPort: input.type === 'MANAGED_SSH' ? (input.apiPort ?? null) : null,
         tenantId,
         createdById: userId,
         ...encData,
@@ -149,6 +162,7 @@ export async function updateGateway(
   if (input.host !== undefined) data.host = input.host;
   if (input.port !== undefined) data.port = input.port;
   if (input.description !== undefined) data.description = input.description;
+  if (input.apiPort !== undefined) data.apiPort = input.apiPort;
 
   if (input.username !== undefined || input.password !== undefined || input.sshPrivateKey !== undefined) {
     if (existing.type !== 'SSH_BASTION') {
@@ -295,4 +309,86 @@ export async function testGatewayConnectivity(
 
     socket.connect(gateway.port, gateway.host);
   });
+}
+
+export async function pushKeyToAllManagedGateways(
+  tenantId: string,
+): Promise<{ gatewayId: string; name: string; ok: boolean; error?: string }[]> {
+  const gateways = await prisma.gateway.findMany({
+    where: { tenantId, type: 'MANAGED_SSH', apiPort: { not: null } },
+    select: { id: true, name: true },
+  });
+
+  const results: { gatewayId: string; name: string; ok: boolean; error?: string }[] = [];
+  for (const gw of gateways) {
+    try {
+      await pushKeyToGateway(tenantId, gw.id);
+      results.push({ gatewayId: gw.id, name: gw.name, ok: true });
+    } catch (err) {
+      results.push({ gatewayId: gw.id, name: gw.name, ok: false, error: (err as Error).message });
+    }
+  }
+  return results;
+}
+
+export async function pushKeyToGateway(
+  tenantId: string,
+  gatewayId: string,
+): Promise<{ ok: boolean }> {
+  const gateway = await prisma.gateway.findFirst({
+    where: { id: gatewayId, tenantId },
+    select: { host: true, port: true, apiPort: true, type: true },
+  });
+  if (!gateway) throw new AppError('Gateway not found', 404);
+  if (gateway.type !== 'MANAGED_SSH') {
+    throw new AppError('Push key is only supported for MANAGED_SSH gateways', 400);
+  }
+  if (!gateway.apiPort) {
+    throw new AppError('Gateway does not have an API port configured', 400);
+  }
+
+  const token = config.gatewayApiToken;
+  if (!token) {
+    throw new AppError('GATEWAY_API_TOKEN is not configured on the server', 500);
+  }
+
+  const keyPair = await prisma.sshKeyPair.findUnique({
+    where: { tenantId },
+    select: { publicKey: true },
+  });
+  if (!keyPair) {
+    throw new AppError('No SSH key pair found for this tenant. Generate one first.', 404);
+  }
+
+  const url = `http://${gateway.host}:${gateway.apiPort}/cgi-bin/authorized-keys`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 5000);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${token}`,
+      },
+      body: JSON.stringify({ publicKey: keyPair.publicKey }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      const body = await response.text();
+      throw new AppError(`Gateway API returned ${response.status}: ${body}`, 502);
+    }
+
+    return { ok: true };
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err instanceof AppError) throw err;
+    if ((err as Error).name === 'AbortError') {
+      throw new AppError('Gateway API request timed out (5s)', 504);
+    }
+    throw new AppError(`Failed to reach gateway API: ${(err as Error).message}`, 502);
+  }
 }

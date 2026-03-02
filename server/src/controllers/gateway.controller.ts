@@ -8,7 +8,7 @@ import { AppError } from '../middleware/error.middleware';
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION']),
+  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   description: z.string().max(500).optional(),
@@ -16,6 +16,7 @@ const createSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   sshPrivateKey: z.string().optional(),
+  apiPort: z.number().int().min(1).max(65535).optional(),
 });
 
 const updateSchema = z.object({
@@ -27,6 +28,7 @@ const updateSchema = z.object({
   username: z.string().optional(),
   password: z.string().optional(),
   sshPrivateKey: z.string().optional(),
+  apiPort: z.number().int().min(1).max(65535).nullable().optional(),
 });
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
@@ -54,7 +56,28 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
       details: { name: data.name, type: data.type, isDefault: data.isDefault ?? false },
       ipAddress: req.ip,
     });
-    res.status(201).json(result);
+
+    // Best-effort auto-push key for MANAGED_SSH gateways
+    let keyPushed = false;
+    let keyPushError: string | undefined;
+    if (data.type === 'MANAGED_SSH' && data.apiPort) {
+      try {
+        await gatewayService.pushKeyToGateway(req.user!.tenantId!, result.id);
+        keyPushed = true;
+        auditService.log({
+          userId: req.user!.userId,
+          action: 'SSH_KEY_PUSH',
+          targetType: 'Gateway',
+          targetId: result.id,
+          details: { auto: true },
+          ipAddress: req.ip,
+        });
+      } catch (err) {
+        keyPushError = (err as Error).message;
+      }
+    }
+
+    res.status(201).json({ ...result, keyPushed, keyPushError });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
@@ -152,6 +175,42 @@ export async function rotateSshKeyPair(req: AuthRequest, res: Response, next: Ne
       action: 'SSH_KEY_ROTATE',
       targetType: 'SshKeyPair',
       targetId: result.id,
+      ipAddress: req.ip,
+    });
+
+    // Best-effort auto-push rotated key to all managed gateways
+    const pushResults = await gatewayService.pushKeyToAllManagedGateways(req.user!.tenantId!);
+    for (const pr of pushResults) {
+      if (pr.ok) {
+        auditService.log({
+          userId: req.user!.userId,
+          action: 'SSH_KEY_PUSH',
+          targetType: 'Gateway',
+          targetId: pr.gatewayId,
+          details: { auto: true, trigger: 'rotate' },
+          ipAddress: req.ip,
+        });
+      }
+    }
+
+    res.json({ ...result, pushResults });
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function pushKey(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const gatewayId = req.params.id as string;
+    const result = await gatewayService.pushKeyToGateway(
+      req.user!.tenantId!,
+      gatewayId,
+    );
+    auditService.log({
+      userId: req.user!.userId,
+      action: 'SSH_KEY_PUSH',
+      targetType: 'Gateway',
+      targetId: gatewayId,
       ipAddress: req.ip,
     });
     res.json(result);

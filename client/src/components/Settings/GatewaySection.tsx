@@ -10,6 +10,7 @@ import {
   PlayArrow as TestIcon, Router as RouterIcon, VpnKey as KeyIcon,
   ContentCopy as CopyIcon, Download as DownloadIcon,
   Refresh as RotateIcon, ExpandMore as ExpandMoreIcon,
+  Publish as PushKeyIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useGatewayStore } from '../../store/gatewayStore';
@@ -48,6 +49,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   const fetchSshKeyPair = useGatewayStore((s) => s.fetchSshKeyPair);
   const generateSshKeyPairAction = useGatewayStore((s) => s.generateSshKeyPair);
   const rotateSshKeyPairAction = useGatewayStore((s) => s.rotateSshKeyPair);
+  const pushKeyToGatewayAction = useGatewayStore((s) => s.pushKeyToGateway);
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingGateway, setEditingGateway] = useState<GatewayData | null>(null);
@@ -55,8 +57,10 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
   const [testStates, setTestStates] = useState<Record<string, TestState>>({});
+  const [pushStates, setPushStates] = useState<Record<string, { loading: boolean; result?: { ok: boolean; error?: string } }>>({});
   const [keyActionLoading, setKeyActionLoading] = useState(false);
   const [rotateConfirmOpen, setRotateConfirmOpen] = useState(false);
+  const [rotatePushInfo, setRotatePushInfo] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const hasTenant = Boolean(user?.tenantId);
@@ -114,6 +118,27 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
     }
   };
 
+  const handlePushKey = async (gw: GatewayData) => {
+    setPushStates((prev) => ({ ...prev, [gw.id]: { loading: true } }));
+    try {
+      const result = await pushKeyToGatewayAction(gw.id);
+      setPushStates((prev) => ({ ...prev, [gw.id]: { loading: false, result } }));
+    } catch (err: unknown) {
+      setPushStates((prev) => ({
+        ...prev,
+        [gw.id]: {
+          loading: false,
+          result: {
+            ok: false,
+            error:
+              (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+              'Push key request failed',
+          },
+        },
+      }));
+    }
+  };
+
   const handleGenerateKeyPair = async () => {
     setKeyActionLoading(true);
     setError('');
@@ -133,8 +158,19 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
     setRotateConfirmOpen(false);
     setKeyActionLoading(true);
     setError('');
+    setRotatePushInfo(null);
     try {
-      await rotateSshKeyPairAction();
+      const result = await rotateSshKeyPairAction();
+      if (result.pushResults && result.pushResults.length > 0) {
+        const ok = result.pushResults.filter((r) => r.ok).length;
+        const total = result.pushResults.length;
+        const failed = result.pushResults.filter((r) => !r.ok);
+        let msg = `Key rotated and pushed to ${ok}/${total} gateway(s).`;
+        if (failed.length > 0) {
+          msg += ' Failed: ' + failed.map((f) => `${f.name} (${f.error})`).join(', ');
+        }
+        setRotatePushInfo(msg);
+      }
     } catch (err: unknown) {
       setError(
         (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
@@ -280,8 +316,11 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                 </AccordionSummary>
                 <AccordionDetails>
                   <Typography variant="body2" color="text.secondary">
-                    Copy this public key and add it to the <code>SSH_AUTHORIZED_KEYS</code> environment
-                    variable of your SSH gateway container, or mount it as <code>/config/authorized_keys</code>.
+                    For Managed SSH gateways with an API port configured, click the{' '}
+                    <strong>Push Key</strong> button on the gateway row to deploy the public key
+                    automatically. Alternatively, copy this public key and add it to the{' '}
+                    <code>SSH_AUTHORIZED_KEYS</code> environment variable of your SSH gateway
+                    container, or mount it as <code>/config/authorized_keys</code>.
                     The server will use the corresponding private key to authenticate automatically.
                   </Typography>
                 </AccordionDetails>
@@ -292,6 +331,15 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
       )}
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
+      {rotatePushInfo && (
+        <Alert
+          severity={rotatePushInfo.includes('Failed') ? 'warning' : 'success'}
+          sx={{ mb: 2 }}
+          onClose={() => setRotatePushInfo(null)}
+        >
+          {rotatePushInfo}
+        </Alert>
+      )}
 
       {/* Gateways Table Section */}
       <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
@@ -356,9 +404,9 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                     </TableCell>
                     <TableCell>
                       <Chip
-                        label={gw.type === 'GUACD' ? 'GUACD' : 'SSH Bastion'}
+                        label={gw.type === 'GUACD' ? 'GUACD' : gw.type === 'MANAGED_SSH' ? 'Managed SSH' : 'SSH Bastion'}
                         size="small"
-                        color={gw.type === 'GUACD' ? 'info' : 'warning'}
+                        color={gw.type === 'GUACD' ? 'info' : gw.type === 'MANAGED_SSH' ? 'success' : 'warning'}
                         variant="outlined"
                       />
                     </TableCell>
@@ -390,6 +438,31 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                       <IconButton size="small" onClick={() => handleTest(gw)} title="Test connectivity">
                         <TestIcon fontSize="small" />
                       </IconButton>
+                      {gw.type === 'MANAGED_SSH' && gw.apiPort && (
+                        <Tooltip title={
+                          pushStates[gw.id]?.result?.ok ? 'Key pushed successfully' :
+                          pushStates[gw.id]?.result?.error ? pushStates[gw.id].result!.error :
+                          'Push SSH key to gateway'
+                        }>
+                          <span>
+                            <IconButton
+                              size="small"
+                              onClick={() => handlePushKey(gw)}
+                              disabled={pushStates[gw.id]?.loading || !sshKeyPair}
+                              color={
+                                pushStates[gw.id]?.result?.ok ? 'success' :
+                                pushStates[gw.id]?.result?.error ? 'error' : 'default'
+                              }
+                            >
+                              {pushStates[gw.id]?.loading ? (
+                                <CircularProgress size={16} />
+                              ) : (
+                                <PushKeyIcon fontSize="small" />
+                              )}
+                            </IconButton>
+                          </span>
+                        </Tooltip>
+                      )}
                       <IconButton size="small" onClick={() => handleEdit(gw)} title="Edit">
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -434,9 +507,9 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
         <DialogContent>
           <DialogContentText>
             This will generate a new SSH key pair and replace the current one.
-            You will need to update the <code>SSH_AUTHORIZED_KEYS</code> or <code>/config/authorized_keys</code> on
-            all SSH gateway containers with the new public key. Existing connections through managed gateways
-            will fail until updated.
+            The new public key will be automatically pushed to all Managed SSH gateways
+            with an API port configured. For gateways without an API port, you will need to
+            update the key manually. Existing connections may fail briefly during the update.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

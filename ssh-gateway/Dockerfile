@@ -5,7 +5,7 @@ LABEL org.opencontainers.image.description="Lightweight SSH tunnel for TCP port 
 LABEL org.opencontainers.image.source="https://github.com/dnviti/remote-desktop-manager"
 LABEL org.opencontainers.image.licenses="MIT"
 
-RUN apk add --no-cache openssh-server netcat-openbsd \
+RUN apk add --no-cache openssh-server netcat-openbsd busybox-extras \
     && adduser -D -s /sbin/nologin tunnel \
     && sed -i 's/^tunnel:!/tunnel:*/' /etc/shadow \
     && mkdir -p /home/tunnel/.ssh \
@@ -18,7 +18,11 @@ RUN sed -i 's/\r$//' /etc/ssh/sshd_config
 COPY entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
-EXPOSE 2222
+RUN mkdir -p /var/www/cgi-bin
+COPY key-api.sh /var/www/cgi-bin/authorized-keys
+RUN sed -i 's/\r$//' /var/www/cgi-bin/authorized-keys && chmod +x /var/www/cgi-bin/authorized-keys
+
+EXPOSE 2222 8022
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD nc -z localhost ${SSH_PORT:-2222} || exit 1

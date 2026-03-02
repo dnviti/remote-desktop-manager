@@ -189,6 +189,7 @@ enum ConnectionType {
 enum GatewayType {
   GUACD
   SSH_BASTION
+  MANAGED_SSH
 }
 
 model Gateway {
@@ -211,6 +212,7 @@ model Gateway {
   encryptedSshKey    String?
   sshKeyIV           String?
   sshKeyTag          String?
+  apiPort            Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -321,6 +323,7 @@ enum AuditAction {
   GATEWAY_DELETE
   SSH_KEY_GENERATE
   SSH_KEY_ROTATE
+  SSH_KEY_PUSH
   BATCH_SHARE
 }
 
