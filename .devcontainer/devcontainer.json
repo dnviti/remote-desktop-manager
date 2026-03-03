@@ -1,0 +1,43 @@
+{
+  "name": "Remote Desktop Manager",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/app",
+
+  "containerEnv": {
+    "DATABASE_URL": "postgresql://rdm:rdm_password@postgres:5432/remote_desktop_manager",
+    "DOCKER_NETWORK": "rdm-devcontainer",
+    "DOCKER_SOCKET_PATH": "/var/run/docker.sock",
+    "NODE_ENV": "development"
+  },
+
+  // "postCreateCommand": "npm ci && npm run db:generate",
+
+  "forwardPorts": [],
+  "portsAttributes": {},
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "bash",
+        "typescript.tsdk": "node_modules/typescript/lib"
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "Prisma.prisma",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "mikestead.dotenv",
+        "eamodio.gitlens",
+        "anthropic.claude-code"
+      ]
+    }
+  },
+
+  "remoteUser": "node",
+
+  "features": {
+    "ghcr.io/devcontainers/features/git:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  }
+}

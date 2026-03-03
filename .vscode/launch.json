@@ -8,7 +8,7 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["tsx", "watch", "src/index.ts"],
       "cwd": "${workspaceFolder}/server",
-      "envFile": "${workspaceFolder}/.env",
+      "preLaunchTask": "db:generate",
       "console": "integratedTerminal",
       "restart": true,
       "skipFiles": ["<node_internals>/**"]
@@ -20,7 +20,6 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["tsx", "src/index.ts"],
       "cwd": "${workspaceFolder}/server",
-      "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal",
       "skipFiles": ["<node_internals>/**"]
     },
@@ -51,7 +50,6 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["prisma", "migrate", "dev"],
       "cwd": "${workspaceFolder}/server",
-      "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal"
     },
     {
@@ -61,7 +59,6 @@
       "runtimeExecutable": "npx",
       "runtimeArgs": ["prisma", "studio"],
       "cwd": "${workspaceFolder}/server",
-      "envFile": "${workspaceFolder}/.env",
       "console": "integratedTerminal"
     }
   ],
@@ -69,6 +66,7 @@
     {
       "name": "Full Stack: Server + Client",
       "configurations": ["Server: Dev", "Client: Dev"],
+      "preLaunchTask": "node:install",
       "stopAll": true
     }
   ]

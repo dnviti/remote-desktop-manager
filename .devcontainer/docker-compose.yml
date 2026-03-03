@@ -1,0 +1,56 @@
+services:
+  app:
+    build:
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/app:cached
+      - node_modules:/app/node_modules
+      - /var/run/docker.sock:/var/run/docker.sock
+    env_file:
+      - ../.env
+    ports:
+      - "3000:3000"
+      - "3001:3001"
+      - "3002:3002"
+    environment:
+      DATABASE_URL: postgresql://rdm:rdm_password@postgres:5432/remote_desktop_manager
+      DOCKER_NETWORK: rdm-devcontainer
+      DOCKER_SOCKET_PATH: /var/run/docker.sock
+      NODE_ENV: development
+    networks:
+      - rdm-devcontainer
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: sleep infinity
+
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: rdm
+      POSTGRES_PASSWORD: rdm_password
+      POSTGRES_DB: remote_desktop_manager
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_devcontainer:/var/lib/postgresql/data
+    networks:
+      - rdm-devcontainer
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rdm"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # guacd and ssh-gateway are NOT included here — the application
+  # creates and manages those containers itself via the orchestrator.
+
+networks:
+  rdm-devcontainer:
+    name: rdm-devcontainer
+
+volumes:
+  pgdata_devcontainer:
+  node_modules:
