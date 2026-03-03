@@ -69,6 +69,7 @@ export async function getTenant(tenantId: string) {
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
+    mfaRequired: tenant.mfaRequired,
     defaultSessionTimeoutSeconds: tenant.defaultSessionTimeoutSeconds,
     userCount: tenant._count.users,
     teamCount: tenant._count.teams,
@@ -77,7 +78,7 @@ export async function getTenant(tenantId: string) {
   };
 }
 
-export async function updateTenant(tenantId: string, data: { name?: string; defaultSessionTimeoutSeconds?: number }) {
+export async function updateTenant(tenantId: string, data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean }) {
   const updateData: Record<string, unknown> = {};
 
   if (data.name !== undefined) {
@@ -86,6 +87,9 @@ export async function updateTenant(tenantId: string, data: { name?: string; defa
   }
   if (data.defaultSessionTimeoutSeconds !== undefined) {
     updateData.defaultSessionTimeoutSeconds = data.defaultSessionTimeoutSeconds;
+  }
+  if (data.mfaRequired !== undefined) {
+    updateData.mfaRequired = data.mfaRequired;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -101,6 +105,7 @@ export async function updateTenant(tenantId: string, data: { name?: string; defa
     id: tenant.id,
     name: tenant.name,
     slug: tenant.slug,
+    mfaRequired: tenant.mfaRequired,
     defaultSessionTimeoutSeconds: tenant.defaultSessionTimeoutSeconds,
     updatedAt: tenant.updatedAt,
   };
@@ -138,6 +143,18 @@ export async function deleteTenant(tenantId: string) {
   return { deleted: true };
 }
 
+export async function getTenantMfaStats(tenantId: string) {
+  const users = await prisma.user.findMany({
+    where: { tenantId },
+    select: { id: true, totpEnabled: true, smsMfaEnabled: true },
+  });
+
+  const total = users.length;
+  const withoutMfa = users.filter((u) => !u.totpEnabled && !u.smsMfaEnabled).length;
+
+  return { total, withoutMfa };
+}
+
 export async function listTenantUsers(tenantId: string) {
   const users = await prisma.user.findMany({
     where: { tenantId },
@@ -147,6 +164,8 @@ export async function listTenantUsers(tenantId: string) {
       username: true,
       avatarData: true,
       tenantRole: true,
+      totpEnabled: true,
+      smsMfaEnabled: true,
       createdAt: true,
     },
     orderBy: { email: 'asc' },

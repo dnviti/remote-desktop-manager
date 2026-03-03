@@ -1,15 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link as RouterLink, useSearchParams } from 'react-router-dom';
 import {
-  Box, Card, CardContent, TextField, Button, Typography, Alert, Link, Stack,
+  Box, Card, CardContent, TextField, Button, Typography, Alert, Link, Stack, CircularProgress,
 } from '@mui/material';
-import { loginApi, verifyTotpApi, requestSmsCodeApi, verifySmsApi } from '../api/auth.api';
+import { QRCodeSVG } from 'qrcode.react';
+import { loginApi, verifyTotpApi, requestSmsCodeApi, verifySmsApi, mfaSetupInitApi, mfaSetupVerifyApi } from '../api/auth.api';
 import { resendVerificationEmail } from '../api/email.api';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
 import OAuthButtons from '../components/OAuthButtons';
 
-type Step = 'credentials' | 'mfa-choice' | 'totp' | 'sms';
+type Step = 'credentials' | 'mfa-choice' | 'totp' | 'sms' | 'mfa-setup';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -23,6 +24,8 @@ export default function LoginPage() {
   const [smsCode, setSmsCode] = useState('');
   const [mfaMethods, setMfaMethods] = useState<string[]>([]);
   const [smsSending, setSmsSending] = useState(false);
+  const [mfaSetupData, setMfaSetupData] = useState<{ secret: string; otpauthUri: string } | null>(null);
+  const [mfaSetupCode, setMfaSetupCode] = useState('');
   const [showResend, setShowResend] = useState(false);
   const [resendCountdown, setResendCountdown] = useState(0);
   const countdownRef = useRef<ReturnType<typeof setInterval>>(undefined);
@@ -103,6 +106,20 @@ export default function LoginPage() {
           setStep('mfa-choice');
         }
         setLoading(false);
+        return;
+      }
+
+      // Tenant requires MFA but user has none configured
+      if ('mfaSetupRequired' in data && data.mfaSetupRequired) {
+        setTempToken(data.tempToken);
+        setStep('mfa-setup');
+        setLoading(false);
+        try {
+          const setupData = await mfaSetupInitApi(data.tempToken);
+          setMfaSetupData(setupData);
+        } catch {
+          setError('Failed to initialize MFA setup');
+        }
         return;
       }
 
@@ -199,6 +216,23 @@ export default function LoginPage() {
     setError('');
   };
 
+  const handleMfaSetupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+    try {
+      const data = await mfaSetupVerifyApi(tempToken, mfaSetupCode);
+      completeLogin(data);
+    } catch (err: unknown) {
+      const msg =
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Invalid code';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleResend = async () => {
     try {
       await resendVerificationEmail(email);
@@ -217,6 +251,7 @@ export default function LoginPage() {
       case 'mfa-choice': return 'Choose your verification method';
       case 'totp': return 'Enter the 6-digit code from your authenticator app';
       case 'sms': return 'Enter the 6-digit code sent to your phone';
+      case 'mfa-setup': return 'Your organization requires two-factor authentication';
     }
   })();
 
@@ -388,6 +423,66 @@ export default function LoginPage() {
               >
                 Back
               </Button>
+            </Box>
+          )}
+
+          {step === 'mfa-setup' && (
+            <Box>
+              {!mfaSetupData ? (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+                  <CircularProgress />
+                </Box>
+              ) : (
+                <Box component="form" onSubmit={handleMfaSetupSubmit}>
+                  <Alert severity="warning" sx={{ mb: 2 }}>
+                    Your organization requires MFA. Set up an authenticator app to continue signing in.
+                  </Alert>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    1. Scan this QR code with your authenticator app:
+                  </Typography>
+                  <Box sx={{ p: 2, bgcolor: '#ffffff', borderRadius: 1, display: 'flex', justifyContent: 'center', mb: 2 }}>
+                    <QRCodeSVG value={mfaSetupData.otpauthUri} size={180} />
+                  </Box>
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    2. Or enter this code manually:
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    value={mfaSetupData.secret}
+                    size="small"
+                    slotProps={{ input: { readOnly: true } }}
+                    sx={{ mb: 2 }}
+                  />
+                  <Typography variant="body2" sx={{ mb: 1 }}>
+                    3. Enter the 6-digit code from your app:
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    label="6-digit code"
+                    type="text"
+                    inputMode="numeric"
+                    value={mfaSetupCode}
+                    onChange={(e) => setMfaSetupCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    margin="normal"
+                    required
+                    autoFocus
+                    placeholder="000000"
+                    slotProps={{ htmlInput: { maxLength: 6 } }}
+                  />
+                  <Button
+                    fullWidth
+                    type="submit"
+                    variant="contained"
+                    disabled={loading || mfaSetupCode.length !== 6}
+                    sx={{ mt: 2, mb: 1 }}
+                  >
+                    {loading ? 'Verifying...' : 'Enable MFA & Sign In'}
+                  </Button>
+                  <Button fullWidth variant="text" onClick={handleBackToCredentials} sx={{ mb: 1 }}>
+                    Back
+                  </Button>
+                </Box>
+              )}
             </Box>
           )}
         </CardContent>

@@ -24,6 +24,7 @@ model Tenant {
   name               String
   slug               String   @unique
   hasTenantVaultKey            Boolean  @default(false)
+  mfaRequired                  Boolean  @default(false)
   defaultSessionTimeoutSeconds Int      @default(3600)
   createdAt                    DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -431,6 +432,7 @@ enum AuditAction {
   SECRET_VERSION_RESTORE
   TENANT_VAULT_INIT
   TENANT_VAULT_KEY_DISTRIBUTE
+  TENANT_MFA_POLICY_UPDATE
 }
 
 model AuditLog {

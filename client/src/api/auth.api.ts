@@ -6,6 +6,7 @@ type MfaMethod = 'totp' | 'sms';
 
 export type LoginResponse =
   | { requiresMFA: true; requiresTOTP?: boolean; methods: MfaMethod[]; tempToken: string }
+  | { mfaSetupRequired: true; tempToken: string }
   | { requiresTOTP: true; tempToken: string }
   | { requiresTOTP?: false; accessToken: string; refreshToken: string; user: UserInfo };
 
@@ -26,6 +27,16 @@ export async function requestSmsCodeApi(tempToken: string) {
 
 export async function verifySmsApi(tempToken: string, code: string) {
   const res = await api.post('/auth/verify-sms', { tempToken, code });
+  return res.data as { accessToken: string; refreshToken: string; user: UserInfo };
+}
+
+export async function mfaSetupInitApi(tempToken: string) {
+  const res = await api.post('/auth/mfa-setup/init', { tempToken });
+  return res.data as { secret: string; otpauthUri: string };
+}
+
+export async function mfaSetupVerifyApi(tempToken: string, code: string) {
+  const res = await api.post('/auth/mfa-setup/verify', { tempToken, code });
   return res.data as { accessToken: string; refreshToken: string; user: UserInfo };
 }
 

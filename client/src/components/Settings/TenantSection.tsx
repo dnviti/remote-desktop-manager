@@ -3,11 +3,12 @@ import {
   Card, CardContent, Typography, TextField, Button, Stack, Chip, Avatar,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
   Select, MenuItem, Dialog, DialogTitle, DialogContent, DialogContentText,
-  DialogActions, Alert, CircularProgress, Box, IconButton,
+  DialogActions, Alert, CircularProgress, Box, IconButton, FormControlLabel, Switch,
 } from '@mui/material';
 import { PersonAdd, Delete as DeleteIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useTenantStore } from '../../store/tenantStore';
+import { getTenantMfaStats } from '../../api/tenant.api';
 import InviteDialog from '../Dialogs/InviteDialog';
 
 const TENANT_ROLES = ['OWNER', 'ADMIN', 'MEMBER'] as const;
@@ -45,6 +46,11 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
   const [sessionTimeout, setSessionTimeout] = useState('');
   const [savingTimeout, setSavingTimeout] = useState(false);
   const [timeoutError, setTimeoutError] = useState('');
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [savingMfa, setSavingMfa] = useState(false);
+  const [mfaError, setMfaError] = useState('');
+  const [mfaConfirmOpen, setMfaConfirmOpen] = useState(false);
+  const [mfaStats, setMfaStats] = useState<{ total: number; withoutMfa: number } | null>(null);
 
   const tenantRole = user?.tenantRole;
   const isAdmin = tenantRole === 'OWNER' || tenantRole === 'ADMIN';
@@ -58,6 +64,7 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
     if (tenant) {
       setEditName(tenant.name);
       setSessionTimeout(String(Math.floor(tenant.defaultSessionTimeoutSeconds / 60)));
+      setMfaRequired(tenant.mfaRequired);
       fetchUsers();
     }
   }, [tenant, fetchUsers]);
@@ -98,6 +105,49 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
       );
     } finally {
       setSavingTimeout(false);
+    }
+  };
+
+  const handleMfaToggle = async (enable: boolean) => {
+    setMfaError('');
+    if (enable) {
+      try {
+        const stats = await getTenantMfaStats(tenant!.id);
+        setMfaStats(stats);
+        setMfaConfirmOpen(true);
+      } catch {
+        setMfaError('Failed to check MFA status');
+      }
+    } else {
+      setSavingMfa(true);
+      try {
+        await updateTenant({ mfaRequired: false });
+        setMfaRequired(false);
+      } catch (err: unknown) {
+        setMfaError(
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+          'Failed to update MFA policy'
+        );
+      } finally {
+        setSavingMfa(false);
+      }
+    }
+  };
+
+  const handleConfirmEnableMfa = async () => {
+    setMfaConfirmOpen(false);
+    setSavingMfa(true);
+    setMfaError('');
+    try {
+      await updateTenant({ mfaRequired: true });
+      setMfaRequired(true);
+    } catch (err: unknown) {
+      setMfaError(
+        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+        'Failed to update MFA policy'
+      );
+    } finally {
+      setSavingMfa(false);
     }
   };
 
@@ -264,6 +314,26 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
             )}
           </Stack>
 
+          {isAdmin && (
+            <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+              <Typography variant="subtitle2" gutterBottom>Security Policy</Typography>
+              {mfaError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setMfaError('')}>{mfaError}</Alert>}
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={mfaRequired}
+                    onChange={(_, checked) => handleMfaToggle(checked)}
+                    disabled={savingMfa}
+                  />
+                }
+                label="Require MFA for all members"
+              />
+              <Typography variant="caption" color="text.secondary" display="block">
+                When enabled, members without MFA configured will be required to set it up during their next login.
+              </Typography>
+            </Box>
+          )}
+
           {isOwner && (
             <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
               <Button
@@ -306,6 +376,7 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
                   <TableRow>
                     <TableCell>User</TableCell>
                     <TableCell>Role</TableCell>
+                    <TableCell>MFA</TableCell>
                     {isAdmin && <TableCell align="right">Actions</TableCell>}
                   </TableRow>
                 </TableHead>
@@ -344,6 +415,13 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
                           </Select>
                         ) : (
                           <Chip label={u.tenantRole} size="small" variant="outlined" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {u.totpEnabled || u.smsMfaEnabled ? (
+                          <Chip label="Active" color="success" size="small" />
+                        ) : (
+                          <Chip label="None" size="small" />
                         )}
                       </TableCell>
                       {isAdmin && (
@@ -420,6 +498,29 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
         <DialogActions>
           <Button onClick={() => setRemoveTarget(null)}>Cancel</Button>
           <Button onClick={handleRemoveUser} color="error" variant="contained">Remove</Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Confirm enable mandatory MFA */}
+      <Dialog open={mfaConfirmOpen} onClose={() => setMfaConfirmOpen(false)}>
+        <DialogTitle>Enable Mandatory MFA</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            {mfaStats && mfaStats.withoutMfa > 0 ? (
+              <>
+                <strong>{mfaStats.withoutMfa}</strong> of {mfaStats.total} members do not have MFA configured.
+                They will be required to set up MFA during their next login.
+              </>
+            ) : (
+              'All members already have MFA configured. Enabling this policy will ensure future members also set up MFA.'
+            )}
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMfaConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirmEnableMfa} variant="contained">
+            Enable Mandatory MFA
+          </Button>
         </DialogActions>
       </Dialog>
     </>

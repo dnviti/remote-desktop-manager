@@ -4,6 +4,7 @@ export interface TenantData {
   id: string;
   name: string;
   slug: string;
+  mfaRequired: boolean;
   userCount: number;
   defaultSessionTimeoutSeconds: number;
   teamCount: number;
@@ -17,6 +18,8 @@ export interface TenantUser {
   username: string | null;
   avatarData: string | null;
   tenantRole: string;
+  totpEnabled: boolean;
+  smsMfaEnabled: boolean;
   createdAt: string;
 }
 
@@ -44,7 +47,12 @@ export async function getMyTenant(): Promise<TenantData> {
   return res.data;
 }
 
-export async function updateTenant(id: string, data: { name?: string; defaultSessionTimeoutSeconds?: number }): Promise<TenantData> {
+export async function getTenantMfaStats(tenantId: string): Promise<{ total: number; withoutMfa: number }> {
+  const res = await api.get(`/tenants/${tenantId}/mfa-stats`);
+  return res.data;
+}
+
+export async function updateTenant(id: string, data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean }): Promise<TenantData> {
   const res = await api.put(`/tenants/${id}`, data);
   return res.data;
 }

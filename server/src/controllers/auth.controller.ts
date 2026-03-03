@@ -46,6 +46,14 @@ export async function login(req: Request, res: Response, next: NextFunction) {
     const { email, password } = loginSchema.parse(req.body);
     const result = await authService.login(email, password, req.ip);
 
+    if ('mfaSetupRequired' in result && result.mfaSetupRequired) {
+      res.json({
+        mfaSetupRequired: true,
+        tempToken: result.tempToken,
+      });
+      return;
+    }
+
     if ('requiresMFA' in result && result.requiresMFA) {
       res.json({
         requiresMFA: true,
@@ -196,6 +204,48 @@ export async function resendVerification(req: Request, res: Response, next: Next
   } catch (err) {
     if (err instanceof z.ZodError) {
       return next(new AppError('Invalid email format', 400));
+    }
+    next(err);
+  }
+}
+
+const mfaSetupTokenSchema = z.object({
+  tempToken: z.string(),
+});
+
+const mfaSetupVerifySchema = z.object({
+  tempToken: z.string(),
+  code: z.string().length(6).regex(/^\d{6}$/),
+});
+
+export async function mfaSetupInit(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tempToken } = mfaSetupTokenSchema.parse(req.body);
+    const result = await authService.setupMfaDuringLogin(tempToken);
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
+    if (err instanceof AppError) return next(err);
+    if (err instanceof Error) {
+      if (err.message.includes('token')) return next(new AppError(err.message, 401));
+    }
+    next(err);
+  }
+}
+
+export async function mfaSetupVerify(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tempToken, code } = mfaSetupVerifySchema.parse(req.body);
+    const result = await authService.verifyMfaSetupDuringLogin(tempToken, code);
+    auditService.log({ userId: result.user.id, action: 'TOTP_ENABLE', ipAddress: req.ip });
+    auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: req.ip });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
+    if (err instanceof AppError) return next(err);
+    if (err instanceof Error) {
+      if (err.message.includes('token')) return next(new AppError(err.message, 401));
+      if (err.message === 'Invalid TOTP code') return next(new AppError(err.message, 401));
     }
     next(err);
   }

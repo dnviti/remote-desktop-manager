@@ -12,6 +12,8 @@ router.post('/login', loginRateLimiter, authController.login);
 router.post('/verify-totp', loginRateLimiter, authController.verifyTotp);
 router.post('/request-sms-code', smsLoginRateLimiter, authController.requestSmsCode);
 router.post('/verify-sms', loginRateLimiter, authController.verifySms);
+router.post('/mfa-setup/init', loginRateLimiter, authController.mfaSetupInit);
+router.post('/mfa-setup/verify', loginRateLimiter, authController.mfaSetupVerify);
 router.post('/refresh', authController.refresh);
 router.post('/logout', authController.logout);
 

@@ -1659,6 +1659,27 @@
   FILE COINVOLTI:
     MODIFICATO: server/src/services/auth.service.ts (import lockVault, call in logout())
 
+------------------------------------------------------------------------------
+[x] ZT-041 — Policy MFA obbligatorio a livello tenant
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: 2FA-012 (completato), TENANT-020 (completato)
+  COMPLETATO: Added mandatory MFA enforcement at tenant level. Tenant admins/owners can toggle "Require MFA for all members" in Organization settings. When enabled, users without TOTP or SMS MFA configured are blocked at login and guided through inline TOTP setup (QR code + verification) before completing authentication. Uses purpose-scoped temp tokens (mfa-setup, 15min TTL) for secure setup during login. Added MFA stats endpoint, audit logging for policy changes, and MFA status column in members table.
+
+  FILE COINVOLTI:
+    MODIFICATO: server/prisma/schema.prisma (Tenant.mfaRequired, TENANT_MFA_POLICY_UPDATE audit action)
+    MODIFICATO: server/src/services/tenant.service.ts (mfaRequired in getTenant/updateTenant, getTenantMfaStats, MFA fields in listTenantUsers)
+    MODIFICATO: server/src/controllers/tenant.controller.ts (Zod schema, getMfaStats handler, audit logging)
+    MODIFICATO: server/src/routes/tenant.routes.ts (GET /:id/mfa-stats)
+    MODIFICATO: server/src/services/auth.service.ts (tenant MFA check in login, setupMfaDuringLogin, verifyMfaSetupDuringLogin)
+    MODIFICATO: server/src/controllers/auth.controller.ts (mfaSetupRequired handling, mfaSetupInit/Verify handlers)
+    MODIFICATO: server/src/routes/auth.routes.ts (POST /mfa-setup/init, POST /mfa-setup/verify)
+    MODIFICATO: client/src/api/auth.api.ts (mfaSetupRequired in LoginResponse, mfaSetupInitApi, mfaSetupVerifyApi)
+    MODIFICATO: client/src/api/tenant.api.ts (mfaRequired in TenantData, MFA fields in TenantUser, getTenantMfaStats)
+    MODIFICATO: client/src/store/tenantStore.ts (updateTenant type with mfaRequired)
+    MODIFICATO: client/src/pages/LoginPage.tsx (mfa-setup step with inline TOTP setup UI)
+    MODIFICATO: client/src/components/Settings/TenantSection.tsx (MFA policy toggle, confirmation dialog, MFA column)
+
 
 ================================================================================
   SEZIONE F — PASSWORD KEYCHAIN / SECRET VAULT

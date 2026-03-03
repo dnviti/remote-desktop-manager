@@ -14,6 +14,7 @@ const createTenantSchema = z.object({
 const updateTenantSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   defaultSessionTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
+  mfaRequired: z.boolean().optional(),
 });
 
 const inviteUserSchema = z.object({
@@ -69,6 +70,14 @@ export async function updateTenant(req: AuthRequest, res: Response, next: NextFu
     const data = updateTenantSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const result = await tenantService.updateTenant(tenantId, data);
+    if (data.mfaRequired !== undefined) {
+      auditService.log({
+        userId: req.user!.userId, action: 'TENANT_MFA_POLICY_UPDATE',
+        targetType: 'Tenant', targetId: tenantId,
+        details: { mfaRequired: data.mfaRequired },
+        ipAddress: req.ip,
+      });
+    }
     auditService.log({
       userId: req.user!.userId, action: 'TENANT_UPDATE',
       targetType: 'Tenant', targetId: tenantId,
@@ -155,6 +164,16 @@ export async function removeUser(req: AuthRequest, res: Response, next: NextFunc
       ipAddress: req.ip,
     });
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getMfaStats(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const tenantId = req.params.id as string;
+    const stats = await tenantService.getTenantMfaStats(tenantId);
+    res.json(stats);
   } catch (err) {
     next(err);
   }

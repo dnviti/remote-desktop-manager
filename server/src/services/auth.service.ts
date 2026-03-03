@@ -120,7 +120,10 @@ export async function issueTokens(user: {
 }
 
 export async function login(email: string, password: string, ipAddress?: string | string[]) {
-  const user = await prisma.user.findUnique({ where: { email } });
+  const user = await prisma.user.findUnique({
+    where: { email },
+    include: { tenant: { select: { mfaRequired: true } } },
+  });
   if (!user) {
     auditService.log({
       action: 'LOGIN_FAILURE',
@@ -231,6 +234,19 @@ export async function login(email: string, password: string, ipAddress?: string 
       requiresTOTP: mfaMethods.includes('totp') as true,
       methods: mfaMethods,
       tempToken,
+    };
+  }
+
+  // Check tenant mandatory MFA policy
+  if (user.tenant?.mfaRequired && !user.totpEnabled && !user.smsMfaEnabled) {
+    const setupToken = jwt.sign(
+      { userId: user.id, purpose: 'mfa-setup' },
+      config.jwtSecret,
+      { expiresIn: '15m' } as jwt.SignOptions
+    );
+    return {
+      mfaSetupRequired: true as const,
+      tempToken: setupToken,
     };
   }
 
@@ -419,6 +435,57 @@ export async function resendVerification(email: string): Promise<void> {
   sendVerificationEmail(email, emailVerifyToken).catch((err) => {
     logger.error('Failed to send verification email:', err);
   });
+}
+
+export async function setupMfaDuringLogin(tempToken: string) {
+  let decoded: { userId: string; purpose: string };
+  try {
+    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+  } catch {
+    throw new Error('Invalid or expired temporary token');
+  }
+  if (decoded.purpose !== 'mfa-setup') {
+    throw new Error('Invalid token purpose');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.userId },
+    select: { email: true, totpEnabled: true },
+  });
+  if (!user) throw new Error('User not found');
+  if (user.totpEnabled) throw new AppError('2FA is already enabled', 400);
+
+  const { generateSetup, storeSetupSecret } = await import('./totp.service');
+  const { secret, otpauthUri } = generateSetup(user.email);
+  await storeSetupSecret(decoded.userId, secret);
+
+  return { secret, otpauthUri };
+}
+
+export async function verifyMfaSetupDuringLogin(tempToken: string, code: string) {
+  let decoded: { userId: string; purpose: string };
+  try {
+    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+  } catch {
+    throw new Error('Invalid or expired temporary token');
+  }
+  if (decoded.purpose !== 'mfa-setup') {
+    throw new Error('Invalid token purpose');
+  }
+
+  const { verifyAndEnable } = await import('./totp.service');
+  await verifyAndEnable(decoded.userId, code);
+
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.userId },
+    select: {
+      id: true, email: true, username: true, avatarData: true,
+      tenantId: true, tenantRole: true,
+    },
+  });
+  if (!user) throw new Error('User not found');
+
+  return issueTokens(user);
 }
 
 function parseExpiry(expiry: string): number {

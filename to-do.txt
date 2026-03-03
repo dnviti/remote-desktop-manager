@@ -67,40 +67,6 @@
 ------------------------------------------------------------------------------
 
 
-------------------------------------------------------------------------------
-[ ] ZT-041 — Policy MFA obbligatorio a livello tenant
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: 2FA-012 (completato), TENANT-020 (completato)
-
-  DESCRIZIONE:
-  Permettere ai tenant owner/admin di rendere obbligatorio l'MFA per tutti
-  i membri del tenant. Attualmente l'MFA e' solo opzionale: ogni utente
-  decide individualmente se attivarlo. In un modello Zero Trust, l'MFA
-  deve essere enforcement a livello di policy organizzativa.
-
-  DETTAGLI TECNICI:
-  Backend:
-    - Aggiungere campo mfaRequired Boolean @default(false) al modello Tenant
-      in schema.prisma
-    - Migrazione Prisma
-    - In auth.service.ts login(): se il tenant dell'utente ha mfaRequired=true
-      e l'utente non ha ne' TOTP ne' SMS MFA configurato, restituire un
-      response speciale (es. { mfaSetupRequired: true }) invece di completare
-      il login
-    - Nuovo endpoint o estendere tenant.controller.ts per toggle mfaRequired
-      (solo OWNER/ADMIN)
-  Frontend:
-    - Pagina impostazioni tenant: toggle per MFA obbligatorio
-    - Flusso login: se mfaSetupRequired, redirect a pagina setup MFA
-      prima di permettere l'accesso
-    - Mostrare avviso ai membri del tenant quando MFA diventa obbligatorio
-  File coinvolti:
-    - server/prisma/schema.prisma (modello Tenant)
-    - server/src/services/auth.service.ts
-    - server/src/controllers/tenant.controller.ts
-    - client/src/ (pagina settings tenant, flusso login)
-
 
 ------------------------------------------------------------------------------
 [ ] ZT-042 — Rotazione refresh token
@@ -942,7 +908,7 @@
    60. ZT-040   Lock vault al logout
 
   Fase 10 — Zero Trust hardening (Tier 2, core ZT):
-   61. ZT-041   Policy MFA obbligatorio a livello tenant
+   61. ZT-041   Policy MFA obbligatorio a livello tenant           [COMPLETATO]
    62. ZT-042   Rotazione refresh token
    63. ZT-043   Fix validazione certificato RDP (default ignoreCert)
    64. ZT-044   Cifratura TOTP secret a riposo
