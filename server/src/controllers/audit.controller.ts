@@ -3,18 +3,11 @@ import { z } from 'zod';
 import { AuthRequest } from '../types';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { AuditAction } from '../lib/prisma';
 
-const VALID_ACTIONS = [
-  'LOGIN', 'LOGIN_OAUTH', 'LOGIN_TOTP', 'LOGIN_FAILURE', 'LOGOUT', 'REGISTER',
-  'VAULT_UNLOCK', 'VAULT_LOCK', 'VAULT_SETUP',
-  'CREATE_CONNECTION', 'UPDATE_CONNECTION', 'DELETE_CONNECTION',
-  'SHARE_CONNECTION', 'UNSHARE_CONNECTION', 'UPDATE_SHARE_PERMISSION',
-  'CREATE_FOLDER', 'UPDATE_FOLDER', 'DELETE_FOLDER',
-  'PASSWORD_CHANGE', 'PROFILE_UPDATE',
-  'TOTP_ENABLE', 'TOTP_DISABLE',
-  'OAUTH_LINK', 'OAUTH_UNLINK',
-  'PASSWORD_REVEAL',
-] as const;
+const VALID_ACTIONS = Object.values(AuditAction) as [string, ...string[]];
+const VALID_SORT_FIELDS = ['createdAt', 'action'] as const;
+const VALID_SORT_ORDERS = ['asc', 'desc'] as const;
 
 const querySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -22,6 +15,11 @@ const querySchema = z.object({
   action: z.enum(VALID_ACTIONS).optional(),
   startDate: z.coerce.date().optional(),
   endDate: z.coerce.date().optional(),
+  search: z.string().max(200).optional(),
+  targetType: z.string().max(100).optional(),
+  ipAddress: z.string().max(45).optional(),
+  sortBy: z.enum(VALID_SORT_FIELDS).default('createdAt'),
+  sortOrder: z.enum(VALID_SORT_ORDERS).default('desc'),
 });
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
@@ -30,6 +28,7 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
     const result = await auditService.getAuditLogs({
       userId: req.user!.userId,
       ...query,
+      action: query.action as AuditAction | undefined,
     });
     res.json(result);
   } catch (err) {

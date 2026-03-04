@@ -23,7 +23,11 @@ export type AuditAction =
   | 'SECRET_SHARE' | 'SECRET_UNSHARE'
   | 'SECRET_EXTERNAL_SHARE' | 'SECRET_EXTERNAL_ACCESS'
   | 'SECRET_VERSION_RESTORE'
-  | 'TENANT_VAULT_INIT' | 'TENANT_VAULT_KEY_DISTRIBUTE';
+  | 'TENANT_VAULT_INIT' | 'TENANT_VAULT_KEY_DISTRIBUTE' | 'TENANT_MFA_POLICY_UPDATE'
+  | 'GATEWAY_DEPLOY' | 'GATEWAY_UNDEPLOY' | 'GATEWAY_SCALE'
+  | 'GATEWAY_SCALE_UP' | 'GATEWAY_SCALE_DOWN' | 'GATEWAY_RESTART' | 'GATEWAY_HEALTH_CHECK'
+  | 'SESSION_TIMEOUT'
+  | 'GATEWAY_TEMPLATE_CREATE' | 'GATEWAY_TEMPLATE_UPDATE' | 'GATEWAY_TEMPLATE_DELETE' | 'GATEWAY_TEMPLATE_DEPLOY';
 
 export interface AuditLogEntry {
   id: string;
@@ -49,6 +53,11 @@ export interface AuditLogParams {
   action?: AuditAction;
   startDate?: string;
   endDate?: string;
+  search?: string;
+  targetType?: string;
+  ipAddress?: string;
+  sortBy?: 'createdAt' | 'action';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export async function getAuditLogs(params: AuditLogParams = {}): Promise<AuditLogResponse> {

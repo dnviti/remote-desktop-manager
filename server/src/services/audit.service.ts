@@ -39,6 +39,11 @@ export interface AuditLogQuery {
   action?: AuditAction;
   startDate?: Date;
   endDate?: Date;
+  search?: string;
+  targetType?: string;
+  ipAddress?: string;
+  sortBy?: 'createdAt' | 'action';
+  sortOrder?: 'asc' | 'desc';
 }
 
 export interface AuditLogEntry {
@@ -64,7 +69,7 @@ export async function getAuditLogs(query: AuditLogQuery): Promise<PaginatedAudit
   const limit = Math.min(query.limit ?? 50, 100);
   const skip = (page - 1) * limit;
 
-  const where: Record<string, unknown> = { userId: query.userId };
+  const where: Prisma.AuditLogWhereInput = { userId: query.userId };
   if (query.action) where.action = query.action;
   if (query.startDate || query.endDate) {
     where.createdAt = {
@@ -72,11 +77,34 @@ export async function getAuditLogs(query: AuditLogQuery): Promise<PaginatedAudit
       ...(query.endDate && { lte: query.endDate }),
     };
   }
+  if (query.targetType) {
+    where.targetType = query.targetType;
+  }
+  if (query.ipAddress) {
+    where.ipAddress = { contains: query.ipAddress, mode: 'insensitive' };
+  }
+  if (query.search) {
+    const term = query.search;
+    where.AND = [
+      {
+        OR: [
+          { targetType: { contains: term, mode: 'insensitive' } },
+          { targetId: { contains: term, mode: 'insensitive' } },
+          { ipAddress: { contains: term, mode: 'insensitive' } },
+          { details: { string_contains: term } },
+        ],
+      },
+    ];
+  }
+
+  const sortBy = query.sortBy ?? 'createdAt';
+  const sortOrder = query.sortOrder ?? 'desc';
+  const orderBy: Prisma.AuditLogOrderByWithRelationInput = { [sortBy]: sortOrder };
 
   const [data, total] = await Promise.all([
     prisma.auditLog.findMany({
       where,
-      orderBy: { createdAt: 'desc' },
+      orderBy,
       skip,
       take: limit,
       select: {

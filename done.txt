@@ -10,6 +10,13 @@
 ================================================================================
 
 ------------------------------------------------------------------------------
+[x] AUDIT-082 — Redesign UI audit log con righe espandibili e ricerca avanzata
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: AUDIT-013 (completato)
+  COMPLETATO: Redesigned AuditLogDialog with expandable rows (Collapse detail panel showing formatted JSON key-value grid), advanced search bar (debounced full-text search, targetType select, IP address filter), column sorting (Date/Time, Action via TableSortLabel), and persisted filter/sort state via uiPreferencesStore. Backend: replaced hardcoded 25-action VALID_ACTIONS with dynamic derivation from Prisma AuditAction enum (77 actions), added search/targetType/ipAddress/sortBy/sortOrder query params with Zod validation and Prisma OR/contains where clause. Synced 13 missing AuditAction values to frontend.
+
+------------------------------------------------------------------------------
 [x] UI-082 — Convertire Keychain UI da pagina a dialog modale full-screen
 ------------------------------------------------------------------------------
   Priorita: ALTA

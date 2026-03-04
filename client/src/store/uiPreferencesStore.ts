@@ -18,11 +18,16 @@ interface UiPreferences {
   orchestrationAutoRefresh: boolean;
   orchestrationRefreshInterval: number;
   gatewayActiveSubTab: string;
+  auditLogAction: string;
+  auditLogSearch: string;
+  auditLogTargetType: string;
+  auditLogSortBy: string;
+  auditLogSortOrder: string;
 }
 
 interface UiPreferencesState extends UiPreferences {
   set: <K extends keyof UiPreferences>(key: K, value: UiPreferences[K]) => void;
-  toggle: (key: keyof Omit<UiPreferences, 'sidebarTeamSections' | 'settingsActiveTab' | 'keychainScopeFilter' | 'keychainTypeFilter' | 'keychainSortBy' | 'orchestrationDashboardTab' | 'orchestrationRefreshInterval' | 'gatewayActiveSubTab'>) => void;
+  toggle: (key: keyof Omit<UiPreferences, 'sidebarTeamSections' | 'settingsActiveTab' | 'keychainScopeFilter' | 'keychainTypeFilter' | 'keychainSortBy' | 'orchestrationDashboardTab' | 'orchestrationRefreshInterval' | 'gatewayActiveSubTab' | 'auditLogAction' | 'auditLogSearch' | 'auditLogTargetType' | 'auditLogSortBy' | 'auditLogSortOrder'>) => void;
   toggleTeamSection: (teamId: string) => void;
 }
 
@@ -43,6 +48,11 @@ const defaults: UiPreferences = {
   orchestrationAutoRefresh: true,
   orchestrationRefreshInterval: 10000,
   gatewayActiveSubTab: 'gateways',
+  auditLogAction: '',
+  auditLogSearch: '',
+  auditLogTargetType: '',
+  auditLogSortBy: 'createdAt',
+  auditLogSortOrder: 'desc',
 };
 
 export const useUiPreferencesStore = create<UiPreferencesState>()(
