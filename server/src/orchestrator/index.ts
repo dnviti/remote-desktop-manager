@@ -3,6 +3,7 @@ import { logger } from '../utils/logger';
 import { IOrchestratorProvider } from './types';
 import { DockerProvider } from './docker.provider';
 import { KubernetesProvider } from './kubernetes.provider';
+import { PodmanProvider } from './podman.provider';
 import { NoneProvider } from './none.provider';
 
 export {
@@ -36,6 +37,11 @@ export async function detectOrchestrator(): Promise<IOrchestratorProvider> {
     logger.info(
       '[orchestrator] Using Docker provider (configured via ORCHESTRATOR_TYPE)',
     );
+  } else if (override === 'podman') {
+    instance = new PodmanProvider();
+    logger.info(
+      '[orchestrator] Using Podman provider (configured via ORCHESTRATOR_TYPE)',
+    );
   } else if (override === 'none') {
     instance = new NoneProvider();
     logger.info(
@@ -54,10 +60,16 @@ export async function detectOrchestrator(): Promise<IOrchestratorProvider> {
         instance = dockerProvider;
         logger.info('[orchestrator] Auto-detected Docker provider');
       } else {
-        instance = new NoneProvider();
-        logger.info(
-          '[orchestrator] No orchestrator detected — using NoneProvider (manual gateway management only)',
-        );
+        const podmanProvider = new PodmanProvider();
+        if (await podmanProvider.isAvailable()) {
+          instance = podmanProvider;
+          logger.info('[orchestrator] Auto-detected Podman provider');
+        } else {
+          instance = new NoneProvider();
+          logger.info(
+            '[orchestrator] No orchestrator detected — using NoneProvider (manual gateway management only)',
+          );
+        }
       }
     }
   }

@@ -9,7 +9,7 @@ services:
       - pgdata:/var/lib/postgresql/data
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rdm}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rdm} -d ${POSTGRES_DB:-remote_desktop_manager}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -27,7 +27,9 @@ services:
       start_period: 10s
 
   server:
-    image: ghcr.io/dnviti/remote-desktop-manager/server:latest
+    build:
+      context: .
+      dockerfile: server/Dockerfile
     ports:
       - "3001:3001"
     healthcheck:
@@ -57,7 +59,9 @@ services:
     restart: unless-stopped
 
   client:
-    image: ghcr.io/dnviti/remote-desktop-manager/client:latest
+    build:
+      context: .
+      dockerfile: client/Dockerfile
     ports:
       - "3000:80"
     healthcheck:
@@ -73,12 +77,12 @@ services:
 
   # SSH Gateway (optional — remove or comment out if not needed)
   # For multiple gateways, duplicate with different names and ports:
-  #   ssh-gateway-dmz:  image: ghcr.io/dnviti/remote-desktop-manager/ssh-gateway:latest
-  #                     ports: ["2222:2222"]
-  #   ssh-gateway-lan:  image: ghcr.io/dnviti/remote-desktop-manager/ssh-gateway:latest
-  #                     ports: ["2223:2222"]
+  #   ssh-gateway-dmz:  ports: ["2222:2222"]
+  #   ssh-gateway-lan:  ports: ["2223:2222"]
   ssh-gateway:
-    image: ghcr.io/dnviti/remote-desktop-manager/ssh-gateway:latest
+    build:
+      context: .
+      dockerfile: ssh-gateway/Dockerfile
     ports:
       - "${SSH_GATEWAY_PORT:-2222}:2222"
     environment:

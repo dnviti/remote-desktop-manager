@@ -8,6 +8,7 @@ export enum ContainerStatus {
 
 export enum OrchestratorType {
   DOCKER = 'DOCKER',
+  PODMAN = 'PODMAN',
   KUBERNETES = 'KUBERNETES',
   NONE = 'NONE',
 }

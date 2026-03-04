@@ -22,7 +22,7 @@ function requireOrchestrator() {
   const orch = getOrchestrator();
   if (orch.type === OrchestratorType.NONE) {
     throw new AppError(
-      'Container orchestration is not available. Configure Docker or Kubernetes.',
+      'Container orchestration is not available. Configure Docker, Podman, or Kubernetes.',
       501,
     );
   }

@@ -9,7 +9,7 @@ import {
 } from './types';
 
 const UNAVAILABLE_MSG =
-  'Container orchestration not available. Configure Docker socket or Kubernetes credentials.';
+  'Container orchestration not available. Configure Docker socket, Podman socket, or Kubernetes credentials.';
 
 export class NoneProvider implements IOrchestratorProvider {
   readonly type = OrchestratorType.NONE;

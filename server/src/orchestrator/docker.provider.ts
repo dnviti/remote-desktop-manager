@@ -12,8 +12,8 @@ import {
 } from './types';
 
 export class DockerProvider implements IOrchestratorProvider {
-  readonly type = OrchestratorType.DOCKER;
-  private docker: Dockerode;
+  readonly type: OrchestratorType = OrchestratorType.DOCKER;
+  protected docker: Dockerode;
 
   constructor() {
     this.docker = new Dockerode({

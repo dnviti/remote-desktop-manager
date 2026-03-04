@@ -119,8 +119,13 @@ export const config = {
   sessionCleanupRetentionDays: parseInt(process.env.SESSION_CLEANUP_RETENTION_DAYS || '30', 10),
   sessionInactivityTimeoutSeconds: parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_SECONDS || '3600', 10),
   // Container orchestrator
-  orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'kubernetes' | 'none',
+  orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'podman' | 'kubernetes' | 'none',
   dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',
+  podmanSocketPath: process.env.PODMAN_SOCKET_PATH || (
+    process.env.XDG_RUNTIME_DIR
+      ? `${process.env.XDG_RUNTIME_DIR}/podman/podman.sock`
+      : '/run/podman/podman.sock'
+  ),
   dockerNetwork: process.env.DOCKER_NETWORK || '',
   orchestratorK8sNamespace: process.env.ORCHESTRATOR_K8S_NAMESPACE || 'rdm',
   orchestratorSshGatewayImage: process.env.ORCHESTRATOR_SSH_GATEWAY_IMAGE || 'ghcr.io/dnviti/remote-desktop-manager/ssh-gateway:latest',
