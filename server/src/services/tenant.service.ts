@@ -1,5 +1,8 @@
 import prisma from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
+import * as sshKeyService from './sshkey.service';
+import * as auditService from './audit.service';
+import { logger } from '../utils/logger';
 
 function generateSlug(name: string): string {
   return name
@@ -44,6 +47,20 @@ export async function createTenant(userId: string, name: string) {
     });
     return t;
   });
+
+  // Auto-generate SSH key pair (best-effort — must not block tenant creation)
+  try {
+    const keyPair = await sshKeyService.generateKeyPair(tenant.id);
+    auditService.log({
+      userId,
+      action: 'SSH_KEY_GENERATE',
+      targetType: 'SshKeyPair',
+      targetId: keyPair.id,
+      details: { auto: true, trigger: 'tenant_creation' },
+    });
+  } catch (err) {
+    logger.warn(`Auto SSH key generation failed for tenant ${tenant.id}:`, err);
+  }
 
   return {
     id: tenant.id,

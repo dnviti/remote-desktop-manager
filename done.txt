@@ -1130,6 +1130,44 @@
     MODIFICATO: server/src/controllers/sharing.controller.ts
 
 
+------------------------------------------------------------------------------
+[x] TENANT-079 — Generazione automatica SSH key pair alla creazione del tenant
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+  COMPLETATO: Auto-generate SSH key pair in createTenant() via best-effort
+  sshKeyService.generateKeyPair() call after Prisma transaction, with audit
+  logging and graceful error handling.
+
+  DESCRIZIONE:
+  Attualmente la coppia di chiavi SSH del tenant viene generata solo quando
+  l'admin clicca il pulsante "Generate Key Pair" nella sezione Gateway delle
+  impostazioni. Questo aggiunge un passaggio manuale non necessario: la key
+  pair dovrebbe essere creata automaticamente al momento della creazione del
+  tenant, cosi' da essere subito disponibile per i gateway managed SSH.
+
+  DETTAGLI TECNICI:
+  1. tenant.service.ts — createTenant()
+     - Dopo la transazione Prisma che crea il tenant e assegna l'utente come
+       OWNER, chiamare sshKeyService.generateKeyPair(tenant.id)
+     - La chiamata va fatta FUORI dalla transazione (dopo il return del
+       $transaction) perche' generateKeyPair usa prisma direttamente
+     - Wrappare in try/catch per non bloccare la creazione del tenant se la
+       generazione della chiave fallisce (log warning + continua)
+     - Aggiungere audit log SSH_KEY_GENERATE tramite il pattern esistente
+
+  2. GatewaySection.tsx — UI
+     - Il componente gia' gestisce correttamente il caso in cui la key esiste
+       (mostra fingerprint, public key, bottoni di copia/download/rotate)
+     - Nessuna modifica necessaria al frontend: il bottone "Generate Key Pair"
+       non apparira' piu' dato che la key esiste gia' dal primo accesso
+     - Il bottone resta come fallback nel caso raro di tenant creati prima
+       di questo cambiamento
+
+  File coinvolti:
+    MODIFICARE: server/src/services/tenant.service.ts
+
+
 ================================================================================
   SEZIONE D — MULTI-BACKEND / MULTI-GATEWAY
 ================================================================================

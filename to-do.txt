@@ -39,7 +39,6 @@
 
 
 
-
 ================================================================================
   SEZIONE D — MULTI-BACKEND / MULTI-GATEWAY
 ================================================================================
@@ -212,6 +211,78 @@
 ================================================================================
 
 
+------------------------------------------------------------------------------
+[ ] GATE-079 — Toggle UI per pubblicazione porte dei gateway gestiti
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: GATE-078, ORCH-062
+
+  DESCRIZIONE:
+  Aggiungere un toggle "Publish Ports" nell'interfaccia dei gateway gestiti
+  (MANAGED_SSH e GUACD) per abilitare la pubblicazione delle porte dei
+  container sull'host. Di default i container sono accessibili solo
+  all'interno della rete Docker; con questa opzione attiva, ogni istanza
+  deployata otterra' automaticamente una porta casuale libera sull'host
+  locale, rendendo il gateway raggiungibile dall'esterno. L'host predefinito
+  sara' "localhost" (sempre modificabile dall'utente). La scoperta e
+  l'assegnazione della porta e' completamente automatica: il sistema trova
+  una porta TCP disponibile sul sistema e la assegna all'istanza in fase di
+  deploy, sia per gateway creati da template che per quelli creati
+  manualmente. L'utente non deve configurare alcuna porta — basta attivare
+  il toggle.
+
+  DETTAGLI TECNICI:
+  Schema Prisma:
+    - Aggiungere `publishPorts Boolean @default(false)` a Gateway e
+      GatewayTemplate.
+
+  Backend:
+    - Nuovo file `server/src/utils/freePort.ts`: utility che usa
+      `net.createServer()` su porta 0 per scoprire una porta TCP libera
+      sul sistema locale. Restituisce una Promise<number>.
+    - `managedGateway.service.ts` — `buildContainerConfig`: quando
+      publishPorts e' true, la porta host scoperta viene inclusa nella
+      config container (es. `ports: [{ container: 2222, host: freePort }]`),
+      causando il binding della porta da parte di Docker/Podman.
+    - `managedGateway.service.ts` — `deployGatewayInstance`: prima di
+      creare il container, se `gateway.publishPorts` e' true, chiamare
+      `findFreePort()` per ottenere una porta disponibile. Questa porta
+      viene passata a `buildContainerConfig` e salvata nell'istanza.
+      Nella host resolution, usare `gateway.host` (default "localhost")
+      come host dell'istanza anziche' il nome del container.
+    - `gateway.service.ts`: aggiungere `publishPorts` a CreateGatewayInput,
+      UpdateGatewayInput e publicSelect. Passare il campo nelle operazioni
+      CRUD.
+    - `gatewayTemplate.service.ts`: aggiungere publishPorts agli input dei
+      template. In `deployFromTemplate`, propagare `publishPorts` dal
+      template al gateway creato, cosi' le istanze deployate da template
+      ereditano automaticamente il comportamento di pubblicazione porte.
+    - `gateway.controller.ts`: aggiungere `publishPorts: z.boolean().optional()`
+      negli schemi Zod di validazione.
+
+  Frontend:
+    - `gateway.api.ts`: aggiungere publishPorts a GatewayData,
+      GatewayTemplateData, GatewayInput, GatewayTemplateInput.
+    - `GatewayDialog.tsx`: stato publishPorts + Switch visibile solo per
+      tipi managed (MANAGED_SSH/GUACD). Quando attivato con host vuoto,
+      auto-fill a "localhost". Info alert che spiega l'assegnazione
+      automatica della porta.
+    - `GatewayTemplateDialog.tsx`: stesso pattern del GatewayDialog, cosi'
+      i template possono pre-configurare publishPorts per i gateway futuri.
+    - `GatewaySection.tsx`: Chip "Published" nella lista gateway per
+      indicare visivamente quali gateway hanno la pubblicazione attiva.
+
+  File coinvolti:
+    CREARE:     server/src/utils/freePort.ts
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/services/managedGateway.service.ts
+    MODIFICARE: server/src/services/gateway.service.ts
+    MODIFICARE: server/src/services/gatewayTemplate.service.ts
+    MODIFICARE: server/src/controllers/gateway.controller.ts
+    MODIFICARE: client/src/api/gateway.api.ts
+    MODIFICARE: client/src/components/gateway/GatewayDialog.tsx
+    MODIFICARE: client/src/components/gateway/GatewayTemplateDialog.tsx
+    MODIFICARE: client/src/components/Settings/GatewaySection.tsx
 
 
 
