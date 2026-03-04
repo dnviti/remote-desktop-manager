@@ -1,32 +1,37 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, forwardRef } from 'react';
 import {
-  Box, AppBar, Toolbar, Typography, IconButton, Chip, Alert, Button as MuiButton,
-  Dialog, DialogTitle, DialogContent, DialogContentText, DialogActions, Button,
+  Dialog, AppBar, Toolbar, Typography, IconButton, Box,
+  Alert, Button,
+  DialogTitle, DialogContent, DialogContentText, DialogActions,
+  Slide,
 } from '@mui/material';
-import {
-  ArrowBack,
-  Lock as LockIcon,
-  LockOpen as LockOpenIcon,
-  DarkMode,
-  LightMode,
-} from '@mui/icons-material';
-import { useNavigate } from 'react-router-dom';
-import SecretListPanel from '../components/Keychain/SecretListPanel';
-import SecretDetailView from '../components/Keychain/SecretDetailView';
-import SecretDialog from '../components/Keychain/SecretDialog';
-import ShareSecretDialog from '../components/Keychain/ShareSecretDialog';
-import ExternalShareDialog from '../components/Keychain/ExternalShareDialog';
-import { useSecretStore } from '../store/secretStore';
-import { useVaultStore } from '../store/vaultStore';
-import { useThemeStore } from '../store/themeStore';
-import { useAuthStore } from '../store/authStore';
-import type { SecretListItem, SecretDetail } from '../api/secrets.api';
-import { getSecret } from '../api/secrets.api';
+import type { TransitionProps } from '@mui/material/transitions';
+import { Close as CloseIcon } from '@mui/icons-material';
+import SecretListPanel from '../Keychain/SecretListPanel';
+import SecretDetailView from '../Keychain/SecretDetailView';
+import SecretDialog from '../Keychain/SecretDialog';
+import ShareSecretDialog from '../Keychain/ShareSecretDialog';
+import ExternalShareDialog from '../Keychain/ExternalShareDialog';
+import { useSecretStore } from '../../store/secretStore';
+import { useAuthStore } from '../../store/authStore';
+import type { SecretListItem, SecretDetail } from '../../api/secrets.api';
+import { getSecret } from '../../api/secrets.api';
+
+const SlideUp = forwardRef(function SlideUp(
+  props: TransitionProps & { children: React.ReactElement },
+  ref: React.Ref<unknown>,
+) {
+  return <Slide direction="up" ref={ref} {...props} />;
+});
+
+interface KeychainDialogProps {
+  open: boolean;
+  onClose: () => void;
+}
 
 const LIST_PANEL_WIDTH = 320;
 
-export default function KeychainPage() {
-  const navigate = useNavigate();
+export default function KeychainDialog({ open, onClose }: KeychainDialogProps) {
   const selectedSecret = useSecretStore((s) => s.selectedSecret);
   const fetchSecret = useSecretStore((s) => s.fetchSecret);
   const deleteSecretAction = useSecretStore((s) => s.deleteSecret);
@@ -34,9 +39,6 @@ export default function KeychainPage() {
   const tenantVaultStatus = useSecretStore((s) => s.tenantVaultStatus);
   const fetchTenantVaultStatus = useSecretStore((s) => s.fetchTenantVaultStatus);
   const initTenantVault = useSecretStore((s) => s.initTenantVault);
-  const vaultUnlocked = useVaultStore((s) => s.unlocked);
-  const themeMode = useThemeStore((s) => s.mode);
-  const toggleTheme = useThemeStore((s) => s.toggle);
   const user = useAuthStore((s) => s.user);
 
   const isAdmin = user?.tenantRole === 'OWNER' || user?.tenantRole === 'ADMIN';
@@ -45,9 +47,8 @@ export default function KeychainPage() {
   const [initializingVault, setInitializingVault] = useState(false);
 
   useEffect(() => {
-    if (hasTenant) fetchTenantVaultStatus();
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- only on mount
-  }, [hasTenant]);
+    if (open && hasTenant) fetchTenantVaultStatus();
+  }, [open, hasTenant, fetchTenantVaultStatus]);
 
   const handleInitTenantVault = async () => {
     setInitializingVault(true);
@@ -113,31 +114,15 @@ export default function KeychainPage() {
   };
 
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* AppBar */}
-      <AppBar position="static" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
+    <Dialog fullScreen open={open} onClose={onClose} TransitionComponent={SlideUp}>
+      <AppBar position="static" sx={{ position: 'relative' }}>
         <Toolbar variant="dense">
-          <IconButton color="inherit" edge="start" onClick={() => navigate('/')} sx={{ mr: 1 }}>
-            <ArrowBack />
+          <IconButton edge="start" color="inherit" onClick={onClose} sx={{ mr: 1 }}>
+            <CloseIcon />
           </IconButton>
-          <Typography variant="h6" sx={{ flexGrow: 0, mr: 2 }}>
-            RDM
+          <Typography variant="h6">
+            Keychain
           </Typography>
-          <Chip
-            icon={vaultUnlocked ? <LockOpenIcon /> : <LockIcon />}
-            label={vaultUnlocked ? 'Vault Unlocked' : 'Vault Locked'}
-            color={vaultUnlocked ? 'success' : 'error'}
-            size="small"
-            sx={{ mr: 2 }}
-          />
-          <Box sx={{ flexGrow: 1 }} />
-          <IconButton
-            color="inherit"
-            onClick={toggleTheme}
-            title={themeMode === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-          >
-            {themeMode === 'dark' ? <LightMode /> : <DarkMode />}
-          </IconButton>
         </Toolbar>
       </AppBar>
 
@@ -146,14 +131,14 @@ export default function KeychainPage() {
         <Alert
           severity="info"
           action={
-            <MuiButton
+            <Button
               color="inherit"
               size="small"
               onClick={handleInitTenantVault}
               disabled={initializingVault}
             >
               {initializingVault ? 'Initializing...' : 'Initialize Now'}
-            </MuiButton>
+            </Button>
           }
           sx={{ borderRadius: 0 }}
         >
@@ -251,6 +236,6 @@ export default function KeychainPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Box>
+    </Dialog>
   );
 }

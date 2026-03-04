@@ -17,62 +17,6 @@
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================
 
-------------------------------------------------------------------------------
-[ ] AUDIT-082 — Redesign UI audit log con righe espandibili e ricerca avanzata
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: AUDIT-013 (completato)
-
-  DESCRIZIONE:
-  L'attuale interfaccia dei log di audit presenta diverse limitazioni di
-  usabilita': la colonna "Details" tronca i contenuti a 300px con ellipsis
-  senza possibilita' di espanderli, non esiste una ricerca full-text, e i
-  filtri sono limitati a sola azione e intervallo date. Inoltre la allowlist
-  delle azioni nel controller e' ferma a 26 valori su 80+ dell'enum.
-  Questo task ridisegna il dialog AuditLog con righe espandibili per
-  visualizzare i dettagli completi, aggiunge una ricerca avanzata (testo
-  libero, targetType, IP), e corregge il backend per supportare tutti i
-  filtri necessari.
-
-  DETTAGLI TECNICI:
-
-  1. Backend — Aggiornamento controller e service:
-     - Aggiornare VALID_ACTIONS in audit.controller.ts per includere tutti
-       i valori dell'enum AuditAction (derivarli dinamicamente dal Prisma
-       client invece di una lista hardcoded)
-     - Aggiungere nuovi parametri query all'endpoint GET /api/audit:
-       • search (string) — ricerca full-text su targetType, targetId,
-         ipAddress e chiavi/valori del campo details (JSON)
-       • targetType (string) — filtro esatto per tipo di risorsa
-       • ipAddress (string) — filtro per indirizzo IP (contains)
-     - Aggiornare AuditLogQuery in audit.service.ts con i nuovi campi e
-       costruire le clausole Prisma where con OR/contains per la ricerca
-     - Aggiungere validazione Zod per i nuovi parametri
-
-  2. Frontend — API client:
-     - Estendere AuditLogParams in audit.api.ts con search, targetType,
-       ipAddress
-
-  3. Frontend — Redesign AuditLogDialog:
-     - Sostituire Table con righe espandibili: ogni riga mostra data,
-       azione (Chip colorato), target e IP; clic sulla riga espande un
-       pannello Collapse che mostra il JSON details formattato in modo
-       leggibile (coppie chiave-valore con layout a griglia)
-     - Aggiungere barra di ricerca avanzata sopra i filtri esistenti:
-       • TextField full-text con debounce (300ms)
-       • Select per targetType (valori dinamici o i piu' comuni)
-       • TextField per IP address
-     - Aggiungere ordinamento colonne (createdAt, action) con TableSortLabel
-     - Migliorare layout generale: spacing, tipografia, hover states
-     - Persistere stato filtri in uiPreferencesStore (auditLogAction,
-       auditLogSearch, auditLogTargetType)
-
-  File coinvolti:
-    MODIFICARE: server/src/controllers/audit.controller.ts
-    MODIFICARE: server/src/services/audit.service.ts
-    MODIFICARE: client/src/api/audit.api.ts
-    MODIFICARE: client/src/components/Dialogs/AuditLogDialog.tsx
-    MODIFICARE: client/src/store/uiPreferencesStore.ts
 
 
 

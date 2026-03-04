@@ -93,6 +93,21 @@ All connection credentials are encrypted at rest using AES-256-GCM. Each user ha
 
 JWT-based with access tokens (short-lived) and refresh tokens (stored in DB). The Axios client interceptor automatically refreshes expired access tokens. Socket.IO connections authenticate via JWT middleware.
 
+### Full-Screen Dialogs Over Navigation
+
+Features that overlay the main workspace (settings, keychain, audit log, etc.) **must** be implemented as full-screen MUI `Dialog` components rendered from `MainLayout`, not as separate page routes. This preserves active RDP/SSH sessions. The only routed page is the main connections dashboard.
+
+**Pattern (SettingsDialog / AuditLogDialog / KeychainDialog):**
+- Define a local `SlideUp` transition via `forwardRef` using `<Slide direction="up">`
+- Props: `{ open: boolean; onClose: () => void }`
+- Root element: `<Dialog fullScreen open={open} onClose={onClose} TransitionComponent={SlideUp}>`
+- AppBar: `<AppBar position="static" sx={{ position: 'relative' }}>` + `<Toolbar variant="dense">` with `CloseIcon` button and title
+- Content: `<Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', ... }}>`
+- State managed in `MainLayout` as `const [xyzOpen, setXyzOpen] = useState(false)`
+- Dialog rendered at the fragment root level in `MainLayout`, outside the blur wrapper `Box`
+
+**Rule:** Never create a new page route for UI that opens over the dashboard. Use this dialog pattern instead.
+
 ### UI Preferences Persistence
 
 All user-facing UI layout state **must** be persisted via the centralized `uiPreferencesStore` (`client/src/store/uiPreferencesStore.ts`), which uses Zustand's `persist` middleware with localStorage key `rdm-ui-preferences`.

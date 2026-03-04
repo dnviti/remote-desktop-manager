@@ -9,56 +9,6 @@
   SEZIONE A — TASK RICHIESTI (Core Features)
 ================================================================================
 
-------------------------------------------------------------------------------
-[~] UI-082 — Convertire Keychain UI da pagina a dialog modale full-screen
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  La Keychain attualmente e' implementata come pagina separata (/keychain),
-  il che causa la disconnessione delle sessioni RDP e SSH attive quando
-  l'utente naviga verso di essa. Bisogna convertirla in un dialog modale
-  full-screen (come SettingsDialog e AuditLogDialog), renderizzato da
-  MainLayout senza mai abbandonare la pagina principale.
-
-  Inoltre, aggiungere una regola in CLAUDE.md che stabilisca il pattern
-  architetturale: tutte le funzionalita' dell'applicazione (settings,
-  keychain, audit log, ecc.) DEVONO essere dialog modali full-screen
-  renderizzati da MainLayout. L'unica pagina con route dedicata e' la
-  dashboard principale delle connessioni. Questo per preservare le sessioni
-  RDP/SSH attive.
-
-  DETTAGLI TECNICI:
-  1. Creare KeychainDialog.tsx seguendo il pattern di SettingsDialog:
-     - <Dialog fullScreen> con SlideUp transition
-     - AppBar con titolo, badge expiring secrets, e pulsante chiudi
-     - Contenuto: riutilizzare SecretListPanel + SecretDetailView esistenti
-     - Gestione stato open/close via useState in MainLayout
-
-  2. Aggiornare MainLayout.tsx:
-     - Aggiungere stato keychainOpen (useState)
-     - Modificare onClick del pulsante keychain: setKeychainOpen(true)
-       invece di navigate('/keychain')
-     - Renderizzare <KeychainDialog> nel JSX
-
-  3. Rimuovere route /keychain da App.tsx
-
-  4. Eliminare o convertire KeychainPage.tsx (il contenuto migra nel dialog)
-
-  5. Aggiornare CLAUDE.md con la regola:
-     "### Navigation Pattern — Dialogs over Pages
-      All application features (settings, keychain, audit log, etc.) MUST be
-      implemented as full-screen modal dialogs rendered from MainLayout, never
-      as separate page routes. The only routed page is the main connections
-      dashboard. This preserves active RDP/SSH sessions."
-
-  File coinvolti:
-    CREARE:     client/src/components/Dialogs/KeychainDialog.tsx
-    MODIFICARE: client/src/components/Layout/MainLayout.tsx
-    MODIFICARE: client/src/App.tsx
-    MODIFICARE: CLAUDE.md
-    ELIMINARE:  client/src/pages/KeychainPage.tsx
 
 ================================================================================
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI

@@ -10,6 +10,15 @@
 ================================================================================
 
 ------------------------------------------------------------------------------
+[x] UI-082 — Convertire Keychain UI da pagina a dialog modale full-screen
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Converted Keychain from /keychain page to full-screen dialog (KeychainDialog.tsx), updated MainLayout to open via state instead of navigation, removed route from App.tsx, deleted KeychainPage.tsx, added architectural rule to CLAUDE.md.
+  Dipendenze: Nessuna
+  COMPLETATO: Created KeychainDialog.tsx as full-screen MUI Dialog, integrated into MainLayout with keychainOpen state, removed /keychain route from App.tsx, deleted KeychainPage.tsx, and added "Full-Screen Dialogs Over Navigation" pattern rule to CLAUDE.md.
+
+------------------------------------------------------------------------------
 [x] RDP-081 — Fix click in sessione RDP su Firefox (context menu indesiderato)
 ------------------------------------------------------------------------------
   Priorita: ALTA

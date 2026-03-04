@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
   AppBar, Toolbar, Typography, IconButton, Box, Chip, Menu, MenuItem,
   Snackbar, Alert, Avatar, Button, Badge,
@@ -24,6 +23,7 @@ import ShareFolderDialog from '../Dialogs/ShareFolderDialog';
 import ConnectAsDialog from '../Dialogs/ConnectAsDialog';
 import SettingsDialog from '../Dialogs/SettingsDialog';
 import AuditLogDialog from '../Dialogs/AuditLogDialog';
+import KeychainDialog from '../Dialogs/KeychainDialog';
 
 import NotificationBell from './NotificationBell';
 import { useAuthStore } from '../../store/authStore';
@@ -42,7 +42,6 @@ import { useSecretStore } from '../../store/secretStore';
 const SIDEBAR_WIDTH = 280;
 
 export default function MainLayout() {
-  const navigate = useNavigate();
   const user = useAuthStore((s) => s.user);
   const authLogout = useAuthStore((s) => s.logout);
   const refreshToken = useAuthStore((s) => s.refreshToken);
@@ -96,6 +95,7 @@ export default function MainLayout() {
     () => new URLSearchParams(window.location.search).get('linked') ? 'security' : undefined,
   );
   const [auditLogOpen, setAuditLogOpen] = useState(false);
+  const [keychainOpen, setKeychainOpen] = useState(false);
   const [linkedProvider, setLinkedProvider] = useState<string | null>(() => {
     const linked = new URLSearchParams(window.location.search).get('linked');
     if (linked) window.history.replaceState({}, '', '/');
@@ -187,7 +187,7 @@ export default function MainLayout() {
           />
           <IconButton
             color="inherit"
-            onClick={() => navigate('/keychain')}
+            onClick={() => setKeychainOpen(true)}
             title="Keychain"
             sx={{ mr: 1 }}
           >
@@ -340,6 +340,10 @@ export default function MainLayout() {
       <AuditLogDialog
         open={auditLogOpen}
         onClose={() => setAuditLogOpen(false)}
+      />
+      <KeychainDialog
+        open={keychainOpen}
+        onClose={() => setKeychainOpen(false)}
       />
     </>
   );
