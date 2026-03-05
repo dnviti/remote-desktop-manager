@@ -172,7 +172,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           ))}
         </Tabs>
 
-        <Box sx={{ flex: 1, overflow: 'auto', p: 3, maxWidth: 900 }}>
+        <Box sx={{ flex: 1, overflow: 'auto', p: 3 }}>
           {resolvedTab === 'profile' && (
             <Stack spacing={3}>
               <ProfileSection onHasPasswordResolved={setHasPassword} linkedProvider={linkedProvider} />

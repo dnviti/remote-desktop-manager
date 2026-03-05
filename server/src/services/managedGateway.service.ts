@@ -10,6 +10,11 @@ import { AppError } from '../middleware/error.middleware';
 import * as auditService from './audit.service';
 import { logger } from '../utils/logger';
 import { findFreePort } from '../utils/freePort';
+import {
+  emitInstancesForGateway,
+  emitScalingForGateway,
+  emitGatewayData,
+} from './gatewayMonitor.service';
 
 const MAX_REPLICAS = 20;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
@@ -209,6 +214,11 @@ export async function deployGatewayInstance(
 
   log.info(`Deployed instance ${instance.id} (container ${containerInfo.id}) for gateway ${gatewayId}`);
 
+  // Push real-time updates to connected clients
+  emitInstancesForGateway(gatewayId).catch(() => {});
+  emitGatewayData(gatewayId).catch(() => {});
+  emitScalingForGateway(gatewayId).catch(() => {});
+
   return {
     instanceId: instance.id,
     containerId: containerInfo.id,
@@ -258,6 +268,11 @@ export async function removeGatewayInstance(
   }
 
   log.info(`Removed instance ${instanceId} (container ${instance.containerId})`);
+
+  // Push real-time updates to connected clients
+  emitInstancesForGateway(instance.gatewayId).catch(() => {});
+  emitGatewayData(instance.gatewayId).catch(() => {});
+  emitScalingForGateway(instance.gatewayId).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -343,6 +358,11 @@ export async function scaleGateway(
   }
 
   log.info(`Scaled gateway ${gatewayId}: ${currentCount} → ${replicas} (deployed: ${deployed}, removed: ${removed})`);
+
+  // Push real-time updates to connected clients
+  emitInstancesForGateway(gatewayId).catch(() => {});
+  emitGatewayData(gatewayId).catch(() => {});
+  emitScalingForGateway(gatewayId).catch(() => {});
 
   return { deployed, removed };
 }
@@ -479,6 +499,11 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
       }
     }
   }
+
+  // Push real-time updates to connected clients
+  emitInstancesForGateway(gatewayId).catch(() => {});
+  emitGatewayData(gatewayId).catch(() => {});
+  emitScalingForGateway(gatewayId).catch(() => {});
 }
 
 export async function reconcileAll(): Promise<void> {
@@ -626,6 +651,12 @@ export async function healthCheck(): Promise<void> {
 
   if (unhealthy > 0 || restarted > 0) {
     log.info(`Health check: ${healthy} healthy, ${unhealthy} unhealthy, ${restarted} restarted`);
+  }
+
+  // Push real-time instance status updates for each affected gateway
+  const affectedGatewayIds = [...new Set(instances.map((i) => i.gatewayId))];
+  for (const gwId of affectedGatewayIds) {
+    emitInstancesForGateway(gwId).catch(() => {});
   }
 }
 

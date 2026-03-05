@@ -41,15 +41,15 @@ export default function ScalingControls({ gatewayId, gateway }: ScalingControlsP
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Initial fetch on mount — real-time updates arrive via Socket.IO (scaling:updated)
   useEffect(() => {
     if (gateway.isManaged) {
       fetchScalingStatus(gatewayId);
-      // Poll scaling status to keep replica counts in sync with auto-scaler
-      const interval = setInterval(() => fetchScalingStatus(gatewayId), 10_000);
-      return () => clearInterval(interval);
     }
   }, [gatewayId, gateway.isManaged, fetchScalingStatus]);
 
+  // Sync local form state only when server-side config fields change
+  // (not on health probe updates which change lastHealthStatus, lastLatencyMs, etc.)
   useEffect(() => {
     setReplicas(gateway.desiredReplicas);
     setAutoScale(gateway.autoScale);
@@ -57,7 +57,14 @@ export default function ScalingControls({ gatewayId, gateway }: ScalingControlsP
     setMaxReplicas(String(gateway.maxReplicas));
     setSessionsPerInstance(String(gateway.sessionsPerInstance));
     setCooldown(String(gateway.scaleDownCooldownSeconds));
-  }, [gateway]);
+  }, [
+    gateway.desiredReplicas,
+    gateway.autoScale,
+    gateway.minReplicas,
+    gateway.maxReplicas,
+    gateway.sessionsPerInstance,
+    gateway.scaleDownCooldownSeconds,
+  ]);
 
   // Keep slider in sync with auto-scaler's target replicas
   useEffect(() => {
@@ -71,7 +78,6 @@ export default function ScalingControls({ gatewayId, gateway }: ScalingControlsP
     setError(null);
     try {
       await deployGatewayAction(gatewayId);
-      fetchScalingStatus(gatewayId);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -97,7 +103,6 @@ export default function ScalingControls({ gatewayId, gateway }: ScalingControlsP
     setError(null);
     try {
       await scaleGatewayAction(gatewayId, replicas);
-      fetchScalingStatus(gatewayId);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -116,7 +121,6 @@ export default function ScalingControls({ gatewayId, gateway }: ScalingControlsP
         sessionsPerInstance: Number(sessionsPerInstance),
         scaleDownCooldownSeconds: Number(cooldown),
       });
-      fetchScalingStatus(gatewayId);
     } catch (err) {
       setError((err as Error).message);
     } finally {

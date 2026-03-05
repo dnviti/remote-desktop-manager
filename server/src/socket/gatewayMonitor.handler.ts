@@ -2,7 +2,12 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { AuthPayload } from '../types';
-import { setHealthEmitter, GatewayHealthEvent } from '../services/gatewayMonitor.service';
+import {
+  setHealthEmitter, GatewayHealthEvent,
+  setInstancesEmitter, InstancesUpdatedEvent,
+  setScalingEmitter, ScalingUpdatedEvent,
+  setGatewayEmitter, GatewayUpdatedEvent,
+} from '../services/gatewayMonitor.service';
 
 export function setupGatewayMonitorHandler(io: Server) {
   const gatewayMonitorNamespace = io.of('/gateway-monitor');
@@ -29,5 +34,17 @@ export function setupGatewayMonitorHandler(io: Server) {
 
   setHealthEmitter((tenantId: string, payload: GatewayHealthEvent) => {
     gatewayMonitorNamespace.to(tenantId).emit('gateway:health', payload);
+  });
+
+  setInstancesEmitter((tenantId: string, payload: InstancesUpdatedEvent) => {
+    gatewayMonitorNamespace.to(tenantId).emit('instances:updated', payload);
+  });
+
+  setScalingEmitter((tenantId: string, payload: ScalingUpdatedEvent) => {
+    gatewayMonitorNamespace.to(tenantId).emit('scaling:updated', payload);
+  });
+
+  setGatewayEmitter((tenantId: string, payload: GatewayUpdatedEvent) => {
+    gatewayMonitorNamespace.to(tenantId).emit('gateway:updated', payload);
   });
 }

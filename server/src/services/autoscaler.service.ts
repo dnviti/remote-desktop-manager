@@ -3,6 +3,7 @@ import * as managedGatewayService from './managedGateway.service';
 import * as sessionService from './session.service';
 import * as auditService from './audit.service';
 import { logger } from '../utils/logger';
+import { emitScalingForGateway } from './gatewayMonitor.service';
 
 const log = logger.child('autoscaler');
 
@@ -131,6 +132,8 @@ async function evaluateGatewayScaling(gw: {
       log.debug(
         `Gateway ${gw.id}: scale-down deferred, cooldown ${remaining}s remaining`,
       );
+      // Still emit so clients see updated session counts and cooldown
+      emitScalingForGateway(gw.id).catch(() => {});
       return;
     }
 
@@ -159,7 +162,9 @@ async function evaluateGatewayScaling(gw: {
       },
     });
   }
-  // else: target === currentReplicas → no-op
+
+  // Push updated scaling status to clients (covers scale-up, scale-down, and stable)
+  emitScalingForGateway(gw.id).catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
@@ -230,6 +235,7 @@ export async function getScalingStatus(
     select: {
       id: true,
       autoScale: true,
+      desiredReplicas: true,
       minReplicas: true,
       maxReplicas: true,
       sessionsPerInstance: true,
@@ -275,17 +281,24 @@ export async function getScalingStatus(
     }),
   ]);
 
-  const rawTarget =
-    activeSessions === 0
-      ? 0
-      : Math.ceil(activeSessions / gateway.sessionsPerInstance);
-  const targetReplicas = Math.max(
-    gateway.minReplicas,
-    Math.min(rawTarget, gateway.maxReplicas),
-  );
+  // When auto-scale is off, target = desiredReplicas (user's manual choice)
+  // When auto-scale is on, target = calculated from session load
+  let targetReplicas: number;
+  if (gateway.autoScale) {
+    const rawTarget =
+      activeSessions === 0
+        ? 0
+        : Math.ceil(activeSessions / gateway.sessionsPerInstance);
+    targetReplicas = Math.max(
+      gateway.minReplicas,
+      Math.min(rawTarget, gateway.maxReplicas),
+    );
+  } else {
+    targetReplicas = gateway.desiredReplicas;
+  }
 
   let cooldownRemaining = 0;
-  if (gateway.lastScaleAction) {
+  if (gateway.autoScale && gateway.lastScaleAction) {
     const elapsed = Date.now() - gateway.lastScaleAction.getTime();
     const cooldownMs = gateway.scaleDownCooldownSeconds * 1000;
     if (elapsed < cooldownMs) {
@@ -294,7 +307,10 @@ export async function getScalingStatus(
   }
 
   let recommendation: 'scale-up' | 'scale-down' | 'stable';
-  if (targetReplicas > currentReplicas) {
+  if (!gateway.autoScale) {
+    // Manual mode — no auto-scaling recommendations
+    recommendation = 'stable';
+  } else if (targetReplicas > currentReplicas) {
     recommendation = 'scale-up';
   } else if (targetReplicas < currentReplicas) {
     recommendation = 'scale-down';

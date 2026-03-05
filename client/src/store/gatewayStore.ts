@@ -53,6 +53,9 @@ interface GatewayState {
   updateGateway: (id: string, data: GatewayUpdate) => Promise<void>;
   deleteGateway: (id: string) => Promise<void>;
   applyHealthUpdate: (event: GatewayHealthEvent) => void;
+  applyInstancesUpdate: (gatewayId: string, instances: ManagedInstanceData[]) => void;
+  applyScalingUpdate: (gatewayId: string, scalingStatus: ScalingStatusData) => void;
+  applyGatewayUpdate: (gatewayId: string, gatewayPartial: Partial<GatewayData>) => void;
 
   // SSH key actions
   fetchSshKeyPair: () => Promise<void>;
@@ -152,6 +155,26 @@ export const useGatewayStore = create<GatewayState>((set) => ({
     }));
   },
 
+  applyInstancesUpdate: (gatewayId, instances) => {
+    set((state) => ({
+      instances: { ...state.instances, [gatewayId]: instances },
+    }));
+  },
+
+  applyScalingUpdate: (gatewayId, scalingStatus) => {
+    set((state) => ({
+      scalingStatus: { ...state.scalingStatus, [gatewayId]: scalingStatus },
+    }));
+  },
+
+  applyGatewayUpdate: (gatewayId, gatewayPartial) => {
+    set((state) => ({
+      gateways: state.gateways.map((g) =>
+        g.id === gatewayId ? { ...g, ...gatewayPartial } : g,
+      ),
+    }));
+  },
+
   fetchSshKeyPair: async () => {
     set({ sshKeyLoading: true });
     try {
@@ -243,34 +266,38 @@ export const useGatewayStore = create<GatewayState>((set) => ({
 
   deployGateway: async (id) => {
     await deployGatewayApi(id);
-    const gateways = await listGateways();
-    set({ gateways });
+    // Socket events (instances:updated, gateway:updated, scaling:updated) handle UI refresh
   },
 
   undeployGateway: async (id) => {
     await undeployGatewayApi(id);
-    const gateways = await listGateways();
-    set({ gateways });
+    // Socket events handle UI refresh
   },
 
   scaleGateway: async (id, replicas) => {
     await scaleGatewayApi(id, replicas);
-    const gateways = await listGateways();
-    set({ gateways });
+    // Socket events handle UI refresh
   },
 
   updateScalingConfig: async (id, config) => {
     await updateScalingConfigApi(id, config);
-    const gateways = await listGateways();
-    set({ gateways });
+    // Socket events handle UI refresh
   },
 
   restartInstance: async (gatewayId, instanceId) => {
-    await restartGatewayInstanceApi(gatewayId, instanceId);
-    const instanceList = await listGatewayInstancesApi(gatewayId);
+    // Optimistically show "restarting" status
     set((state) => ({
-      instances: { ...state.instances, [gatewayId]: instanceList },
+      instances: {
+        ...state.instances,
+        [gatewayId]: (state.instances[gatewayId] ?? []).map((inst) =>
+          inst.id === instanceId
+            ? { ...inst, healthStatus: 'restarting' }
+            : inst,
+        ),
+      },
     }));
+    await restartGatewayInstanceApi(gatewayId, instanceId);
+    // Socket event (instances:updated) will push the real status
   },
 
   // ---------- Gateway templates ----------

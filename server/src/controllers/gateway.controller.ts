@@ -10,6 +10,11 @@ import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import prisma from '../lib/prisma';
 import { getOrchestrator } from '../orchestrator';
+import {
+  emitInstancesForGateway,
+  emitScalingForGateway,
+  emitGatewayData,
+} from '../services/gatewayMonitor.service';
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
@@ -443,6 +448,9 @@ export async function restartInstance(req: AuthRequest, res: Response, next: Nex
       ipAddress: req.ip,
     });
 
+    // Push real-time instance status update
+    emitInstancesForGateway(gatewayId).catch(() => {});
+
     res.json({ restarted: true });
   } catch (err) {
     next(err);
@@ -563,6 +571,10 @@ export async function updateScalingConfig(req: AuthRequest, res: Response, next:
       details: { scalingConfig: data },
       ipAddress: req.ip,
     });
+
+    // Push real-time updates for config change
+    emitGatewayData(gatewayId).catch(() => {});
+    emitScalingForGateway(gatewayId).catch(() => {});
 
     res.json(updated);
   } catch (err) {

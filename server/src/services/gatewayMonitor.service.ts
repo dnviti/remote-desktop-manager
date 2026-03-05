@@ -14,10 +14,143 @@ export interface GatewayHealthEvent {
   checkedAt: string;
 }
 
+// ---------------------------------------------------------------------------
+// Emitter callbacks — set by the Socket.IO handler at startup
+// ---------------------------------------------------------------------------
+
 let emitHealthUpdate: ((tenantId: string, payload: GatewayHealthEvent) => void) | null = null;
+let emitInstancesUpdate: ((tenantId: string, payload: InstancesUpdatedEvent) => void) | null = null;
+let emitScalingUpdate: ((tenantId: string, payload: ScalingUpdatedEvent) => void) | null = null;
+let emitGatewayUpdate: ((tenantId: string, payload: GatewayUpdatedEvent) => void) | null = null;
+
+export interface InstancesUpdatedEvent {
+  gatewayId: string;
+  instances: Array<{
+    id: string;
+    containerId: string;
+    containerName: string;
+    host: string;
+    port: number;
+    status: string;
+    healthStatus: string | null;
+    errorMessage: string | null;
+    createdAt: string;
+    apiPort: number | null;
+  }>;
+}
+
+export interface ScalingUpdatedEvent {
+  gatewayId: string;
+  scalingStatus: Record<string, unknown>;
+}
+
+export interface GatewayUpdatedEvent {
+  gatewayId: string;
+  gateway: Record<string, unknown>;
+}
 
 export function setHealthEmitter(fn: (tenantId: string, payload: GatewayHealthEvent) => void) {
   emitHealthUpdate = fn;
+}
+
+export function setInstancesEmitter(fn: (tenantId: string, payload: InstancesUpdatedEvent) => void) {
+  emitInstancesUpdate = fn;
+}
+
+export function setScalingEmitter(fn: (tenantId: string, payload: ScalingUpdatedEvent) => void) {
+  emitScalingUpdate = fn;
+}
+
+export function setGatewayEmitter(fn: (tenantId: string, payload: GatewayUpdatedEvent) => void) {
+  emitGatewayUpdate = fn;
+}
+
+// ---------------------------------------------------------------------------
+// Emit helpers — read fresh DB state and push to clients
+// ---------------------------------------------------------------------------
+
+export async function emitInstancesForGateway(gatewayId: string) {
+  if (!emitInstancesUpdate) return;
+  try {
+    const gateway = await prisma.gateway.findUnique({
+      where: { id: gatewayId },
+      select: { tenantId: true },
+    });
+    if (!gateway) return;
+    const instances = await prisma.managedGatewayInstance.findMany({
+      where: { gatewayId },
+      orderBy: { createdAt: 'asc' },
+    });
+    emitInstancesUpdate(gateway.tenantId, {
+      gatewayId,
+      instances: instances.map((i) => ({
+        id: i.id,
+        containerId: i.containerId,
+        containerName: i.containerName,
+        host: i.host,
+        port: i.port,
+        status: i.status,
+        healthStatus: i.healthStatus,
+        errorMessage: i.errorMessage,
+        createdAt: i.createdAt.toISOString(),
+        apiPort: i.apiPort,
+      })),
+    });
+  } catch (err) {
+    log.error(`emitInstancesForGateway failed for ${gatewayId}:`, (err as Error).message);
+  }
+}
+
+export async function emitScalingForGateway(gatewayId: string) {
+  if (!emitScalingUpdate) return;
+  try {
+    const gateway = await prisma.gateway.findUnique({
+      where: { id: gatewayId },
+      select: { tenantId: true },
+    });
+    if (!gateway) return;
+    // Dynamic import to avoid circular dependency with autoscaler.service
+    const { getScalingStatus } = await import('./autoscaler.service');
+    const scalingStatus = await getScalingStatus(gatewayId);
+    emitScalingUpdate(gateway.tenantId, {
+      gatewayId,
+      scalingStatus: scalingStatus as unknown as Record<string, unknown>,
+    });
+  } catch (err) {
+    log.error(`emitScalingForGateway failed for ${gatewayId}:`, (err as Error).message);
+  }
+}
+
+export async function emitGatewayData(gatewayId: string) {
+  if (!emitGatewayUpdate) return;
+  try {
+    const gw = await prisma.gateway.findUnique({ where: { id: gatewayId } });
+    if (!gw) return;
+    const [totalInstances, runningInstances] = await Promise.all([
+      prisma.managedGatewayInstance.count({ where: { gatewayId } }),
+      prisma.managedGatewayInstance.count({
+        where: { gatewayId, status: { in: ['RUNNING', 'PROVISIONING'] } },
+      }),
+    ]);
+    emitGatewayUpdate(gw.tenantId, {
+      gatewayId,
+      gateway: {
+        id: gw.id,
+        isManaged: gw.isManaged,
+        desiredReplicas: gw.desiredReplicas,
+        autoScale: gw.autoScale,
+        minReplicas: gw.minReplicas,
+        maxReplicas: gw.maxReplicas,
+        sessionsPerInstance: gw.sessionsPerInstance,
+        scaleDownCooldownSeconds: gw.scaleDownCooldownSeconds,
+        lastScaleAction: gw.lastScaleAction?.toISOString() ?? null,
+        totalInstances,
+        runningInstances,
+      },
+    });
+  } catch (err) {
+    log.error(`emitGatewayData failed for ${gatewayId}:`, (err as Error).message);
+  }
 }
 
 async function probeAndPersist(gatewayId: string, host: string, port: number, tenantId: string) {
