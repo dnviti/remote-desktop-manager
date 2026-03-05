@@ -36,6 +36,10 @@ interface SecretPickerProps {
   disabled?: boolean;
   error?: boolean;
   helperText?: string;
+  /** Pre-populated name/type from connection data so the picker shows
+   *  the secret immediately without waiting for an API fetch. */
+  initialName?: string | null;
+  initialType?: SecretType | null;
 }
 
 export default function SecretPicker({
@@ -45,6 +49,8 @@ export default function SecretPicker({
   disabled,
   error,
   helperText,
+  initialName,
+  initialType,
 }: SecretPickerProps) {
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
   const [options, setOptions] = useState<SecretListItem[]>([]);
@@ -56,14 +62,40 @@ export default function SecretPicker({
   const compatibleTypes: SecretType[] =
     connectionType === 'RDP' ? ['LOGIN'] : ['LOGIN', 'SSH_KEY'];
 
-  // Fetch initial secret when value is set (edit mode)
+  // Synchronously set stub from initialName, then upgrade with full API data
   useEffect(() => {
-    if (!value || !vaultUnlocked) {
-      if (!value) setSelected(null);
+    if (!value) {
+      setSelected(null);
       return;
     }
-    // If already selected with matching id, skip
-    if (selected?.id === value) return;
+
+    // Synchronously show stub from initialName (no async wait needed)
+    if (initialName && selected?.id !== value) {
+      const stub: SecretListItem = {
+        id: value,
+        name: initialName,
+        description: null,
+        type: initialType ?? 'LOGIN',
+        scope: 'PERSONAL',
+        teamId: null,
+        tenantId: null,
+        folderId: null,
+        metadata: null,
+        tags: [],
+        isFavorite: false,
+        expiresAt: null,
+        currentVersion: 1,
+        createdAt: '',
+        updatedAt: '',
+      };
+      setSelected(stub);
+      setOptions((prev) =>
+        prev.some((o) => o.id === value) ? prev : [stub, ...prev],
+      );
+    }
+
+    // Upgrade stub with full metadata from API (async)
+    if (!vaultUnlocked) return;
 
     let cancelled = false;
     (async () => {
@@ -82,7 +114,7 @@ export default function SecretPicker({
       }
     })();
     return () => { cancelled = true; };
-  }, [value, vaultUnlocked]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [value, vaultUnlocked, initialName, initialType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchOptions = useCallback(
     async (search: string) => {

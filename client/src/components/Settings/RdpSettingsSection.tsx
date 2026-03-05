@@ -275,7 +275,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           control={
             <Switch
               size="small"
-              checked={get('ignoreCert') ?? true}
+              checked={get('ignoreCert') ?? false}
               onChange={(e) => set('ignoreCert', e.target.checked)}
               disabled={fieldDisabled('ignoreCert')}
             />

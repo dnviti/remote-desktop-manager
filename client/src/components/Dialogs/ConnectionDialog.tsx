@@ -285,6 +285,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
               onChange={(id) => setSelectedSecretId(id)}
               connectionType={type}
               error={!selectedSecretId && !!error}
+              initialName={connection?.credentialSecretName}
+              initialType={connection?.credentialSecretType as 'LOGIN' | 'SSH_KEY' | undefined}
             />
           ) : (
             <>

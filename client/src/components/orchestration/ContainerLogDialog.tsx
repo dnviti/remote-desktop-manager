@@ -33,7 +33,7 @@ export default function ContainerLogDialog({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tail, setTail] = useState<number>(200);
-  const [live, setLive] = useState(false);
+  const [live, setLive] = useState(true);
   const [fullScreen, setFullScreen] = useState(false);
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   const logsEndRef = useRef<HTMLDivElement>(null);
@@ -66,7 +66,7 @@ export default function ContainerLogDialog({
     if (!open) {
       setLogs('');
       setError(null);
-      setLive(false);
+      setLive(true);
     }
   }, [open, instance, fetchLogs]);
 
