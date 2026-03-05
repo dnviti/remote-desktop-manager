@@ -1,4 +1,4 @@
-import prisma from '../lib/prisma';
+import prisma, { ManagedInstanceStatus } from '../lib/prisma';
 import type { GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { encrypt, decrypt, getMasterKey } from './crypto.service';
@@ -6,6 +6,8 @@ import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
 import { startMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
+
+const log = logger.child('gateway');
 import { removeGatewayInstance } from './managedGateway.service';
 
 export interface CreateGatewayInput {
@@ -197,6 +199,8 @@ export async function createGateway(
     return { ...rest, hasSshKey: _k != null };
   });
 
+  log.debug(`Created gateway ${gateway.id} (${input.type}) in tenant ${tenantId}`);
+
   // Skip TCP monitoring for managed+publishPorts gateways — their gateway-level
   // host:port is an internal container port.  Health is derived from instances.
   const isManagedPublished = input.publishPorts && (input.type === 'MANAGED_SSH' || input.type === 'GUACD');
@@ -323,12 +327,13 @@ export async function deleteGateway(tenantId: string, gatewayId: string) {
     try {
       await removeGatewayInstance(instance.id);
     } catch (err) {
-      logger.warn(`Failed to remove managed instance ${instance.id} during gateway deletion: ${(err as Error).message}`);
+      log.warn(`Failed to remove managed instance ${instance.id} during gateway deletion: ${(err as Error).message}`);
     }
   }
 
   await prisma.gateway.delete({ where: { id: gatewayId } });
   stopMonitor(gatewayId);
+  log.debug(`Deleted gateway ${gatewayId} in tenant ${tenantId}`);
   return { deleted: true };
 }
 
@@ -421,7 +426,7 @@ export async function pushKeyToAllManagedGateways(
   tenantId: string,
 ): Promise<{ gatewayId: string; name: string; ok: boolean; error?: string }[]> {
   const gateways = await prisma.gateway.findMany({
-    where: { tenantId, type: 'MANAGED_SSH', apiPort: { not: null } },
+    where: { tenantId, type: 'MANAGED_SSH', isManaged: true },
     select: { id: true, name: true },
   });
 
@@ -437,20 +442,23 @@ export async function pushKeyToAllManagedGateways(
   return results;
 }
 
+export interface PushKeyInstanceResult {
+  instanceId: string;
+  ok: boolean;
+  error?: string;
+}
+
 export async function pushKeyToGateway(
   tenantId: string,
   gatewayId: string,
-): Promise<{ ok: boolean }> {
+): Promise<PushKeyInstanceResult[]> {
   const gateway = await prisma.gateway.findFirst({
     where: { id: gatewayId, tenantId },
-    select: { host: true, port: true, apiPort: true, type: true },
+    select: { type: true },
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
   if (gateway.type !== 'MANAGED_SSH') {
     throw new AppError('Push key is only supported for MANAGED_SSH gateways', 400);
-  }
-  if (!gateway.apiPort) {
-    throw new AppError('Gateway does not have an API port configured', 400);
   }
 
   const token = config.gatewayApiToken;
@@ -466,35 +474,60 @@ export async function pushKeyToGateway(
     throw new AppError('No SSH key pair found for this tenant. Generate one first.', 404);
   }
 
-  const url = `http://${gateway.host}:${gateway.apiPort}/cgi-bin/authorized-keys`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const instances = await prisma.managedGatewayInstance.findMany({
+    where: {
+      gatewayId,
+      status: ManagedInstanceStatus.RUNNING,
+      apiPort: { not: null },
+    },
+    select: { id: true, host: true, apiPort: true },
+  });
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({ publicKey: keyPair.publicKey }),
-      signal: controller.signal,
-    });
-
-    clearTimeout(timeout);
-
-    if (!response.ok) {
-      const body = await response.text();
-      throw new AppError(`Gateway API returned ${response.status}: ${body}`, 502);
-    }
-
-    return { ok: true };
-  } catch (err) {
-    clearTimeout(timeout);
-    if (err instanceof AppError) throw err;
-    if ((err as Error).name === 'AbortError') {
-      throw new AppError('Gateway API request timed out (5s)', 504);
-    }
-    throw new AppError(`Failed to reach gateway API: ${(err as Error).message}`, 502);
+  if (instances.length === 0) {
+    throw new AppError('No running instances with an API port found for this gateway', 400);
   }
+
+  const results: PushKeyInstanceResult[] = [];
+
+  for (const instance of instances) {
+    const url = `http://${instance.host}:${instance.apiPort}/cgi-bin/authorized-keys`;
+    const ac = new AbortController();
+    const timeout = setTimeout(() => ac.abort(), 5000);
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ publicKey: keyPair.publicKey }),
+        signal: ac.signal,
+      });
+      clearTimeout(timeout);
+
+      if (!response.ok) {
+        const body = await response.text();
+        results.push({ instanceId: instance.id, ok: false, error: `HTTP ${response.status}: ${body}` });
+      } else {
+        results.push({ instanceId: instance.id, ok: true });
+      }
+    } catch (err) {
+      clearTimeout(timeout);
+      const msg = (err as Error).name === 'AbortError'
+        ? 'Request timed out (5s)'
+        : (err as Error).message;
+      results.push({ instanceId: instance.id, ok: false, error: msg });
+    }
+  }
+
+  const allFailed = results.every(r => !r.ok);
+  if (allFailed) {
+    throw new AppError(
+      `SSH key push failed for all ${results.length} instance(s)`,
+      502,
+    );
+  }
+
+  return results;
 }

@@ -4,6 +4,8 @@ import * as auditService from './audit.service';
 import { formatDuration } from '../utils/format';
 import { logger } from '../utils/logger';
 
+const log = logger.child('session');
+
 // ---------- Types ----------
 
 export interface StartSessionParams {
@@ -87,9 +89,10 @@ export async function startSession(params: StartSessionParams): Promise<string> 
       gatewayId: params.gatewayId,
     });
 
+    log.debug(`Started session ${session.id} (${params.protocol}) for user ${params.userId}, connection ${params.connectionId}`);
     return session.id;
   } catch (err) {
-    logger.error('Failed to start session:', err);
+    log.error('Failed to start session:', err);
     throw err;
   }
 }
@@ -113,6 +116,8 @@ export async function endSession(
       data: { status: 'CLOSED', endedAt: now },
     });
 
+    log.debug(`Ended session ${sessionId} (duration ${durationMs}ms)`);
+
     auditService.log({
       userId: session.userId,
       action: 'SESSION_END',
@@ -129,7 +134,7 @@ export async function endSession(
       gatewayId: session.gatewayId,
     });
   } catch (err) {
-    logger.error('Failed to end session:', err);
+    log.error('Failed to end session:', err);
   }
 }
 
@@ -142,7 +147,7 @@ export async function endSessionBySocketId(socketId: string): Promise<void> {
       await endSession(session.id, 'socket_disconnect');
     }
   } catch (err) {
-    logger.error('Failed to end session by socketId:', err);
+    log.error('Failed to end session by socketId:', err);
   }
 }
 
@@ -155,7 +160,7 @@ export async function endSessionByGuacTokenHash(tokenHash: string): Promise<void
       await endSession(session.id, 'guac_close');
     }
   } catch (err) {
-    logger.error('Failed to end session by guacTokenHash:', err);
+    log.error('Failed to end session by guacTokenHash:', err);
   }
 }
 

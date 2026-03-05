@@ -7,6 +7,8 @@ import { config } from '../config';
 import { AuthPayload } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
+
+const log = logger.child('auth');
 import {
   generateSalt,
   generateMasterKey,
@@ -64,9 +66,11 @@ export async function register(email: string, password: string) {
 
   if (needsVerification && emailVerifyToken) {
     sendVerificationEmail(email, emailVerifyToken).catch((err) => {
-      logger.error('Failed to send verification email:', err);
+      log.error('Failed to send verification email:', err);
     });
   }
+
+  log.verbose(`User registered: ${user.id} (${email})`);
 
   return {
     message: needsVerification
@@ -253,6 +257,7 @@ export async function login(email: string, password: string, ipAddress?: string 
   }
 
   // Normal flow: issue real tokens
+  log.verbose(`Login successful for user ${user.id} (${email})`);
   const tokens = await issueTokens(user);
   return { requiresMFA: false as const, ...tokens };
 }
@@ -394,8 +399,8 @@ export async function refreshAccessToken(refreshToken: string) {
       },
     });
 
-    logger.warn(
-      `[auth] Refresh token reuse detected for user ${stored.userId}, family ${stored.tokenFamily}. All tokens revoked.`,
+    log.warn(
+      `Refresh token reuse detected for user ${stored.userId}, family ${stored.tokenFamily}. All tokens revoked.`,
     );
 
     throw new Error('Invalid or expired refresh token');
@@ -408,6 +413,7 @@ export async function refreshAccessToken(refreshToken: string) {
   }
 
   // Normal rotation: mark old token as revoked, issue new one in same family
+  log.verbose(`Rotating refresh token for user ${stored.userId}, family ${stored.tokenFamily}`);
   await prisma.refreshToken.update({
     where: { id: stored.id },
     data: { revokedAt: new Date() },
@@ -500,7 +506,7 @@ export async function resendVerification(email: string): Promise<void> {
   });
 
   sendVerificationEmail(email, emailVerifyToken).catch((err) => {
-    logger.error('Failed to send verification email:', err);
+    log.error('Failed to send verification email:', err);
   });
 }
 
@@ -560,7 +566,7 @@ export async function cleanupExpiredTokens() {
     where: { expiresAt: { lt: new Date() } },
   });
   if (result.count > 0) {
-    logger.info(`[auth] Cleaned up ${result.count} expired refresh token(s)`);
+    log.info(`Cleaned up ${result.count} expired refresh token(s)`);
   }
   return result.count;
 }

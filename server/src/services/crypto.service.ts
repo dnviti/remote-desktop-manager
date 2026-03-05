@@ -2,6 +2,9 @@ import crypto from 'crypto';
 import argon2 from 'argon2';
 import { EncryptedField, VaultSession } from '../types';
 import { config } from '../config';
+import { logger } from '../utils/logger';
+
+const log = logger.child('crypto');
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
@@ -136,10 +139,12 @@ export async function deriveKeyFromTokenAndPin(
 // Server-level encryption (for data the server must decrypt autonomously, e.g. SSH key pairs)
 
 export function encryptWithServerKey(plaintext: string): EncryptedField {
+  log.debug('Encrypting data with server key');
   return encrypt(plaintext, config.serverEncryptionKey);
 }
 
 export function decryptWithServerKey(field: EncryptedField): string {
+  log.debug('Decrypting data with server key');
   return decrypt(field, config.serverEncryptionKey);
 }
 
@@ -151,6 +156,7 @@ export function storeVaultSession(userId: string, masterKey: Buffer): void {
     masterKey: Buffer.from(masterKey), // copy the buffer
     expiresAt: Date.now() + ttlMs,
   });
+  log.debug(`Vault session stored for user ${userId} (TTL ${config.vaultTtlMinutes}m)`);
 }
 
 export function getVaultSession(userId: string): VaultSession | null {
@@ -180,6 +186,7 @@ export function lockVault(userId: string): void {
   if (session) {
     session.masterKey.fill(0);
     vaultStore.delete(userId);
+    log.debug(`Vault locked for user ${userId}`);
   }
   // Also lock all team and tenant vault sessions for this user
   lockUserTeamVaults(userId);

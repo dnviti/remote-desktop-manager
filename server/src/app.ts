@@ -24,6 +24,8 @@ import secretRoutes from './routes/secret.routes';
 import publicShareRoutes from './routes/publicShare.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
+import { requestLogger } from './middleware/requestLogger.middleware';
+import { config } from './config';
 
 const app = express();
 
@@ -47,6 +49,7 @@ app.use(helmet({
 app.use(cors({ origin: ['http://localhost:3000'], credentials: true }));
 app.use(express.json({ limit: '500kb' }));
 app.use(passport.initialize());
+if (config.logHttpRequests) app.use(requestLogger);
 
 // Routes
 app.use('/api/auth', oauthRoutes);

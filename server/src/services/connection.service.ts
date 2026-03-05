@@ -7,6 +7,9 @@ import * as permissionService from './permission.service';
 import { ROLE_HIERARCHY } from './permission.service';
 import { tenantScopedTeamFilter } from '../utils/tenantScope';
 import type { ResolvedCredentials, SecretPayload } from '../types';
+import { logger } from '../utils/logger';
+
+const log = logger.child('connection');
 
 function requireMasterKey(userId: string): Buffer {
   const key = getMasterKey(userId);
@@ -107,6 +110,8 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     },
   });
 
+  log.debug(`Created connection ${connection.id} (${input.type}) for user ${userId}`);
+
   return {
     id: connection.id,
     name: connection.name,
@@ -115,6 +120,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     port: connection.port,
     folderId: connection.folderId,
     teamId: connection.teamId,
+    gatewayId: connection.gatewayId,
     credentialSecretId: connection.credentialSecretId,
     description: connection.description,
     enableDrive: connection.enableDrive,
@@ -196,6 +202,8 @@ export async function updateConnection(
     data,
   });
 
+  log.debug(`Updated connection ${connectionId} for user ${userId}`);
+
   return {
     id: updated.id,
     name: updated.name,
@@ -204,6 +212,7 @@ export async function updateConnection(
     port: updated.port,
     folderId: updated.folderId,
     teamId: updated.teamId,
+    gatewayId: updated.gatewayId,
     credentialSecretId: updated.credentialSecretId,
     description: updated.description,
     enableDrive: updated.enableDrive,
@@ -219,6 +228,7 @@ export async function deleteConnection(userId: string, connectionId: string, ten
   if (!access.allowed) throw new AppError('Connection not found', 404);
 
   await prisma.connection.delete({ where: { id: connectionId } });
+  log.debug(`Deleted connection ${connectionId} for user ${userId}`);
   return { deleted: true };
 }
 
@@ -324,7 +334,9 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       host: true,
       port: true,
       folderId: true,
+      gatewayId: true,
       credentialSecretId: true,
+      credentialSecret: { select: { name: true, type: true } },
       description: true,
       isFavorite: true,
       enableDrive: true,
@@ -347,7 +359,9 @@ export async function listConnections(userId: string, tenantId?: string | null) 
           type: true,
           host: true,
           port: true,
+          gatewayId: true,
           credentialSecretId: true,
+          credentialSecret: { select: { name: true, type: true } },
           description: true,
           enableDrive: true,
           sshTerminalConfig: true,
@@ -382,7 +396,9 @@ export async function listConnections(userId: string, tenantId?: string | null) 
         port: true,
         folderId: true,
         teamId: true,
+        gatewayId: true,
         credentialSecretId: true,
+        credentialSecret: { select: { name: true, type: true } },
         description: true,
         isFavorite: true,
         enableDrive: true,
@@ -396,6 +412,8 @@ export async function listConnections(userId: string, tenantId?: string | null) 
 
     teamConnections = rawTeamConns.map((c) => ({
       ...c,
+      credentialSecretName: c.credentialSecret?.name ?? null,
+      credentialSecretType: c.credentialSecret?.type ?? null,
       teamName: teamNameMap.get(c.teamId!) ?? null,
       teamRole: teamRoleMap.get(c.teamId!) ?? null,
       isOwner: false,
@@ -406,11 +424,15 @@ export async function listConnections(userId: string, tenantId?: string | null) 
   return {
     own: ownConnections.map((c: (typeof ownConnections)[number]) => ({
       ...c,
+      credentialSecretName: c.credentialSecret?.name ?? null,
+      credentialSecretType: c.credentialSecret?.type ?? null,
       isOwner: true,
       scope: 'private' as const,
     })),
     shared: sharedConnections.map((s: (typeof sharedConnections)[number]) => ({
       ...s.connection,
+      credentialSecretName: s.connection.credentialSecret?.name ?? null,
+      credentialSecretType: s.connection.credentialSecret?.type ?? null,
       folderId: null,
       isOwner: false,
       isFavorite: false,
@@ -578,5 +600,6 @@ export async function toggleFavorite(userId: string, connectionId: string, tenan
     data: { isFavorite: !access.connection.isFavorite },
   });
 
+  log.debug(`Toggled favorite for connection ${connectionId} (now ${updated.isFavorite})`);
   return { id: updated.id, isFavorite: updated.isFavorite };
 }

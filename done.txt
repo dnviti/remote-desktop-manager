@@ -263,6 +263,15 @@
 ================================================================================
 
 ------------------------------------------------------------------------------
+[x] LOG-085 — Logging avanzato con livelli verbose/debug configurabili
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+  COMPLETATO: Enhanced logger with verbose level, ISO-8601 timestamps, JSON format,
+    child loggers, HTTP request logging middleware, and debug/verbose logging in
+    connection, session, auth, gateway, and crypto services.
+
+------------------------------------------------------------------------------
 [x] EDIT-008 — Modifica connessioni esistenti (UI)
 ------------------------------------------------------------------------------
   Priorita: ALTA
