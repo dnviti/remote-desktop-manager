@@ -8,6 +8,12 @@ const log = logger.child('session');
 
 // ---------- Types ----------
 
+export interface RoutingDecisionMeta {
+  strategy: string;
+  candidateCount: number;
+  selectedSessionCount: number;
+}
+
 export interface StartSessionParams {
   userId: string;
   connectionId: string;
@@ -18,6 +24,7 @@ export interface StartSessionParams {
   guacToken?: string;
   ipAddress?: string | string[];
   metadata?: Record<string, unknown>;
+  routingDecision?: RoutingDecisionMeta;
 }
 
 export interface ActiveSessionFilter {
@@ -84,6 +91,11 @@ export async function startSession(params: StartSessionParams): Promise<string> 
         protocol: params.protocol,
         ...(params.metadata ?? {}),
         ...(params.gatewayId ? { gatewayName: session.gateway?.name ?? null, instanceId: params.instanceId ?? null } : {}),
+        ...(params.routingDecision ? {
+          lbStrategy: params.routingDecision.strategy,
+          lbCandidates: params.routingDecision.candidateCount,
+          lbSelectedSessions: params.routingDecision.selectedSessionCount,
+        } : {}),
       },
       ipAddress: params.ipAddress,
       gatewayId: params.gatewayId,

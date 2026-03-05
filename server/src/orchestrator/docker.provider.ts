@@ -11,6 +11,8 @@ import {
   ContainerPortMapping,
 } from './types';
 
+const log = logger.child('orchestrator:docker');
+
 export class DockerProvider implements IOrchestratorProvider {
   readonly type: OrchestratorType = OrchestratorType.DOCKER;
   protected docker: Dockerode;
@@ -96,13 +98,14 @@ export class DockerProvider implements IOrchestratorProvider {
           );
         });
       } catch (pullErr) {
-        logger.warn(
-          `[orchestrator:docker] Could not pull image ${containerConfig.image}, trying with local: ${(pullErr as Error).message}`,
+        log.warn(
+          `Could not pull image ${containerConfig.image}, trying with local: ${(pullErr as Error).message}`,
         );
       }
 
       const container = await this.docker.createContainer(createOptions);
       await container.start();
+      log.info(`Created and started container "${containerConfig.name}" (image: ${containerConfig.image})`);
 
       const inspect = await container.inspect();
       return this.inspectToContainerInfo(inspect);
@@ -123,6 +126,7 @@ export class DockerProvider implements IOrchestratorProvider {
         // May already be stopped
       }
       await container.remove({ force: true });
+      log.info(`Removed container ${containerId}`);
     } catch (err) {
       throw new AppError(
         `Docker remove failed: ${(err as Error).message}`,
@@ -163,6 +167,7 @@ export class DockerProvider implements IOrchestratorProvider {
     try {
       const container = this.docker.getContainer(containerId);
       await container.restart({ t: 10 });
+      log.info(`Restarted container ${containerId}`);
     } catch (err) {
       throw new AppError(
         `Docker restart failed: ${(err as Error).message}`,
@@ -215,6 +220,7 @@ export class DockerProvider implements IOrchestratorProvider {
     containerId: string,
     publicKeys: string,
   ): Promise<void> {
+    log.debug(`Updating authorized_keys via exec on container ${containerId}`);
     const container = this.docker.getContainer(containerId);
     const escapedKeys = publicKeys.replace(/'/g, "'\\''");
     const exec = await container.exec({
@@ -238,6 +244,7 @@ export class DockerProvider implements IOrchestratorProvider {
     containerId: string,
     newEnv: Record<string, string>,
   ): Promise<void> {
+    log.debug(`Recreating container ${containerId} with updated env`);
     const container = this.docker.getContainer(containerId);
     const inspect = await container.inspect();
 

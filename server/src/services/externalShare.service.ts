@@ -276,10 +276,10 @@ export async function revokeExternalShare(
 
   auditService.log({
     userId,
-    action: 'SECRET_EXTERNAL_SHARE',
+    action: 'SECRET_EXTERNAL_REVOKE',
     targetType: 'ExternalSecretShare',
     targetId: shareId,
-    details: { action: 'revoke', secretId: share.secretId },
+    details: { secretId: share.secretId },
   });
 }
 

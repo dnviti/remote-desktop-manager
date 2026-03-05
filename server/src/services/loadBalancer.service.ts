@@ -1,12 +1,19 @@
 import prisma, { LoadBalancingStrategy, ManagedInstanceStatus } from '../lib/prisma';
 import { logger } from '../utils/logger';
 
-const LOG_PREFIX = '[load-balancer]';
+const log = logger.child('load-balancer');
 
 export interface SelectedInstance {
   id: string;
   host: string;
   port: number;
+}
+
+export interface RoutingDecision extends SelectedInstance {
+  strategy: LoadBalancingStrategy;
+  candidateCount: number;
+  selectedSessionCount: number;
+  sessionDistribution: Array<{ instanceId: string; sessions: number }>;
 }
 
 /**
@@ -16,7 +23,7 @@ export interface SelectedInstance {
 export async function selectInstance(
   gatewayId: string,
   strategy: LoadBalancingStrategy,
-): Promise<SelectedInstance | null> {
+): Promise<RoutingDecision | null> {
   const instances = await prisma.managedGatewayInstance.findMany({
     where: {
       gatewayId,
@@ -39,7 +46,7 @@ export async function selectInstance(
   });
 
   if (instances.length === 0) {
-    logger.warn(`${LOG_PREFIX} No healthy RUNNING instances for gateway ${gatewayId}`);
+    log.warn(`No healthy RUNNING instances for gateway ${gatewayId}`);
     return null;
   }
 
@@ -56,10 +63,18 @@ export async function selectInstance(
     selected = candidates[Math.floor(Math.random() * candidates.length)];
   }
 
-  logger.debug(
-    `${LOG_PREFIX} Selected instance ${selected.id} (${selected.host}:${selected.port}) ` +
+  log.debug(
+    `Selected instance ${selected.id} (${selected.host}:${selected.port}) ` +
       `for gateway ${gatewayId} using ${strategy} (${selected._count.sessions} active sessions)`,
   );
 
-  return { id: selected.id, host: selected.host, port: selected.port };
+  return {
+    id: selected.id,
+    host: selected.host,
+    port: selected.port,
+    strategy,
+    candidateCount: instances.length,
+    selectedSessionCount: selected._count.sessions,
+    sessionDistribution: instances.map((i) => ({ instanceId: i.id, sessions: i._count.sessions })),
+  };
 }

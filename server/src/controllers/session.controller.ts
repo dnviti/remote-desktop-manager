@@ -6,6 +6,7 @@ import { AuthRequest, RdpSettings } from '../types';
 import { getConnection, getConnectionCredentials } from '../services/connection.service';
 import { generateGuacamoleToken, mergeRdpSettings } from '../services/rdp.service';
 import * as sessionService from '../services/session.service';
+import * as auditService from '../services/audit.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { AppError } from '../middleware/error.middleware';
 
@@ -21,9 +22,21 @@ const sessionSchema = z.object({
 // ---- RDP session creation (migrated from rdp.handler.ts) ----
 
 export async function createRdpSession(req: AuthRequest, res: Response, next: NextFunction) {
+  // Capture context progressively so we can log whatever is available on failure
+  let connectionId: string | undefined;
+  let connHost: string | undefined;
+  let connPort: number | undefined;
+  let gatewayId: string | null | undefined;
+
   try {
-    const { connectionId, username: overrideUser, password: overridePass } = sessionSchema.parse(req.body);
+    const parsed = sessionSchema.parse(req.body);
+    connectionId = parsed.connectionId;
+    const { username: overrideUser, password: overridePass } = parsed;
+
     const conn = await getConnection(req.user!.userId, connectionId, req.user!.tenantId);
+    connHost = conn.host;
+    connPort = conn.port;
+    gatewayId = conn.gatewayId;
 
     if (conn.type !== 'RDP') {
       throw new AppError('Not an RDP connection', 400);
@@ -33,6 +46,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     let guacdHost: string | undefined;
     let guacdPort: number | undefined;
     let selectedInstanceId: string | undefined;
+    let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
     if (conn.gateway) {
       if (conn.gateway.type !== 'GUACD') {
@@ -43,11 +57,20 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
       if (conn.gateway.isManaged) {
         const inst = await selectInstance(conn.gateway.id, conn.gateway.lbStrategy);
-        if (inst) {
-          guacdHost = inst.host;
-          guacdPort = inst.port;
-          selectedInstanceId = inst.id;
+        if (!inst) {
+          throw new AppError(
+            'No healthy gateway instances available. The gateway may be scaling — please try again.',
+            503,
+          );
         }
+        guacdHost = inst.host;
+        guacdPort = inst.port;
+        selectedInstanceId = inst.id;
+        routingDecision = {
+          strategy: inst.strategy,
+          candidateCount: inst.candidateCount,
+          selectedSessionCount: inst.selectedSessionCount,
+        };
       }
     }
 
@@ -106,10 +129,29 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       guacToken: token,
       ipAddress: req.ip ?? undefined,
       metadata: { host: conn.host, port: conn.port },
+      routingDecision,
     });
 
     res.json({ token, enableDrive, sessionId });
   } catch (err) {
+    const errorMessage = err instanceof z.ZodError
+      ? err.issues[0].message
+      : err instanceof Error ? err.message : 'Unknown error';
+
+    auditService.log({
+      userId: req.user?.userId,
+      action: 'SESSION_ERROR',
+      targetType: 'Connection',
+      targetId: connectionId,
+      details: {
+        protocol: 'RDP',
+        error: errorMessage,
+        ...(connHost ? { host: connHost, port: connPort } : {}),
+      },
+      ipAddress: req.ip,
+      gatewayId: gatewayId ?? undefined,
+    });
+
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
@@ -228,6 +270,20 @@ export async function terminateSession(req: AuthRequest, res: Response, next: Ne
       throw new AppError('Session not found', 404);
     }
     await sessionService.endSession(sessionId, 'admin_terminated');
+
+    auditService.log({
+      userId: req.user!.userId,
+      action: 'SESSION_TERMINATE',
+      targetType: 'Session',
+      targetId: sessionId,
+      details: {
+        terminatedUserId: session.userId,
+        protocol: session.protocol,
+        connectionId: session.connectionId,
+      },
+      ipAddress: req.ip,
+    });
+
     res.json({ ok: true });
   } catch (err) {
     next(err);

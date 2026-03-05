@@ -21,6 +21,29 @@ const sshTerminalConfigSchema = z.object({
   syncDarkTheme: z.string().optional(),
 });
 
+const rdpSettingsSchema = z.object({
+  colorDepth: z.union([z.literal(8), z.literal(16), z.literal(24)]).optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  dpi: z.number().int().positive().optional(),
+  resizeMethod: z.enum(['display-update', 'reconnect']).optional(),
+  qualityPreset: z.enum(['performance', 'balanced', 'quality', 'custom']).optional(),
+  enableWallpaper: z.boolean().optional(),
+  enableTheming: z.boolean().optional(),
+  enableFontSmoothing: z.boolean().optional(),
+  enableFullWindowDrag: z.boolean().optional(),
+  enableDesktopComposition: z.boolean().optional(),
+  enableMenuAnimations: z.boolean().optional(),
+  forceLossless: z.boolean().optional(),
+  disableAudio: z.boolean().optional(),
+  enableAudioInput: z.boolean().optional(),
+  security: z.enum(['any', 'nla', 'nla-ext', 'tls', 'rdp']).optional(),
+  ignoreCert: z.boolean().optional(),
+  serverLayout: z.string().optional(),
+  console: z.boolean().optional(),
+  timezone: z.string().optional(),
+});
+
 const createSchema = z.object({
   name: z.string().min(1),
   type: z.enum(['RDP', 'SSH']),
@@ -35,6 +58,7 @@ const createSchema = z.object({
   enableDrive: z.boolean().optional(),
   gatewayId: z.string().uuid().nullable().optional(),
   sshTerminalConfig: sshTerminalConfigSchema.optional(),
+  rdpSettings: rdpSettingsSchema.optional(),
 }).refine(
   (data) => data.credentialSecretId || (data.username !== undefined && data.password !== undefined),
   { message: 'Either credentialSecretId or both username and password must be provided' }
@@ -53,6 +77,7 @@ const updateSchema = z.object({
   enableDrive: z.boolean().optional(),
   gatewayId: z.string().uuid().nullable().optional(),
   sshTerminalConfig: sshTerminalConfigSchema.nullable().optional(),
+  rdpSettings: rdpSettingsSchema.nullable().optional(),
 });
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
@@ -129,6 +154,16 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
 export async function toggleFavorite(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     const result = await connectionService.toggleFavorite(req.user!.userId, req.params.id as string, req.user!.tenantId);
+
+    auditService.log({
+      userId: req.user!.userId,
+      action: 'CONNECTION_FAVORITE',
+      targetType: 'Connection',
+      targetId: req.params.id as string,
+      details: { isFavorite: result.isFavorite },
+      ipAddress: req.ip,
+    });
+
     res.json(result);
   } catch (err) {
     next(err);

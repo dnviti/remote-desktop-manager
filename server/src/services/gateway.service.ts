@@ -4,7 +4,7 @@ import { AppError } from '../middleware/error.middleware';
 import { encrypt, decrypt, getMasterKey } from './crypto.service';
 import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
-import { startMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
+import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
 
 const log = logger.child('gateway');
@@ -113,6 +113,7 @@ export async function listGateways(tenantId: string) {
     }),
   );
 
+  log.debug(`Listed ${result.length} gateways for tenant ${tenantId}`);
   return result;
 }
 
@@ -201,10 +202,10 @@ export async function createGateway(
 
   log.debug(`Created gateway ${gateway.id} (${input.type}) in tenant ${tenantId}`);
 
-  // Skip TCP monitoring for managed+publishPorts gateways — their gateway-level
-  // host:port is an internal container port.  Health is derived from instances.
   const isManagedPublished = input.publishPorts && (input.type === 'MANAGED_SSH' || input.type === 'GUACD');
-  if ((input.monitoringEnabled ?? true) && !isManagedPublished) {
+  if ((input.monitoringEnabled ?? true) && isManagedPublished) {
+    startInstanceMonitor(gateway.id, tenantId, input.monitorIntervalMs ?? 5000);
+  } else if ((input.monitoringEnabled ?? true) && !isManagedPublished) {
     startMonitor(gateway.id, input.host, input.port, tenantId, input.monitorIntervalMs ?? 5000);
   }
 
@@ -278,6 +279,9 @@ export async function updateGateway(
     const { encryptedSshKey: _k, ...rest } = row;
     return { ...rest, hasSshKey: _k != null };
   });
+
+  log.info(`Updated gateway ${gatewayId} "${existing.name}" in tenant ${tenantId}`);
+  log.debug(`Gateway ${gatewayId} updated fields: ${Object.keys(data).join(', ')}`);
 
   const needsMonitorRestart =
     input.host !== undefined || input.port !== undefined ||
@@ -376,6 +380,7 @@ export async function getGatewayCredentials(
         )
       : null;
 
+  log.debug(`Credentials accessed for gateway ${gatewayId} by user ${userId}`);
   return { username, password, sshPrivateKey };
 }
 
@@ -409,6 +414,8 @@ export async function testGatewayConnectivity(
 
   const result = await tcpProbe(probeHost, probePort, 5000);
 
+  log.info(`Connectivity test for gateway ${gatewayId}: ${result.reachable ? 'REACHABLE' : 'UNREACHABLE'} at ${probeHost}:${probePort}${result.latencyMs != null ? ` (${result.latencyMs}ms)` : ''}`);
+
   await prisma.gateway.update({
     where: { id: gatewayId },
     data: {
@@ -430,6 +437,8 @@ export async function pushKeyToAllManagedGateways(
     select: { id: true, name: true },
   });
 
+  log.info(`Pushing SSH key to all managed gateways (${gateways.length} gateways) in tenant ${tenantId}`);
+
   const results: { gatewayId: string; name: string; ok: boolean; error?: string }[] = [];
   for (const gw of gateways) {
     try {
@@ -439,6 +448,11 @@ export async function pushKeyToAllManagedGateways(
       results.push({ gatewayId: gw.id, name: gw.name, ok: false, error: (err as Error).message });
     }
   }
+
+  const ok = results.filter(r => r.ok).length;
+  const failed = results.filter(r => !r.ok).length;
+  log.info(`SSH key push to all gateways complete: ${ok} ok, ${failed} failed`);
+
   return results;
 }
 
@@ -487,6 +501,8 @@ export async function pushKeyToGateway(
     throw new AppError('No running instances with an API port found for this gateway', 400);
   }
 
+  log.info(`Pushing SSH key to gateway ${gatewayId} (${instances.length} instances)`);
+
   const results: PushKeyInstanceResult[] = [];
 
   for (const instance of instances) {
@@ -508,8 +524,11 @@ export async function pushKeyToGateway(
 
       if (!response.ok) {
         const body = await response.text();
-        results.push({ instanceId: instance.id, ok: false, error: `HTTP ${response.status}: ${body}` });
+        const error = `HTTP ${response.status}: ${body}`;
+        log.debug(`Key push to instance ${instance.id} (${instance.host}:${instance.apiPort}) failed: ${error}`);
+        results.push({ instanceId: instance.id, ok: false, error });
       } else {
+        log.debug(`Key push to instance ${instance.id} (${instance.host}:${instance.apiPort}) succeeded`);
         results.push({ instanceId: instance.id, ok: true });
       }
     } catch (err) {
@@ -517,6 +536,7 @@ export async function pushKeyToGateway(
       const msg = (err as Error).name === 'AbortError'
         ? 'Request timed out (5s)'
         : (err as Error).message;
+      log.debug(`Key push to instance ${instance.id} (${instance.host}:${instance.apiPort}) failed: ${msg}`);
       results.push({ instanceId: instance.id, ok: false, error: msg });
     }
   }

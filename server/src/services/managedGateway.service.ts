@@ -13,7 +13,7 @@ import { findFreePort } from '../utils/freePort';
 
 const MAX_REPLICAS = 20;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
-const LOG_PREFIX = '[managed-gateway]';
+const log = logger.child('managed-gateway');
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,6 +50,7 @@ function buildContainerConfig(
       namespace: k8sNamespace,
       env: {
         ...(publicKey ? { SSH_AUTHORIZED_KEYS: publicKey } : {}),
+        ...(apiHostPort ? { GATEWAY_API_TOKEN: config.gatewayApiToken } : {}),
       },
       ports: [
         { container: 2222, ...(hostPort != null ? { host: hostPort } : {}) },
@@ -122,6 +123,8 @@ export async function deployGatewayInstance(
     where: { gatewayId },
   });
 
+  log.info(`Deploying instance for gateway ${gatewayId} (${gateway.type})`);
+
   let hostPort: number | undefined;
   let apiHostPort: number | undefined;
   if (gateway.publishPorts) {
@@ -129,10 +132,11 @@ export async function deployGatewayInstance(
     if (gateway.type === 'MANAGED_SSH') {
       apiHostPort = await findFreePort();
     }
-    logger.info(`${LOG_PREFIX} publishPorts enabled — assigned free host port ${hostPort}${apiHostPort ? `, api port ${apiHostPort}` : ''} for gateway ${gatewayId}`);
+    log.info(`publishPorts enabled — assigned free host port ${hostPort}${apiHostPort ? `, api port ${apiHostPort}` : ''} for gateway ${gatewayId}`);
   }
 
   const containerConfig = buildContainerConfig(gateway, existingCount, publicKey, hostPort, apiHostPort);
+  log.debug(`Container config for gateway ${gatewayId}: image=${containerConfig.image}, name=${containerConfig.name}`);
 
   let containerInfo;
   try {
@@ -151,7 +155,7 @@ export async function deployGatewayInstance(
         errorMessage: (err as Error).message,
       },
     });
-    logger.error(`${LOG_PREFIX} Failed to deploy container for gateway ${gatewayId}: ${(err as Error).message}`);
+    log.error(`Failed to deploy container for gateway ${gatewayId}: ${(err as Error).message}`);
     throw new AppError(`Container deployment failed: ${(err as Error).message}`, 500);
   }
 
@@ -180,6 +184,7 @@ export async function deployGatewayInstance(
       containerName: containerInfo.name,
       host,
       port,
+      apiPort: apiHostPort ?? null,
       status: ManagedInstanceStatus.RUNNING,
       orchestratorType: orchestrator.type,
       healthStatus: 'healthy',
@@ -202,16 +207,7 @@ export async function deployGatewayInstance(
     });
   }
 
-  // When publishPorts is enabled for MANAGED_SSH, update gateway.apiPort
-  // with the published API sidecar port so pushKeyToGateway can reach it.
-  if (apiHostPort != null) {
-    await prisma.gateway.update({
-      where: { id: gatewayId },
-      data: { apiPort: apiHostPort },
-    });
-  }
-
-  logger.info(`${LOG_PREFIX} Deployed instance ${instance.id} (container ${containerInfo.id}) for gateway ${gatewayId}`);
+  log.info(`Deployed instance ${instance.id} (container ${containerInfo.id}) for gateway ${gatewayId}`);
 
   return {
     instanceId: instance.id,
@@ -232,6 +228,8 @@ export async function removeGatewayInstance(
   });
   if (!instance) throw new AppError('Instance not found', 404);
 
+  log.info(`Removing instance ${instanceId} (container ${instance.containerId}) for gateway ${instance.gatewayId}`);
+
   await prisma.managedGatewayInstance.update({
     where: { id: instanceId },
     data: { status: ManagedInstanceStatus.REMOVING },
@@ -241,7 +239,7 @@ export async function removeGatewayInstance(
     await orchestrator.removeContainer(instance.containerId);
   } catch (err) {
     // Container may already be gone — log and proceed with DB cleanup
-    logger.warn(`${LOG_PREFIX} Failed to remove container ${instance.containerId}: ${(err as Error).message}`);
+    log.warn(`Failed to remove container ${instance.containerId}: ${(err as Error).message}`);
   }
 
   await prisma.managedGatewayInstance.delete({ where: { id: instanceId } });
@@ -259,7 +257,7 @@ export async function removeGatewayInstance(
     });
   }
 
-  logger.info(`${LOG_PREFIX} Removed instance ${instanceId} (container ${instance.containerId})`);
+  log.info(`Removed instance ${instanceId} (container ${instance.containerId})`);
 }
 
 // ---------------------------------------------------------------------------
@@ -277,6 +275,8 @@ export async function scaleGateway(
 
   const gateway = await prisma.gateway.findUnique({ where: { id: gatewayId } });
   if (!gateway) throw new AppError('Gateway not found', 404);
+
+  log.info(`Scaling gateway ${gatewayId} to ${replicas} replicas`);
 
   if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD') {
     throw new AppError(
@@ -305,7 +305,7 @@ export async function scaleGateway(
         await deployGatewayInstance(gatewayId, userId);
         deployed++;
       } catch (err) {
-        logger.error(`${LOG_PREFIX} Scale-up deploy ${i + 1}/${toCreate} failed: ${(err as Error).message}`);
+        log.error(`Scale-up deploy ${i + 1}/${toCreate} failed: ${(err as Error).message}`);
       }
     }
   } else if (replicas < currentCount) {
@@ -318,7 +318,7 @@ export async function scaleGateway(
         await removeGatewayInstance(sortedInstances[i].id, userId);
         removed++;
       } catch (err) {
-        logger.error(`${LOG_PREFIX} Scale-down remove failed: ${(err as Error).message}`);
+        log.error(`Scale-down remove failed: ${(err as Error).message}`);
       }
     }
   }
@@ -342,7 +342,7 @@ export async function scaleGateway(
     });
   }
 
-  logger.info(`${LOG_PREFIX} Scaled gateway ${gatewayId}: ${currentCount} → ${replicas} (deployed: ${deployed}, removed: ${removed})`);
+  log.info(`Scaled gateway ${gatewayId}: ${currentCount} → ${replicas} (deployed: ${deployed}, removed: ${removed})`);
 
   return { deployed, removed };
 }
@@ -377,6 +377,19 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
       // Ignore cleanup failures
     }
   }
+  if (errorInstances.length > 0) {
+    auditService.log({
+      userId: null,
+      action: 'GATEWAY_RECONCILE',
+      targetType: 'Gateway',
+      targetId: gatewayId,
+      details: {
+        action: 'remove_error_instances',
+        count: errorInstances.length,
+        instanceIds: errorInstances.map(i => i.id),
+      },
+    });
+  }
 
   // Restart STOPPED instances
   const stoppedInstances = instances.filter(i => i.status === ManagedInstanceStatus.STOPPED);
@@ -387,14 +400,27 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
         where: { id: instance.id },
         data: { status: ManagedInstanceStatus.RUNNING, errorMessage: null, consecutiveFailures: 0 },
       });
-      logger.info(`${LOG_PREFIX} Reconcile: restarted stopped instance ${instance.id}`);
+      log.info(`Reconcile: restarted stopped instance ${instance.id}`);
     } catch (err) {
-      logger.warn(`${LOG_PREFIX} Reconcile: failed to restart instance ${instance.id}: ${(err as Error).message}`);
+      log.warn(`Reconcile: failed to restart instance ${instance.id}: ${(err as Error).message}`);
       await prisma.managedGatewayInstance.update({
         where: { id: instance.id },
         data: { status: ManagedInstanceStatus.ERROR, errorMessage: (err as Error).message },
       });
     }
+  }
+  if (stoppedInstances.length > 0) {
+    auditService.log({
+      userId: null,
+      action: 'GATEWAY_RECONCILE',
+      targetType: 'Gateway',
+      targetId: gatewayId,
+      details: {
+        action: 'restart_stopped',
+        count: stoppedInstances.length,
+        instanceIds: stoppedInstances.map(i => i.id),
+      },
+    });
   }
 
   // Count healthy instances
@@ -408,13 +434,29 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
   // Scale up if needed
   if (healthyInstances < gateway.desiredReplicas) {
     const toCreate = gateway.desiredReplicas - healthyInstances;
+    let deployed = 0;
     for (let i = 0; i < toCreate; i++) {
       try {
         await deployGatewayInstance(gatewayId);
-        logger.info(`${LOG_PREFIX} Reconcile: deployed replacement instance for gateway ${gatewayId}`);
+        deployed++;
+        log.info(`Reconcile: deployed replacement instance for gateway ${gatewayId}`);
       } catch (err) {
-        logger.error(`${LOG_PREFIX} Reconcile: failed to deploy replacement: ${(err as Error).message}`);
+        log.error(`Reconcile: failed to deploy replacement: ${(err as Error).message}`);
       }
+    }
+    if (deployed > 0) {
+      auditService.log({
+        userId: null,
+        action: 'GATEWAY_RECONCILE',
+        targetType: 'Gateway',
+        targetId: gatewayId,
+        details: {
+          action: 'scale_up_replacement',
+          desired: gateway.desiredReplicas,
+          current: healthyInstances,
+          deployed,
+        },
+      });
     }
   }
 
@@ -433,7 +475,7 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
       try {
         await removeGatewayInstance(runningInstances[i].id);
       } catch (err) {
-        logger.warn(`${LOG_PREFIX} Reconcile: failed to remove excess instance: ${(err as Error).message}`);
+        log.warn(`Reconcile: failed to remove excess instance: ${(err as Error).message}`);
       }
     }
   }
@@ -456,12 +498,12 @@ export async function reconcileAll(): Promise<void> {
       reconciled++;
     } catch (err) {
       failed++;
-      logger.error(`${LOG_PREFIX} Reconcile failed for gateway ${gw.id}: ${(err as Error).message}`);
+      log.error(`Reconcile failed for gateway ${gw.id}: ${(err as Error).message}`);
     }
   }
 
   if (reconciled > 0 || failed > 0) {
-    logger.info(`${LOG_PREFIX} Reconciliation complete: ${reconciled} ok, ${failed} failed`);
+    log.info(`Reconciliation complete: ${reconciled} ok, ${failed} failed`);
   }
 }
 
@@ -495,7 +537,7 @@ export async function healthCheck(): Promise<void> {
         await prisma.managedGatewayInstance.update({
           where: { id: instance.id },
           data: {
-            healthStatus: info.health ?? 'healthy',
+            healthStatus: info.health === 'none' ? 'healthy' : (info.health ?? 'healthy'),
             lastHealthCheck: new Date(),
             consecutiveFailures: 0,
             status: ManagedInstanceStatus.RUNNING,
@@ -520,7 +562,18 @@ export async function healthCheck(): Promise<void> {
                 errorMessage: null,
               },
             });
-            logger.warn(`${LOG_PREFIX} Restarted unhealthy instance ${instance.id} after ${HEALTH_CHECK_FAILURE_THRESHOLD} failures`);
+            log.warn(`Restarted unhealthy instance ${instance.id} after ${HEALTH_CHECK_FAILURE_THRESHOLD} failures`);
+            auditService.log({
+              userId: null,
+              action: 'GATEWAY_RECONCILE',
+              targetType: 'ManagedGatewayInstance',
+              targetId: instance.id,
+              details: {
+                action: 'health_restart',
+                gatewayId: instance.gatewayId,
+                consecutiveFailures: HEALTH_CHECK_FAILURE_THRESHOLD,
+              },
+            });
           } catch (restartErr) {
             await prisma.managedGatewayInstance.update({
               where: { id: instance.id },
@@ -530,6 +583,17 @@ export async function healthCheck(): Promise<void> {
                 lastHealthCheck: new Date(),
                 consecutiveFailures: newFailures,
                 errorMessage: `Restart failed: ${(restartErr as Error).message}`,
+              },
+            });
+            auditService.log({
+              userId: null,
+              action: 'GATEWAY_RECONCILE',
+              targetType: 'ManagedGatewayInstance',
+              targetId: instance.id,
+              details: {
+                action: 'health_error',
+                gatewayId: instance.gatewayId,
+                error: (restartErr as Error).message,
               },
             });
           }
@@ -561,7 +625,7 @@ export async function healthCheck(): Promise<void> {
   }
 
   if (unhealthy > 0 || restarted > 0) {
-    logger.info(`${LOG_PREFIX} Health check: ${healthy} healthy, ${unhealthy} unhealthy, ${restarted} restarted`);
+    log.info(`Health check: ${healthy} healthy, ${unhealthy} unhealthy, ${restarted} restarted`);
   }
 }
 
@@ -595,8 +659,10 @@ export async function pushSshKeyToInstances(
       await orchestrator.updateContainerEnv(instance.containerId, {
         SSH_AUTHORIZED_KEYS: publicKey,
       });
+      log.debug(`SSH key push to instance ${instance.id} succeeded`);
       results.push({ instanceId: instance.id, ok: true });
     } catch (err) {
+      log.debug(`SSH key push to instance ${instance.id} failed: ${(err as Error).message}`);
       results.push({
         instanceId: instance.id,
         ok: false,
@@ -607,7 +673,7 @@ export async function pushSshKeyToInstances(
 
   const succeeded = results.filter(r => r.ok).length;
   const failed = results.filter(r => !r.ok).length;
-  logger.info(`${LOG_PREFIX} SSH key push to ${instances.length} instances: ${succeeded} ok, ${failed} failed`);
+  log.info(`SSH key push to ${instances.length} instances: ${succeeded} ok, ${failed} failed`);
 
   return results;
 }

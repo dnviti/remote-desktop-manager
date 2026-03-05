@@ -7,6 +7,8 @@ import { config } from '../config';
 import { logger } from '../utils/logger';
 import { pushSshKeyToInstances } from './managedGateway.service';
 
+const log = logger.child('sshkey');
+
 export interface SshKeyPairResponse {
   id: string;
   publicKey: string;
@@ -73,6 +75,8 @@ export async function generateKeyPair(tenantId: string): Promise<SshKeyPairRespo
     },
   });
 
+  log.info(`Generated SSH key pair for tenant ${tenantId} (fingerprint: ${fingerprint})`);
+
   return {
     id: record.id,
     publicKey: record.publicKey,
@@ -91,6 +95,7 @@ export async function getPublicKey(tenantId: string): Promise<SshKeyPairResponse
   const record = await prisma.sshKeyPair.findUnique({ where: { tenantId } });
   if (!record) return null;
 
+  log.debug(`Public key accessed for tenant ${tenantId}`);
   return {
     id: record.id,
     publicKey: record.publicKey,
@@ -117,6 +122,7 @@ export async function getPrivateKey(tenantId: string): Promise<Buffer> {
     tag: record.privateKeyTag,
   });
 
+  log.debug(`Private key accessed for tenant ${tenantId}`);
   return Buffer.from(privateKeyPem, 'utf8');
 }
 
@@ -124,6 +130,7 @@ export async function rotateKeyPair(
   tenantId: string,
   options?: RotateOptions,
 ): Promise<SshKeyPairResponse> {
+  log.info(`Rotating SSH key pair for tenant ${tenantId}`);
   const { privateKey, publicKey, fingerprint } = generateEd25519KeyPair();
 
   const encrypted = encryptWithServerKey(privateKey);
@@ -159,17 +166,19 @@ export async function rotateKeyPair(
     });
   });
 
+  log.info(`SSH key pair rotated for tenant ${tenantId} (new fingerprint: ${fingerprint})`);
+
   // Push new key to managed gateway instances (best-effort)
   try {
     const results = await pushSshKeyToInstances(tenantId, publicKey);
     const failed = results.filter(r => !r.ok);
     if (failed.length > 0) {
-      logger.warn(
-        `[sshkey] Key push failed for ${failed.length}/${results.length} managed instances after rotation`,
+      log.warn(
+        `Key push failed for ${failed.length}/${results.length} managed instances after rotation`,
       );
     }
   } catch (err) {
-    logger.warn(`[sshkey] Failed to push rotated key to managed instances: ${(err as Error).message}`);
+    log.warn(`Failed to push rotated key to managed instances: ${(err as Error).message}`);
   }
 
   return {
@@ -219,6 +228,8 @@ export async function updateRotationPolicy(
     where: { tenantId },
     data,
   });
+
+  log.info(`Rotation policy updated for tenant ${tenantId}: autoRotate=${record.autoRotateEnabled}, intervalDays=${record.rotationIntervalDays}`);
 
   return {
     id: record.id,

@@ -11,6 +11,7 @@ import { getGatewayCredentials } from '../services/gateway.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { getPrivateKey as getTenantPrivateKey } from '../services/sshkey.service';
 import * as sessionService from '../services/session.service';
+import * as auditService from '../services/audit.service';
 import { logger } from '../utils/logger';
 
 interface ActiveTransfer {
@@ -49,6 +50,7 @@ export function setupSshHandler(io: Server) {
   sshNamespace.on('connection', (socket) => {
     const user = (socket as Socket & { user: AuthPayload }).user;
     let currentSession: SshSession | null = null;
+    let currentConnectionId: string | null = null;
     let sftpSession: SFTPWrapper | null = null;
     const activeTransfers = new Map<string, ActiveTransfer>();
 
@@ -89,15 +91,36 @@ export function setupSshHandler(io: Server) {
     // ── Terminal events ──────────────────────────────────────────────
 
     socket.on('session:start', async (data: { connectionId: string; username?: string; password?: string }) => {
+      // Helper to log connection errors to audit trail
+      function logSessionError(error: string, connHost?: string, connPort?: number, gwId?: string | null) {
+        auditService.log({
+          userId: user.userId,
+          action: 'SESSION_ERROR',
+          targetType: 'Connection',
+          targetId: data.connectionId,
+          details: {
+            protocol: 'SSH',
+            error,
+            ...(connHost ? { host: connHost, port: connPort } : {}),
+          },
+          ipAddress: clientIp,
+          gatewayId: gwId ?? undefined,
+        });
+      }
+
       try {
         if ((data.username && !data.password) || (!data.username && data.password)) {
-          socket.emit('session:error', { message: 'Both username and password must be provided together' });
+          const msg = 'Both username and password must be provided together';
+          logSessionError(msg);
+          socket.emit('session:error', { message: msg });
           return;
         }
 
         const conn = await getConnection(user.userId, data.connectionId, user.tenantId);
         if (conn.type !== 'SSH') {
-          socket.emit('session:error', { message: 'Not an SSH connection' });
+          const msg = 'Not an SSH connection';
+          logSessionError(msg, conn.host, conn.port, conn.gatewayId);
+          socket.emit('session:error', { message: msg });
           return;
         }
 
@@ -118,17 +141,20 @@ export function setupSshHandler(io: Server) {
 
         let session: SshSession;
         let selectedInstanceId: string | undefined;
+        let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
         if (conn.gateway) {
           if (conn.gateway.type !== 'SSH_BASTION' && conn.gateway.type !== 'MANAGED_SSH') {
-            socket.emit('session:error', {
-              message: 'Connection gateway must be SSH_BASTION or MANAGED_SSH for SSH connections',
-            });
+            const msg = 'Connection gateway must be SSH_BASTION or MANAGED_SSH for SSH connections';
+            logSessionError(msg, conn.host, conn.port, conn.gatewayId);
+            socket.emit('session:error', { message: msg });
             return;
           }
 
           if (!user.tenantId) {
-            socket.emit('session:error', { message: 'Tenant context required for gateway routing' });
+            const msg = 'Tenant context required for gateway routing';
+            logSessionError(msg, conn.host, conn.port, conn.gatewayId);
+            socket.emit('session:error', { message: msg });
             return;
           }
 
@@ -145,9 +171,9 @@ export function setupSshHandler(io: Server) {
             // SSH_BASTION: decrypt user-supplied credentials from the gateway
             const gatewayCreds = await getGatewayCredentials(user.userId, user.tenantId, conn.gateway.id);
             if (!gatewayCreds.username || (!gatewayCreds.password && !gatewayCreds.sshPrivateKey)) {
-              socket.emit('session:error', {
-                message: 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.',
-              });
+              const msg = 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.';
+              logSessionError(msg, conn.host, conn.port, conn.gatewayId);
+              socket.emit('session:error', { message: msg });
               return;
             }
             bastionUsername = gatewayCreds.username;
@@ -164,6 +190,11 @@ export function setupSshHandler(io: Server) {
               bastionHost = inst.host;
               bastionPort = inst.port;
               selectedInstanceId = inst.id;
+              routingDecision = {
+                strategy: inst.strategy,
+                candidateCount: inst.candidateCount,
+                selectedSessionCount: inst.selectedSessionCount,
+              };
             }
           }
 
@@ -192,6 +223,7 @@ export function setupSshHandler(io: Server) {
         }
 
         currentSession = session;
+        currentConnectionId = data.connectionId;
         const sessionId = `${user.userId}:${socket.id}`;
         activeSessions.set(sessionId, session);
 
@@ -207,6 +239,7 @@ export function setupSshHandler(io: Server) {
           socketId: socket.id,
           ipAddress: clientIp,
           metadata: { host: conn.host, port: conn.port },
+          routingDecision,
         }).catch((err) => {
           logger.error('Failed to persist SSH session record:', err);
         });
@@ -233,6 +266,7 @@ export function setupSshHandler(io: Server) {
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Connection failed';
+        logSessionError(message);
         socket.emit('session:error', { message });
       }
     });
@@ -298,6 +332,14 @@ export function setupSshHandler(io: Server) {
             callback?.({ error: err.message });
             return;
           }
+          auditService.log({
+            userId: user.userId,
+            action: 'SFTP_MKDIR',
+            targetType: 'Connection',
+            targetId: currentConnectionId ?? undefined,
+            details: { path: safePath },
+            ipAddress: clientIp,
+          });
           callback?.({});
         });
       } catch (err) {
@@ -314,6 +356,14 @@ export function setupSshHandler(io: Server) {
             callback?.({ error: err.message });
             return;
           }
+          auditService.log({
+            userId: user.userId,
+            action: 'SFTP_DELETE',
+            targetType: 'Connection',
+            targetId: currentConnectionId ?? undefined,
+            details: { path: safePath, type: 'file' },
+            ipAddress: clientIp,
+          });
           callback?.({});
         });
       } catch (err) {
@@ -330,6 +380,14 @@ export function setupSshHandler(io: Server) {
             callback?.({ error: err.message });
             return;
           }
+          auditService.log({
+            userId: user.userId,
+            action: 'SFTP_DELETE',
+            targetType: 'Connection',
+            targetId: currentConnectionId ?? undefined,
+            details: { path: safePath, type: 'directory' },
+            ipAddress: clientIp,
+          });
           callback?.({});
         });
       } catch (err) {
@@ -347,6 +405,14 @@ export function setupSshHandler(io: Server) {
             callback?.({ error: err.message });
             return;
           }
+          auditService.log({
+            userId: user.userId,
+            action: 'SFTP_RENAME',
+            targetType: 'Connection',
+            targetId: currentConnectionId ?? undefined,
+            details: { oldPath: safeOld, newPath: safeNew },
+            ipAddress: clientIp,
+          });
           callback?.({});
         });
       } catch (err) {
@@ -439,7 +505,17 @@ export function setupSshHandler(io: Server) {
         return;
       }
       const writeStream = transfer.stream as ReturnType<SFTPWrapper['createWriteStream']>;
+      const uploadFilename = transfer.filename;
+      const uploadBytes = transfer.bytesTransferred;
       writeStream.end(() => {
+        auditService.log({
+          userId: user.userId,
+          action: 'SFTP_UPLOAD',
+          targetType: 'Connection',
+          targetId: currentConnectionId ?? undefined,
+          details: { filename: uploadFilename, bytesTransferred: uploadBytes },
+          ipAddress: clientIp,
+        });
         socket.emit('sftp:transfer:complete', { transferId: data.transferId });
         clearTransfer(data.transferId);
         callback?.({});
@@ -499,6 +575,14 @@ export function setupSshHandler(io: Server) {
           });
 
           readStream.on('end', () => {
+            auditService.log({
+              userId: user.userId,
+              action: 'SFTP_DOWNLOAD',
+              targetType: 'Connection',
+              targetId: currentConnectionId ?? undefined,
+              details: { filename, path: safePath, totalBytes: stats.size },
+              ipAddress: clientIp,
+            });
             socket.emit('sftp:download:end', { transferId });
             socket.emit('sftp:transfer:complete', { transferId });
             clearTransfer(transferId);

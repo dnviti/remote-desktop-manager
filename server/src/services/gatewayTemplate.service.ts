@@ -2,11 +2,11 @@ import prisma from '../lib/prisma';
 import type { GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { deployGatewayInstance } from './managedGateway.service';
-import { startMonitor } from './gatewayMonitor.service';
+import { startMonitor, startInstanceMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
 import { v4 as uuidv4 } from 'uuid';
 
-const LOG_PREFIX = '[gateway-template]';
+const log = logger.child('gateway-template');
 
 export interface CreateTemplateInput {
   name: string;
@@ -47,11 +47,13 @@ export interface UpdateTemplateInput {
 }
 
 export async function listTemplates(tenantId: string) {
-  return prisma.gatewayTemplate.findMany({
+  const templates = await prisma.gatewayTemplate.findMany({
     where: { tenantId },
     orderBy: { name: 'asc' },
     include: { _count: { select: { gateways: true } } },
   });
+  log.debug(`Listed ${templates.length} templates for tenant ${tenantId}`);
+  return templates;
 }
 
 export async function createTemplate(
@@ -59,6 +61,7 @@ export async function createTemplate(
   tenantId: string,
   input: CreateTemplateInput,
 ) {
+  log.info(`Creating template "${input.name}" (${input.type}) in tenant ${tenantId}`);
   return prisma.gatewayTemplate.create({
     data: {
       name: input.name,
@@ -95,6 +98,7 @@ export async function updateTemplate(
   });
   if (!existing) throw new AppError('Gateway template not found', 404);
 
+  log.info(`Updating template ${templateId} "${existing.name}" in tenant ${tenantId}`);
   return prisma.gatewayTemplate.update({
     where: { id: templateId },
     data: input,
@@ -109,6 +113,7 @@ export async function deleteTemplate(tenantId: string, templateId: string) {
   if (!existing) throw new AppError('Gateway template not found', 404);
 
   await prisma.gatewayTemplate.delete({ where: { id: templateId } });
+  log.info(`Deleted template ${templateId} "${existing.name}" in tenant ${tenantId}`);
   return { deleted: true };
 }
 
@@ -167,14 +172,14 @@ export async function deployFromTemplate(
     },
   });
 
-  logger.info(`${LOG_PREFIX} Created gateway "${autoName}" from template "${template.name}"`);
+  log.info(`Created gateway "${autoName}" from template "${template.name}"`);
 
   let deployResult;
   try {
     deployResult = await deployGatewayInstance(gateway.id, userId);
   } catch (err) {
-    logger.warn(
-      `${LOG_PREFIX} Gateway created but initial deploy failed: ${(err as Error).message}`,
+    log.warn(
+      `Gateway created but initial deploy failed: ${(err as Error).message}`,
     );
   }
 
@@ -185,19 +190,18 @@ export async function deployFromTemplate(
       where: { id: gateway.id },
       data: { host: deployResult.host, port: deployResult.port },
     });
-    logger.info(
-      `${LOG_PREFIX} Auto-resolved gateway host to "${deployResult.host}:${deployResult.port}"`,
+    log.info(
+      `Auto-resolved gateway host to "${deployResult.host}:${deployResult.port}"`,
     );
   }
 
   if (gateway.monitoringEnabled && gateway.host !== 'pending-deploy') {
-    startMonitor(
-      gateway.id,
-      gateway.host,
-      gateway.port,
-      tenantId,
-      gateway.monitorIntervalMs,
-    );
+    const isManagedPublished = gateway.publishPorts && (gateway.type === 'MANAGED_SSH' || gateway.type === 'GUACD');
+    if (isManagedPublished) {
+      startInstanceMonitor(gateway.id, tenantId, gateway.monitorIntervalMs);
+    } else {
+      startMonitor(gateway.id, gateway.host, gateway.port, tenantId, gateway.monitorIntervalMs);
+    }
   }
 
   return {

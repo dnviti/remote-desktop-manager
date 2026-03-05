@@ -3,6 +3,7 @@ import argon2 from 'argon2';
 import { EncryptedField, VaultSession } from '../types';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import * as auditService from './audit.service';
 
 const log = logger.child('crypto');
 
@@ -27,6 +28,13 @@ setInterval(() => {
     if (session.expiresAt < now) {
       session.masterKey.fill(0); // zero out the key
       vaultStore.delete(userId);
+      auditService.log({
+        userId,
+        action: 'VAULT_AUTO_LOCK',
+        targetType: 'User',
+        targetId: userId,
+        details: { reason: 'ttl_expired' },
+      });
     }
   }
   for (const [key, session] of teamVaultStore.entries()) {

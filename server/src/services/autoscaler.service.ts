@@ -4,7 +4,7 @@ import * as sessionService from './session.service';
 import * as auditService from './audit.service';
 import { logger } from '../utils/logger';
 
-const LOG_PREFIX = '[autoscaler]';
+const log = logger.child('autoscaler');
 
 // ---------------------------------------------------------------------------
 // Types
@@ -46,12 +46,14 @@ export async function evaluateScaling(): Promise<void> {
 
   if (gateways.length === 0) return;
 
+  log.debug(`Evaluating scaling for ${gateways.length} auto-scale gateways`);
+
   for (const gw of gateways) {
     try {
       await evaluateGatewayScaling(gw);
     } catch (err) {
-      logger.error(
-        `${LOG_PREFIX} Scaling evaluation failed for gateway ${gw.id}: ${(err as Error).message}`,
+      log.error(
+        `Scaling evaluation failed for gateway ${gw.id}: ${(err as Error).message}`,
       );
     }
   }
@@ -94,8 +96,8 @@ async function evaluateGatewayScaling(gw: {
 
   if (target > currentReplicas) {
     // ---- Scale UP (immediate) ----
-    logger.info(
-      `${LOG_PREFIX} Gateway ${gw.id}: scaling UP ${currentReplicas} → ${target} ` +
+    log.info(
+      `Gateway ${gw.id}: scaling UP ${currentReplicas} → ${target} ` +
         `(${activeSessions} sessions, threshold ${gw.sessionsPerInstance}/instance)`,
     );
 
@@ -126,14 +128,14 @@ async function evaluateGatewayScaling(gw: {
 
     if (now - lastScale < cooldownMs) {
       const remaining = Math.ceil((cooldownMs - (now - lastScale)) / 1000);
-      logger.debug(
-        `${LOG_PREFIX} Gateway ${gw.id}: scale-down deferred, cooldown ${remaining}s remaining`,
+      log.debug(
+        `Gateway ${gw.id}: scale-down deferred, cooldown ${remaining}s remaining`,
       );
       return;
     }
 
-    logger.info(
-      `${LOG_PREFIX} Gateway ${gw.id}: scaling DOWN ${currentReplicas} → ${target} ` +
+    log.info(
+      `Gateway ${gw.id}: scaling DOWN ${currentReplicas} → ${target} ` +
         `(${activeSessions} sessions, threshold ${gw.sessionsPerInstance}/instance)`,
     );
 
@@ -197,9 +199,20 @@ async function scaleDownPreferEmpty(
   for (const instance of instancesToRemove) {
     try {
       await managedGatewayService.removeGatewayInstance(instance.id);
+      auditService.log({
+        userId: null,
+        action: 'GATEWAY_UNDEPLOY',
+        targetType: 'ManagedGatewayInstance',
+        targetId: instance.id,
+        details: {
+          gatewayId,
+          trigger: 'autoscaler',
+          containerId: instance.containerId,
+        },
+      });
     } catch (err) {
-      logger.error(
-        `${LOG_PREFIX} Scale-down: failed to remove instance ${instance.id}: ${(err as Error).message}`,
+      log.error(
+        `Scale-down: failed to remove instance ${instance.id}: ${(err as Error).message}`,
       );
     }
   }

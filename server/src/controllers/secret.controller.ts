@@ -373,7 +373,7 @@ export async function updateSharePermission(req: AuthRequest, res: Response, nex
 
     auditService.log({
       userId: req.user!.userId,
-      action: 'SECRET_SHARE',
+      action: 'SECRET_SHARE_UPDATE',
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { targetUserId: req.params.userId as string, permission },
