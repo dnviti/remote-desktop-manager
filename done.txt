@@ -2066,6 +2066,11 @@
     MODIFICATO: client/src/api/tenant.api.ts
     MODIFICATO: client/src/hooks/useAuth.ts
     MODIFICATO: client/src/pages/LoginPage.tsx
+    MODIFICATO: client/src/pages/OAuthCallbackPage.tsx
+    MODIFICATO: client/src/pages/ConnectionViewerPage.tsx
+    MODIFICATO: client/src/components/Layout/MainLayout.tsx
+    MODIFICATO: client/src/components/Overlays/VaultLockedOverlay.tsx
+    MODIFICATO: client/src/store/tenantStore.ts
 
 ------------------------------------------------------------------------------
 [x] ZT-092 — HKDF salt randomico per external share senza PIN
