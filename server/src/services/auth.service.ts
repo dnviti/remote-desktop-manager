@@ -16,6 +16,7 @@ import {
   encryptMasterKey,
   decryptMasterKey,
   storeVaultSession,
+  storeVaultRecovery,
   lockVault,
 } from './crypto.service';
 import { verifyCode as verifyTotpCode, getDecryptedSecret } from './totp.service';
@@ -221,14 +222,16 @@ export async function login(email: string, password: string, ipAddress?: string 
       derivedKey
     );
     storeVaultSession(user.id, masterKey);
+    storeVaultRecovery(user.id, masterKey);
     masterKey.fill(0);
     derivedKey.fill(0);
   }
 
   // Check which MFA methods are enabled
-  const mfaMethods: ('totp' | 'sms')[] = [];
+  const mfaMethods: ('totp' | 'sms' | 'webauthn')[] = [];
   if (user.totpEnabled) mfaMethods.push('totp');
   if (user.smsMfaEnabled) mfaMethods.push('sms');
+  if (user.webauthnEnabled) mfaMethods.push('webauthn');
 
   if (mfaMethods.length > 0) {
     const tempToken = jwt.sign(
@@ -245,7 +248,7 @@ export async function login(email: string, password: string, ipAddress?: string 
   }
 
   // Check tenant mandatory MFA policy
-  if (user.tenant?.mfaRequired && !user.totpEnabled && !user.smsMfaEnabled) {
+  if (user.tenant?.mfaRequired && !user.totpEnabled && !user.smsMfaEnabled && !user.webauthnEnabled) {
     const setupToken = jwt.sign(
       { userId: user.id, purpose: 'mfa-setup' },
       config.jwtSecret,
@@ -333,6 +336,54 @@ export async function requestLoginSmsCode(tempToken: string) {
 
   const { sendOtpToPhone } = await import('./smsOtp.service');
   await sendOtpToPhone(user.id, user.phoneNumber);
+}
+
+export async function requestWebAuthnOptions(tempToken: string) {
+  let decoded: { userId: string; purpose: string };
+  try {
+    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+  } catch {
+    throw new Error('Invalid or expired temporary token');
+  }
+
+  if (decoded.purpose !== 'mfa-verify') {
+    throw new Error('Invalid token purpose');
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: decoded.userId },
+    select: { id: true, webauthnEnabled: true },
+  });
+  if (!user || !user.webauthnEnabled) {
+    throw new Error('WebAuthn MFA is not available');
+  }
+
+  const { generateAuthenticationOpts } = await import('./webauthn.service');
+  return generateAuthenticationOpts(user.id);
+}
+
+export async function verifyWebAuthn(tempToken: string, credential: Record<string, unknown>) {
+  let decoded: { userId: string; purpose: string };
+  try {
+    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+  } catch {
+    throw new Error('Invalid or expired temporary token');
+  }
+
+  if (decoded.purpose !== 'mfa-verify') {
+    throw new Error('Invalid token purpose');
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+  if (!user || !user.webauthnEnabled) {
+    throw new Error('WebAuthn MFA verification failed');
+  }
+
+  const { verifyAuthentication } = await import('./webauthn.service');
+  // credential is AuthenticationResponseJSON from the browser — validated by simplewebauthn
+  await verifyAuthentication(user.id, credential as unknown as Parameters<typeof verifyAuthentication>[1]);
+
+  return issueTokens(user);
 }
 
 export async function verifySmsCode(tempToken: string, code: string) {

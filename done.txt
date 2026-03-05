@@ -2103,6 +2103,23 @@
     MODIFICATO: server/src/services/auth.service.ts (lazy migration in verifyTotp)
 
 
+------------------------------------------------------------------------------
+[x] ZT-045 — Vista audit log per admin tenant
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: AUDIT-013 (completato), TENANT-020 (completato)
+  COMPLETATO: Implemented tenant-scoped audit log for admin users. Backend: GET /api/audit/tenant endpoint protected with authenticate + requireTenant + requireTenantRole('ADMIN'), getTenantAuditLogs() service with tenant filtering via User.tenantId JOIN, support for userId/action/dateRange/search/targetType/ipAddress/gatewayId filters with pagination and sorting. Frontend: TenantAuditLogSection component with autocomplete user filter, action/targetType/gateway dropdowns, IP/search text inputs, expandable row details, CSV export, and all filter states persisted via uiPreferencesStore.
+
+  File coinvolti:
+    MODIFICATO: server/src/routes/audit.routes.ts (GET /tenant route with requireTenantRole)
+    MODIFICATO: server/src/controllers/audit.controller.ts (listTenantLogs handler with Zod validation)
+    MODIFICATO: server/src/services/audit.service.ts (getTenantAuditLogs with tenant-scoped queries)
+    CREATO:     client/src/components/Settings/TenantAuditLogSection.tsx (admin audit log UI)
+    MODIFICATO: client/src/api/audit.api.ts (getTenantAuditLogs/getTenantAuditGateways API calls)
+    MODIFICATO: client/src/components/Dialogs/SettingsDialog.tsx (mounted TenantAuditLogSection)
+    MODIFICATO: client/src/store/uiPreferencesStore.ts (tenant audit log filter preferences)
+
+
 ================================================================================
   SEZIONE F — PASSWORD KEYCHAIN / SECRET VAULT
 ================================================================================

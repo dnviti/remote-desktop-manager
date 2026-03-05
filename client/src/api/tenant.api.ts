@@ -5,6 +5,7 @@ export interface TenantData {
   name: string;
   slug: string;
   mfaRequired: boolean;
+  vaultAutoLockMaxMinutes: number | null;
   userCount: number;
   defaultSessionTimeoutSeconds: number;
   teamCount: number;
@@ -52,7 +53,7 @@ export async function getTenantMfaStats(tenantId: string): Promise<{ total: numb
   return res.data;
 }
 
-export async function updateTenant(id: string, data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean }): Promise<TenantData> {
+export async function updateTenant(id: string, data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null }): Promise<TenantData> {
   const res = await api.put(`/tenants/${id}`, data);
   return res.data;
 }

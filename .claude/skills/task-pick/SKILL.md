@@ -98,7 +98,7 @@ Perform these verification checks:
   3. **Smoke-Test (MANDATORY):** After the quality gate passes, verify the app starts without runtime errors:
 
      **2a. Start the application:**
-     Run `npm run predev && npm run dev` using the Bash tool with `run_in_background: true`.
+     Run `npm run predev && npm run db:push && npm run dev` using the Bash tool with `run_in_background: true`.
 
      **2b. Wait for startup and check ports:**
      Wait 8 seconds (`sleep 8`), then verify ports 3000 and 3001 are listening:

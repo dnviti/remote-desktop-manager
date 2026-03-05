@@ -1,14 +1,47 @@
 import prisma from '../lib/prisma';
+import { config } from '../config';
 import {
   deriveKeyFromPassword,
   decryptMasterKey,
   storeVaultSession,
-  lockVault as lockVaultSession,
+  storeVaultRecovery,
+  softLockVault,
   isVaultUnlocked as checkVaultUnlocked,
   getMasterKey,
+  getVaultRecovery,
+  hasVaultRecovery,
   decrypt,
 } from './crypto.service';
+import { verifyCode as verifyTotpCode, getDecryptedSecret } from './totp.service';
 import { AppError } from '../middleware/error.middleware';
+
+// Resolve the effective vault auto-lock TTL for a user (in minutes, 0 = never)
+async function resolveVaultTtl(userId: string): Promise<number> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      vaultAutoLockMinutes: true,
+      tenant: { select: { vaultAutoLockMaxMinutes: true } },
+    },
+  });
+
+  const userPref = user?.vaultAutoLockMinutes; // null = server default, 0 = never
+  const tenantMax = user?.tenant?.vaultAutoLockMaxMinutes; // null = no enforcement
+
+  let effective = userPref ?? config.vaultTtlMinutes;
+
+  if (tenantMax !== null && tenantMax !== undefined) {
+    if (effective === 0 && tenantMax > 0) {
+      // User wants "never" but tenant enforces a max
+      effective = tenantMax;
+    } else if (tenantMax > 0 && effective > tenantMax) {
+      // User TTL exceeds tenant max → clamp
+      effective = tenantMax;
+    }
+  }
+
+  return effective;
+}
 
 export async function unlockVault(userId: string, password: string) {
   const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -29,7 +62,9 @@ export async function unlockVault(userId: string, password: string) {
       derivedKey
     );
 
-    storeVaultSession(userId, masterKey);
+    const ttl = await resolveVaultTtl(userId);
+    storeVaultSession(userId, masterKey, ttl);
+    storeVaultRecovery(userId, masterKey);
     masterKey.fill(0);
     derivedKey.fill(0);
 
@@ -40,13 +75,180 @@ export async function unlockVault(userId: string, password: string) {
 }
 
 export function lockVault(userId: string) {
-  lockVaultSession(userId);
+  softLockVault(userId);
   return { unlocked: false };
 }
 
-export function getVaultStatus(userId: string) {
-  return { unlocked: checkVaultUnlocked(userId) };
+export async function getVaultStatus(userId: string) {
+  const unlocked = checkVaultUnlocked(userId);
+  const recoveryAvailable = hasVaultRecovery(userId);
+
+  if (!recoveryAvailable || unlocked) {
+    return { unlocked, mfaUnlockAvailable: false, mfaUnlockMethods: [] as string[] };
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+
+  const methods: string[] = [];
+  if (user?.webauthnEnabled) methods.push('webauthn');
+  if (user?.totpEnabled) methods.push('totp');
+  if (user?.smsMfaEnabled) methods.push('sms');
+
+  return {
+    unlocked,
+    mfaUnlockAvailable: methods.length > 0,
+    mfaUnlockMethods: methods,
+  };
 }
+
+// MFA-based vault unlock
+
+export async function unlockVaultWithTotp(userId: string, code: string) {
+  const masterKey = getVaultRecovery(userId);
+  if (!masterKey) throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      totpEnabled: true,
+      encryptedTotpSecret: true,
+      totpSecretIV: true,
+      totpSecretTag: true,
+      totpSecret: true,
+    },
+  });
+  if (!user || !user.totpEnabled) throw new AppError('TOTP is not enabled', 400);
+
+  // Temporarily store so getDecryptedSecret can access the master key
+  const ttl = await resolveVaultTtl(userId);
+  storeVaultSession(userId, masterKey, ttl);
+  const secret = getDecryptedSecret(user, userId);
+  if (!secret) {
+    softLockVault(userId);
+    masterKey.fill(0);
+    throw new AppError('Failed to decrypt TOTP secret', 500);
+  }
+
+  if (!verifyTotpCode(secret, code)) {
+    softLockVault(userId);
+    masterKey.fill(0);
+    throw new AppError('Invalid TOTP code', 401);
+  }
+
+  masterKey.fill(0);
+  return { unlocked: true };
+}
+
+export async function requestVaultWebAuthnOptions(userId: string) {
+  if (!hasVaultRecovery(userId)) {
+    throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
+  }
+
+  const { generateAuthenticationOpts } = await import('./webauthn.service');
+  return generateAuthenticationOpts(userId);
+}
+
+export async function unlockVaultWithWebAuthn(userId: string, credential: Record<string, unknown>) {
+  if (!hasVaultRecovery(userId)) {
+    throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
+  }
+
+  const { verifyAuthentication } = await import('./webauthn.service');
+  await verifyAuthentication(userId, credential as unknown as Parameters<typeof verifyAuthentication>[1]);
+
+  const masterKey = getVaultRecovery(userId);
+  if (!masterKey) throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
+
+  const ttl = await resolveVaultTtl(userId);
+  storeVaultSession(userId, masterKey, ttl);
+  masterKey.fill(0);
+  return { unlocked: true };
+}
+
+export async function requestVaultSmsCode(userId: string) {
+  if (!hasVaultRecovery(userId)) {
+    throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { smsMfaEnabled: true, phoneNumber: true },
+  });
+  if (!user?.smsMfaEnabled || !user.phoneNumber) {
+    throw new AppError('SMS MFA is not available', 400);
+  }
+
+  const { sendOtpToPhone } = await import('./smsOtp.service');
+  await sendOtpToPhone(userId, user.phoneNumber);
+}
+
+export async function unlockVaultWithSms(userId: string, code: string) {
+  const masterKey = getVaultRecovery(userId);
+  if (!masterKey) throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
+
+  const { verifyOtp } = await import('./smsOtp.service');
+  const valid = await verifyOtp(userId, code);
+  if (!valid) {
+    masterKey.fill(0);
+    throw new AppError('Invalid or expired SMS code', 401);
+  }
+
+  const ttl = await resolveVaultTtl(userId);
+  storeVaultSession(userId, masterKey, ttl);
+  masterKey.fill(0);
+  return { unlocked: true };
+}
+
+// Vault auto-lock preference
+
+export async function getAutoLockPreference(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      vaultAutoLockMinutes: true,
+      tenant: { select: { vaultAutoLockMaxMinutes: true } },
+    },
+  });
+
+  const effective = await resolveVaultTtl(userId);
+
+  return {
+    autoLockMinutes: user?.vaultAutoLockMinutes ?? null,
+    effectiveMinutes: effective,
+    tenantMaxMinutes: user?.tenant?.vaultAutoLockMaxMinutes ?? null,
+  };
+}
+
+export async function setAutoLockPreference(userId: string, autoLockMinutes: number | null) {
+  // Validate
+  if (autoLockMinutes !== null && autoLockMinutes < 0) {
+    throw new AppError('Auto-lock minutes must be 0 (never) or a positive number', 400);
+  }
+
+  // Check tenant enforcement
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { tenant: { select: { vaultAutoLockMaxMinutes: true } } },
+  });
+  const tenantMax = user?.tenant?.vaultAutoLockMaxMinutes;
+  if (tenantMax !== null && tenantMax !== undefined && tenantMax > 0) {
+    if (autoLockMinutes === 0) {
+      throw new AppError(`Your organization enforces a maximum vault auto-lock of ${tenantMax} minutes. "Never" is not allowed.`, 403);
+    }
+    if (autoLockMinutes !== null && autoLockMinutes > tenantMax) {
+      throw new AppError(`Your organization enforces a maximum vault auto-lock of ${tenantMax} minutes.`, 403);
+    }
+  }
+
+  await prisma.user.update({
+    where: { id: userId },
+    data: { vaultAutoLockMinutes: autoLockMinutes },
+  });
+
+  return { autoLockMinutes, effectiveMinutes: await resolveVaultTtl(userId) };
+}
+
+// Reveal password
 
 export async function revealPassword(
   userId: string,
@@ -56,10 +258,8 @@ export async function revealPassword(
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError('User not found', 404);
 
-  // Try to get master key from memory first
   let masterKey = getMasterKey(userId);
 
-  // If vault is locked, derive from password
   if (!masterKey) {
     if (!user.vaultSalt || !user.encryptedVaultKey || !user.vaultKeyIV || !user.vaultKeyTag) {
       throw new AppError('Vault not set up. Please set a vault password first.', 400);
@@ -74,20 +274,19 @@ export async function revealPassword(
         },
         derivedKey
       );
-      storeVaultSession(userId, masterKey);
+      const ttl = await resolveVaultTtl(userId);
+      storeVaultSession(userId, masterKey, ttl);
       derivedKey.fill(0);
     } catch {
       throw new AppError('Invalid password', 401);
     }
   }
 
-  // Check if user owns the connection
   const connection = await prisma.connection.findFirst({
     where: { id: connectionId, userId },
   });
 
   if (connection) {
-    // Vault-backed connection: resolve from secret
     if (connection.credentialSecretId) {
       const { getConnectionCredentials } = await import('./connection.service');
       const creds = await getConnectionCredentials(userId, connectionId);
@@ -107,7 +306,6 @@ export async function revealPassword(
     return { password: decryptedPassword };
   }
 
-  // Check if it's a shared connection with FULL_ACCESS
   const shared = await prisma.sharedConnection.findFirst({
     where: {
       connectionId,
@@ -118,7 +316,6 @@ export async function revealPassword(
   });
 
   if (shared) {
-    // Vault-backed shared connection: resolve from secret
     if (shared.connection.credentialSecretId) {
       const { getConnectionCredentials } = await import('./connection.service');
       const creds = await getConnectionCredentials(userId, connectionId);

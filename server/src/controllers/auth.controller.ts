@@ -146,6 +146,51 @@ export async function verifySms(req: Request, res: Response, next: NextFunction)
   }
 }
 
+const requestWebAuthnSchema = z.object({
+  tempToken: z.string(),
+});
+
+const verifyWebAuthnSchema = z.object({
+  tempToken: z.string(),
+  credential: z.record(z.string(), z.unknown()),
+});
+
+export async function requestWebAuthnOptions(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tempToken } = requestWebAuthnSchema.parse(req.body);
+    const options = await authService.requestWebAuthnOptions(tempToken);
+    res.json(options);
+  } catch (err) {
+    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
+    if (err instanceof Error) {
+      if (err.message.includes('token')) return next(new AppError(err.message, 401));
+      if (err.message.includes('not available')) return next(new AppError(err.message, 400));
+    }
+    next(err);
+  }
+}
+
+export async function verifyWebAuthn(req: Request, res: Response, next: NextFunction) {
+  try {
+    const { tempToken, credential } = verifyWebAuthnSchema.parse(req.body);
+    const result = await authService.verifyWebAuthn(tempToken, credential);
+    auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: req.ip });
+    setRefreshTokenCookie(res, result.refreshToken);
+    const csrfToken = setCsrfCookie(res);
+    res.json({ accessToken: result.accessToken, csrfToken, user: result.user });
+  } catch (err) {
+    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
+    if (err instanceof AppError) return next(err);
+    if (err instanceof Error) {
+      if (err.message.includes('token')) return next(new AppError(err.message, 401));
+      if (err.message.includes('verification failed')) return next(new AppError(err.message, 401));
+      if (err.message.includes('expired')) return next(new AppError(err.message, 400));
+      if (err.message.includes('not found')) return next(new AppError(err.message, 400));
+    }
+    next(err);
+  }
+}
+
 export async function refresh(req: Request, res: Response, next: NextFunction) {
   try {
     const refreshToken = req.cookies?.[config.cookie.refreshTokenName];

@@ -4,13 +4,14 @@ import {
   Box, Card, CardContent, TextField, Button, Typography, Alert, Link, Stack, CircularProgress,
 } from '@mui/material';
 import { QRCodeSVG } from 'qrcode.react';
-import { loginApi, verifyTotpApi, requestSmsCodeApi, verifySmsApi, mfaSetupInitApi, mfaSetupVerifyApi } from '../api/auth.api';
+import { loginApi, verifyTotpApi, requestSmsCodeApi, verifySmsApi, mfaSetupInitApi, mfaSetupVerifyApi, requestWebAuthnOptionsApi, verifyWebAuthnApi } from '../api/auth.api';
+import { startAuthentication } from '@simplewebauthn/browser';
 import { resendVerificationEmail } from '../api/email.api';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
 import OAuthButtons from '../components/OAuthButtons';
 
-type Step = 'credentials' | 'mfa-choice' | 'totp' | 'sms' | 'mfa-setup';
+type Step = 'credentials' | 'mfa-choice' | 'totp' | 'sms' | 'webauthn' | 'mfa-setup';
 
 export default function LoginPage() {
   const [email, setEmail] = useState('');
@@ -98,6 +99,9 @@ export default function LoginPage() {
         if (data.methods.length === 1) {
           if (data.methods[0] === 'totp') {
             setStep('totp');
+          } else if (data.methods[0] === 'webauthn') {
+            setStep('webauthn');
+            handleWebAuthnAuth(data.tempToken);
           } else {
             setStep('sms');
             await requestSmsCodeApi(data.tempToken);
@@ -180,10 +184,36 @@ export default function LoginPage() {
     }
   };
 
+  const handleWebAuthnAuth = async (token?: string) => {
+    const t = token || tempToken;
+    setError('');
+    setLoading(true);
+    try {
+      const options = await requestWebAuthnOptionsApi(t);
+      const credential = await startAuthentication({ optionsJSON: options });
+      const data = await verifyWebAuthnApi(t, credential);
+      completeLogin(data);
+    } catch (err: unknown) {
+      if ((err as Error)?.name === 'NotAllowedError') {
+        setError('Authentication was cancelled or timed out.');
+      } else {
+        const msg =
+          (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+          'WebAuthn authentication failed.';
+        setError(msg);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleChooseMethod = async (method: string) => {
     setError('');
     if (method === 'totp') {
       setStep('totp');
+    } else if (method === 'webauthn') {
+      setStep('webauthn');
+      handleWebAuthnAuth();
     } else {
       setSmsSending(true);
       try {
@@ -251,6 +281,7 @@ export default function LoginPage() {
       case 'mfa-choice': return 'Choose your verification method';
       case 'totp': return 'Enter the 6-digit code from your authenticator app';
       case 'sms': return 'Enter the 6-digit code sent to your phone';
+      case 'webauthn': return 'Verify your identity with your security key or passkey';
       case 'mfa-setup': return 'Your organization requires two-factor authentication';
     }
   })();
@@ -346,6 +377,16 @@ export default function LoginPage() {
                     {smsSending ? 'Sending...' : 'SMS Code'}
                   </Button>
                 )}
+                {mfaMethods.includes('webauthn') && (
+                  <Button
+                    fullWidth
+                    variant="outlined"
+                    onClick={() => handleChooseMethod('webauthn')}
+                    disabled={loading}
+                  >
+                    Security Key / Passkey
+                  </Button>
+                )}
               </Stack>
               <Button fullWidth variant="text" onClick={handleBackToCredentials} sx={{ mt: 1 }}>
                 Back
@@ -415,6 +456,39 @@ export default function LoginPage() {
               >
                 {loading ? 'Verifying...' : 'Verify'}
               </Button>
+              <Button
+                fullWidth
+                variant="text"
+                onClick={canGoBackToChoice ? handleBackToChoice : handleBackToCredentials}
+                sx={{ mb: 1 }}
+              >
+                Back
+              </Button>
+            </Box>
+          )}
+
+          {step === 'webauthn' && (
+            <Box>
+              <Alert severity="info" sx={{ mb: 2 }}>
+                {loading
+                  ? 'Please interact with your security key or approve the passkey prompt...'
+                  : 'Click below to authenticate with your security key or passkey.'}
+              </Alert>
+              {loading && (
+                <Box sx={{ display: 'flex', justifyContent: 'center', py: 2 }}>
+                  <CircularProgress />
+                </Box>
+              )}
+              {!loading && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  onClick={() => handleWebAuthnAuth()}
+                  sx={{ mb: 1 }}
+                >
+                  Retry Authentication
+                </Button>
+              )}
               <Button
                 fullWidth
                 variant="text"

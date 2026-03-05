@@ -20,6 +20,7 @@
     "@prisma/adapter-pg": "^7.4.1",
     "@prisma/client": "^7.4.1",
     "@sendgrid/mail": "^8.1.6",
+    "@simplewebauthn/server": "^13.2.3",
     "@vonage/server-sdk": "^3.26.4",
     "argon2": "^0.44.0",
     "bcrypt": "^6.0.0",

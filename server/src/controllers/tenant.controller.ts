@@ -16,6 +16,7 @@ const updateTenantSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   defaultSessionTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
   mfaRequired: z.boolean().optional(),
+  vaultAutoLockMaxMinutes: z.number().int().min(0).nullable().optional(),
 });
 
 const inviteUserSchema = z.object({

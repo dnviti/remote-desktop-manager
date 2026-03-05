@@ -51,6 +51,9 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
   const [mfaError, setMfaError] = useState('');
   const [mfaConfirmOpen, setMfaConfirmOpen] = useState(false);
   const [mfaStats, setMfaStats] = useState<{ total: number; withoutMfa: number } | null>(null);
+  const [vaultAutoLockMax, setVaultAutoLockMax] = useState<string>('none');
+  const [savingVaultLock, setSavingVaultLock] = useState(false);
+  const [vaultLockError, setVaultLockError] = useState('');
 
   const tenantRole = user?.tenantRole;
   const isAdmin = tenantRole === 'OWNER' || tenantRole === 'ADMIN';
@@ -65,6 +68,7 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
       setEditName(tenant.name);
       setSessionTimeout(String(Math.floor(tenant.defaultSessionTimeoutSeconds / 60)));
       setMfaRequired(tenant.mfaRequired);
+      setVaultAutoLockMax(tenant.vaultAutoLockMaxMinutes == null ? 'none' : String(tenant.vaultAutoLockMaxMinutes));
       fetchUsers();
     }
   }, [tenant, fetchUsers]);
@@ -331,6 +335,43 @@ export default function TenantSection({ onNavigateToTab }: TenantSectionProps) {
               <Typography variant="caption" color="text.secondary" display="block">
                 When enabled, members without MFA configured will be required to set it up during their next login.
               </Typography>
+
+              {vaultLockError && <Alert severity="error" sx={{ mt: 1, mb: 1 }} onClose={() => setVaultLockError('')}>{vaultLockError}</Alert>}
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" sx={{ mb: 0.5 }}>Max vault auto-lock timeout</Typography>
+                <Select
+                  value={vaultAutoLockMax}
+                  size="small"
+                  disabled={savingVaultLock}
+                  onChange={async (e) => {
+                    const val = e.target.value;
+                    setVaultLockError('');
+                    setSavingVaultLock(true);
+                    try {
+                      await updateTenant({ vaultAutoLockMaxMinutes: val === 'none' ? null : Number(val) });
+                      setVaultAutoLockMax(val);
+                    } catch (err: unknown) {
+                      setVaultLockError(
+                        (err as { response?: { data?: { error?: string } } })?.response?.data?.error ||
+                        'Failed to update vault auto-lock policy'
+                      );
+                    } finally {
+                      setSavingVaultLock(false);
+                    }
+                  }}
+                  sx={{ minWidth: 200 }}
+                >
+                  <MenuItem value="none">No enforcement</MenuItem>
+                  <MenuItem value="5">5 minutes</MenuItem>
+                  <MenuItem value="15">15 minutes</MenuItem>
+                  <MenuItem value="30">30 minutes</MenuItem>
+                  <MenuItem value="60">1 hour</MenuItem>
+                  <MenuItem value="240">4 hours</MenuItem>
+                </Select>
+                <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                  When set, members cannot configure a vault auto-lock timeout exceeding this value or disable auto-lock.
+                </Typography>
+              </Box>
             </Box>
           )}
 

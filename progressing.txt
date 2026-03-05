@@ -9,6 +9,53 @@
   SEZIONE A — TASK RICHIESTI (Core Features)
 ================================================================================
 
+------------------------------------------------------------------------------
+[~] FIDO-093 — Supporto passkey e chiavi di sicurezza FIDO2 come metodo MFA
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Aggiungere il supporto WebAuthn come terzo metodo MFA, accanto a TOTP e SMS.
+  Gli utenti potranno registrare passkey (salvate in password manager come
+  Bitwarden, 1Password, iCloud Keychain, Windows Hello) e chiavi di sicurezza
+  hardware FIDO2 (YubiKey, Titan, SoloKeys) per l'autenticazione a due fattori.
+
+  DETTAGLI TECNICI:
+  Dipendenze npm:
+    - @simplewebauthn/server (server workspace)
+    - @simplewebauthn/browser (client workspace)
+  Variabili ambiente (.env.example):
+    - WEBAUTHN_RP_ID (default: localhost)
+    - WEBAUTHN_RP_ORIGIN (default: http://localhost:3000)
+    - WEBAUTHN_RP_NAME (default: Remote Desktop Manager)
+  Prisma schema:
+    - Nuovo modello WebAuthnCredential
+    - Campo webauthnEnabled Boolean su User
+    - Nuovi AuditAction: WEBAUTHN_REGISTER, WEBAUTHN_REMOVE, LOGIN_WEBAUTHN
+  Backend:
+    - webauthn.service.ts, webauthn.controller.ts, webauthn.routes.ts
+    - auth.service.ts, auth.controller.ts, auth.routes.ts updates
+    - config.ts: sezione webauthn
+  Frontend:
+    - webauthn.api.ts, auth.api.ts updates
+    - WebAuthnSection.tsx, SettingsDialog.tsx, LoginPage.tsx updates
+
+  File coinvolti:
+    CREARE:     server/src/services/webauthn.service.ts
+    CREARE:     server/src/controllers/webauthn.controller.ts
+    CREARE:     server/src/routes/webauthn.routes.ts
+    CREARE:     client/src/api/webauthn.api.ts
+    CREARE:     client/src/components/Settings/WebAuthnSection.tsx
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/app.ts
+    MODIFICARE: server/src/services/auth.service.ts
+    MODIFICARE: server/src/controllers/auth.controller.ts
+    MODIFICARE: server/src/routes/auth.routes.ts
+    MODIFICARE: client/src/api/auth.api.ts
+    MODIFICARE: client/src/pages/LoginPage.tsx
+    MODIFICARE: client/src/components/Dialogs/SettingsDialog.tsx
+    MODIFICARE: .env.example
 
 
 ================================================================================
@@ -31,36 +78,6 @@
 ================================================================================
   SEZIONE E — ZERO TRUST HARDENING
 ================================================================================
-
-------------------------------------------------------------------------------
-[~] ZT-045 — Vista audit log per admin tenant
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: AUDIT-013 (completato), TENANT-020 (completato)
-
-  DESCRIZIONE:
-  Aggiungere un endpoint per permettere ai tenant OWNER e ADMIN di consultare
-  i log audit di tutti gli utenti del proprio tenant. Attualmente ogni utente
-  vede solo i propri log, rendendo impossibile per gli admin investigare
-  incidenti di sicurezza o monitorare l'attivita' del tenant.
-
-  DETTAGLI TECNICI:
-  Backend:
-    - Nuovo endpoint GET /api/audit/tenant in audit.routes.ts
-    - Proteggere con middleware: authenticate + requireTenantRole('ADMIN')
-    - audit.service.ts: nuova funzione getTenantAuditLogs() che filtra per
-      tutti gli userId del tenant (JOIN su User.tenantId)
-    - Supportare filtri: userId specifico, action, dateRange, paginazione
-    - Restituire anche il nome/email dell'utente per ogni log entry
-  Frontend:
-    - Nuova pagina/tab nelle impostazioni tenant per admin audit log
-    - Tabella con filtri: utente, azione, data
-    - Export CSV opzionale
-  File coinvolti:
-    - server/src/routes/audit.routes.ts
-    - server/src/controllers/audit.controller.ts
-    - server/src/services/audit.service.ts
-    - client/src/ (pagina admin audit)
 
 ================================================================================
   SEZIONE F — PASSWORD KEYCHAIN / SECRET VAULT

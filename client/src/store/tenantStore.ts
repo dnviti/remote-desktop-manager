@@ -16,7 +16,7 @@ interface TenantState {
 
   fetchTenant: () => Promise<void>;
   createTenant: (name: string) => Promise<TenantData>;
-  updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean }) => Promise<void>;
+  updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null }) => Promise<void>;
   deleteTenant: () => Promise<void>;
   fetchUsers: () => Promise<void>;
   inviteUser: (email: string, role: 'ADMIN' | 'MEMBER') => Promise<void>;

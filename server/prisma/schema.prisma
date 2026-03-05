@@ -25,6 +25,7 @@ model Tenant {
   slug               String   @unique
   hasTenantVaultKey            Boolean  @default(false)
   mfaRequired                  Boolean  @default(false)
+  vaultAutoLockMaxMinutes      Int?
   defaultSessionTimeoutSeconds Int      @default(3600)
   createdAt                    DateTime @default(now())
   updatedAt          DateTime @updatedAt
@@ -95,6 +96,8 @@ model User {
   smsMfaEnabled      Boolean     @default(false)
   smsOtpHash         String?
   smsOtpExpiresAt    DateTime?
+  webauthnEnabled    Boolean     @default(false)
+  vaultAutoLockMinutes Int?
   emailVerified      Boolean     @default(false)
   emailVerifyToken   String?     @unique
   emailVerifyExpiry  DateTime?
@@ -126,6 +129,7 @@ model User {
   secretsSharedByMe      SharedSecret[]         @relation("SecretSharedBy")
   externalSecretShares   ExternalSecretShare[]
   activeSessions         ActiveSession[]
+  webauthnCredentials    WebAuthnCredential[]
 }
 
 enum AuthProvider {
@@ -501,6 +505,9 @@ enum AuditAction {
   SECRET_SHARE_UPDATE
   GATEWAY_RECONCILE
   CONNECTION_FAVORITE
+  WEBAUTHN_REGISTER
+  WEBAUTHN_REMOVE
+  LOGIN_WEBAUTHN
 }
 
 model AuditLog {
@@ -726,6 +733,25 @@ model ActiveSession {
   @@index([socketId])
   @@index([guacTokenHash])
   @@index([instanceId, status])
+}
+
+model WebAuthnCredential {
+  id           String    @id @default(uuid())
+  userId       String
+  credentialId String    @unique
+  publicKey    String
+  counter      BigInt    @default(0)
+  transports   String[]  @default([])
+  deviceType   String?
+  backedUp     Boolean   @default(false)
+  friendlyName String    @default("Security Key")
+  aaguid       String?
+  lastUsedAt   DateTime?
+  createdAt    DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
 }
 
 model ManagedGatewayInstance {

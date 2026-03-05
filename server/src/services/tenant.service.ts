@@ -88,6 +88,7 @@ export async function getTenant(tenantId: string) {
     slug: tenant.slug,
     mfaRequired: tenant.mfaRequired,
     defaultSessionTimeoutSeconds: tenant.defaultSessionTimeoutSeconds,
+    vaultAutoLockMaxMinutes: tenant.vaultAutoLockMaxMinutes,
     userCount: tenant._count.users,
     teamCount: tenant._count.teams,
     createdAt: tenant.createdAt,
@@ -95,7 +96,7 @@ export async function getTenant(tenantId: string) {
   };
 }
 
-export async function updateTenant(tenantId: string, data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean }) {
+export async function updateTenant(tenantId: string, data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null }) {
   const updateData: Record<string, unknown> = {};
 
   if (data.name !== undefined) {
@@ -107,6 +108,9 @@ export async function updateTenant(tenantId: string, data: { name?: string; defa
   }
   if (data.mfaRequired !== undefined) {
     updateData.mfaRequired = data.mfaRequired;
+  }
+  if (data.vaultAutoLockMaxMinutes !== undefined) {
+    updateData.vaultAutoLockMaxMinutes = data.vaultAutoLockMaxMinutes;
   }
 
   if (Object.keys(updateData).length === 0) {
@@ -124,6 +128,7 @@ export async function updateTenant(tenantId: string, data: { name?: string; defa
     slug: tenant.slug,
     mfaRequired: tenant.mfaRequired,
     defaultSessionTimeoutSeconds: tenant.defaultSessionTimeoutSeconds,
+    vaultAutoLockMaxMinutes: tenant.vaultAutoLockMaxMinutes,
     updatedAt: tenant.updatedAt,
   };
 }

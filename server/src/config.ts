@@ -47,6 +47,19 @@ export const config = {
   serverEncryptionKey: resolveServerEncryptionKey(),
   gatewayApiToken: process.env.GATEWAY_API_TOKEN || '',
   vaultTtlMinutes: parseInt(process.env.VAULT_TTL_MINUTES || '30', 10),
+  vaultRecoveryTtlMs: (() => {
+    const expiry = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+    const match = expiry.match(/^(\d+)([smhd])$/);
+    if (!match) return 7 * 24 * 60 * 60 * 1000;
+    const value = parseInt(match[1]);
+    switch (match[2]) {
+      case 's': return value * 1000;
+      case 'm': return value * 60 * 1000;
+      case 'h': return value * 60 * 60 * 1000;
+      case 'd': return value * 24 * 60 * 60 * 1000;
+      default: return 7 * 24 * 60 * 60 * 1000;
+    }
+  })(),
   nodeEnv: process.env.NODE_ENV || 'development',
   logLevel: (process.env.LOG_LEVEL || 'info') as 'error' | 'warn' | 'info' | 'verbose' | 'debug',
   logFormat: (process.env.LOG_FORMAT || 'text') as 'text' | 'json',
@@ -147,4 +160,9 @@ export const config = {
   orchestratorK8sNamespace: process.env.ORCHESTRATOR_K8S_NAMESPACE || 'rdm',
   orchestratorSshGatewayImage: process.env.ORCHESTRATOR_SSH_GATEWAY_IMAGE || 'ghcr.io/dnviti/remote-desktop-manager/ssh-gateway:latest',
   orchestratorGuacdImage: process.env.ORCHESTRATOR_GUACD_IMAGE || 'guacamole/guacd:latest',
+  webauthn: {
+    rpId: process.env.WEBAUTHN_RP_ID || 'localhost',
+    rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',
+    rpName: process.env.WEBAUTHN_RP_NAME || 'Remote Desktop Manager',
+  },
 };

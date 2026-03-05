@@ -22,7 +22,9 @@ import ChangePasswordSection from '../Settings/ChangePasswordSection';
 import ConnectionDefaultsSection from '../Settings/ConnectionDefaultsSection';
 import TwoFactorSection from '../Settings/TwoFactorSection';
 import SmsMfaSection from '../Settings/SmsMfaSection';
+import WebAuthnSection from '../Settings/WebAuthnSection';
 import LinkedAccountsSection from '../Settings/LinkedAccountsSection';
+import VaultAutoLockSection from '../Settings/VaultAutoLockSection';
 import TenantSection from '../Settings/TenantSection';
 import TeamSection from '../Settings/TeamSection';
 import GatewaySection from '../Settings/GatewaySection';
@@ -185,6 +187,8 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
             <Stack spacing={3}>
               <TwoFactorSection />
               <SmsMfaSection />
+              <WebAuthnSection />
+              <VaultAutoLockSection />
               <LinkedAccountsSection hasPassword={hasPassword} />
             </Stack>
           )}
