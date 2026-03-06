@@ -133,6 +133,42 @@
 ================================================================================
 
 
+------------------------------------------------------------------------------
+[ ] DOCK-099 — Rimuovere esposizione porta 80 dal container client nginx
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  L'immagine Docker del client eredita la direttiva EXPOSE 80 dall'immagine
+  base nginx:alpine. Anche se la configurazione nginx ascolta solo sulla
+  porta 8080 (e il compose mappa 3000:8080), i metadati dell'immagine
+  mostrano entrambe le porte 80 e 8080 come esposte. Questo e' fuorviante
+  e potrebbe creare confusione durante il deploy o l'ispezione dei container.
+
+  DETTAGLI TECNICI:
+  Sostituire lo stage finale del Dockerfile client per evitare di ereditare
+  la direttiva EXPOSE 80 dall'immagine nginx:alpine.
+
+  Opzione consigliata — base Alpine con nginx installato manualmente:
+    FROM alpine:3.21
+    RUN apk add --no-cache nginx
+    COPY --from=build /app/dist /usr/share/nginx/html
+    COPY client/nginx.main.conf /etc/nginx/nginx.conf
+    COPY client/nginx.conf /etc/nginx/conf.d/default.conf
+    # creare user nginx se necessario, adattare path pid/temp
+    USER nginx
+    EXPOSE 8080
+
+  Adattare i path temporanei in nginx.main.conf se necessario (pid, temp
+  directories) dato che Alpine nginx usa path diversi da nginx:alpine.
+
+  Verificare che il healthcheck e il compose.yml continuino a funzionare
+  correttamente dopo la modifica.
+
+  File coinvolti:
+    MODIFICARE: client/Dockerfile
+    MODIFICARE: client/nginx.main.conf (eventuali path temp)
 
 
 
