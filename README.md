@@ -1,4 +1,6 @@
-# Arsenale
+<div align="center">
+  <img src="icons/Arsenale_logo_transparent.png" alt="Arsenale" width="200" />
+</div>
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![Verify](https://github.com/dnviti/arsenale/actions/workflows/verify.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify.yml)
