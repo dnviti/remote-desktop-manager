@@ -89,6 +89,44 @@
     MODIFICARE: client/src/components/Layout/MainLayout.tsx
 
 
+------------------------------------------------------------------------------
+[ ] USER-097 — Persistenza sessione utente member al reload pagina
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Gli utenti con ruolo MEMBER vengono disconnessi al reload della pagina.
+  Il problema e' causato dal hook useAuth() definito ma mai invocato.
+  L'accessToken non viene persistito in localStorage (corretto by design),
+  ma il refresh proattivo non viene mai eseguito. ProtectedRoute esegue
+  immediatamente chiamate API (vault checkStatus) senza access token,
+  generando un 401 che attiva il refresh reattivo nell'interceptor Axios.
+  Se il refresh reattivo fallisce per timing o race condition, l'utente
+  viene disconnesso.
+
+  DETTAGLI TECNICI:
+  Fix — Attivare useAuth() in ProtectedRoute/AuthRoute:
+
+    client/src/hooks/useAuth.ts:
+    - Aggiungere stato loading per indicare refresh in corso
+    - useState iniziale: isAuthenticated && !accessToken
+    - Ritornare { isAuthenticated, loading }
+
+    client/src/App.tsx — ProtectedRoute:
+    - Invocare useAuth() per attivare refresh proattivo
+    - Aggiungere accessToken alle dipendenze dell'useEffect vault polling
+    - Gate rendering: if (loading) return null
+
+    client/src/App.tsx — AuthRoute:
+    - Invocare useAuth() analogamente
+    - Gate rendering con loading
+
+  File coinvolti:
+    MODIFICARE: client/src/hooks/useAuth.ts
+    MODIFICARE: client/src/App.tsx
+
+
 ================================================================================
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================
@@ -176,6 +214,152 @@
     MODIFICARE: client/src/components/Settings/TenantAuditLogSection.tsx
 
 
+------------------------------------------------------------------------------
+[ ] TENANT-096 — Appartenenza utente a organizzazioni multiple con context switching
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: TENANT-020
+
+  DESCRIZIONE:
+  Attualmente ogni utente puo' appartenere a una sola organizzazione tramite
+  i campi User.tenantId e User.tenantRole. Questo task trasforma il modello
+  in una relazione many-to-many tramite una nuova tabella TenantMember,
+  consentendo agli utenti di essere membri di piu' organizzazioni
+  contemporaneamente e di crearne di proprie indipendentemente dalle
+  appartenenze esistenti. Il JWT continua a trasportare tenantId/tenantRole
+  del tenant attivo; il cambio di contesto avviene tramite un endpoint
+  dedicato che ri-emette i token. La migrazione e' retrocompatibile:
+  prima si crea TenantMember e si popolano i dati, poi si aggiorna il
+  codice, infine si rimuovono le colonne legacy da User.
+
+  DETTAGLI TECNICI:
+
+  1. Schema Prisma — nuovo modello TenantMember:
+    - server/prisma/schema.prisma: aggiungere modello TenantMember con campi
+      id (uuid PK), tenantId, userId, role (TenantRole), isActive (Boolean,
+      default false), joinedAt, updatedAt. Constraint @@unique([tenantId,
+      userId]) e @@index([userId, isActive]). onDelete: Cascade su entrambe
+      le FK.
+    - Rimuovere User.tenantId, User.tenantRole e relazione User.tenant.
+    - Sostituire Tenant.users con Tenant.members (TenantMember[]).
+    - Aggiungere User.tenantMemberships (TenantMember[]).
+    - TenantVaultMember resta separato (distribuzione chiavi vault, non
+      membership).
+
+  2. Migrazione dati:
+    - Migration SQL: CREATE TABLE TenantMember, poi INSERT INTO
+      TenantMember (tenantId, userId, role, isActive) SELECT tenantId,
+      id, tenantRole, true FROM User WHERE tenantId IS NOT NULL.
+    - In fase successiva (dopo validazione deploy): DROP COLUMN tenantId,
+      tenantRole da User.
+
+  3. Backend — Auth Service (server/src/services/auth.service.ts):
+    - issueTokens(): risolvere tenantId/tenantRole dalla riga TenantMember
+      con isActive=true invece che da User.tenantId/tenantRole.
+    - refreshAccessToken(): stessa modifica per il refresh.
+    - Nuova funzione switchTenant(userId, targetTenantId): validare
+      TenantMember esiste, flippare isActive (disattivare vecchio, attivare
+      nuovo), revocare tutti i refresh token esistenti, emettere nuova
+      coppia di token. Ritorna { accessToken, refreshToken, csrfToken, user }.
+    - Login: se nessun TenantMember ha isActive=true, attivare il primo
+      disponibile automaticamente.
+
+  4. Backend — Auth Controller e Routes:
+    - server/src/controllers/auth.controller.ts: aggiungere handler
+      switchTenant con validazione Zod ({ tenantId: z.string().uuid() }).
+    - server/src/routes/auth.routes.ts: aggiungere POST /auth/switch-tenant
+      con middleware authenticate.
+
+  5. Backend — Tenant Service (server/src/services/tenant.service.ts):
+    - createTenant(): creare TenantMember(role=OWNER, isActive=true) invece
+      di aggiornare User.tenantId/tenantRole. Se l'utente ha gia' un tenant
+      attivo, disattivare quello e attivare il nuovo.
+    - inviteUser(): RIMUOVERE il check "user already belongs to another
+      org". Creare TenantMember(isActive=false). Verificare solo che non
+      esista gia' un TenantMember per (tenantId, userId).
+    - removeUser(): eliminare riga TenantMember. Se era isActive, attivare
+      automaticamente un'altra membership (o nessuna).
+    - updateUserRole(): aggiornare TenantMember.role. Conteggio OWNER via
+      TenantMember.count({ tenantId, role: OWNER }).
+    - listTenantUsers(): query su TenantMember con include user.
+    - deleteTenant(): cascade gestisce TenantMember automaticamente.
+    - createUser(): creare User + TenantMember nella stessa transazione.
+    - Nuova: listUserTenants(userId) — elenco di tutte le membership
+      dell'utente con dettagli tenant (id, name, slug, role, isActive).
+
+  6. Backend — Tenant Routes e Controller:
+    - server/src/routes/tenant.routes.ts: aggiungere
+      GET /tenants/mine/all (lista tutti i tenant dell'utente).
+    - server/src/controllers/tenant.controller.ts: handler listMyTenants.
+      Aggiornare createTenant per ri-emettere token dal nuovo
+      TenantMember attivo.
+
+  7. Backend — Servizi impattati:
+    - server/src/services/oauth.service.ts: findOrCreateOAuthUser() deve
+      risolvere tenant attivo da TenantMember invece di User.tenantId.
+    - server/src/services/scheduler.service.ts: query OWNER via
+      TenantMember invece di User.tenantRole.
+    - server/src/services/permission.service.ts: canManageSecret() query
+      ruolo tenant da TenantMember.
+    - server/src/services/vault.service.ts: resolveVaultTtl() e
+      setAutoLockPreference() — lookup tenant via TenantMember attivo.
+
+  8. Middleware tenant — nessuna modifica strutturale:
+    - server/src/middleware/tenant.middleware.ts: requireTenant,
+      requireTenantRole, requireOwnTenant leggono da req.user (JWT).
+      Poiche' il JWT continua a contenere tenantId/tenantRole, funzionano
+      senza modifiche.
+
+  9. Frontend — API layer:
+    - client/src/api/tenant.api.ts: aggiungere listMyTenants() e
+      switchTenant(tenantId). Interfaccia TenantMembership { tenantId,
+      tenantName, tenantSlug, role, isActive }.
+    - client/src/api/auth.api.ts: aggiungere switchTenant(tenantId) se
+      endpoint sotto /auth.
+
+  10. Frontend — Store:
+    - client/src/store/tenantStore.ts: aggiungere stato
+      tenants: TenantMembership[], azione fetchMyTenants(), azione
+      switchTenant(tenantId) che chiama API, riceve nuovi token, aggiorna
+      authStore e ricarica dati tenant/team/connessioni.
+    - client/src/store/uiPreferencesStore.ts: aggiungere chiave
+      lastActiveTenantId per ricordare l'ultimo tenant selezionato.
+
+  11. Frontend — UI components:
+    - TenantSwitcher.tsx (NUOVO): dropdown compatto nell'AppBar che mostra
+      tutti i tenant dell'utente con badge "Attivo", azione switch, e
+      link a "Crea organizzazione".
+    - client/src/components/Layout/MainLayout.tsx: integrare TenantSwitcher
+      nell'AppBar; aggiornare logica "no tenant" per mostrare switcher
+      invece di alert.
+    - client/src/components/Settings/TenantSection.tsx: permettere
+      creazione org anche se l'utente appartiene gia' a un'altra;
+      mostrare lista tenant con indicatore attivo.
+
+  12. Socket — riconnessione su switch:
+    - Al cambio tenant, il client deve disconnettere e riconnettere i
+      socket (SSH namespace, gateway monitor) per aggiornare il contesto
+      JWT nelle room.
+
+  File coinvolti:
+    CREARE:     client/src/components/Layout/TenantSwitcher.tsx
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/services/auth.service.ts
+    MODIFICARE: server/src/services/tenant.service.ts
+    MODIFICARE: server/src/services/oauth.service.ts
+    MODIFICARE: server/src/services/scheduler.service.ts
+    MODIFICARE: server/src/services/permission.service.ts
+    MODIFICARE: server/src/services/vault.service.ts
+    MODIFICARE: server/src/controllers/auth.controller.ts
+    MODIFICARE: server/src/controllers/tenant.controller.ts
+    MODIFICARE: server/src/routes/auth.routes.ts
+    MODIFICARE: server/src/routes/tenant.routes.ts
+    MODIFICARE: server/src/types/index.ts
+    MODIFICARE: client/src/api/tenant.api.ts
+    MODIFICARE: client/src/store/tenantStore.ts
+    MODIFICARE: client/src/store/uiPreferencesStore.ts
+    MODIFICARE: client/src/components/Layout/MainLayout.tsx
+    MODIFICARE: client/src/components/Settings/TenantSection.tsx
 
 
 
