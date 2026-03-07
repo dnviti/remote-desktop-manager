@@ -1,14 +1,6 @@
 name: SSH Gateway — Build & Scan
 
 on:
-  push:
-    branches: ["main"]
-    paths:
-      - "ssh-gateway/**"
-  pull_request:
-    branches: ["main"]
-    paths:
-      - "ssh-gateway/**"
   workflow_run:
     workflows: ['Verify']
     types: [completed]
