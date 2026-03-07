@@ -56,9 +56,10 @@ interface ConnectionTreeProps {
   onCreateFolder: (parentId?: string, teamId?: string) => void;
   onEditFolder: (folder: Folder) => void;
   onShareFolder: (folderId: string, folderName: string) => void;
+  onViewAuditLog?: (conn: ConnectionData) => void;
 }
 
-export default function ConnectionTree({ onEditConnection, onShareConnection, onConnectAsConnection, onCreateConnection, onCreateFolder, onEditFolder, onShareFolder }: ConnectionTreeProps) {
+export default function ConnectionTree({ onEditConnection, onShareConnection, onConnectAsConnection, onCreateConnection, onCreateFolder, onEditFolder, onShareFolder, onViewAuditLog }: ConnectionTreeProps) {
   const ownConnections = useConnectionsStore((s) => s.ownConnections);
   const sharedConnections = useConnectionsStore((s) => s.sharedConnections);
   const teamConnections = useConnectionsStore((s) => s.teamConnections);
@@ -378,6 +379,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
                   onShare={onShareConnection}
                   onConnectAs={onConnectAsConnection}
                   onToggleFavorite={handleToggleFavorite}
+                  onViewAuditLog={onViewAuditLog}
                 />
               ))}
             </List>
@@ -410,6 +412,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
                   onShare={onShareConnection}
                   onConnectAs={onConnectAsConnection}
                   onToggleFavorite={conn.isOwner ? handleToggleFavorite : undefined}
+                  onViewAuditLog={onViewAuditLog}
                 />
               ))}
             </List>
@@ -454,6 +457,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
                 onShareConnection={onShareConnection}
                 onConnectAsConnection={onConnectAsConnection}
                 onToggleFavorite={handleToggleFavorite}
+                onViewAuditLog={onViewAuditLog}
                 onCreateConnection={onCreateConnection}
                 onCreateFolder={onCreateFolder}
                 onEditFolder={onEditFolder}
@@ -475,6 +479,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
                 onShare={onShareConnection}
                 onConnectAs={onConnectAsConnection}
                 onToggleFavorite={handleToggleFavorite}
+                onViewAuditLog={onViewAuditLog}
               />
             ))}
           </List>
@@ -525,6 +530,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
           onShareConnection={onShareConnection}
           onConnectAsConnection={onConnectAsConnection}
           onToggleFavorite={handleToggleFavorite}
+          onViewAuditLog={onViewAuditLog}
           onCreateConnection={onCreateConnection}
           onCreateFolder={onCreateFolder}
           onEditFolder={onEditFolder}
@@ -569,6 +575,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
                   onShare={onShareConnection}
                   onConnectAs={onConnectAsConnection}
                   onToggleFavorite={handleToggleFavorite}
+                  onViewAuditLog={onViewAuditLog}
                 />
               ))}
             </List>

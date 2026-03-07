@@ -31,11 +31,17 @@ interface UiPreferences {
   tenantAuditLogUserId: string;
   tenantAuditLogSortBy: string;
   tenantAuditLogSortOrder: string;
+  connAuditLogAction: string;
+  connAuditLogSearch: string;
+  connAuditLogGatewayId: string;
+  connAuditLogUserId: string;
+  connAuditLogSortBy: string;
+  connAuditLogSortOrder: string;
 }
 
 interface UiPreferencesState extends UiPreferences {
   set: <K extends keyof UiPreferences>(key: K, value: UiPreferences[K]) => void;
-  toggle: (key: keyof Omit<UiPreferences, 'sidebarTeamSections' | 'settingsActiveTab' | 'keychainScopeFilter' | 'keychainTypeFilter' | 'keychainSortBy' | 'orchestrationDashboardTab' | 'orchestrationRefreshInterval' | 'gatewayActiveSubTab' | 'auditLogAction' | 'auditLogSearch' | 'auditLogTargetType' | 'auditLogGatewayId' | 'auditLogSortBy' | 'auditLogSortOrder' | 'tenantAuditLogAction' | 'tenantAuditLogSearch' | 'tenantAuditLogTargetType' | 'tenantAuditLogGatewayId' | 'tenantAuditLogUserId' | 'tenantAuditLogSortBy' | 'tenantAuditLogSortOrder'>) => void;
+  toggle: (key: keyof Omit<UiPreferences, 'sidebarTeamSections' | 'settingsActiveTab' | 'keychainScopeFilter' | 'keychainTypeFilter' | 'keychainSortBy' | 'orchestrationDashboardTab' | 'orchestrationRefreshInterval' | 'gatewayActiveSubTab' | 'auditLogAction' | 'auditLogSearch' | 'auditLogTargetType' | 'auditLogGatewayId' | 'auditLogSortBy' | 'auditLogSortOrder' | 'tenantAuditLogAction' | 'tenantAuditLogSearch' | 'tenantAuditLogTargetType' | 'tenantAuditLogGatewayId' | 'tenantAuditLogUserId' | 'tenantAuditLogSortBy' | 'tenantAuditLogSortOrder' | 'connAuditLogAction' | 'connAuditLogSearch' | 'connAuditLogGatewayId' | 'connAuditLogUserId' | 'connAuditLogSortBy' | 'connAuditLogSortOrder'>) => void;
   toggleTeamSection: (teamId: string) => void;
 }
 
@@ -69,6 +75,12 @@ const defaults: UiPreferences = {
   tenantAuditLogUserId: '',
   tenantAuditLogSortBy: 'createdAt',
   tenantAuditLogSortOrder: 'desc',
+  connAuditLogAction: '',
+  connAuditLogSearch: '',
+  connAuditLogGatewayId: '',
+  connAuditLogUserId: '',
+  connAuditLogSortBy: 'createdAt',
+  connAuditLogSortOrder: 'desc',
 };
 
 export const useUiPreferencesStore = create<UiPreferencesState>()(

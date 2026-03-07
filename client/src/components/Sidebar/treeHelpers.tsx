@@ -23,6 +23,7 @@ import {
   StarBorder as StarBorderIcon,
   FolderShared as FolderSharedIcon,
   PlaylistPlay as PlaylistPlayIcon,
+  History as HistoryIcon,
 } from '@mui/icons-material';
 import { useTabsStore } from '../../store/tabsStore';
 import { ConnectionData } from '../../api/connections.api';
@@ -114,9 +115,10 @@ export interface ConnectionItemProps {
   onShare: (conn: ConnectionData) => void;
   onConnectAs: (conn: ConnectionData) => void;
   onToggleFavorite?: (conn: ConnectionData) => void;
+  onViewAuditLog?: (conn: ConnectionData) => void;
 }
 
-export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit, onDelete, onMove, onShare, onConnectAs, onToggleFavorite }: ConnectionItemProps) {
+export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit, onDelete, onMove, onShare, onConnectAs, onToggleFavorite, onViewAuditLog }: ConnectionItemProps) {
   const openTab = useTabsStore((s) => s.openTab);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
   const {
@@ -182,6 +184,11 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
   const handleConnectAs = () => {
     handleCloseMenu();
     onConnectAs(conn);
+  };
+
+  const handleViewAuditLog = () => {
+    handleCloseMenu();
+    onViewAuditLog?.(conn);
   };
 
   return (
@@ -271,6 +278,12 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
           <ListItemIcon><ShareIcon fontSize="small" /></ListItemIcon>
           <ListItemText>Share</ListItemText>
         </MenuItem>
+        {onViewAuditLog && (
+          <MenuItem onClick={handleViewAuditLog}>
+            <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
+            <ListItemText>Activity Log</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={handleDelete} disabled={!conn.isOwner}>
           <ListItemIcon><DeleteIcon fontSize="small" color={conn.isOwner ? 'error' : undefined} /></ListItemIcon>
           <ListItemText>Delete</ListItemText>
@@ -296,6 +309,7 @@ export interface FolderItemProps {
   onShareConnection: (conn: ConnectionData) => void;
   onConnectAsConnection: (conn: ConnectionData) => void;
   onToggleFavorite: (conn: ConnectionData) => void;
+  onViewAuditLog?: (conn: ConnectionData) => void;
   onCreateConnection: (folderId: string, teamId?: string) => void;
   onCreateFolder: (parentId?: string, teamId?: string) => void;
   onEditFolder: (folder: Folder) => void;
@@ -307,7 +321,7 @@ export interface FolderItemProps {
 export function FolderItem({
   node, connections, folderMap, depth, compact, isDndEnabled = false, teamId,
   onEditConnection, onDeleteConnection, onMoveConnection, onShareConnection, onConnectAsConnection, onToggleFavorite,
-  onCreateConnection, onCreateFolder, onEditFolder, onDeleteFolder,
+  onViewAuditLog, onCreateConnection, onCreateFolder, onEditFolder, onDeleteFolder,
   onBulkOpen, onShareFolder,
 }: FolderItemProps) {
   const [open, setOpen] = useState(true);
@@ -424,6 +438,7 @@ export function FolderItem({
               onShareConnection={onShareConnection}
               onConnectAsConnection={onConnectAsConnection}
               onToggleFavorite={onToggleFavorite}
+              onViewAuditLog={onViewAuditLog}
               onCreateConnection={onCreateConnection}
               onCreateFolder={onCreateFolder}
               onEditFolder={onEditFolder}
@@ -445,6 +460,7 @@ export function FolderItem({
               onShare={onShareConnection}
               onConnectAs={onConnectAsConnection}
               onToggleFavorite={onToggleFavorite}
+              onViewAuditLog={onViewAuditLog}
             />
           ))}
         </List>

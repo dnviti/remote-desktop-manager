@@ -307,6 +307,13 @@
   Dipendenze: SSO-073, SSO-075
   COMPLETATO: Added "Use domain credentials" mode across the full stack. Server: domain credential resolution via resolveDomainCredentials() in session.controller.ts (RDP) and ssh.handler.ts (SSH), with credentialSource audit trail. Schema: defaultCredentialMode field on Connection model. Client: 4th radio in ConnectAsDialog with DOMAIN\username preview, "Default connect behavior" selector in ConnectionDialog, credentialMode passthrough in RdpViewer/SshTerminal, domain profile cache in authStore, and quick-connect/bulk-open respecting defaultCredentialMode in sidebar.
 
+------------------------------------------------------------------------------
+[x] AUDIT-095 — Vista audit log per singola connessione con filtro utente
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: AUDIT-013 (completato), ZT-045 (completato)
+  COMPLETATO: Added per-connection audit log accessible via right-click context menu "Activity Log". Backend: composite index @@index([targetId, createdAt]) on AuditLog, getConnectionAuditLogs and getConnectionAuditUsers service functions, controller handlers with permissionService.canViewConnection access checks, routes GET /audit/connection/:connectionId and /users. Frontend: ConnectionAuditLogDialog full-screen dialog with filters, expandable rows, colored action chips, pagination, admin-only user filter Autocomplete and CSV export. Context menu item propagated through treeHelpers, ConnectionTree, TeamConnectionSection to MainLayout.
+
 ================================================================================
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================

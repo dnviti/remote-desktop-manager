@@ -2,6 +2,7 @@ import { Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AuthRequest } from '../types';
 import * as auditService from '../services/audit.service';
+import * as permissionService from '../services/permission.service';
 import { AppError } from '../middleware/error.middleware';
 import { AuditAction } from '../lib/prisma';
 
@@ -60,6 +61,66 @@ export async function listTenantLogs(req: AuthRequest, res: Response, next: Next
       action: query.action as AuditAction | undefined,
     });
     res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
+    next(err);
+  }
+}
+
+const connectionIdSchema = z.object({
+  connectionId: z.string().uuid(),
+});
+
+const connectionQuerySchema = querySchema.extend({
+  userId: z.string().uuid().optional(),
+});
+
+export async function listConnectionLogs(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { connectionId } = connectionIdSchema.parse(req.params);
+    const query = connectionQuerySchema.parse(req.query);
+
+    const access = await permissionService.canViewConnection(
+      req.user!.userId, connectionId, req.user!.tenantId
+    );
+    if (!access.allowed) {
+      return next(new AppError('Connection not found', 404));
+    }
+
+    const isAdmin = req.user!.tenantRole === 'ADMIN' || req.user!.tenantRole === 'OWNER';
+
+    const result = await auditService.getConnectionAuditLogs({
+      connectionId,
+      userId: isAdmin ? query.userId : req.user!.userId,
+      isAdmin,
+      ...query,
+      action: query.action as AuditAction | undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
+    next(err);
+  }
+}
+
+export async function listConnectionAuditUsers(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    const { connectionId } = connectionIdSchema.parse(req.params);
+
+    const isAdmin = req.user!.tenantRole === 'ADMIN' || req.user!.tenantRole === 'OWNER';
+    if (!isAdmin) {
+      return next(new AppError('Forbidden', 403));
+    }
+
+    const access = await permissionService.canViewConnection(
+      req.user!.userId, connectionId, req.user!.tenantId
+    );
+    if (!access.allowed) {
+      return next(new AppError('Connection not found', 404));
+    }
+
+    const users = await auditService.getConnectionAuditUsers(connectionId);
+    res.json(users);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);

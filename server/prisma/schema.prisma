@@ -566,6 +566,7 @@ model AuditLog {
   @@index([action])
   @@index([createdAt])
   @@index([gatewayId])
+  @@index([targetId, createdAt])
 }
 
 enum NotificationType {

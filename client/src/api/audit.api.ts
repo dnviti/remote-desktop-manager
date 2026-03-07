@@ -113,3 +113,26 @@ export async function getTenantAuditGateways(): Promise<AuditGateway[]> {
   const res = await api.get('/audit/tenant/gateways');
   return res.data;
 }
+
+export interface ConnectionAuditUser {
+  id: string;
+  username: string | null;
+  email: string;
+}
+
+export interface ConnectionAuditLogParams extends AuditLogParams {
+  userId?: string;
+}
+
+export async function getConnectionAuditLogs(
+  connectionId: string,
+  params: ConnectionAuditLogParams = {}
+): Promise<TenantAuditLogResponse> {
+  const res = await api.get(`/audit/connection/${connectionId}`, { params });
+  return res.data;
+}
+
+export async function getConnectionAuditUsers(connectionId: string): Promise<ConnectionAuditUser[]> {
+  const res = await api.get(`/audit/connection/${connectionId}/users`);
+  return res.data;
+}

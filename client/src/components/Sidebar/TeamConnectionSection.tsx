@@ -29,6 +29,7 @@ interface TeamConnectionSectionProps {
   onShareConnection: (conn: ConnectionData) => void;
   onConnectAsConnection: (conn: ConnectionData) => void;
   onToggleFavorite: (conn: ConnectionData) => void;
+  onViewAuditLog?: (conn: ConnectionData) => void;
   onCreateConnection: (folderId?: string, teamId?: string) => void;
   onCreateFolder: (parentId?: string, teamId?: string) => void;
   onEditFolder: (folder: Folder) => void;
@@ -40,7 +41,7 @@ interface TeamConnectionSectionProps {
 export default function TeamConnectionSection({
   teamId, teamName, teamRole, connections, folders, compact, searchQuery,
   onEditConnection, onDeleteConnection, onMoveConnection, onShareConnection,
-  onConnectAsConnection, onToggleFavorite, onCreateConnection, onCreateFolder,
+  onConnectAsConnection, onToggleFavorite, onViewAuditLog, onCreateConnection, onCreateFolder,
   onEditFolder, onDeleteFolder, onBulkOpen, onShareFolder,
 }: TeamConnectionSectionProps) {
   const sidebarTeamSections = useUiPreferencesStore((s) => s.sidebarTeamSections);
@@ -138,6 +139,7 @@ export default function TeamConnectionSection({
               onShareConnection={onShareConnection}
               onConnectAsConnection={onConnectAsConnection}
               onToggleFavorite={onToggleFavorite}
+              onViewAuditLog={onViewAuditLog}
               onCreateConnection={onCreateConnection}
               onCreateFolder={onCreateFolder}
               onEditFolder={onEditFolder}
@@ -158,6 +160,7 @@ export default function TeamConnectionSection({
               onShare={onShareConnection}
               onConnectAs={onConnectAsConnection}
               onToggleFavorite={onToggleFavorite}
+              onViewAuditLog={onViewAuditLog}
             />
           ))}
         </List>
