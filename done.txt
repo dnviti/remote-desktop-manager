@@ -2478,3 +2478,56 @@
     MODIFICATO: client/src/components/RDP/RdpViewer.tsx (domain nel POST body)
     MODIFICATO: client/src/components/Keychain/SecretDialog.tsx (Domain input for LOGIN)
     MODIFICATO: client/src/components/Keychain/SecretDetailView.tsx (Domain display for LOGIN)
+
+------------------------------------------------------------------------------
+[x] SSO-074 — SAML 2.0 SSO authentication via Passport.js
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: OAUTH-029, OIDC-035
+  COMPLETATO: Added SAML 2.0 SSO authentication using @node-saml/passport-saml v5. Dedicated SAML
+    routes (POST ACS callback with urlencoded middleware, SP metadata endpoint). SAML strategy with
+    claim mapping (nameID, UPN, domain, groups). RelayState-based account linking. samlAttributes
+    stored on OAuthAccount for downstream domain identity inference. SAML button on login page and
+    linked accounts settings. Route mounting order prevents /:provider catch-all collision.
+
+  DESCRIZIONE:
+  Aggiungere autenticazione SAML 2.0 SSO via Passport.js per integrare IdP
+  enterprise (Azure AD/Entra ID, Okta, OneLogin, ADFS, Keycloak, Authentik).
+  SAML usa POST per il callback ACS (diverso da OAuth GET), necessita di
+  middleware urlencoded dedicato, e fornisce un endpoint SP metadata XML per
+  la configurazione dell'IdP. Segue i pattern OAuth esistenti ma con route
+  dedicate per le differenze di protocollo.
+
+  DETTAGLI TECNICI:
+  1. Installare @node-saml/passport-saml come dipendenza server
+  2. Aggiungere variabili ambiente SAML (entry point, issuer, callback URL,
+     cert, metadata URL, wantAuthnResponseSigned)
+  3. Aggiungere config block saml in server/src/config.ts dentro oauth
+  4. Aggiungere SAML all'enum AuthProvider e samlAttributes Json? a OAuthAccount
+  5. Estendere OAuthProfile e OAuthCallbackData in passport.ts, registrare
+     strategia SAML con verify callback dedicato per mapping claims
+  6. Esportare getSamlMetadata() per endpoint SP metadata XML
+  7. Estendere findOrCreateOAuthUser() e linkOAuthAccount() con parametro
+     samlAttributes (Prisma.InputJsonValue)
+  8. Creare saml.controller.ts: initiateSaml, initiateSamlLink (RelayState),
+     handleSamlCallback (POST), getMetadata
+  9. Creare saml.routes.ts con express.urlencoded() su POST callback
+  10. Montare route SAML PRIMA delle route OAuth in app.ts
+  11. Estendere getAvailableProviders con saml/samlProviderName
+  12. Frontend: estendere oauth.api.ts, aggiungere bottone SAML con shield
+      icon in OAuthButtons.tsx e LinkedAccountsSection.tsx
+
+  File coinvolti:
+    MODIFICATO: server/package.json (@node-saml/passport-saml dependency)
+    MODIFICATO: .env.example (7 SAML env vars)
+    MODIFICATO: server/src/config.ts (saml config block)
+    MODIFICATO: server/prisma/schema.prisma (SAML enum + samlAttributes field)
+    MODIFICATO: server/src/config/passport.ts (SAML strategy, verify callback, metadata)
+    MODIFICATO: server/src/services/oauth.service.ts (samlAttributes param)
+    CREATO: server/src/controllers/saml.controller.ts (SAML controller)
+    CREATO: server/src/routes/saml.routes.ts (SAML routes)
+    MODIFICATO: server/src/app.ts (mount SAML routes before OAuth)
+    MODIFICATO: server/src/controllers/oauth.controller.ts (getAvailableProviders)
+    MODIFICATO: client/src/api/oauth.api.ts (SAML types and functions)
+    MODIFICATO: client/src/components/OAuthButtons.tsx (SAML button)
+    MODIFICATO: client/src/components/Settings/LinkedAccountsSection.tsx (SAML support)

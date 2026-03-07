@@ -8,7 +8,7 @@ import GoogleIcon from '@mui/icons-material/Google';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import {
   getOAuthProviders, getLinkedAccounts, unlinkOAuthAccount, initiateOAuthLink,
-  OAuthProviders, LinkedAccount,
+  initiateSamlLink, OAuthProviders, LinkedAccount,
 } from '../../api/oauth.api';
 
 function MicrosoftIcon() {
@@ -30,11 +30,20 @@ function OidcIcon() {
   );
 }
 
+function SamlIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z" />
+    </svg>
+  );
+}
+
 const providerIcons: Record<string, React.ReactNode> = {
   GOOGLE: <GoogleIcon />,
   MICROSOFT: <MicrosoftIcon />,
   GITHUB: <GitHubIcon />,
   OIDC: <OidcIcon />,
+  SAML: <SamlIcon />,
 };
 
 const providerLabels: Record<string, string> = {
@@ -42,6 +51,7 @@ const providerLabels: Record<string, string> = {
   MICROSOFT: 'Microsoft',
   GITHUB: 'GitHub',
   OIDC: 'SSO',
+  SAML: 'SAML SSO',
 };
 
 interface LinkedAccountsSectionProps {
@@ -68,10 +78,12 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
   const linkedProviders = new Set(accounts.map((a) => a.provider));
   const totalAuthMethods = accounts.length + (hasPassword ? 1 : 0);
 
-  // Compute labels with dynamic OIDC provider name
-  const labels: Record<string, string> = providers?.oidcProviderName
-    ? { ...providerLabels, OIDC: providers.oidcProviderName }
-    : providerLabels;
+  // Compute labels with dynamic OIDC/SAML provider names
+  const labels: Record<string, string> = {
+    ...providerLabels,
+    ...(providers?.oidcProviderName ? { OIDC: providers.oidcProviderName } : {}),
+    ...(providers?.samlProviderName ? { SAML: providers.samlProviderName } : {}),
+  };
 
   const handleUnlink = async (provider: string) => {
     setError('');
@@ -91,7 +103,7 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
   if (loading) return null;
   if (!providers) return null;
 
-  const availableProviders = (['GOOGLE', 'MICROSOFT', 'GITHUB', 'OIDC'] as const).filter(
+  const availableProviders = (['GOOGLE', 'MICROSOFT', 'GITHUB', 'OIDC', 'SAML'] as const).filter(
     (p) => providers[p.toLowerCase() as keyof OAuthProviders] && !linkedProviders.has(p),
   );
 
@@ -144,7 +156,7 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
                 key={provider}
                 variant="outlined"
                 startIcon={providerIcons[provider]}
-                onClick={() => initiateOAuthLink(provider.toLowerCase())}
+                onClick={() => provider === 'SAML' ? initiateSamlLink() : initiateOAuthLink(provider.toLowerCase())}
               >
                 Link {labels[provider]}
               </Button>

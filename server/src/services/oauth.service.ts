@@ -1,4 +1,4 @@
-import prisma from '../lib/prisma';
+import prisma, { Prisma } from '../lib/prisma';
 import { OAuthProfile } from '../config/passport';
 import { AppError } from '../middleware/error.middleware';
 import { getSelfSignupEnabled } from './appConfig.service';
@@ -25,7 +25,8 @@ interface FindOrCreateResult {
 
 export async function findOrCreateOAuthUser(
   profile: OAuthProfile,
-  oauthTokens: { accessToken: string; refreshToken?: string }
+  oauthTokens: { accessToken: string; refreshToken?: string },
+  samlAttributes?: Prisma.InputJsonValue,
 ): Promise<FindOrCreateResult> {
   // 1. Check for existing OAuth link
   const existingOAuth = await prisma.oAuthAccount.findUnique({
@@ -57,6 +58,7 @@ export async function findOrCreateOAuthUser(
         accessToken: oauthTokens.accessToken,
         refreshToken: oauthTokens.refreshToken ?? existingOAuth.refreshToken,
         providerEmail: profile.email,
+        ...(samlAttributes && { samlAttributes }),
       },
     });
 
@@ -87,6 +89,7 @@ export async function findOrCreateOAuthUser(
         providerEmail: profile.email,
         accessToken: oauthTokens.accessToken,
         refreshToken: oauthTokens.refreshToken,
+        ...(samlAttributes && { samlAttributes }),
       },
     });
 
@@ -128,6 +131,7 @@ export async function findOrCreateOAuthUser(
         providerEmail: profile.email,
         accessToken: oauthTokens.accessToken,
         refreshToken: oauthTokens.refreshToken,
+        ...(samlAttributes && { samlAttributes }),
       },
     });
 
@@ -140,7 +144,8 @@ export async function findOrCreateOAuthUser(
 export async function linkOAuthAccount(
   userId: string,
   profile: OAuthProfile,
-  oauthTokens: { accessToken: string; refreshToken?: string }
+  oauthTokens: { accessToken: string; refreshToken?: string },
+  samlAttributes?: Prisma.InputJsonValue,
 ): Promise<void> {
   // Check if this provider account is already linked to someone else
   const existing = await prisma.oAuthAccount.findUnique({
@@ -176,6 +181,7 @@ export async function linkOAuthAccount(
       providerEmail: profile.email,
       accessToken: oauthTokens.accessToken,
       refreshToken: oauthTokens.refreshToken,
+      ...(samlAttributes && { samlAttributes }),
     },
   });
 }

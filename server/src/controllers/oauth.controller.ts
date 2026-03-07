@@ -126,6 +126,8 @@ export function getAvailableProviders(_req: Request, res: Response) {
     github: config.oauth.github.enabled,
     oidc: config.oauth.oidc.enabled,
     oidcProviderName: config.oauth.oidc.providerName,
+    saml: config.oauth.saml.enabled,
+    samlProviderName: config.oauth.saml.providerName,
   });
 }
 

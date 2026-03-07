@@ -752,84 +752,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] SSO-074 — SAML 2.0 SSO authentication via Passport.js
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: OAUTH-029 (completato), OIDC-035 (completato)
-
-  DESCRIZIONE:
-  Aggiungere SAML 2.0 come metodo di autenticazione enterprise accanto ai
-  provider OAuth2/OIDC esistenti. Usa @node-saml/passport-saml con IdP
-  metadata URL per configurazione automatica. Cattura attributi SAML
-  inclusi UPN (User Principal Name), domain e group memberships dalla
-  assertion. Salva le informazioni domain estratte su OAuthAccount (nuova
-  colonna JSON samlAttributes) per permettere alle feature downstream di
-  inferire il dominio AD dell'utente. Supporta SP-initiated e IdP-initiated
-  SSO. Compatibile con Azure AD/Entra ID, Okta, OneLogin, ADFS, FreeIPA
-  (via Ipsilon), Keycloak, Authentik, e qualsiasi IdP SAML 2.0.
-
-  DETTAGLI TECNICI:
-  Dipendenza npm (server/package.json):
-    - @node-saml/passport-saml (successore di passport-saml)
-
-  Variabili ambiente (.env.example):
-    SAML_ENTRY_POINT=             # IdP SSO URL
-    SAML_ISSUER=rdm-app           # SP Entity ID
-    SAML_CALLBACK_URL=http://localhost:3001/api/auth/saml/callback
-    SAML_CERT=                    # IdP signing certificate (PEM, single line)
-    SAML_METADATA_URL=            # Opzionale: auto-fetch IdP metadata
-    SAML_WANT_AUTHN_RESPONSE_SIGNED=true
-    SAML_PROVIDER_NAME=SAML SSO
-
-  Config (server/src/config.ts):
-    - Aggiungere blocco `saml` sotto `oauth`:
-      saml: { enabled, entryPoint, issuer, callbackUrl, cert, metadataUrl,
-              wantAuthnResponseSigned, providerName }
-
-  Prisma schema:
-    - Aggiungere SAML all'enum AuthProvider: LOCAL | GOOGLE | MICROSOFT |
-      GITHUB | OIDC | SAML
-    - Aggiungere al modello OAuthAccount:
-        samlAttributes  Json?   // UPN, domain, groups dall'assertion
-    - Migrazione Prisma
-
-  Passport strategy (server/src/config/passport.ts):
-    - Registrare nuova strategia SAML con claim mapping:
-      - Email da nameID o claim emailaddress
-      - UPN da claim upn
-      - Domain da UPN (user@domain.com -> domain.com) o da claim
-        windowsdomainname
-      - Groups da claim Group (array)
-    - Nota: il verify callback SAML ha firma diversa (profile, done) vs
-      OAuth (accessToken, refreshToken, profile, done) — creare
-      makeSamlVerifyCallback() separato
-
-  Routes (server/src/routes/oauth.routes.ts):
-    - GET /api/auth/saml -> avvia login SAML (passport.authenticate('saml'))
-    - POST /api/auth/saml/callback -> gestisce assertion response SAML
-      (SAML usa POST per ACS, non GET come OAuth)
-    - GET /api/auth/saml/metadata -> serve SP metadata XML per config IdP
-    - Nota: aggiungere express.urlencoded() solo sulla route SAML callback
-
-  Frontend:
-    - client/src/components/Auth/OAuthButtons.tsx: aggiungere bottone SAML
-      con label dal providerName dell'endpoint /api/auth/oauth/providers
-    - Callback flow: stesso flusso di OIDC (redirect → server handles →
-      redirect back con token)
-
-  File coinvolti:
-    MODIFICARE: server/package.json (@node-saml/passport-saml)
-    MODIFICARE: server/prisma/schema.prisma (AuthProvider enum, samlAttributes)
-    MODIFICARE: server/src/config.ts (blocco config SAML)
-    MODIFICARE: server/src/config/passport.ts (registrazione strategia SAML)
-    MODIFICARE: server/src/routes/oauth.routes.ts (route SAML + POST callback)
-    MODIFICARE: server/src/controllers/oauth.controller.ts (gestione provider SAML)
-    MODIFICARE: server/src/services/oauth.service.ts (storage samlAttributes)
-    MODIFICARE: server/src/app.ts (express.urlencoded per SAML callback)
-    MODIFICARE: client/src/components/Auth/OAuthButtons.tsx (bottone SAML)
-    MODIFICARE: .env.example (variabili SAML)
-
 
 ------------------------------------------------------------------------------
 [ ] SSO-075 — User domain credential profile (domain identity)
@@ -1089,7 +1011,7 @@
 
   Fase 11 — SSO & Domain Credential Passthrough:
    66. SSO-073  RDP domain field: schema, dialogs, Guacamole token  [COMPLETATO]
-   67. SSO-074  SAML 2.0 SSO authentication via Passport.js
+   67. SSO-074  SAML 2.0 SSO authentication via Passport.js  [COMPLETATO]
    68. SSO-075  User domain credential profile (domain identity)
    69. SSO-076  Credential passthrough: domain profile to connections
 
@@ -1348,4 +1270,143 @@
   - SSO-076 defaultCredentialMode='prompt' forza sempre l'apertura del dialog
   - SSO-076 audit: aggiungere credentialSource ('saved'|'domain'|'manual')
     nei details di SESSION_START per tracciabilita' admin
+
+
+================================================================================
+  SEZIONE D — INTEGRAZIONI INFRASTRUTTURA OSS (Scouted 2026-03-07)
+================================================================================
+
+
+------------------------------------------------------------------------------
+[ ] LDAP-101 — Provider autenticazione LDAP/FreeIPA con sync utenti e gruppi
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: OIDC-035 (completato), TENANT-020 (completato), TEAM-022 (completato)
+
+  DESCRIZIONE:
+  Aggiungere un provider di autenticazione LDAP diretto tramite passport-ldapauth,
+  complementare all'OIDC gia' esistente. Molti ambienti enterprise usano FreeIPA o
+  OpenLDAP come identity source e preferiscono LDAP bind diretto al setup OIDC.
+  Include sync periodico utenti/gruppi LDAP verso tenant/team di Arsenale.
+
+  DETTAGLI TECNICI:
+  1) Passport.js LDAP strategy (passport-ldapauth) per LDAP bind auth
+  2) Configurazione LDAP per tenant: server URL, bind DN, base DN, search filters
+     utente/gruppo, TLS/STARTTLS, timeout
+  3) Sync periodico (node-cron): mapping gruppi LDAP -> team Arsenale,
+     creazione/disabilitazione utenti automatica, conflict resolution
+  4) Tab dedicato nelle Settings UI per configurazione LDAP con pulsante
+     "Test Connection" e anteprima risultati sync (dry-run)
+  5) Aggiungere LDAP all'enum AuthProvider in schema.prisma
+  6) Audit logging per eventi sync LDAP (LDAP_SYNC_START, LDAP_SYNC_COMPLETE,
+     LDAP_SYNC_ERROR, LDAP_USER_CREATED, LDAP_USER_DISABLED)
+  7) FreeIPA: base DN tipico cn=users,cn=accounts,dc=domain — supportare
+     sia RFC 2307bis che compat tree
+
+  NOTE:
+  - FreeIPA usa IPAUniqueID anziche' entryUUID — gestire entrambi
+  - Compatibile con: FreeIPA, OpenLDAP, 389 Directory Server, LLDAP
+  - Pattern multi-provider da replicare: server/src/services/email/
+  - Pattern OIDC di riferimento: server/src/config/passport.ts
+
+
+------------------------------------------------------------------------------
+[ ] SYNC-102 — Sincronizzatore connessioni da NetBox (import device/VM)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: TENANT-020 (completato), connection.service.ts
+
+  DESCRIZIONE:
+  Sincronizzare dispositivi e VM da NetBox come connessioni in Arsenale. NetBox e'
+  lo standard de facto per DCIM/IPAM open-source. L'import automatico elimina la
+  duplicazione dati e mantiene la lista connessioni aggiornata. Devolutions RDM ha
+  aggiunto questa feature in v2025.3, confermando la domanda di mercato.
+
+  DETTAGLI TECNICI:
+  1) Client API NetBox: autenticazione token, query paginate su /api/dcim/devices/
+     e /api/virtualization/virtual-machines/, risoluzione IP primario
+  2) Sync profile per tenant: URL NetBox, token API, filtri (site, role, tag,
+     status), intervallo sync, strategia conflitto (update/skip/overwrite)
+  3) Mapping configurabile: platform NetBox -> protocollo (Linux=SSH, Windows=RDP),
+     custom fields NetBox -> proprieta' connessione, site/rack -> cartelle
+  4) Sync manuale (trigger da UI) + auto-sync schedulato (node-cron)
+  5) UI gestione sync profiles nelle Settings tenant (CRUD profili, log sync,
+     anteprima dry-run prima di confermare import)
+  6) Modello Prisma SyncProfile: id, tenantId, provider (NETBOX), config (Json),
+     lastSyncAt, lastSyncStatus, cronExpression, createdById
+  7) Audit logging: SYNC_START, SYNC_COMPLETE, SYNC_ERROR con conteggi
+     (created, updated, skipped, failed)
+
+  NOTE:
+  - NetBox REST API: GET /api/dcim/devices/?limit=50&offset=0 con paginazione
+  - IP primario: device.primary_ip4.address o primary_ip6.address
+  - Il SyncProfile model e' generico per supportare futuri provider (Snipe-IT, etc.)
+  - Pattern provider da seguire: server/src/orchestrator/ (abstract interface)
+
+
+------------------------------------------------------------------------------
+[ ] SYNC-103 — Import inventario Ansible come connessioni
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: IO-071 (da fare), connection.service.ts
+
+  DESCRIZIONE:
+  Importare connessioni da file inventario Ansible (YAML strutturato e INI flat).
+  Ansible e' lo strumento di configuration management dominante e i team IT
+  mantengono gia' inventari con hostname, IP, porte SSH e struttura gruppi.
+  Estende la pipeline import/export di IO-071 con formato Ansible-specifico.
+
+  DETTAGLI TECNICI:
+  1) Parser inventario Ansible YAML: struttura all/children/hosts con vars
+  2) Parser inventario Ansible INI: sezioni [group], host lines, [group:vars]
+  3) Mapping: ansible_host -> host, ansible_port -> port (default 22),
+     ansible_user -> username, ansible_connection -> tipo (ssh default)
+  4) Mapping gruppi Ansible -> cartelle Arsenale (gerarchia preservata)
+  5) Supporto variabili host: ansible_ssh_private_key_file (riferimento a
+     vault secret se presente), ansible_become, ansible_python_interpreter
+  6) Upload file via UI import/export esistente (estensione IO-071)
+  7) Opzionale: pull inventario da Ansible Semaphore API endpoint
+
+  NOTE:
+  - Formato YAML: { all: { children: { webservers: { hosts: { web1: { ansible_host: '10.0.0.1' } } } } } }
+  - Formato INI: [webservers]\n web1 ansible_host=10.0.0.1 ansible_port=22
+  - Libreria yaml: gia' disponibile via js-yaml o yaml nel progetto
+  - Questo task estende IO-071 — puo' essere implementato dopo o in parallelo
+
+
+------------------------------------------------------------------------------
+[ ] VAULT-101 — Provider credenziali esterno HashiCorp Vault
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: VAULT-055 (completato), connection.service.ts
+
+  DESCRIZIONE:
+  Permettere di referenziare credenziali archiviate in HashiCorp Vault (HCV)
+  anziche' duplicarle nel vault interno di Arsenale. Al momento della connessione,
+  le credenziali vengono recuperate da HCV e iniettate nei parametri SSH/RDP.
+  Integra Arsenale nei workflow di secrets management enterprise esistenti.
+
+  DETTAGLI TECNICI:
+  1) Client HCV: autenticazione AppRole (role_id + secret_id) o token statico,
+     supporto namespace, KV v2 secrets engine (GET /v1/secret/data/:path)
+  2) Configurazione HCV per tenant: Vault URL, metodo auth, namespace,
+     mount path, CA certificate (per TLS custom)
+  3) Nuovo tipo sorgente credenziali su connessione: EXTERNAL_VAULT oltre a
+     inline e keychain secret — campo vaultPath (es. "secret/data/servers/web1")
+  4) Risoluzione credenziali al session start: fetch da HCV, parsing response
+     (data.data.username, data.data.password), inject in parametri sessione
+  5) Caching con TTL configurabile per evitare chiamate API ad ogni connessione
+  6) UI: selezione "External Vault" nel ConnectionDialog con campo path,
+     pulsante test per verificare accesso al secret
+  7) Settings UI per configurazione HCV tenant con connection test
+  8) Fallback: se HCV non raggiungibile, mostrare errore chiaro (non fallback
+     silenzioso a credenziali vuote)
+
+  NOTE:
+  - HCV KV v2 response: { data: { data: { username: "...", password: "..." }, metadata: { ... } } }
+  - AppRole auth: POST /v1/auth/approle/login { role_id, secret_id } -> client_token
+  - Le credenziali HCV NON vengono mai persistite in Arsenale — solo cache in-memory
+  - Pattern di riferimento: server/src/services/crypto.service.ts (vault sessions)
+  - Libreria: node-vault o chiamate fetch dirette (API REST semplice)
+
 ================================================================================

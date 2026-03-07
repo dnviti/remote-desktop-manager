@@ -7,6 +7,8 @@ export interface OAuthProviders {
   github: boolean;
   oidc?: boolean;
   oidcProviderName?: string;
+  saml?: boolean;
+  samlProviderName?: string;
 }
 
 export interface LinkedAccount {
@@ -41,4 +43,13 @@ export function initiateOAuthLogin(provider: string): void {
 export function initiateOAuthLink(provider: string): void {
   const token = useAuthStore.getState().accessToken;
   window.location.href = `/api/auth/oauth/link/${provider.toLowerCase()}?token=${encodeURIComponent(token || '')}`;
+}
+
+export function initiateSamlLogin(): void {
+  window.location.href = '/api/auth/saml';
+}
+
+export function initiateSamlLink(): void {
+  const token = useAuthStore.getState().accessToken;
+  window.location.href = `/api/auth/saml/link?token=${encodeURIComponent(token || '')}`;
 }

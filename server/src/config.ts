@@ -130,6 +130,16 @@ export const config = {
       callbackUrl: process.env.OIDC_CALLBACK_URL || 'http://localhost:3001/api/auth/oidc/callback',
       scopes: process.env.OIDC_SCOPES || 'openid profile email',
     },
+    saml: {
+      enabled: !!process.env.SAML_ENTRY_POINT,
+      providerName: process.env.SAML_PROVIDER_NAME || 'SAML SSO',
+      entryPoint: process.env.SAML_ENTRY_POINT || '',
+      issuer: process.env.SAML_ISSUER || 'arsenale',
+      callbackUrl: process.env.SAML_CALLBACK_URL || 'http://localhost:3001/api/auth/saml/callback',
+      cert: process.env.SAML_CERT || '',
+      metadataUrl: process.env.SAML_METADATA_URL || '',
+      wantAuthnResponseSigned: process.env.SAML_WANT_AUTHN_RESPONSE_SIGNED !== 'false',
+    },
   },
   cookie: {
     refreshTokenName: 'arsenale-rt',

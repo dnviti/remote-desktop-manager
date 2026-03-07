@@ -5,6 +5,7 @@ import cookieParser from 'cookie-parser';
 import passport from 'passport';
 import authRoutes from './routes/auth.routes';
 import oauthRoutes from './routes/oauth.routes';
+import samlRoutes from './routes/saml.routes';
 import vaultRoutes from './routes/vault.routes';
 import connectionsRoutes from './routes/connections.routes';
 import foldersRoutes from './routes/folders.routes';
@@ -56,6 +57,7 @@ app.use(passport.initialize());
 if (config.logHttpRequests) app.use(requestLogger);
 
 // Routes
+app.use('/api/auth/saml', samlRoutes);
 app.use('/api/auth', oauthRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/vault', vaultRoutes);

@@ -2,12 +2,13 @@ import passport from 'passport';
 import { Strategy as GoogleStrategy } from 'passport-google-oauth20';
 import { Strategy as GitHubStrategy } from 'passport-github2';
 import { Strategy as MicrosoftStrategy } from 'passport-microsoft';
+import { Strategy as SamlStrategy, type Profile as SamlProfile } from '@node-saml/passport-saml';
 import * as crypto from 'crypto';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 
 export interface OAuthProfile {
-  provider: 'GOOGLE' | 'MICROSOFT' | 'GITHUB' | 'OIDC';
+  provider: 'GOOGLE' | 'MICROSOFT' | 'GITHUB' | 'OIDC' | 'SAML';
   providerUserId: string;
   email: string;
   displayName: string | null;
@@ -17,6 +18,7 @@ export interface OAuthProfile {
 export interface OAuthCallbackData {
   oauthProfile: OAuthProfile;
   oauthTokens: { accessToken: string; refreshToken?: string };
+  samlAttributes?: Record<string, unknown>;
 }
 
 function makeVerifyCallback(provider: OAuthProfile['provider']) {
@@ -320,4 +322,86 @@ export async function initializePassport(): Promise<void> {
       logger.warn('OIDC Discovery failed — OIDC provider will be unavailable:', err instanceof Error ? err.message : err);
     }
   }
+
+  if (config.oauth.saml.enabled) {
+    const samlVerify = makeSamlVerifyCallback();
+    const samlStrategy = new SamlStrategy(
+      {
+        entryPoint: config.oauth.saml.entryPoint,
+        issuer: config.oauth.saml.issuer,
+        callbackUrl: config.oauth.saml.callbackUrl,
+        idpCert: config.oauth.saml.cert,
+        wantAuthnResponseSigned: config.oauth.saml.wantAuthnResponseSigned,
+      } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      samlVerify as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      samlVerify as any, // logout verify callback // eslint-disable-line @typescript-eslint/no-explicit-any
+    );
+    passport.use(samlStrategy as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    logger.info(`SAML: Strategy registered (${config.oauth.saml.providerName})`);
+  }
+}
+
+// --- SAML verify callback ---
+
+function makeSamlVerifyCallback() {
+  return (
+    profile: SamlProfile,
+    done: (err: Error | null, data?: OAuthCallbackData) => void,
+  ) => {
+    try {
+      const email =
+        (profile.nameID && profile.nameIDFormat?.includes('emailAddress') ? profile.nameID : null) ||
+        (profile['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/emailaddress'] as string | undefined) ||
+        (profile['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn'] as string | undefined) ||
+        profile.nameID ||
+        null;
+
+      if (!email) {
+        return done(new Error('No email returned from SAML IdP. Check NameID or attribute mapping.'));
+      }
+
+      const displayName =
+        (profile['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name'] as string | undefined) ||
+        (profile.displayName as string | undefined) ||
+        null;
+
+      const oauthProfile: OAuthProfile = {
+        provider: 'SAML',
+        providerUserId: profile.nameID || email,
+        email,
+        displayName: displayName || null,
+        avatarUrl: null,
+      };
+
+      // Build SAML-specific attributes for storage
+      const samlAttributes: Record<string, unknown> = {};
+      const upn = profile['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/upn'] as string | undefined;
+      if (upn) samlAttributes.upn = upn;
+      const domain =
+        (profile['http://schemas.xmlsoap.org/ws/2005/05/identity/claims/windowsdomainname'] as string | undefined) ||
+        (profile['http://schemas.microsoft.com/identity/claims/tenantid'] as string | undefined);
+      if (domain) samlAttributes.domain = domain;
+      const groups =
+        profile['http://schemas.xmlsoap.org/claims/Group'] ||
+        profile['http://schemas.microsoft.com/ws/2008/06/identity/claims/groups'];
+      if (groups) samlAttributes.groups = Array.isArray(groups) ? groups : [groups];
+      if (profile.nameID) samlAttributes.nameID = profile.nameID;
+      if (profile.nameIDFormat) samlAttributes.nameIDFormat = profile.nameIDFormat;
+      if (profile.sessionIndex) samlAttributes.sessionIndex = profile.sessionIndex;
+
+      done(null, {
+        oauthProfile,
+        oauthTokens: { accessToken: '' },
+        samlAttributes: Object.keys(samlAttributes).length > 0 ? samlAttributes : undefined,
+      });
+    } catch (err) {
+      done(err instanceof Error ? err : new Error(String(err)));
+    }
+  };
+}
+
+export function getSamlMetadata(): string | null {
+  const strategy = (passport as any)._strategy('saml') as SamlStrategy | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
+  if (!strategy) return null;
+  return strategy.generateServiceProviderMetadata(null, null);
 }

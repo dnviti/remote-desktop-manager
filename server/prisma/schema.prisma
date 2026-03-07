@@ -150,6 +150,7 @@ enum AuthProvider {
   MICROSOFT
   GITHUB
   OIDC
+  SAML
 }
 
 model OAuthAccount {
@@ -160,6 +161,7 @@ model OAuthAccount {
   providerEmail  String?
   accessToken    String?
   refreshToken   String?
+  samlAttributes Json?
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
