@@ -177,7 +177,15 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
     } else if (directConns.length > 5) {
       setBulkOpenTarget({ folderId, connections: directConns });
     } else {
-      directConns.forEach((conn) => openTab(conn));
+      directConns.forEach((conn) => bulkOpenOne(conn));
+    }
+  };
+
+  const bulkOpenOne = (conn: ConnectionData) => {
+    if (conn.defaultCredentialMode === 'domain') {
+      openTab(conn, { username: '', password: '', credentialMode: 'domain' });
+    } else {
+      openTab(conn);
     }
   };
 
@@ -190,13 +198,13 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
     if (conns.length > 5) {
       setBulkOpenTarget({ folderId: bulkOpenSubfolderPrompt.folderId, connections: conns });
     } else {
-      conns.forEach((conn) => openTab(conn));
+      conns.forEach((conn) => bulkOpenOne(conn));
     }
   };
 
   const handleConfirmBulkOpen = () => {
     if (!bulkOpenTarget) return;
-    bulkOpenTarget.connections.forEach((conn) => openTab(conn));
+    bulkOpenTarget.connections.forEach((conn) => bulkOpenOne(conn));
     setBulkOpenTarget(null);
   };
 

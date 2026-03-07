@@ -7,6 +7,7 @@ import { config } from '../config';
 import { AuthPayload, SftpEntry } from '../types';
 import { createSshConnection, createSshConnectionViaBastion, createSftpSession, resizeSshTerminal, SshSession } from '../services/ssh.service';
 import { getConnectionCredentials, getConnection } from '../services/connection.service';
+import { resolveDomainCredentials } from '../services/domain.service';
 import { getGatewayCredentials } from '../services/gateway.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { getPrivateKey as getTenantPrivateKey } from '../services/sshkey.service';
@@ -90,7 +91,7 @@ export function setupSshHandler(io: Server) {
 
     // ── Terminal events ──────────────────────────────────────────────
 
-    socket.on('session:start', async (data: { connectionId: string; username?: string; password?: string }) => {
+    socket.on('session:start', async (data: { connectionId: string; username?: string; password?: string; credentialMode?: string }) => {
       // Helper to log connection errors to audit trail
       function logSessionError(error: string, connHost?: string, connPort?: number, gwId?: string | null) {
         auditService.log({
@@ -128,9 +129,30 @@ export function setupSshHandler(io: Server) {
         let password: string;
         let privateKey: string | undefined;
         let passphrase: string | undefined;
-        if (data.username && data.password) {
+        let credentialSource: 'saved' | 'domain' | 'manual' = 'saved';
+
+        if (data.credentialMode === 'domain') {
+          try {
+            const domainCreds = await resolveDomainCredentials(user.userId);
+            if (!domainCreds.domainUsername || !domainCreds.password) {
+              const msg = 'Domain credentials are incomplete. Configure your domain profile in Settings first.';
+              logSessionError(msg, conn.host, conn.port, conn.gatewayId);
+              socket.emit('session:error', { message: msg });
+              return;
+            }
+            username = domainCreds.domainUsername;
+            password = domainCreds.password;
+            credentialSource = 'domain';
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : 'Failed to resolve domain credentials';
+            logSessionError(msg, conn.host, conn.port, conn.gatewayId);
+            socket.emit('session:error', { message: msg });
+            return;
+          }
+        } else if (data.username && data.password) {
           username = data.username;
           password = data.password;
+          credentialSource = 'manual';
         } else {
           const creds = await getConnectionCredentials(user.userId, data.connectionId, user.tenantId);
           username = creds.username;
@@ -238,7 +260,7 @@ export function setupSshHandler(io: Server) {
           protocol: 'SSH',
           socketId: socket.id,
           ipAddress: clientIp,
-          metadata: { host: conn.host, port: conn.port },
+          metadata: { host: conn.host, port: conn.port, credentialSource },
           routingDecision,
         }).catch((err) => {
           logger.error('Failed to persist SSH session record:', err);

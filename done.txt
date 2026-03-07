@@ -300,6 +300,13 @@
   Dipendenze: Nessuna
   COMPLETATO: Activated the existing useAuth() hook in ProtectedRoute and AuthRoute (App.tsx) to perform proactive token refresh on page reload. Added loading state to useAuth.ts so routes gate rendering until refresh completes. Vault polling now waits for accessToken before firing, eliminating the race condition that caused MEMBER users to be logged out.
 
+------------------------------------------------------------------------------
+[x] SSO-076 — Credential passthrough: domain profile to RDP/SSH connections
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: SSO-073, SSO-075
+  COMPLETATO: Added "Use domain credentials" mode across the full stack. Server: domain credential resolution via resolveDomainCredentials() in session.controller.ts (RDP) and ssh.handler.ts (SSH), with credentialSource audit trail. Schema: defaultCredentialMode field on Connection model. Client: 4th radio in ConnectAsDialog with DOMAIN\username preview, "Default connect behavior" selector in ConnectionDialog, credentialMode passthrough in RdpViewer/SshTerminal, domain profile cache in authStore, and quick-connect/bulk-open respecting defaultCredentialMode in sidebar.
+
 ================================================================================
   SEZIONE B — TASK AGGIUNTIVI SUGGERITI
 ================================================================================

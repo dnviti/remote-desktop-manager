@@ -18,6 +18,7 @@ export interface ConnectionInput {
   gatewayId?: string | null;
   sshTerminalConfig?: Partial<SshTerminalConfig>;
   rdpSettings?: Partial<RdpSettings>;
+  defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
 }
 
 export interface ConnectionData {
@@ -40,6 +41,7 @@ export interface ConnectionData {
   gatewayId?: string | null;
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
   rdpSettings?: Partial<RdpSettings> | null;
+  defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   isOwner: boolean;
   permission?: string;
   sharedBy?: string;
@@ -78,6 +80,7 @@ export interface ConnectionUpdate {
   gatewayId?: string | null;
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
   rdpSettings?: Partial<RdpSettings> | null;
+  defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
 }
 
 export async function updateConnection(

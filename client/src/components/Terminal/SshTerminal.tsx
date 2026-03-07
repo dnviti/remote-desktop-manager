@@ -180,7 +180,10 @@ export default function SshTerminal({ connectionId, tabId: _tabId, credentials, 
     socket.on('connect', () => {
       socket.emit('session:start', {
         connectionId,
-        ...(credentials && { username: credentials.username, password: credentials.password }),
+        ...(credentials?.credentialMode === 'domain'
+          ? { credentialMode: 'domain' }
+          : credentials && { username: credentials.username, password: credentials.password }
+        ),
       });
     });
 

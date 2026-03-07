@@ -44,6 +44,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const [gatewayId, setGatewayId] = useState('');
   const [credentialMode, setCredentialMode] = useState<'manual' | 'keychain'>('manual');
   const [selectedSecretId, setSelectedSecretId] = useState<string | null>(null);
+  const [defaultConnectMode, setDefaultConnectMode] = useState<string>('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const fetchConnections = useConnectionsStore((s) => s.fetchConnections);
@@ -82,6 +83,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
         setCredentialMode('manual');
         setSelectedSecretId(null);
       }
+      setDefaultConnectMode(connection.defaultCredentialMode ?? '');
     } else if (open && !connection) {
       setName('');
       setType('SSH');
@@ -97,6 +99,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setRdpSettings({});
       setCredentialMode('manual');
       setSelectedSecretId(null);
+      setDefaultConnectMode('');
     }
   }, [open, connection]);
 
@@ -146,6 +149,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'RDP' && {
             rdpSettings: Object.keys(rdpSettings).length > 0 ? rdpSettings : null,
           }),
+          defaultCredentialMode: (defaultConnectMode as 'saved' | 'domain' | 'prompt') || null,
         };
         if (credentialMode === 'manual') {
           if (username) data.username = username;
@@ -173,6 +177,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'RDP' && Object.keys(rdpSettings).length > 0 && {
             rdpSettings,
           }),
+          ...(defaultConnectMode ? { defaultCredentialMode: defaultConnectMode as 'saved' | 'domain' | 'prompt' } : {}),
         };
         await createConnection(data);
       }
@@ -203,6 +208,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     setRdpSettings({});
     setCredentialMode('manual');
     setSelectedSecretId(null);
+    setDefaultConnectMode('');
     setError('');
     onClose();
   };
@@ -322,6 +328,18 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
               )}
             </>
           )}
+          <FormControl fullWidth size="small">
+            <InputLabel>Default connect behavior</InputLabel>
+            <Select
+              value={defaultConnectMode}
+              label="Default connect behavior"
+              onChange={(e) => setDefaultConnectMode(e.target.value)}
+            >
+              <MenuItem value="">Use saved credentials (default)</MenuItem>
+              <MenuItem value="domain">Use domain profile credentials</MenuItem>
+              <MenuItem value="prompt">Always ask (show Connect As dialog)</MenuItem>
+            </Select>
+          </FormControl>
           <TextField
             label="Description (optional)"
             value={description}

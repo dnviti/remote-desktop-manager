@@ -754,79 +754,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] SSO-076 — Credential passthrough: domain profile to RDP/SSH connections
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: SSO-073, SSO-075
-
-  DESCRIZIONE:
-  Aggiungere una nuova modalita' ConnectAs "Use domain credentials" che applica
-  automaticamente il domain credential profile dell'utente (SSO-075) quando si
-  connette a target RDP o SSH. Per RDP, domain/username/password vengono passati
-  a Guacamole. Per SSH, il formato domain\username viene usato per target Windows.
-  Aggiungere anche un'impostazione per connessione "default credential mode"
-  (saved/domain/prompt) cosi' le connessioni possono essere configurate per
-  usare automaticamente il profilo domain. Quando l'utente clicca Connect su una
-  connessione con defaultCredentialMode='domain', il sistema risolve il domain
-  profile senza mostrare alcun dialog.
-
-  DETTAGLI TECNICI:
-  Prisma schema (server/prisma/schema.prisma):
-    - Aggiungere al modello Connection:
-        defaultCredentialMode  String?  // 'saved' | 'domain' | 'prompt' | null
-
-  Server handler (server/src/socket/rdp.handler.ts):
-    - sessionSchema: aggiungere credentialMode: z.enum(['saved','domain',
-      'manual']).optional()
-    - POST /rdp: quando credentialMode='domain':
-      1. Chiamare domain.service.resolveDomainCredentials(userId)
-      2. Usare domain, username, password restituiti
-      3. Passare a generateGuacamoleToken() con parametro domain
-
-  Server handler (server/src/socket/ssh.handler.ts):
-    - session:start data: aggiungere credentialMode?: string
-    - Quando credentialMode='domain': risolvere da domain.service
-
-  Client dialogs:
-    - client/src/components/Dialogs/ConnectAsDialog.tsx:
-      - Aggiungere quarta radio: 'domain' — "Use domain credentials"
-      - Mostra anteprima read-only domain\username dal profilo
-      - Se profilo non configurato, mostrare helper text con link a Settings
-    - client/src/components/Dialogs/ConnectionDialog.tsx:
-      - Aggiungere select "Default Credential Mode" nelle impostazioni:
-        "Use saved credentials" (default), "Use domain credentials",
-        "Always prompt"
-
-  Client store e viewers:
-    - client/src/store/tabsStore.ts: aggiungere credentialMode? a
-      CredentialOverride
-    - client/src/components/RDP/RdpViewer.tsx: quando credentialMode='domain',
-      POST a /sessions/rdp con { connectionId, credentialMode: 'domain' }
-    - client/src/components/Terminal/SshTerminal.tsx: emettere session:start
-      con { connectionId, credentialMode: 'domain' }
-    - client/src/store/authStore.ts: cacheare domain profile info
-      (domain, username, hasDomainPassword) per ConnectAsDialog
-
-  Comportamento quick-connect:
-    - Doppio click su connessione con defaultCredentialMode='domain':
-      applica credenziali domain automaticamente senza aprire ConnectAsDialog
-    - defaultCredentialMode='prompt': apre sempre ConnectAsDialog
-
-  File coinvolti:
-    MODIFICARE: server/prisma/schema.prisma (Connection.defaultCredentialMode)
-    MODIFICARE: server/src/services/connection.service.ts (CRUD credential mode)
-    MODIFICARE: server/src/socket/rdp.handler.ts (domain credential resolution)
-    MODIFICARE: server/src/socket/ssh.handler.ts (domain credential resolution)
-    MODIFICARE: server/src/types/index.ts (CredentialMode type)
-    MODIFICARE: client/src/store/tabsStore.ts (credentialMode in override)
-    MODIFICARE: client/src/components/Dialogs/ConnectAsDialog.tsx (4a modalita')
-    MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx (default mode)
-    MODIFICARE: client/src/components/RDP/RdpViewer.tsx (domain mode)
-    MODIFICARE: client/src/components/Terminal/SshTerminal.tsx (domain mode)
-    MODIFICARE: client/src/store/authStore.ts (domain profile cache)
-    MODIFICARE: client/src/api/connections.api.ts (defaultCredentialMode)
-
 
 ================================================================================
   ORDINE DI IMPLEMENTAZIONE CONSIGLIATO
@@ -933,7 +860,7 @@
    66. SSO-073  RDP domain field: schema, dialogs, Guacamole token  [COMPLETATO]
    67. SSO-074  SAML 2.0 SSO authentication via Passport.js  [COMPLETATO]
    68. SSO-075  User domain credential profile (domain identity)  [COMPLETATO]
-   69. SSO-076  Credential passthrough: domain profile to connections
+   69. SSO-076  Credential passthrough: domain profile to connections  [COMPLETATO]
 
 ================================================================================
   NOTE

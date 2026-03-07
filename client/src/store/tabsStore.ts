@@ -8,6 +8,7 @@ export interface CredentialOverride {
   username: string;
   password: string;
   domain?: string;
+  credentialMode?: 'saved' | 'domain' | 'manual';
 }
 
 export interface Tab {

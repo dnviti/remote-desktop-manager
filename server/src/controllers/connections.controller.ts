@@ -60,6 +60,7 @@ const createSchema = z.object({
   gatewayId: z.string().uuid().nullable().optional(),
   sshTerminalConfig: sshTerminalConfigSchema.optional(),
   rdpSettings: rdpSettingsSchema.optional(),
+  defaultCredentialMode: z.enum(['saved', 'domain', 'prompt']).nullable().optional(),
 }).refine(
   (data) => data.credentialSecretId || (data.username !== undefined && data.password !== undefined),
   { message: 'Either credentialSecretId or both username and password must be provided' }
@@ -80,6 +81,7 @@ const updateSchema = z.object({
   gatewayId: z.string().uuid().nullable().optional(),
   sshTerminalConfig: sshTerminalConfigSchema.nullable().optional(),
   rdpSettings: rdpSettingsSchema.nullable().optional(),
+  defaultCredentialMode: z.enum(['saved', 'domain', 'prompt']).nullable().optional(),
 });
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { getDomainProfile } from '../api/user.api';
 
 interface User {
   id: string;
@@ -9,6 +10,9 @@ interface User {
   vaultSetupComplete?: boolean;
   tenantId?: string;
   tenantRole?: string;
+  domainName?: string | null;
+  domainUsername?: string | null;
+  hasDomainPassword?: boolean;
 }
 
 interface AuthState {
@@ -20,6 +24,7 @@ interface AuthState {
   setAccessToken: (token: string) => void;
   setCsrfToken: (token: string) => void;
   updateUser: (data: Partial<User>) => void;
+  fetchDomainProfile: () => Promise<void>;
   logout: () => void;
 }
 
@@ -37,6 +42,24 @@ export const useAuthStore = create<AuthState>()(
       updateUser: (data) => {
         const current = get().user;
         if (current) set({ user: { ...current, ...data } });
+      },
+      fetchDomainProfile: async () => {
+        try {
+          const profile = await getDomainProfile();
+          const current = get().user;
+          if (current) {
+            set({
+              user: {
+                ...current,
+                domainName: profile.domainName,
+                domainUsername: profile.domainUsername,
+                hasDomainPassword: profile.hasDomainPassword,
+              },
+            });
+          }
+        } catch {
+          // Ignore errors — domain profile is optional
+        }
       },
       logout: () =>
         set({

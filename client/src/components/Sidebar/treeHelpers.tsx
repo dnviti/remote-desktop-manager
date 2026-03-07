@@ -139,9 +139,19 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
 
   const handleCloseMenu = () => setContextMenu(null);
 
+  const quickConnect = () => {
+    if (conn.defaultCredentialMode === 'domain') {
+      openTab(conn, { username: '', password: '', credentialMode: 'domain' });
+    } else if (conn.defaultCredentialMode === 'prompt') {
+      onConnectAs(conn);
+    } else {
+      openTab(conn);
+    }
+  };
+
   const handleConnect = () => {
     handleCloseMenu();
-    openTab(conn);
+    quickConnect();
   };
 
   const handleOpenInNewWindow = () => {
@@ -179,7 +189,7 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
       <ListItemButton
         ref={setNodeRef}
         dense
-        onDoubleClick={() => openTab(conn)}
+        onDoubleClick={() => quickConnect()}
         onContextMenu={handleContextMenu}
         sx={{
           pl: depthPl(depth),

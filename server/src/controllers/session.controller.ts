@@ -4,6 +4,7 @@ import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthRequest, RdpSettings } from '../types';
 import { getConnection, getConnectionCredentials } from '../services/connection.service';
+import { resolveDomainCredentials } from '../services/domain.service';
 import { generateGuacamoleToken, mergeRdpSettings } from '../services/rdp.service';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
@@ -16,8 +17,9 @@ const sessionSchema = z.object({
   username: z.string().min(1).optional(),
   password: z.string().min(1).optional(),
   domain: z.string().min(1).optional(),
+  credentialMode: z.enum(['saved', 'domain', 'manual']).optional(),
 }).refine(
-  (data) => (!data.username && !data.password) || (data.username && data.password),
+  (data) => data.credentialMode === 'domain' || (!data.username && !data.password) || (data.username && data.password),
   { message: 'Both username and password must be provided together' },
 );
 
@@ -79,10 +81,22 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     let username: string;
     let password: string;
     let domain: string | undefined;
-    if (overrideUser && overridePass) {
+    let credentialSource: 'saved' | 'domain' | 'manual' = 'saved';
+
+    if (parsed.credentialMode === 'domain') {
+      const domainCreds = await resolveDomainCredentials(req.user!.userId);
+      if (!domainCreds.domainUsername || !domainCreds.password) {
+        throw new AppError('Domain credentials are incomplete. Configure your domain profile in Settings first.', 400);
+      }
+      username = domainCreds.domainUsername;
+      password = domainCreds.password;
+      domain = domainCreds.domainName ?? undefined;
+      credentialSource = 'domain';
+    } else if (overrideUser && overridePass) {
       username = overrideUser;
       password = overridePass;
       domain = overrideDomain;
+      credentialSource = 'manual';
     } else {
       const creds = await getConnectionCredentials(req.user!.userId, connectionId, req.user!.tenantId);
       if (creds.privateKey && !creds.password) {
@@ -138,7 +152,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       protocol: 'RDP',
       guacToken: token,
       ipAddress: req.ip ?? undefined,
-      metadata: { host: conn.host, port: conn.port },
+      metadata: { host: conn.host, port: conn.port, credentialSource },
       routingDecision,
     });
 

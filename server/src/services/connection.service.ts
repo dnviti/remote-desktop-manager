@@ -33,6 +33,7 @@ export interface CreateConnectionInput {
   gatewayId?: string | null;
   sshTerminalConfig?: Prisma.InputJsonValue | null;
   rdpSettings?: Prisma.InputJsonValue | null;
+  defaultCredentialMode?: string | null;
 }
 
 export interface UpdateConnectionInput {
@@ -50,6 +51,7 @@ export interface UpdateConnectionInput {
   gatewayId?: string | null;
   sshTerminalConfig?: Prisma.InputJsonValue | null;
   rdpSettings?: Prisma.InputJsonValue | null;
+  defaultCredentialMode?: string | null;
 }
 
 export async function createConnection(userId: string, input: CreateConnectionInput, tenantId?: string | null) {
@@ -115,6 +117,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
       gatewayId: input.gatewayId || null,
       sshTerminalConfig: input.sshTerminalConfig ?? undefined,
       rdpSettings: input.rdpSettings ?? undefined,
+      defaultCredentialMode: input.defaultCredentialMode ?? null,
       userId,
     },
   });
@@ -135,6 +138,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     enableDrive: connection.enableDrive,
     sshTerminalConfig: connection.sshTerminalConfig,
     rdpSettings: connection.rdpSettings,
+    defaultCredentialMode: connection.defaultCredentialMode,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
   };
@@ -164,6 +168,7 @@ export async function updateConnection(
   if (input.gatewayId !== undefined) data.gatewayId = input.gatewayId;
   if (input.sshTerminalConfig !== undefined) data.sshTerminalConfig = input.sshTerminalConfig;
   if (input.rdpSettings !== undefined) data.rdpSettings = input.rdpSettings;
+  if (input.defaultCredentialMode !== undefined) data.defaultCredentialMode = input.defaultCredentialMode;
 
   // Handle credentialSecretId changes
   if (input.credentialSecretId !== undefined) {
@@ -243,6 +248,7 @@ export async function updateConnection(
     enableDrive: updated.enableDrive,
     sshTerminalConfig: updated.sshTerminalConfig,
     rdpSettings: updated.rdpSettings,
+    defaultCredentialMode: updated.defaultCredentialMode,
     createdAt: updated.createdAt,
     updatedAt: updated.updatedAt,
   };
@@ -284,6 +290,7 @@ export async function getConnection(userId: string, connectionId: string, tenant
       enableDrive: connection.enableDrive,
       sshTerminalConfig: connection.sshTerminalConfig,
       rdpSettings: connection.rdpSettings,
+      defaultCredentialMode: connection.defaultCredentialMode,
       gatewayId: connection.gatewayId,
       gateway: connection.gateway,
       isOwner: true,
@@ -309,6 +316,7 @@ export async function getConnection(userId: string, connectionId: string, tenant
       enableDrive: connection.enableDrive,
       sshTerminalConfig: connection.sshTerminalConfig,
       rdpSettings: connection.rdpSettings,
+      defaultCredentialMode: connection.defaultCredentialMode,
       gatewayId: connection.gatewayId,
       gateway: connection.gateway,
       isOwner: false,
@@ -338,6 +346,7 @@ export async function getConnection(userId: string, connectionId: string, tenant
     enableDrive: connection.enableDrive,
     sshTerminalConfig: connection.sshTerminalConfig,
     rdpSettings: connection.rdpSettings,
+    defaultCredentialMode: connection.defaultCredentialMode,
     gatewayId: connection.gatewayId,
     gateway: connection.gateway,
     isOwner: false,
@@ -367,6 +376,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       enableDrive: true,
       sshTerminalConfig: true,
       rdpSettings: true,
+      defaultCredentialMode: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -391,6 +401,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
           enableDrive: true,
           sshTerminalConfig: true,
           rdpSettings: true,
+          defaultCredentialMode: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -429,6 +440,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
         enableDrive: true,
         sshTerminalConfig: true,
         rdpSettings: true,
+        defaultCredentialMode: true,
         createdAt: true,
         updatedAt: true,
       },

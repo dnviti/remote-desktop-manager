@@ -88,11 +88,14 @@ export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true
         // Get RDP token from server
         const res = await api.post('/sessions/rdp', {
           connectionId,
-          ...(credentials && {
-            username: credentials.username,
-            password: credentials.password,
-            ...(credentials.domain ? { domain: credentials.domain } : {}),
-          }),
+          ...(credentials?.credentialMode === 'domain'
+            ? { credentialMode: 'domain' }
+            : credentials && {
+                username: credentials.username,
+                password: credentials.password,
+                ...(credentials.domain ? { domain: credentials.domain } : {}),
+              }
+          ),
         });
         const { token, sessionId } = res.data;
         sessionIdRef.current = sessionId ?? null;

@@ -3,10 +3,12 @@ import {
   Dialog, DialogTitle, DialogContent, DialogActions, Button, TextField,
   RadioGroup, Radio, FormControlLabel, Alert, Box, Typography, Chip,
 } from '@mui/material';
-import { VpnKey, Key } from '@mui/icons-material';
+import { VpnKey, Key, Domain } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useTabsStore } from '../../store/tabsStore';
 import { ConnectionData } from '../../api/connections.api';
+
+type ConnectMode = 'saved' | 'profile' | 'manual' | 'domain';
 
 interface ConnectAsDialogProps {
   open: boolean;
@@ -17,8 +19,9 @@ interface ConnectAsDialogProps {
 export default function ConnectAsDialog({ open, onClose, connection }: ConnectAsDialogProps) {
   const openTab = useTabsStore((s) => s.openTab);
   const user = useAuthStore((s) => s.user);
+  const domainConfigured = Boolean(user?.domainUsername && user?.hasDomainPassword);
 
-  const [mode, setMode] = useState<'saved' | 'profile' | 'manual'>('saved');
+  const [mode, setMode] = useState<ConnectMode>('saved');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [domain, setDomain] = useState('');
@@ -53,6 +56,8 @@ export default function ConnectAsDialog({ open, onClose, connection }: ConnectAs
 
     if (mode === 'saved') {
       openTab(connection);
+    } else if (mode === 'domain') {
+      openTab(connection, { username: '', password: '', credentialMode: 'domain' });
     } else {
       if (!username.trim()) {
         setError('Username is required');
@@ -75,7 +80,7 @@ export default function ConnectAsDialog({ open, onClose, connection }: ConnectAs
 
         <RadioGroup
           value={mode}
-          onChange={(e) => setMode(e.target.value as 'saved' | 'profile' | 'manual')}
+          onChange={(e) => setMode(e.target.value as ConnectMode)}
         >
           <FormControlLabel
             value="saved"
@@ -108,9 +113,34 @@ export default function ConnectAsDialog({ open, onClose, connection }: ConnectAs
             control={<Radio />}
             label="Enter credentials manually"
           />
+          <FormControlLabel
+            value="domain"
+            control={<Radio />}
+            disabled={!domainConfigured}
+            label={
+              <Box>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="body2">Use domain credentials</Typography>
+                  {domainConfigured && (
+                    <Chip
+                      icon={<Domain fontSize="small" />}
+                      label={user?.domainName ? `${user.domainName}\\${user.domainUsername}` : user?.domainUsername}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
+                </Box>
+                {!domainConfigured && (
+                  <Typography variant="caption" color="text.secondary">
+                    Not configured — set up in Settings &gt; Domain Profile
+                  </Typography>
+                )}
+              </Box>
+            }
+          />
         </RadioGroup>
 
-        {mode !== 'saved' && (
+        {(mode === 'profile' || mode === 'manual') && (
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="Username"
