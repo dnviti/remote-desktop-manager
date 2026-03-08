@@ -1,0 +1,88 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: arsenale
+      POSTGRES_PASSWORD: arsenale_password
+      POSTGRES_DB: arsenale
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+    networks:
+      - arsenale-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arsenale -d arsenale"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # guacd:
+  #   image: guacamole/guacd
+  #   networks:
+  #     - arsenale-dev
+  #   restart: unless-stopped
+  #   healthcheck:
+  #     test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
+  #     interval: 10s
+  #     timeout: 5s
+  #     retries: 3
+  #     start_period: 10s
+
+  # server:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.dev
+  #   working_dir: /app
+  #   command: >
+  #     sh -c "npm run db:generate &&
+  #            npx tsx watch server/src/index.ts"
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   ports:
+  #     - "3001:3001"
+  #     - "3002:3002"
+  #   env_file:
+  #     - .env
+  #   environment:
+  #     # Override host-oriented values from .env for Docker networking
+  #     DATABASE_URL: postgresql://arsenale:arsenale_password@postgres:5432/arsenale
+  #     GUACD_HOST: guacd
+  #     GUACD_PORT: "4822"
+  #     DOCKER_NETWORK: arsenale-dev
+  #     DOCKER_SOCKET_PATH: /var/run/docker.sock
+  #     NODE_ENV: development
+  #   networks:
+  #     - arsenale-dev
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+
+  # client:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile.dev
+  #   working_dir: /app/client
+  #   command: npx vite --host
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   ports:
+  #     - "3000:3000"
+  #   environment:
+  #     VITE_API_TARGET: http://server:3001
+  #     VITE_GUAC_TARGET: http://server:3002
+  #   networks:
+  #     - arsenale-dev
+  #   depends_on:
+  #     - server
+
+networks:
+  arsenale-dev:
+    name: arsenale-dev
+
+volumes:
+  pgdata_dev:

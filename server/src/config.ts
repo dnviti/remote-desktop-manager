@@ -1,0 +1,179 @@
+import crypto from 'crypto';
+import dotenv from 'dotenv';
+import path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+
+function resolveServerEncryptionKey(): Buffer {
+  const envKey = process.env.SERVER_ENCRYPTION_KEY?.trim();
+  if (envKey && envKey.length > 0) {
+    if (!/^[0-9a-fA-F]{64}$/.test(envKey)) {
+      throw new Error(
+        `SERVER_ENCRYPTION_KEY must be exactly 64 hex chars (32 bytes). ` +
+        `Got ${envKey.length} chars. Generate one with: ` +
+        `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`,
+      );
+    }
+    return Buffer.from(envKey, 'hex');
+  }
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'SERVER_ENCRYPTION_KEY is required in production. Generate one with: ' +
+      'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
+    );
+  }
+  console.warn(
+    '[config] SERVER_ENCRYPTION_KEY not set — auto-generating for development. ' +
+    'SSH key pairs will not survive server restarts.',
+  );
+  return crypto.randomBytes(32);
+}
+
+export const config = {
+  port: parseInt(process.env.PORT || '3001', 10),
+  guacamoleWsPort: parseInt(process.env.GUACAMOLE_WS_PORT || '3002', 10),
+  jwtSecret: (() => {
+    const secret = process.env.JWT_SECRET;
+    if (!secret && process.env.NODE_ENV === 'production') {
+      throw new Error('JWT_SECRET is required in production');
+    }
+    return secret || 'dev-secret-change-me';
+  })(),
+  jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
+  jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
+  guacdHost: process.env.GUACD_HOST || 'localhost',
+  guacdPort: parseInt(process.env.GUACD_PORT || '4822', 10),
+  guacamoleSecret: process.env.GUACAMOLE_SECRET || 'dev-guac-secret',
+  serverEncryptionKey: resolveServerEncryptionKey(),
+  gatewayApiToken: process.env.GATEWAY_API_TOKEN || '',
+  vaultTtlMinutes: parseInt(process.env.VAULT_TTL_MINUTES || '30', 10),
+  vaultRecoveryTtlMs: (() => {
+    const expiry = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
+    const match = expiry.match(/^(\d+)([smhd])$/);
+    if (!match) return 7 * 24 * 60 * 60 * 1000;
+    const value = parseInt(match[1]);
+    switch (match[2]) {
+      case 's': return value * 1000;
+      case 'm': return value * 60 * 1000;
+      case 'h': return value * 60 * 60 * 1000;
+      case 'd': return value * 24 * 60 * 60 * 1000;
+      default: return 7 * 24 * 60 * 60 * 1000;
+    }
+  })(),
+  nodeEnv: process.env.NODE_ENV || 'development',
+  logLevel: (process.env.LOG_LEVEL || 'info') as 'error' | 'warn' | 'info' | 'verbose' | 'debug',
+  logFormat: (process.env.LOG_FORMAT || 'text') as 'text' | 'json',
+  logTimestamps: process.env.LOG_TIMESTAMPS !== 'false',
+  logHttpRequests: process.env.LOG_HTTP_REQUESTS === 'true',
+  driveBasePath: process.env.DRIVE_BASE_PATH || path.resolve(__dirname, '../../data/drive'),
+  fileUploadMaxSize: parseInt(process.env.FILE_UPLOAD_MAX_SIZE || String(10 * 1024 * 1024), 10),
+  userDriveQuota: parseInt(process.env.USER_DRIVE_QUOTA || String(100 * 1024 * 1024), 10),
+  sftpMaxFileSize: parseInt(process.env.SFTP_MAX_FILE_SIZE || String(100 * 1024 * 1024), 10),
+  sftpChunkSize: parseInt(process.env.SFTP_CHUNK_SIZE || String(64 * 1024), 10),
+  emailProvider: (process.env.EMAIL_PROVIDER || 'smtp') as
+    | 'smtp'
+    | 'sendgrid'
+    | 'ses'
+    | 'resend'
+    | 'mailgun',
+  smtpHost: process.env.SMTP_HOST || '',
+  smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
+  smtpUser: process.env.SMTP_USER || '',
+  smtpPass: process.env.SMTP_PASS || '',
+  smtpFrom: process.env.SMTP_FROM || 'noreply@localhost',
+  sendgridApiKey: process.env.SENDGRID_API_KEY || '',
+  sesRegion: process.env.AWS_SES_REGION || 'us-east-1',
+  sesAccessKeyId: process.env.AWS_SES_ACCESS_KEY_ID || '',
+  sesSecretAccessKey: process.env.AWS_SES_SECRET_ACCESS_KEY || '',
+  resendApiKey: process.env.RESEND_API_KEY || '',
+  mailgunApiKey: process.env.MAILGUN_API_KEY || '',
+  mailgunDomain: process.env.MAILGUN_DOMAIN || '',
+  mailgunRegion: (process.env.MAILGUN_REGION || 'us') as 'us' | 'eu',
+  smsProvider: (process.env.SMS_PROVIDER || '') as '' | 'twilio' | 'sns' | 'vonage',
+  twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+  twilioFromNumber: process.env.TWILIO_FROM_NUMBER || '',
+  snsRegion: process.env.AWS_SNS_REGION || 'us-east-1',
+  snsAccessKeyId: process.env.AWS_SNS_ACCESS_KEY_ID || '',
+  snsSecretAccessKey: process.env.AWS_SNS_SECRET_ACCESS_KEY || '',
+  vonageApiKey: process.env.VONAGE_API_KEY || '',
+  vonageApiSecret: process.env.VONAGE_API_SECRET || '',
+  vonageFromNumber: process.env.VONAGE_FROM_NUMBER || '',
+  emailVerifyRequired: process.env.EMAIL_VERIFY_REQUIRED !== 'false',
+  selfSignupEnabled: process.env.SELF_SIGNUP_ENABLED !== 'false',
+  clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
+  oauth: {
+    google: {
+      enabled: !!process.env.GOOGLE_CLIENT_ID,
+      clientId: process.env.GOOGLE_CLIENT_ID || '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+      callbackUrl: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3001/api/auth/google/callback',
+    },
+    microsoft: {
+      enabled: !!process.env.MICROSOFT_CLIENT_ID,
+      clientId: process.env.MICROSOFT_CLIENT_ID || '',
+      clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+      callbackUrl: process.env.MICROSOFT_CALLBACK_URL || 'http://localhost:3001/api/auth/microsoft/callback',
+    },
+    github: {
+      enabled: !!process.env.GITHUB_CLIENT_ID,
+      clientId: process.env.GITHUB_CLIENT_ID || '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+      callbackUrl: process.env.GITHUB_CALLBACK_URL || 'http://localhost:3001/api/auth/github/callback',
+    },
+    oidc: {
+      enabled: !!process.env.OIDC_CLIENT_ID,
+      providerName: process.env.OIDC_PROVIDER_NAME || 'SSO',
+      issuerUrl: process.env.OIDC_ISSUER_URL || '',
+      clientId: process.env.OIDC_CLIENT_ID || '',
+      clientSecret: process.env.OIDC_CLIENT_SECRET || '',
+      callbackUrl: process.env.OIDC_CALLBACK_URL || 'http://localhost:3001/api/auth/oidc/callback',
+      scopes: process.env.OIDC_SCOPES || 'openid profile email',
+    },
+    saml: {
+      enabled: !!process.env.SAML_ENTRY_POINT,
+      providerName: process.env.SAML_PROVIDER_NAME || 'SAML SSO',
+      entryPoint: process.env.SAML_ENTRY_POINT || '',
+      issuer: process.env.SAML_ISSUER || 'arsenale',
+      callbackUrl: process.env.SAML_CALLBACK_URL || 'http://localhost:3001/api/auth/saml/callback',
+      cert: process.env.SAML_CERT || '',
+      metadataUrl: process.env.SAML_METADATA_URL || '',
+      wantAuthnResponseSigned: process.env.SAML_WANT_AUTHN_RESPONSE_SIGNED !== 'false',
+    },
+  },
+  cookie: {
+    refreshTokenName: 'arsenale-rt',
+    csrfTokenName: 'arsenale-csrf',
+    path: '/api/auth',
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict' as const,
+    httpOnly: true,
+  },
+  keyRotationCron: process.env.KEY_ROTATION_CRON || '0 2 * * *',
+  keyRotationAdvanceDays: parseInt(process.env.KEY_ROTATION_ADVANCE_DAYS || '7', 10),
+  loginRateLimitWindowMs: parseInt(process.env.LOGIN_RATE_LIMIT_WINDOW_MS || String(15 * 60 * 1000), 10),
+  loginRateLimitMaxAttempts: parseInt(process.env.LOGIN_RATE_LIMIT_MAX_ATTEMPTS || '5', 10),
+  accountLockoutThreshold: parseInt(process.env.ACCOUNT_LOCKOUT_THRESHOLD || '10', 10),
+  accountLockoutDurationMs: parseInt(process.env.ACCOUNT_LOCKOUT_DURATION_MS || String(30 * 60 * 1000), 10),
+  sessionHeartbeatIntervalMs: parseInt(process.env.SESSION_HEARTBEAT_INTERVAL_MS || String(30 * 1000), 10),
+  sessionIdleThresholdMinutes: parseInt(process.env.SESSION_IDLE_THRESHOLD_MINUTES || '5', 10),
+  sessionCleanupRetentionDays: parseInt(process.env.SESSION_CLEANUP_RETENTION_DAYS || '30', 10),
+  sessionInactivityTimeoutSeconds: parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_SECONDS || '3600', 10),
+  // Container orchestrator
+  orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'podman' | 'kubernetes' | 'none',
+  dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',
+  podmanSocketPath: process.env.PODMAN_SOCKET_PATH || (
+    process.env.XDG_RUNTIME_DIR
+      ? `${process.env.XDG_RUNTIME_DIR}/podman/podman.sock`
+      : '/run/podman/podman.sock'
+  ),
+  dockerNetwork: process.env.DOCKER_NETWORK || '',
+  orchestratorK8sNamespace: process.env.ORCHESTRATOR_K8S_NAMESPACE || 'arsenale',
+  orchestratorSshGatewayImage: process.env.ORCHESTRATOR_SSH_GATEWAY_IMAGE || 'ghcr.io/dnviti/arsenale/ssh-gateway:latest',
+  orchestratorGuacdImage: process.env.ORCHESTRATOR_GUACD_IMAGE || 'guacamole/guacd:latest',
+  webauthn: {
+    rpId: process.env.WEBAUTHN_RP_ID || 'localhost',
+    rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',
+    rpName: process.env.WEBAUTHN_RP_NAME || 'Arsenale',
+  },
+};

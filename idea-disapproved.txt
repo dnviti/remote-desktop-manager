@@ -1,0 +1,8 @@
+================================================================================
+  REMOTE DESKTOP MANAGER — IDEE RIFIUTATE
+  Formato: IDEA-NNN — Titolo
+  Note: Archivio delle idee rifiutate con motivazione.
+        Spostate qui da ideas.txt tramite /idea-disapprove
+================================================================================
+
+

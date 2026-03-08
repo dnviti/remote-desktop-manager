@@ -1,0 +1,117 @@
+services:
+  postgres:
+    image: postgres:16
+    security_opt:
+      - label:disable
+    env_file:
+      - .env.prod
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-arsenale} -d ${POSTGRES_DB:-arsenale}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - arsenale_net
+
+  guacd:
+    image: guacamole/guacd
+    security_opt:
+      - label:disable
+    volumes:
+      - arsenale_drive:/guacd-drive
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - arsenale_net
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    user: "0:0" # rootless Podman maps UID 0 → host user (socket owner)
+    security_opt:
+      - label:disable
+    healthcheck:
+      test:
+        ["CMD-SHELL", "wget -qO- http://localhost:3001/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      guacd:
+        condition: service_healthy
+    env_file:
+      - .env.prod
+    volumes:
+      - arsenale_drive:/guacd-drive
+      - /run/user/1000/podman/podman.sock:/run/user/1000/podman/podman.sock
+    restart: unless-stopped
+    networks:
+      - arsenale_net
+
+  client:
+    build:
+      context: .
+      dockerfile: client/Dockerfile
+    security_opt:
+      - label:disable
+    ports:
+      - "3000:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:8080/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    depends_on:
+      server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - arsenale_net
+
+  # SSH Gateway (optional — remove or comment out if not needed)
+  # For multiple gateways, duplicate with different names and ports:
+  #   ssh-gateway-dmz:  ports: ["2222:2222"]
+  #   ssh-gateway-lan:  ports: ["2223:2222"]
+  ssh-gateway:
+    build:
+      context: ssh-gateway
+      dockerfile: Dockerfile
+    security_opt:
+      - label:disable
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost ${SSH_PORT:-2222} || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    env_file:
+      - .env.prod
+    volumes:
+      - ./config/ssh-gateway/authorized_keys:/config/authorized_keys:ro,z
+    restart: unless-stopped
+    networks:
+      - arsenale_net
+
+volumes:
+  pgdata:
+  arsenale_drive:
+
+networks:
+  arsenale_net:
+    name: arsenale_net

@@ -1,0 +1,133 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * 1' # Weekly on Monday at 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  # ── npm dependency audit ──────────────────────────────────────────────────
+  dependency-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: npm audit (critical threshold)
+        run: npm audit --audit-level=critical
+
+      - name: npm audit (full, informational)
+        if: always()
+        run: npm audit || true
+
+  # ── CodeQL SAST analysis ─────────────────────────────────────────────────
+  codeql-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: /language:javascript-typescript
+
+  # ── Trivy filesystem scan ────────────────────────────────────────────────
+  trivy-filesystem:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-fs-results.sarif
+          trivyignores: .trivyignore.yaml
+          skip-dirs: node_modules
+
+      - name: Upload Trivy FS results to Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: trivy-filesystem
+
+  # ── Trivy container image scanning (matrix) ──────────────────────────────
+  trivy-container-images:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: server
+            dockerfile: ./server/Dockerfile
+            context: .
+          - name: client
+            dockerfile: ./client/Dockerfile
+            context: .
+          - name: ssh-gateway
+            dockerfile: ./ssh-gateway/Dockerfile
+            context: ./ssh-gateway
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build ${{ matrix.name }} image
+        uses: docker/build-push-action@v5
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: false
+          load: true
+          tags: arsenale-${{ matrix.name }}:scan
+          cache-from: type=gha,scope=${{ matrix.name }}-security
+          cache-to: type=gha,mode=max,scope=${{ matrix.name }}-security
+
+      - name: Run Trivy on ${{ matrix.name }} image
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: arsenale-${{ matrix.name }}:scan
+          format: sarif
+          output: trivy-${{ matrix.name }}-results.sarif
+          severity: CRITICAL,HIGH
+
+      - name: Upload ${{ matrix.name }} scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: trivy-${{ matrix.name }}-results.sarif
+          category: trivy-${{ matrix.name }}

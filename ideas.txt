@@ -1,0 +1,71 @@
+================================================================================
+  REMOTE DESKTOP MANAGER — IDEA BACKLOG
+  Formato: IDEA-NNN — Titolo
+  Stato: Le idee qui sono in attesa di valutazione.
+  Note: Usare /idea-approve per promuovere un'idea a task,
+        /idea-disapprove per rifiutarla (spostata in idea-disapproved.txt)
+================================================================================
+
+
+------------------------------------------------------------------------------
+IDEA-001 — Builder ruoli personalizzati definiti dall'admin
+------------------------------------------------------------------------------
+  Categoria: Collaborazione
+  Data: 2026-03-07
+
+  DESCRIZIONE:
+  Consentire agli admin del tenant di creare ruoli con nomi personalizzati
+  e set di permessi configurabili, anziche' limitarsi ai ruoli built-in
+  (OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST). L'admin
+  potrebbe definire ruoli come "DevOps Lead" o "Security Reviewer" con
+  combinazioni specifiche di flag di permesso.
+
+  MOTIVAZIONE:
+  Offre massima flessibilita' per organizzazioni con strutture non standard.
+  Attualmente ritenuto over-engineered: i ruoli built-in combinati con gli
+  override per utente (ROLE-112) coprono la maggior parte dei casi d'uso.
+  Da rivalutare dopo il completamento di ROLE-110/ROLE-112.
+
+
+------------------------------------------------------------------------------
+IDEA-002 — Espansione ruoli a livello team (TEAM_CONSULTANT, TEAM_GUEST)
+------------------------------------------------------------------------------
+  Categoria: Collaborazione
+  Data: 2026-03-07
+
+  DESCRIZIONE:
+  Aggiungere ruoli aggiuntivi all'enum TeamRole (attualmente TEAM_ADMIN,
+  TEAM_EDITOR, TEAM_VIEWER) per gestire personas esterne anche a livello
+  team, ad esempio TEAM_CONSULTANT con accesso solo alle connessioni
+  assegnate e TEAM_GUEST con visibilita' senza connessione.
+
+  MOTIVAZIONE:
+  I 3 ruoli team esistenti sono sufficienti per la maggior parte degli
+  scenari: la restrizione degli utenti esterni e' meglio gestita a livello
+  tenant (ROLE-110). Tuttavia, organizzazioni con molti team e consulenti
+  diversificati potrebbero beneficiare di granularita' anche a livello team.
+  Da valutare dopo l'adozione dei ruoli tenant estesi.
+
+
+------------------------------------------------------------------------------
+IDEA-003 — Workflow di approvazione per richieste di accesso
+------------------------------------------------------------------------------
+  Categoria: Collaborazione
+  Data: 2026-03-07
+
+  DESCRIZIONE:
+  Implementare un sistema di richiesta e approvazione accesso ispirato al
+  modello Just-in-Time PAM di JumpCloud. Gli utenti potrebbero richiedere
+  accesso temporaneo a connessioni, team o risorse specifiche; gli admin
+  riceverebbero una notifica e potrebbero approvare o rifiutare con un
+  click, con accesso che si attiva automaticamente e scade dopo il periodo
+  concordato.
+
+  MOTIVAZIONE:
+  Riduce il carico amministrativo e migliora la sicurezza eliminando
+  accessi permanenti non necessari. Particolarmente utile dopo ROLE-113
+  (invito guest) come evoluzione naturale del flusso di accesso esterno.
+  Complessita' implementativa significativa — da considerare come feature
+  futura post-MVP dei ruoli estesi.
+
+

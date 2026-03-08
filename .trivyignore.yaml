@@ -1,0 +1,16 @@
+vulnerabilities:
+  # Transitive Prisma CLI deps -- not used in runtime, no fix available
+  - id: CVE-2026-29087
+  - id: CVE-2026-29045
+
+misconfigurations:
+  # ssh-gateway requires root for sshd (host key gen, chown, privileged ops)
+  - id: DS-0002
+    paths:
+      - ssh-gateway/Dockerfile
+
+secrets:
+  # .env.example contains placeholder values, not real secrets
+  - path: .env.example
+  # compose.dev.yml contains development-only database password
+  - path: compose.dev.yml

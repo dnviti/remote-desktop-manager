@@ -1,0 +1,14 @@
+module arsenale-podman 1.0;
+
+require {
+    type unconfined_t;
+    type container_runtime_t;
+    type pasta_t;
+    class process2 { nnp_transition nosuid_transition };
+}
+
+# Allow Podman (running from unconfined context) to transition
+# to container_runtime_t and pasta_t with no_new_privs set.
+# Required on Fedora 43+ with SELinux enforcing + Podman rootless.
+allow unconfined_t container_runtime_t:process2 { nnp_transition nosuid_transition };
+allow unconfined_t pasta_t:process2 { nnp_transition nosuid_transition };
