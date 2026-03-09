@@ -2164,6 +2164,39 @@
     MODIFICATO: client/src/components/Settings/GatewaySection.tsx
 
 
+------------------------------------------------------------------------------
+[x] GATE-117 — Rimuovere validazione SSRF per i gateway (permettere localhost)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Removed validateHost() SSRF checks from createGateway() and updateGateway() in gateway.service.ts, allowing localhost and local network addresses for gateways. Connection SSRF validation unchanged.
+
+  DESCRIZIONE:
+  Quando si crea o aggiorna un gateway, la funzione validateHost() in
+  hostValidation.ts blocca indirizzi loopback e di rete locale con l'errore
+  "Connections to loopback or local network addresses are not allowed".
+  Questa protezione SSRF e' corretta per le connessioni (che puntano a host
+  remoti), ma NON per i gateway: un gateway (es. guacd) puo' legittimamente
+  girare su localhost o su un indirizzo di rete locale. Rimuovere la chiamata
+  a validateHost() dal servizio gateway, mantenendola per le connessioni.
+
+  DETTAGLI TECNICI:
+  1. gateway.service.ts — createGateway() (riga ~134):
+     - Rimuovere la chiamata `if (input.host) await validateHost(input.host);`
+     - I gateway sono risorse di infrastruttura gestite da ADMIN e non
+       rappresentano un rischio SSRF come le connessioni utente.
+
+  2. gateway.service.ts — updateGateway() (riga ~238):
+     - Rimuovere la chiamata `if (input.host) await validateHost(input.host);`
+
+  3. connection.service.ts — NESSUNA MODIFICA:
+     - Le connessioni mantengono la validazione SSRF esistente su
+       createConnection() e updateConnection().
+
+  File coinvolti:
+    MODIFICARE: server/src/services/gateway.service.ts
+
+
 ================================================================================
   SEZIONE E — ZERO TRUST HARDENING
 ================================================================================
