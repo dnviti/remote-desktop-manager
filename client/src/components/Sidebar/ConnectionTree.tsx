@@ -21,6 +21,8 @@ import {
   AccessTime as RecentIcon,
   ViewList as ViewListIcon,
   ViewCompact as ViewCompactIcon,
+  CloudDownload as DownloadIcon,
+  CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 import { useConnectionsStore, Folder } from '../../store/connectionsStore';
 import { useTabsStore } from '../../store/tabsStore';
@@ -58,9 +60,11 @@ interface ConnectionTreeProps {
   onEditFolder: (folder: Folder) => void;
   onShareFolder: (folderId: string, folderName: string) => void;
   onViewAuditLog?: (conn: ConnectionData) => void;
+  onImport: () => void;
+  onExport: () => void;
 }
 
-export default function ConnectionTree({ onEditConnection, onShareConnection, onConnectAsConnection, onCreateConnection, onCreateFolder, onEditFolder, onShareFolder, onViewAuditLog }: ConnectionTreeProps) {
+export default function ConnectionTree({ onEditConnection, onShareConnection, onConnectAsConnection, onCreateConnection, onCreateFolder, onEditFolder, onShareFolder, onViewAuditLog, onImport, onExport }: ConnectionTreeProps) {
   const ownConnections = useConnectionsStore((s) => s.ownConnections);
   const sharedConnections = useConnectionsStore((s) => s.sharedConnections);
   const teamConnections = useConnectionsStore((s) => s.teamConnections);
@@ -318,6 +322,12 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
         <Typography variant="subtitle2" sx={{ flexGrow: 1 }}>
           My Connections
         </Typography>
+        <IconButton size="small" onClick={onExport} title="Export connections">
+          <DownloadIcon fontSize="small" />
+        </IconButton>
+        <IconButton size="small" onClick={onImport} title="Import connections">
+          <UploadIcon fontSize="small" />
+        </IconButton>
         <IconButton size="small" onClick={() => togglePref('sidebarCompact')} title={compact ? 'Normal view' : 'Compact view'}>
           {compact ? <ViewListIcon fontSize="small" /> : <ViewCompactIcon fontSize="small" />}
         </IconButton>

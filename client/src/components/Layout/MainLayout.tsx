@@ -28,6 +28,8 @@ import KeychainDialog from '../Dialogs/KeychainDialog';
 import ConnectionAuditLogDialog from '../Dialogs/ConnectionAuditLogDialog';
 import UserProfileDialog from '../Dialogs/UserProfileDialog';
 import RecordingsDialog from '../Recording/RecordingsDialog';
+import ExportDialog from '../Dialogs/ExportDialog';
+import ImportDialog from '../Dialogs/ImportDialog';
 
 import TenantSwitcher from './TenantSwitcher';
 import NotificationBell from './NotificationBell';
@@ -36,7 +38,7 @@ import { useVaultStore } from '../../store/vaultStore';
 import { logoutApi } from '../../api/auth.api';
 import { lockVault } from '../../api/vault.api';
 import { ConnectionData } from '../../api/connections.api';
-import type { Folder } from '../../store/connectionsStore';
+import { useConnectionsStore, type Folder } from '../../store/connectionsStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useThemeStore } from '../../store/themeStore';
 import { useTerminalSettingsStore } from '../../store/terminalSettingsStore';
@@ -101,6 +103,8 @@ export default function MainLayout() {
   const [auditLogOpen, setAuditLogOpen] = useState(false);
   const [keychainOpen, setKeychainOpen] = useState(false);
   const [recordingsOpen, setRecordingsOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [connectionAuditTarget, setConnectionAuditTarget] = useState<{ id: string; name: string } | null>(null);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [linkedProvider, setLinkedProvider] = useState<string | null>(() => {
@@ -282,6 +286,8 @@ export default function MainLayout() {
             onEditFolder={handleEditFolder}
             onShareFolder={handleShareFolder}
             onViewAuditLog={(conn) => setConnectionAuditTarget({ id: conn.id, name: conn.name })}
+            onImport={() => setImportDialogOpen(true)}
+            onExport={() => setExportDialogOpen(true)}
           />
         </Box>
 
@@ -371,6 +377,14 @@ export default function MainLayout() {
       <RecordingsDialog
         open={recordingsOpen}
         onClose={() => setRecordingsOpen(false)}
+      />
+      <ImportDialog
+        open={importDialogOpen}
+        onClose={() => { setImportDialogOpen(false); useConnectionsStore.getState().fetchConnections(); }}
+      />
+      <ExportDialog
+        open={exportDialogOpen}
+        onClose={() => setExportDialogOpen(false)}
       />
     </>
   );
