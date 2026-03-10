@@ -44,7 +44,7 @@ services:
     environment:
       - RECORDING_PATH=/recordings
     volumes:
-      - ${RECORDING_PATH:-./data/recordings}:/recordings:ro
+      - ${RECORDING_PATH:-./data/recordings}:/recordings
     networks:
       - arsenale-dev
 
