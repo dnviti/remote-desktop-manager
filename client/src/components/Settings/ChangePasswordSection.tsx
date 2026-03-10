@@ -46,8 +46,8 @@ export default function ChangePasswordSection({ hasPassword }: ChangePasswordSec
         setPhase('entering-password');
       } else {
         setSkipVerification(false);
-        setVerificationId(result.verificationId!);
-        setVerificationMethod(result.method!);
+        setVerificationId(result.verificationId ?? '');
+        setVerificationMethod(result.method ?? 'password');
         setVerificationMetadata(result.metadata);
         setPhase('verifying-identity');
       }

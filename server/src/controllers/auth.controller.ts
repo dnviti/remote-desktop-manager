@@ -7,10 +7,13 @@ import { AppError } from '../middleware/error.middleware';
 import { config } from '../config';
 import { setRefreshTokenCookie, setCsrfCookie, clearAuthCookies } from '../utils/cookie';
 import { getPublicConfig } from '../services/appConfig.service';
+import type { AuthRequest } from '../types';
+import { assertAuthenticated } from '../types';
+import { passwordSchema } from '../utils/validate';
 
 const registerSchema = z.object({
   email: z.string().email(),
-  password: z.string().min(8),
+  password: passwordSchema,
 });
 
 const loginSchema = z.object({
@@ -31,9 +34,6 @@ export async function register(req: Request, res: Response, next: NextFunction) 
   } catch (err) {
     if (err instanceof z.ZodError) {
       return next(new AppError(err.issues[0].message, 400));
-    }
-    if (err instanceof Error && err.message === 'Email already registered') {
-      return next(new AppError(err.message, 409));
     }
     next(err);
   }
@@ -322,9 +322,10 @@ const switchTenantSchema = z.object({
 
 export async function switchTenant(req: Request, res: Response, next: NextFunction) {
   try {
+    const authReq = req as AuthRequest;
+    assertAuthenticated(authReq);
     const { tenantId } = switchTenantSchema.parse(req.body);
-    const userId = (req as any).user?.userId;
-    if (!userId) return next(new AppError('Authentication required', 401));
+    const userId = authReq.user.userId;
 
     const result = await authService.switchTenant(userId, tenantId);
 
@@ -361,7 +362,7 @@ const resetTokenSchema = z.object({
 
 const completeResetSchema = z.object({
   token: z.string().length(64),
-  newPassword: z.string().min(8),
+  newPassword: passwordSchema,
   smsCode: z.string().length(6).regex(/^\d{6}$/).optional(),
   recoveryKey: z.string().optional(),
 });

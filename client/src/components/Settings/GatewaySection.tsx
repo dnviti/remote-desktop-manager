@@ -562,7 +562,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                             {gw.type === 'MANAGED_SSH' && gw.apiPort && (
                               <Tooltip title={
                                 pushStates[gw.id]?.result?.ok ? 'Key pushed successfully' :
-                                pushStates[gw.id]?.result?.error ? pushStates[gw.id].result!.error :
+                                pushStates[gw.id]?.result?.error ? pushStates[gw.id].result?.error :
                                 'Push SSH key to gateway'
                               }>
                                 <span>

@@ -318,7 +318,7 @@ export async function getActiveSessionCountByGateway(
     if (!s.gatewayId) continue;
     const existing = grouped.get(s.gatewayId);
     if (existing) existing.count++;
-    else grouped.set(s.gatewayId, { name: s.gateway!.name, count: 1 });
+    else grouped.set(s.gatewayId, { name: s.gateway?.name ?? '', count: 1 });
   }
 
   return Array.from(grouped.entries()).map(([gatewayId, { name, count }]) => ({

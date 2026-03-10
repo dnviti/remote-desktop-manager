@@ -65,7 +65,8 @@ export default function SecretListPanel({
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Stable time reference for expiry calculations (avoids Date.now() in render)
-  const now = useMemo(() => new Date().getTime(), [secrets]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- secrets used intentionally to refresh timestamp when list changes
+  const now = useMemo(() => new Date().getTime(), [secrets.length]);
 
   // Context menu
   const [contextMenu, setContextMenu] = useState<{

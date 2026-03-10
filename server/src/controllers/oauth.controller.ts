@@ -1,9 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import passport from 'passport';
-import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { config } from '../config';
-import { AuthPayload, AuthRequest } from '../types';
+import { AuthPayload, AuthRequest, assertAuthenticated } from '../types';
+import { verifyJwt } from '../utils/jwt';
 import { AppError } from '../middleware/error.middleware';
 import { OAuthCallbackData } from '../config/passport';
 import * as oauthService from '../services/oauth.service';
@@ -11,6 +11,7 @@ import * as auditService from '../services/audit.service';
 import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
+import { passwordSchema } from '../utils/validate';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
 
@@ -137,7 +138,7 @@ export function initiateLinkOAuth(req: Request, res: Response, next: NextFunctio
 
   let payload: AuthPayload;
   try {
-    payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+    payload = verifyJwt<AuthPayload>(token);
   } catch {
     return next(new AppError('Invalid token', 401));
   }
@@ -161,10 +162,11 @@ export function initiateLinkOAuth(req: Request, res: Response, next: NextFunctio
 
 export async function unlinkOAuth(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const provider = req.params.provider as string;
-    await oauthService.unlinkOAuthAccount(req.user!.userId, provider.toUpperCase());
+    await oauthService.unlinkOAuthAccount(req.user.userId, provider.toUpperCase());
     auditService.log({
-      userId: req.user!.userId, action: 'OAUTH_UNLINK',
+      userId: req.user.userId, action: 'OAUTH_UNLINK',
       details: { provider },
       ipAddress: req.ip,
     });
@@ -176,7 +178,8 @@ export async function unlinkOAuth(req: AuthRequest, res: Response, next: NextFun
 
 export async function getLinkedAccounts(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const accounts = await oauthService.getLinkedAccounts(req.user!.userId);
+    assertAuthenticated(req);
+    const accounts = await oauthService.getLinkedAccounts(req.user.userId);
     res.json(accounts);
   } catch (err) {
     next(err);
@@ -184,14 +187,15 @@ export async function getLinkedAccounts(req: AuthRequest, res: Response, next: N
 }
 
 const vaultSetupSchema = z.object({
-  vaultPassword: z.string().min(8),
+  vaultPassword: passwordSchema,
 });
 
 export async function setupVault(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { vaultPassword } = vaultSetupSchema.parse(req.body);
-    await oauthService.setupVaultForOAuthUser(req.user!.userId, vaultPassword);
-    auditService.log({ userId: req.user!.userId, action: 'VAULT_SETUP', ipAddress: req.ip });
+    await oauthService.setupVaultForOAuthUser(req.user.userId, vaultPassword);
+    auditService.log({ userId: req.user.userId, action: 'VAULT_SETUP', ipAddress: req.ip });
     res.json({ success: true, vaultSetupComplete: true });
   } catch (err) {
     if (err instanceof z.ZodError) {

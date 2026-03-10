@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/* eslint-disable no-console */
+ 
 
 // Load environment before anything else
 import './lib/env';

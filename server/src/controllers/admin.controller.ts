@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import { sendEmail, getEmailStatus } from '../services/email';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
@@ -32,6 +32,7 @@ export async function sendTestEmail(
   next: NextFunction,
 ) {
   try {
+    assertAuthenticated(req);
     const { to } = testEmailSchema.parse(req.body);
     const status = getEmailStatus();
 
@@ -48,7 +49,7 @@ export async function sendTestEmail(
     });
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'EMAIL_TEST_SEND',
       details: { to, provider: status.provider },
       ipAddress: req.ip,
@@ -87,11 +88,12 @@ export async function setSelfSignup(
   next: NextFunction,
 ) {
   try {
+    assertAuthenticated(req);
     const { enabled } = selfSignupSchema.parse(req.body);
     await appConfigService.setSelfSignupEnabled(enabled);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'APP_CONFIG_UPDATE',
       details: { key: 'selfSignupEnabled', value: enabled },
       ipAddress: req.ip,

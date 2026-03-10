@@ -192,7 +192,7 @@ export function useSftpTransfers(socket: Socket | null) {
     }
 
     setTransfers((prev) => [...prev, {
-      transferId: res.transferId!,
+      transferId: res.transferId ?? '',
       filename: res.filename || remotePath.split('/').pop() || 'file',
       direction: 'download',
       totalBytes: res.totalBytes || 0,

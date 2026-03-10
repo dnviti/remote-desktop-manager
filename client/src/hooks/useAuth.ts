@@ -24,6 +24,7 @@ export function useAuth() {
           setLoading(false);
         });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time token refresh on mount
   }, []);
 
   return { isAuthenticated, loading };

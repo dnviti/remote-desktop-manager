@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 import { Command } from 'commander';
 import * as gatewayService from '../../services/gateway.service';
 import { resolveTenant } from '../helpers/resolve';

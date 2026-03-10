@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import * as tenantService from '../services/tenant.service';
 import * as auditService from '../services/audit.service';
 import * as authService from '../services/auth.service';
@@ -8,6 +8,7 @@ import { AppError } from '../middleware/error.middleware';
 import prisma from '../lib/prisma';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { logger } from '../utils/logger';
+import { passwordSchema } from '../utils/validate';
 
 const createTenantSchema = z.object({
   name: z.string().min(2).max(100),
@@ -32,7 +33,7 @@ const updateRoleSchema = z.object({
 const createUserSchema = z.object({
   email: z.string().email(),
   username: z.string().min(1).max(100).optional(),
-  password: z.string().min(8),
+  password: passwordSchema,
   role: z.enum(['ADMIN', 'MEMBER']),
   sendWelcomeEmail: z.boolean().optional().default(false),
 });
@@ -47,24 +48,25 @@ const adminChangeEmailSchema = z.object({
 });
 
 const adminChangePasswordSchema = z.object({
-  newPassword: z.string().min(8),
+  newPassword: passwordSchema,
   verificationId: z.string().uuid(),
 });
 
 export async function createTenant(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { name } = createTenantSchema.parse(req.body);
-    const tenant = await tenantService.createTenant(req.user!.userId, name);
+    const tenant = await tenantService.createTenant(req.user.userId, name);
 
     // Issue fresh tokens — issueTokens resolves tenantId from active TenantMember
     const updatedUser = await prisma.user.findUniqueOrThrow({
-      where: { id: req.user!.userId },
+      where: { id: req.user.userId },
       select: { id: true, email: true, username: true, avatarData: true },
     });
     const tokens = await authService.issueTokens(updatedUser);
 
     auditService.log({
-      userId: req.user!.userId, action: 'TENANT_CREATE',
+      userId: req.user.userId, action: 'TENANT_CREATE',
       targetType: 'Tenant', targetId: tenant.id,
       details: { name },
       ipAddress: req.ip,
@@ -85,7 +87,8 @@ export async function createTenant(req: AuthRequest, res: Response, next: NextFu
 
 export async function getMyTenant(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await tenantService.getTenant(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await tenantService.getTenant(req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -94,19 +97,20 @@ export async function getMyTenant(req: AuthRequest, res: Response, next: NextFun
 
 export async function updateTenant(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = updateTenantSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const result = await tenantService.updateTenant(tenantId, data);
     if (data.mfaRequired !== undefined) {
       auditService.log({
-        userId: req.user!.userId, action: 'TENANT_MFA_POLICY_UPDATE',
+        userId: req.user.userId, action: 'TENANT_MFA_POLICY_UPDATE',
         targetType: 'Tenant', targetId: tenantId,
         details: { mfaRequired: data.mfaRequired },
         ipAddress: req.ip,
       });
     }
     auditService.log({
-      userId: req.user!.userId, action: 'TENANT_UPDATE',
+      userId: req.user.userId, action: 'TENANT_UPDATE',
       targetType: 'Tenant', targetId: tenantId,
       details: { fields: Object.keys(data) },
       ipAddress: req.ip,
@@ -120,10 +124,11 @@ export async function updateTenant(req: AuthRequest, res: Response, next: NextFu
 
 export async function deleteTenant(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const tenantId = req.params.id as string;
     const result = await tenantService.deleteTenant(tenantId);
     auditService.log({
-      userId: req.user!.userId, action: 'TENANT_DELETE',
+      userId: req.user.userId, action: 'TENANT_DELETE',
       targetType: 'Tenant', targetId: tenantId,
       ipAddress: req.ip,
     });
@@ -144,11 +149,12 @@ export async function listUsers(req: AuthRequest, res: Response, next: NextFunct
 
 export async function getUserProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const userId = z.string().uuid().parse(req.params.userId);
     const result = await tenantService.getUserProfile(
       req.params.id as string,
       userId,
-      req.user!.tenantRole as 'OWNER' | 'ADMIN' | 'MEMBER' | undefined,
+      req.user.tenantRole,
     );
     res.json(result);
   } catch (err) {
@@ -159,11 +165,12 @@ export async function getUserProfile(req: AuthRequest, res: Response, next: Next
 
 export async function inviteUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { email, role } = inviteUserSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const result = await tenantService.inviteUser(tenantId, email, role);
     auditService.log({
-      userId: req.user!.userId, action: 'TENANT_INVITE_USER',
+      userId: req.user.userId, action: 'TENANT_INVITE_USER',
       targetType: 'Tenant', targetId: tenantId,
       details: { invitedEmail: email, role },
       ipAddress: req.ip,
@@ -177,12 +184,13 @@ export async function inviteUser(req: AuthRequest, res: Response, next: NextFunc
 
 export async function updateUserRole(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { role } = updateRoleSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
-    const result = await tenantService.updateUserRole(tenantId, targetUserId, role, req.user!.userId);
+    const result = await tenantService.updateUserRole(tenantId, targetUserId, role, req.user.userId);
     auditService.log({
-      userId: req.user!.userId, action: 'TENANT_UPDATE_USER_ROLE',
+      userId: req.user.userId, action: 'TENANT_UPDATE_USER_ROLE',
       targetType: 'User', targetId: targetUserId,
       details: { newRole: role, tenantId },
       ipAddress: req.ip,
@@ -196,11 +204,12 @@ export async function updateUserRole(req: AuthRequest, res: Response, next: Next
 
 export async function removeUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
-    const result = await tenantService.removeUser(tenantId, targetUserId, req.user!.userId);
+    const result = await tenantService.removeUser(tenantId, targetUserId, req.user.userId);
     auditService.log({
-      userId: req.user!.userId, action: 'TENANT_REMOVE_USER',
+      userId: req.user.userId, action: 'TENANT_REMOVE_USER',
       targetType: 'User', targetId: targetUserId,
       details: { tenantId },
       ipAddress: req.ip,
@@ -223,12 +232,13 @@ export async function getMfaStats(req: AuthRequest, res: Response, next: NextFun
 
 export async function createUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = createUserSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const result = await tenantService.createUser(
       tenantId,
       { email: data.email, username: data.username, password: data.password, role: data.role },
-      req.user!.userId,
+      req.user.userId,
     );
 
     if (data.sendWelcomeEmail) {
@@ -240,7 +250,7 @@ export async function createUser(req: AuthRequest, res: Response, next: NextFunc
     }
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'TENANT_CREATE_USER',
       targetType: 'User',
       targetId: result.user.id,
@@ -257,13 +267,14 @@ export async function createUser(req: AuthRequest, res: Response, next: NextFunc
 
 export async function toggleUserEnabled(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { enabled } = toggleUserEnabledSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
-    const result = await tenantService.toggleUserEnabled(tenantId, targetUserId, enabled, req.user!.userId);
+    const result = await tenantService.toggleUserEnabled(tenantId, targetUserId, enabled, req.user.userId);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'TENANT_TOGGLE_USER',
       targetType: 'User',
       targetId: targetUserId,
@@ -280,7 +291,8 @@ export async function toggleUserEnabled(req: AuthRequest, res: Response, next: N
 
 export async function listMyTenants(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await tenantService.listUserTenants(req.user!.userId);
+    assertAuthenticated(req);
+    const result = await tenantService.listUserTenants(req.user.userId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -289,11 +301,12 @@ export async function listMyTenants(req: AuthRequest, res: Response, next: NextF
 
 export async function adminChangeUserEmail(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { newEmail, verificationId } = adminChangeEmailSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
     const result = await tenantService.adminChangeUserEmail(
-      tenantId, req.user!.userId, targetUserId, newEmail, verificationId,
+      tenantId, req.user.userId, targetUserId, newEmail, verificationId,
     );
     res.json(result);
   } catch (err) {
@@ -304,11 +317,12 @@ export async function adminChangeUserEmail(req: AuthRequest, res: Response, next
 
 export async function adminChangeUserPassword(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { newPassword, verificationId } = adminChangePasswordSchema.parse(req.body);
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
     const result = await tenantService.adminChangeUserPassword(
-      tenantId, req.user!.userId, targetUserId, newPassword, verificationId,
+      tenantId, req.user.userId, targetUserId, newPassword, verificationId,
     );
     res.json(result);
   } catch (err) {

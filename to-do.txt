@@ -10,6 +10,77 @@
   SEZIONE A — TASK RICHIESTI (Core Features)
 ================================================================================
 
+------------------------------------------------------------------------------
+[ ] SEC-111 — Security Hardening: JWT & Authentication
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Fix authentication vulnerabilities identified in the security audit. Pin JWT
+  algorithms to prevent algorithm confusion, fix account enumeration in
+  registration, harden JWT secret fallback, and add security comments to prevent
+  state persistence regressions.
+
+  DETTAGLI TECNICI:
+  1) JWT Algorithm Pinning (FINDING-001): Update all `jwt.verify()` calls to
+     include `{ algorithms: ['HS256'] }`. Consider creating a utility wrapper
+     `verifyJwt` in `server/src/utils/jwt.ts` and refactor existing calls.
+  2) Account Enumeration (FINDING-006): Modify `auth.service.ts` registration
+     to return a generic success message even if the email exists, or "If this
+     email is not registered, a verification email has been sent."
+  3) JWT Secret Fallback (FINDING-008): Update `server/src/config.ts` to require
+     `JWT_SECRET` unless `NODE_ENV` is explicitly 'development' or 'test'.
+  4) Access Token Persistence (FINDING-009): Add a strict comment in
+     `client/src/store/authStore.ts` explaining why `accessToken` must never
+     be added to the `partialize` function for Zustand persist.
+
+------------------------------------------------------------------------------
+[ ] SEC-112 — Security Hardening: Infrastructure & Guacamole
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Fix infrastructure and Guacamole integration security issues. Add auth to the
+  Guacamole WebSocket port, investigate rootless podman/docker permissions, and
+  harden compose configurations.
+
+  DETTAGLI TECNICI:
+  1) Guacamole WebSocket Auth (FINDING-002): Make `GUACAMOLE_SECRET` mandatory
+     in production in `server/src/config.ts` (throw error if missing).
+  2) Server Container Root Privileges (FINDING-005): Investigate fixing
+     `compose.yml` `user: "0:0"`. Either drop capabilities, or fix podman
+     socket permissions so the appuser (1001) can access it.
+  3) Guacamole Token Crypto (FINDING-007): Ensure `GUACAMOLE_SECRET` has high
+     entropy and document that the WebSocket port (3002) must not be exposed
+     publicly (padding oracle mitigation).
+  4) Dev Compose DB Port (FINDING-011): Update `compose.dev.yml` to bind PostgreSQL
+     to localhost only (`127.0.0.1:5432:5432`).
+
+------------------------------------------------------------------------------
+[ ] SEC-113 — Security Hardening: Input Validation & API
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Improve input validation across the application. Expand SSRF protection to cover
+  private network ranges, enforce password complexity, validate UUID parameters,
+  and safely execute shell commands.
+
+  DETTAGLI TECNICI:
+  1) SSRF Host Validation (FINDING-003): Update `server/src/utils/hostValidation.ts`
+     to block RFC 1918 private IP ranges (10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16)
+     and link-local/cloud metadata endpoints (169.254.169.254).
+  2) Password Complexity (FINDING-004): Update password Zod schemas in
+     `auth.controller.ts` and `user.controller.ts` to require at least 10 chars,
+     uppercase, lowercase, and digits.
+  3) UUID Validation (FINDING-010): Create a shared `z.string().uuid()` validator
+     and apply it to `req.params.id` across all controllers.
+  4) Safe Command Execution (FINDING-012): Refactor `freePort()` in `server/src/index.ts`
+     to use `execFileSync('fuser', ['-k', ...])` instead of string interpolation.
+
 
 
 
@@ -1269,3 +1340,4 @@
   visivo in caso di micro-interruzioni di rete (es. cambio Wi-Fi), intercettando 
   i codici di errore di disconnessione di Guacamole per migliorare drasticamente 
   la percezione di stabilita'.
+

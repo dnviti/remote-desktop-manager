@@ -139,7 +139,7 @@ export const useTabsStore = create<TabsState>((set, get) => ({
         validTabs.find((p) => p.isActive)?.connectionId ?? validTabs[validTabs.length - 1].connectionId;
 
       const restoredTabs: Tab[] = validTabs.map((p) => {
-        const connection = connMap.get(p.connectionId)!;
+        const connection = connMap.get(p.connectionId) as ConnectionData;
         const tabId = `tab-${connection.id}-${Date.now()}`;
         return {
           id: tabId,

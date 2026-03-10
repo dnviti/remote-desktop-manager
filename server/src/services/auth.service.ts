@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
 import { AuthPayload } from '../types';
+import { verifyJwt } from '../utils/jwt';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 
@@ -38,8 +39,18 @@ export async function register(email: string, password: string) {
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
+  const needsVerification = config.emailVerifyRequired;
+
   if (existing) {
-    throw new Error('Email already registered');
+    // Return the same response as a successful registration to prevent email enumeration
+    return {
+      message: needsVerification
+        ? 'Registration successful. Please check your email to verify your account.'
+        : 'Registration successful. You can now log in.',
+      userId: existing.id,
+      emailVerifyRequired: needsVerification,
+      recoveryKey: '', // Dummy key, they already have an account
+    };
   }
 
   // Hash password for login
@@ -55,7 +66,6 @@ export async function register(email: string, password: string) {
   const recoveryKey = generateRecoveryKey();
   const recoveryResult = await encryptMasterKeyWithRecovery(masterKey, recoveryKey);
 
-  const needsVerification = config.emailVerifyRequired;
   const emailVerifyToken = needsVerification ? crypto.randomBytes(32).toString('hex') : null;
   const emailVerifyExpiry = needsVerification ? new Date(Date.now() + EMAIL_VERIFY_TTL_MS) : null;
 
@@ -359,7 +369,7 @@ export async function login(email: string, password: string, ipAddress?: string 
 export async function verifyTotp(tempToken: string, code: string) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }
@@ -406,7 +416,7 @@ export async function verifyTotp(tempToken: string, code: string) {
 export async function requestLoginSmsCode(tempToken: string) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }
@@ -431,7 +441,7 @@ export async function requestLoginSmsCode(tempToken: string) {
 export async function requestWebAuthnOptions(tempToken: string) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }
@@ -455,7 +465,7 @@ export async function requestWebAuthnOptions(tempToken: string) {
 export async function verifyWebAuthn(tempToken: string, credential: Record<string, unknown>) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }
@@ -479,7 +489,7 @@ export async function verifyWebAuthn(tempToken: string, credential: Record<strin
 export async function verifySmsCode(tempToken: string, code: string) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }
@@ -681,7 +691,7 @@ export async function resendVerification(email: string): Promise<void> {
 export async function setupMfaDuringLogin(tempToken: string) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }
@@ -706,7 +716,7 @@ export async function setupMfaDuringLogin(tempToken: string) {
 export async function verifyMfaSetupDuringLogin(tempToken: string, code: string) {
   let decoded: { userId: string; purpose: string };
   try {
-    decoded = jwt.verify(tempToken, config.jwtSecret) as { userId: string; purpose: string };
+    decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
   } catch {
     throw new Error('Invalid or expired temporary token');
   }

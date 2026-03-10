@@ -152,7 +152,7 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
     setMfaError('');
     if (enable) {
       try {
-        const stats = await getTenantMfaStats(tenant!.id);
+        const stats = await getTenantMfaStats(tenant?.id ?? '');
         setMfaStats(stats);
         setMfaConfirmOpen(true);
       } catch {

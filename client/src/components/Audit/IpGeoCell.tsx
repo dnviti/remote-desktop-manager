@@ -145,4 +145,5 @@ function isPrivateIp(ip: string): boolean {
 /**
  * Export the flag helper for CSV export usage.
  */
+// eslint-disable-next-line react-refresh/only-export-components
 export { getCountryCode, countryFlag };

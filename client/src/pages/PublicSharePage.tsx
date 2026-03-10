@@ -146,7 +146,7 @@ export default function PublicSharePage() {
     setLoading(true);
     setError('');
     try {
-      const shareInfo = await getExternalShareInfo(token!);
+      const shareInfo = await getExternalShareInfo(token as string);
       setInfo(shareInfo);
       // Auto-access if no PIN required and share is valid
       if (!shareInfo.hasPin && !shareInfo.isExpired && !shareInfo.isExhausted && !shareInfo.isRevoked) {
@@ -166,7 +166,7 @@ export default function PublicSharePage() {
     setAccessing(true);
     setError('');
     try {
-      const result = await accessExternalShare(token!, pinValue);
+      const result = await accessExternalShare(token as string, pinValue);
       setData(result.data);
       setSecretName(result.secretName);
     } catch (err: unknown) {

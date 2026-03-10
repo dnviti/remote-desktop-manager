@@ -1,4 +1,5 @@
-import { execSync } from 'child_process';
+import crypto from 'crypto';
+import { execSync, execFileSync } from 'child_process';
 import path from 'path';
 import http from 'http';
 import app from './app';
@@ -23,7 +24,7 @@ import { initGeoIp } from './services/geoip.service';
 
 function freePort(port: number): void {
   try {
-    execSync(`fuser -k ${port}/tcp`, { stdio: 'pipe' });
+    execFileSync('fuser', ['-k', `${port}/tcp`], { stdio: 'pipe' });
     logger.info(`Killed stale process on port ${port}`);
   } catch {
     // No process on that port — nothing to do
@@ -191,7 +192,25 @@ async function main() {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const GuacamoleLite = require('guacamole-lite');
       // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const Crypt = require('guacamole-lite/lib/Crypt');
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { getGuacamoleKey } = require('./services/rdp.service');
+
+      // Monkey-patch Crypt.js to support AES-256-GCM auth tags
+      Crypt.prototype.decrypt = function (encodedString: string) {
+        const encoded = JSON.parse(this.constructor.base64decode(encodedString));
+        encoded.iv = Buffer.from(encoded.iv, 'base64');
+        encoded.value = Buffer.from(encoded.value, 'base64');
+        
+        const decipher = crypto.createDecipheriv(this.cypher, this.key, encoded.iv);
+        if (this.cypher.includes('GCM') && encoded.tag) {
+          decipher.setAuthTag(Buffer.from(encoded.tag, 'base64'));
+        }
+        let decrypted = decipher.update(encoded.value, undefined, 'utf8');
+        decrypted += decipher.final('utf8');
+        return JSON.parse(decrypted);
+      };
+
       guacServer = new GuacamoleLite(
         { port: config.guacamoleWsPort },
         {
@@ -200,7 +219,7 @@ async function main() {
         },
         {
           crypt: {
-            cypher: 'AES-256-CBC',
+            cypher: 'AES-256-GCM',
             key: getGuacamoleKey(),
           },
           log: {
@@ -208,6 +227,29 @@ async function main() {
           },
         }
       );
+
+      // Monkey-patch Server.js decryptToken to support AES-256-GCM auth tags
+      guacServer.decryptToken = function (encryptedToken: string) {
+        if (!this.clientOptions.crypt || !this.clientOptions.crypt.key) {
+          throw new Error('Encryption key not configured');
+        }
+        try {
+          const tokenData = JSON.parse(Buffer.from(encryptedToken, 'base64').toString());
+          const decipher = crypto.createDecipheriv(
+            this.clientOptions.crypt.cypher,
+            this.clientOptions.crypt.key,
+            Buffer.from(tokenData.iv, 'base64')
+          );
+          if (this.clientOptions.crypt.cypher.includes('GCM') && tokenData.tag) {
+            decipher.setAuthTag(Buffer.from(tokenData.tag, 'base64'));
+          }
+          let decrypted = decipher.update(Buffer.from(tokenData.value, 'base64'), undefined, 'utf8');
+          decrypted += decipher.final('utf8');
+          return JSON.parse(decrypted);
+        } catch (error) {
+          throw new Error('Failed to decrypt token: ' + (error as Error).message);
+        }
+      };
 
       guacServer.on('error', (_clientConnection: unknown, error: unknown) => {
         logger.error(

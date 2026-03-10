@@ -30,7 +30,7 @@ function generateSlug(name: string): string {
 async function ensureUniqueSlug(baseSlug: string, excludeId?: string): Promise<string> {
   let slug = baseSlug;
   let suffix = 1;
-  // eslint-disable-next-line no-constant-condition
+   
   while (true) {
     const existing = await prisma.tenant.findUnique({ where: { slug } });
     if (!existing || (excludeId && existing.id === excludeId)) break;

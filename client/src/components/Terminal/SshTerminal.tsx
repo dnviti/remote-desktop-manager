@@ -253,6 +253,7 @@ export default function SshTerminal({ connectionId, tabId: _tabId, credentials, 
       socket.disconnect();
       terminal.dispose();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- credentials intentionally excluded; connect once on mount
   }, [connectionId, accessToken]);
 
   return (
@@ -289,13 +290,11 @@ export default function SshTerminal({ connectionId, tabId: _tabId, credentials, 
           ref={termRef}
           sx={{ flex: 1, overflow: 'hidden', '& .xterm': { height: '100%', padding: '4px' } }}
         />
-        {/* eslint-disable react-hooks/refs -- socket ref is stable after mount */}
         <SftpBrowser
           open={sftpOpen}
           onClose={() => togglePref('sshSftpBrowserOpen')}
           socket={socketRef.current}
         />
-        {/* eslint-enable react-hooks/refs */}
       </Box>
     </Box>
   );

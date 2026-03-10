@@ -445,7 +445,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                     onClick={async () => {
                       setScalingSaving(true);
                       try {
-                        await updateScalingConfig(gateway!.id, {
+                        await updateScalingConfig(gateway?.id ?? '', {
                           autoScale: autoScaleEnabled,
                           minReplicas: Number(minReplicasVal),
                           maxReplicas: Number(maxReplicasVal),

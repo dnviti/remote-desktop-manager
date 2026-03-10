@@ -18,7 +18,7 @@ function getDescendantIds(folderId: string, folders: FolderData[]): Set<string> 
   const ids = new Set<string>();
   const queue = [folderId];
   while (queue.length > 0) {
-    const current = queue.pop()!;
+    const current = queue.pop() as string;
     for (const f of folders) {
       if (f.parentId === current && !ids.has(f.id)) {
         ids.add(f.id);

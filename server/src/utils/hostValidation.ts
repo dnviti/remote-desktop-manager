@@ -24,10 +24,20 @@ function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
   // Wildcard addresses
   if (ip === '0.0.0.0' || ip === '::' || ip === '[::]') return true;
 
-  // Loopback IPv4 (127.0.0.0/8)
+  // IPv4 checks
   if (net.isIPv4(ip)) {
-    const firstOctet = parseInt(ip.split('.')[0], 10);
-    if (firstOctet === 127) return true;
+    const parts = ip.split('.').map(Number);
+    if (parts[0] === 127) return true; // Loopback
+    if (parts[0] === 10) return true; // 10.0.0.0/8
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
+    if (parts[0] === 169 && parts[1] === 254) return true; // Link-local + metadata
+  }
+
+  // IPv6 checks
+  if (net.isIPv6(ip)) {
+    if (ip.startsWith('fe80:') || ip.startsWith('fe80::')) return true; // Link-local
+    if (ip.startsWith('fc') || ip.startsWith('fd')) return true; // ULA
   }
 
   // Local interface IPs

@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import { readFile, stat } from 'fs/promises';
 import fs from 'fs';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import * as recordingService from '../services/recording.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
@@ -18,10 +18,11 @@ const listQuerySchema = z.object({
 
 export async function listRecordings(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const query = listQuerySchema.parse(req.query);
     const result = await recordingService.listRecordings({
-      userId: req.user!.userId,
-      tenantId: req.user!.tenantId,
+      userId: req.user.userId,
+      tenantId: req.user.tenantId,
       ...query,
     });
     res.json(result);
@@ -33,11 +34,12 @@ export async function listRecordings(req: AuthRequest, res: Response, next: Next
 
 export async function getRecording(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const recording = await recordingService.getRecording(req.params.id as string, req.user!.userId);
+    assertAuthenticated(req);
+    const recording = await recordingService.getRecording(req.params.id as string, req.user.userId);
     if (!recording) throw new AppError('Recording not found', 404);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'RECORDING_VIEW',
       targetType: 'Recording',
       targetId: recording.id,
@@ -53,7 +55,8 @@ export async function getRecording(req: AuthRequest, res: Response, next: NextFu
 
 export async function streamRecording(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const recording = await recordingService.getRecording(req.params.id as string, req.user!.userId);
+    assertAuthenticated(req);
+    const recording = await recordingService.getRecording(req.params.id as string, req.user.userId);
     if (!recording) throw new AppError('Recording not found', 404);
 
     const stream = recordingService.streamRecordingFile(recording.filePath);
@@ -79,15 +82,18 @@ export async function streamRecording(req: AuthRequest, res: Response, next: Nex
  */
 export async function analyzeRecording(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const recording = await recordingService.getRecording(req.params.id as string, req.user!.userId);
+    assertAuthenticated(req);
+    const recording = await recordingService.getRecording(req.params.id as string, req.user.userId);
     if (!recording) throw new AppError('Recording not found', 404);
     if (recording.format !== 'guac') throw new AppError('Only .guac recordings can be analyzed', 400);
 
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const fileStat = await stat(recording.filePath).catch(() => null);
     if (!fileStat) throw new AppError('Recording file not found on disk', 404);
 
     // Read the file (limit to 10MB to avoid memory issues)
     const maxBytes = 10 * 1024 * 1024;
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const buf = await readFile(recording.filePath);
     const content = buf.slice(0, maxBytes).toString('ascii');
 
@@ -165,9 +171,10 @@ function parseGuacArgs(instruction: string): string[] {
 
 export async function exportVideo(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { videoPath, fileSize } = await recordingService.convertToVideo(
       req.params.id as string,
-      req.user!.userId,
+      req.user.userId,
     );
 
     const stream = recordingService.streamRecordingFile(videoPath);
@@ -188,7 +195,7 @@ export async function exportVideo(req: AuthRequest, res: Response, next: NextFun
     });
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'RECORDING_EXPORT_VIDEO',
       targetType: 'Recording',
       targetId: req.params.id as string,
@@ -201,11 +208,12 @@ export async function exportVideo(req: AuthRequest, res: Response, next: NextFun
 
 export async function deleteRecording(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const deleted = await recordingService.deleteRecording(req.params.id as string, req.user!.userId);
+    assertAuthenticated(req);
+    const deleted = await recordingService.deleteRecording(req.params.id as string, req.user.userId);
     if (!deleted) throw new AppError('Recording not found', 404);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'RECORDING_DELETE',
       targetType: 'Recording',
       targetId: req.params.id as string,

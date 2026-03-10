@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { AppError } from '../middleware/error.middleware';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import * as importExportService from '../services/importExport.service';
 import * as auditService from '../services/audit.service';
 import { z } from 'zod';
@@ -12,6 +12,7 @@ export const exportHandler = upload.none();
 
 export async function exportConnections(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const schema = z.object({
       format: z.enum(['CSV', 'JSON']),
       includeCredentials: z.boolean().default(false),
@@ -24,13 +25,13 @@ export async function exportConnections(req: AuthRequest, res: Response, next: N
     const result = await importExportService.exportConnections({
       format: data.format,
       includeCredentials: data.includeCredentials,
-      userId: req.user!.userId,
+      userId: req.user.userId,
       connectionIds: data.connectionIds,
       folderId: data.folderId,
     });
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'EXPORT_CONNECTIONS',
       targetType: 'Connection',
       details: {
@@ -55,6 +56,7 @@ export async function exportConnections(req: AuthRequest, res: Response, next: N
 
 export async function importConnections(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const schema = z.object({
       duplicateStrategy: z.enum(['SKIP', 'OVERWRITE', 'RENAME']).default('SKIP'),
       format: z.enum(['CSV', 'JSON', 'MREMOTENG', 'RDP']).optional(),
@@ -76,26 +78,26 @@ export async function importConnections(req: AuthRequest, res: Response, next: N
       case 'CSV':
         result = await importExportService.importConnectionsFromCsv(fileContent, {
           duplicateStrategy,
-          userId: req.user!.userId,
+          userId: req.user.userId,
         }, req.body.columnMapping || {});
         break;
       case 'JSON':
         const jsonData = JSON.parse(fileContent);
         result = await importExportService.importConnectionsFromJson(jsonData, {
           duplicateStrategy,
-          userId: req.user!.userId,
+          userId: req.user.userId,
         });
         break;
       case 'MREMOTENG':
         result = await importExportService.importConnectionsFromMremoteng(fileContent, {
           duplicateStrategy,
-          userId: req.user!.userId,
+          userId: req.user.userId,
         });
         break;
       case 'RDP':
         result = await importExportService.importConnectionsFromRdp(fileContent, {
           duplicateStrategy,
-          userId: req.user!.userId,
+          userId: req.user.userId,
         });
         break;
       default:
@@ -103,7 +105,7 @@ export async function importConnections(req: AuthRequest, res: Response, next: N
     }
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'IMPORT_CONNECTIONS',
       targetType: 'Connection',
       details: {

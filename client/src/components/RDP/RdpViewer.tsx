@@ -112,7 +112,7 @@ export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true
 
         // Get display element
         const display = client.getDisplay().getElement();
-        displayRef.current!.appendChild(display);
+        displayRef.current?.appendChild(display);
 
         // Resize logic — only active after CONNECTED
         let connected = false;
@@ -137,7 +137,7 @@ export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true
         };
 
         // Scale display whenever Guacamole reports a new resolution
-        (client.getDisplay() as any).onresize = handleResize;
+        (client.getDisplay() as unknown as { onresize: (() => void) | null }).onresize = handleResize;
 
         // Handle state changes
         client.onstatechange = (state: number) => {
@@ -214,7 +214,8 @@ export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true
         };
 
         // Keyboard events — only forward when this viewer is active and focused
-        const keyboard = new Guacamole.Keyboard(displayRef.current!);
+        // displayRef.current is guaranteed non-null here (guarded at the top of the effect)
+        const keyboard = new Guacamole.Keyboard(displayRef.current as HTMLElement);
         keyboardRef.current = keyboard;
         keyboard.onkeydown = (keysym: number) => {
           if (!activeRef.current) return false;
@@ -249,6 +250,9 @@ export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true
 
     connect();
 
+    // Capture ref value for cleanup — React refs may change by the time cleanup runs
+    const displayEl = displayRef.current;
+
     return () => {
       cancelled = true;
       if (keyboardRef.current) {
@@ -264,11 +268,12 @@ export default function RdpViewer({ connectionId, tabId: _tabId, isActive = true
         api.post(`/sessions/rdp/${sessionIdRef.current}/end`).catch(() => {});
         sessionIdRef.current = null;
       }
-      if (displayRef.current) {
-        displayRef.current.blur();
-        displayRef.current.innerHTML = '';
+      if (displayEl) {
+        displayEl.blur();
+        displayEl.innerHTML = '';
       }
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- credentials intentionally excluded; connect once on mount
   }, [connectionId]);
 
   // Focus management: capture keyboard only when mouse hovers over the display

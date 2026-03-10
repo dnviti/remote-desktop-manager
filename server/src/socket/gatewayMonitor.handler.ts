@@ -1,7 +1,6 @@
 import { Server, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
 import { AuthPayload } from '../types';
+import { verifyJwt } from '../utils/jwt';
 import {
   setHealthEmitter, GatewayHealthEvent,
   setInstancesEmitter, InstancesUpdatedEvent,
@@ -17,7 +16,7 @@ export function setupGatewayMonitorHandler(io: Server) {
     if (!token) return next(new Error('Authentication required'));
 
     try {
-      const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+      const payload = verifyJwt<AuthPayload>(token);
       (socket as Socket & { user: AuthPayload }).user = payload;
       next();
     } catch {

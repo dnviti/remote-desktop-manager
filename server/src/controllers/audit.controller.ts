@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import * as auditService from '../services/audit.service';
 import * as permissionService from '../services/permission.service';
 import { AppError } from '../middleware/error.middleware';
@@ -27,9 +27,10 @@ const querySchema = z.object({
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const query = querySchema.parse(req.query);
     const result = await auditService.getAuditLogs({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       ...query,
       action: query.action as AuditAction | undefined,
     });
@@ -42,7 +43,8 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
 
 export async function listGateways(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const gateways = await auditService.getAuditGateways(req.user!.userId);
+    assertAuthenticated(req);
+    const gateways = await auditService.getAuditGateways(req.user.userId);
     res.json(gateways);
   } catch (err) {
     next(err);
@@ -55,9 +57,10 @@ const tenantQuerySchema = querySchema.extend({
 
 export async function listTenantLogs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const query = tenantQuerySchema.parse(req.query);
     const result = await auditService.getTenantAuditLogs({
-      tenantId: req.user!.tenantId!,
+      tenantId: req.user.tenantId,
       ...query,
       action: query.action as AuditAction | undefined,
     });
@@ -78,21 +81,22 @@ const connectionQuerySchema = querySchema.extend({
 
 export async function listConnectionLogs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const { connectionId } = connectionIdSchema.parse(req.params);
     const query = connectionQuerySchema.parse(req.query);
 
     const access = await permissionService.canViewConnection(
-      req.user!.userId, connectionId, req.user!.tenantId
+      req.user.userId, connectionId, req.user.tenantId
     );
     if (!access.allowed) {
       return next(new AppError('Connection not found', 404));
     }
 
-    const isAdmin = req.user!.tenantRole === 'ADMIN' || req.user!.tenantRole === 'OWNER';
+    const isAdmin = req.user.tenantRole === 'ADMIN' || req.user.tenantRole === 'OWNER';
 
     const result = await auditService.getConnectionAuditLogs({
       connectionId,
-      userId: isAdmin ? query.userId : req.user!.userId,
+      userId: isAdmin ? query.userId : req.user.userId,
       isAdmin,
       ...query,
       action: query.action as AuditAction | undefined,
@@ -106,15 +110,16 @@ export async function listConnectionLogs(req: AuthRequest, res: Response, next: 
 
 export async function listConnectionAuditUsers(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const { connectionId } = connectionIdSchema.parse(req.params);
 
-    const isAdmin = req.user!.tenantRole === 'ADMIN' || req.user!.tenantRole === 'OWNER';
+    const isAdmin = req.user.tenantRole === 'ADMIN' || req.user.tenantRole === 'OWNER';
     if (!isAdmin) {
       return next(new AppError('Forbidden', 403));
     }
 
     const access = await permissionService.canViewConnection(
-      req.user!.userId, connectionId, req.user!.tenantId
+      req.user.userId, connectionId, req.user.tenantId
     );
     if (!access.allowed) {
       return next(new AppError('Connection not found', 404));
@@ -130,7 +135,8 @@ export async function listConnectionAuditUsers(req: AuthRequest, res: Response, 
 
 export async function listTenantGateways(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const gateways = await auditService.getTenantAuditGateways(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const gateways = await auditService.getTenantAuditGateways(req.user.tenantId);
     res.json(gateways);
   } catch (err) {
     next(err);
@@ -139,7 +145,8 @@ export async function listTenantGateways(req: AuthRequest, res: Response, next: 
 
 export async function listCountries(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const countries = await auditService.getAuditCountries(req.user!.userId);
+    assertAuthenticated(req);
+    const countries = await auditService.getAuditCountries(req.user.userId);
     res.json(countries);
   } catch (err) {
     next(err);
@@ -148,7 +155,8 @@ export async function listCountries(req: AuthRequest, res: Response, next: NextF
 
 export async function listTenantCountries(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const countries = await auditService.getTenantAuditCountries(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const countries = await auditService.getTenantAuditCountries(req.user.tenantId);
     res.json(countries);
   } catch (err) {
     next(err);

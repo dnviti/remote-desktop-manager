@@ -3,7 +3,7 @@ import path from 'path';
 import { mkdir, chmod } from 'fs/promises';
 import { z } from 'zod';
 import prisma from '../lib/prisma';
-import { AuthRequest, RdpSettings } from '../types';
+import { AuthRequest, RdpSettings, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import { getConnection, getConnectionCredentials } from '../services/connection.service';
 import { resolveDomainCredentials } from '../services/domain.service';
 import { generateGuacamoleToken, mergeRdpSettings } from '../services/rdp.service';
@@ -40,11 +40,12 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
   let gatewayId: string | null | undefined;
 
   try {
+    assertAuthenticated(req);
     const parsed = sessionSchema.parse(req.body);
     connectionId = parsed.connectionId;
     const { username: overrideUser, password: overridePass, domain: overrideDomain } = parsed;
 
-    const conn = await getConnection(req.user!.userId, connectionId, req.user!.tenantId);
+    const conn = await getConnection(req.user.userId, connectionId, req.user.tenantId);
     connHost = conn.host;
     connPort = conn.port;
     gatewayId = conn.gatewayId;
@@ -55,7 +56,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
     // Resolve gateway: explicit > tenant default > none
     const gateway = conn.gateway
-      ?? (req.user!.tenantId ? await getDefaultGateway(req.user!.tenantId, 'GUACD') : null);
+      ?? (req.user.tenantId ? await getDefaultGateway(req.user.tenantId, 'GUACD') : null);
     if (gateway) gatewayId = gateway.id;
 
     let guacdHost: string | undefined;
@@ -97,7 +98,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     let credentialSource: 'saved' | 'domain' | 'manual' = 'saved';
 
     if (parsed.credentialMode === 'domain') {
-      const domainCreds = await resolveDomainCredentials(req.user!.userId);
+      const domainCreds = await resolveDomainCredentials(req.user.userId);
       if (!domainCreds.domainUsername || !domainCreds.password) {
         throw new AppError('Domain credentials are incomplete. Configure your domain profile in Settings first.', 400);
       }
@@ -111,7 +112,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       domain = overrideDomain;
       credentialSource = 'manual';
     } else {
-      const creds = await getConnectionCredentials(req.user!.userId, connectionId, req.user!.tenantId);
+      const creds = await getConnectionCredentials(req.user.userId, connectionId, req.user.tenantId);
       if (creds.privateKey && !creds.password) {
         throw new AppError('SSH key authentication is not supported for RDP connections', 400);
       }
@@ -122,7 +123,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
     // Load user RDP defaults and connection RDP settings, then merge
     const user = await prisma.user.findUnique({
-      where: { id: req.user!.userId },
+      where: { id: req.user.userId },
       select: { rdpDefaults: true },
     });
     const userRdpDefaults = (user?.rdpDefaults as Partial<RdpSettings>) ?? null;
@@ -131,7 +132,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
     const enableDrive = conn.enableDrive ?? false;
     const drivePath = enableDrive
-      ? path.posix.join('/guacd-drive', req.user!.userId)
+      ? path.posix.join('/guacd-drive', req.user.userId)
       : undefined;
 
     // Build recording params if enabled
@@ -147,18 +148,21 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       }
       try {
         const recGatewayDir = selectedContainerName || 'default';
-        const recFilePath = buildRecordingPath(req.user!.userId, connectionId, 'RDP', 'guac', recGatewayDir);
+        const recFilePath = buildRecordingPath(req.user.userId, connectionId, 'RDP', 'guac', recGatewayDir);
         // Pre-create directory (guacd's create-recording-path is non-recursive)
         const recDir = path.dirname(recFilePath);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         await mkdir(recDir, { recursive: true });
         // Make dirs writable by guacd container (runs as different UID)
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         await chmod(recDir, 0o777);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         await chmod(path.dirname(recDir), 0o777);
         // All guacd instances mount recordings at /recordings (compose volume or managed bind mount)
         const guacdPath = recFilePath.replace(config.recordingPath, '/recordings');
         rdpRecording = { recordingPath: path.dirname(guacdPath), recordingName: path.basename(guacdPath) };
         rdpRecordingId = await startRecording({
-          userId: req.user!.userId,
+          userId: req.user.userId,
           connectionId,
           protocol: 'RDP',
           format: 'guac',
@@ -186,7 +190,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       guacdPort,
       recording: rdpRecording,
       metadata: {
-        userId: req.user!.userId,
+        userId: req.user.userId,
         connectionId,
         ipAddress: req.ip ?? undefined,
         recordingId: rdpRecordingId,
@@ -195,11 +199,11 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
     // Close any stale sessions for this user+connection to prevent duplicates
     // (e.g. React StrictMode double-mount or page refresh without clean unmount)
-    await sessionService.closeStaleSessionsForConnection(req.user!.userId, connectionId, 'RDP');
+    await sessionService.closeStaleSessionsForConnection(req.user.userId, connectionId, 'RDP');
 
     // Create persistent session record
     const sessionId = await sessionService.startSession({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       connectionId,
       gatewayId: gatewayId ?? undefined,
       instanceId: selectedInstanceId,
@@ -244,11 +248,12 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
   let gatewayId: string | null | undefined;
 
   try {
+    assertAuthenticated(req);
     const parsed = sessionSchema.parse(req.body);
     connectionId = parsed.connectionId;
     const { username: _overrideUser, password: overridePass } = parsed;
 
-    const conn = await getConnection(req.user!.userId, connectionId, req.user!.tenantId);
+    const conn = await getConnection(req.user.userId, connectionId, req.user.tenantId);
     connHost = conn.host;
     connPort = conn.port;
     gatewayId = conn.gatewayId;
@@ -259,7 +264,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
 
     // Resolve gateway: explicit > tenant default > none
     const gateway = conn.gateway
-      ?? (req.user!.tenantId ? await getDefaultGateway(req.user!.tenantId, 'GUACD') : null);
+      ?? (req.user.tenantId ? await getDefaultGateway(req.user.tenantId, 'GUACD') : null);
     if (gateway) gatewayId = gateway.id;
 
     let guacdHost: string | undefined;
@@ -301,7 +306,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
     if (overridePass) {
       password = overridePass;
     } else {
-      const creds = await getConnectionCredentials(req.user!.userId, connectionId, req.user!.tenantId);
+      const creds = await getConnectionCredentials(req.user.userId, connectionId, req.user.tenantId);
       if (creds.privateKey && !creds.password) {
         throw new AppError('SSH key authentication is not supported for VNC connections', 400);
       }
@@ -317,18 +322,21 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
     if (config.recordingEnabled) {
       try {
         const recGatewayDir = selectedContainerName || 'default';
-        const recFilePath = buildRecordingPath(req.user!.userId, connectionId, 'VNC', 'guac', recGatewayDir);
+        const recFilePath = buildRecordingPath(req.user.userId, connectionId, 'VNC', 'guac', recGatewayDir);
         // Pre-create directory (guacd's create-recording-path is non-recursive)
         const recDir = path.dirname(recFilePath);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         await mkdir(recDir, { recursive: true });
         // Make dirs writable by guacd container (runs as different UID)
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         await chmod(recDir, 0o777);
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
         await chmod(path.dirname(recDir), 0o777);
         // All guacd instances mount recordings at /recordings (compose volume or managed bind mount)
         const guacdPath = recFilePath.replace(config.recordingPath, '/recordings');
         vncRecording = { recordingPath: path.dirname(guacdPath), recordingName: path.basename(guacdPath) };
         vncRecordingId = await startRecording({
-          userId: req.user!.userId,
+          userId: req.user.userId,
           connectionId,
           protocol: 'VNC',
           format: 'guac',
@@ -349,17 +357,17 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       guacdPort,
       recording: vncRecording,
       metadata: {
-        userId: req.user!.userId,
+        userId: req.user.userId,
         connectionId,
         ipAddress: req.ip ?? undefined,
         recordingId: vncRecordingId,
       },
     });
 
-    await sessionService.closeStaleSessionsForConnection(req.user!.userId, connectionId, 'VNC');
+    await sessionService.closeStaleSessionsForConnection(req.user.userId, connectionId, 'VNC');
 
     const sessionId = await sessionService.startSession({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       connectionId,
       gatewayId: gatewayId ?? undefined,
       instanceId: selectedInstanceId,
@@ -399,8 +407,9 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
 
 export async function validateSshAccess(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { connectionId } = sessionSchema.parse(req.body);
-    const conn = await getConnection(req.user!.userId, connectionId, req.user!.tenantId);
+    const conn = await getConnection(req.user.userId, connectionId, req.user.tenantId);
 
     if (conn.type !== 'SSH') {
       throw new AppError('Not an SSH connection', 400);
@@ -418,11 +427,12 @@ export async function validateSshAccess(req: AuthRequest, res: Response, next: N
 
 export async function rdpHeartbeat(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const sessionId = req.params.sessionId as string;
     const session = await prisma.activeSession.findUnique({
       where: { id: sessionId },
     });
-    if (!session || session.userId !== req.user!.userId) {
+    if (!session || session.userId !== req.user.userId) {
       throw new AppError('Session not found', 404);
     }
     if (session.status === 'CLOSED') {
@@ -439,11 +449,12 @@ export async function rdpHeartbeat(req: AuthRequest, res: Response, next: NextFu
 
 export async function rdpEnd(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const sessionId = req.params.sessionId as string;
     const session = await prisma.activeSession.findUnique({
       where: { id: sessionId },
     });
-    if (!session || session.userId !== req.user!.userId) {
+    if (!session || session.userId !== req.user.userId) {
       throw new AppError('Session not found', 404);
     }
     await sessionService.endSession(sessionId, 'client_disconnect');
@@ -457,11 +468,12 @@ export async function rdpEnd(req: AuthRequest, res: Response, next: NextFunction
 
 export async function listActiveSessions(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const protocol = req.query.protocol as string | undefined;
     const gatewayId = req.query.gatewayId as string | undefined;
 
     const sessions = await sessionService.getActiveSessions({
-      tenantId: req.user!.tenantId,
+      tenantId: req.user.tenantId,
       protocol: protocol === 'SSH' ? 'SSH' : protocol === 'RDP' ? 'RDP' : protocol === 'VNC' ? 'VNC' : undefined,
       gatewayId,
     });
@@ -475,8 +487,9 @@ export async function listActiveSessions(req: AuthRequest, res: Response, next: 
 
 export async function getSessionCount(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const count = await sessionService.getActiveSessionCount({
-      tenantId: req.user!.tenantId,
+      tenantId: req.user.tenantId,
     });
     res.json({ count });
   } catch (err) {
@@ -488,7 +501,8 @@ export async function getSessionCount(req: AuthRequest, res: Response, next: Nex
 
 export async function getSessionCountByGateway(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const counts = await sessionService.getActiveSessionCountByGateway(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const counts = await sessionService.getActiveSessionCountByGateway(req.user.tenantId);
     res.json(counts);
   } catch (err) {
     next(err);
@@ -499,12 +513,13 @@ export async function getSessionCountByGateway(req: AuthRequest, res: Response, 
 
 export async function terminateSession(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const sessionId = req.params.sessionId as string;
     const session = await prisma.activeSession.findUnique({
       where: { id: sessionId },
       include: { user: { select: { tenantMemberships: { where: { isActive: true }, take: 1, select: { tenantId: true } } } } },
     });
-    if (!session || session.user?.tenantMemberships[0]?.tenantId !== req.user!.tenantId) {
+    if (!session || session.user?.tenantMemberships[0]?.tenantId !== req.user.tenantId) {
       throw new AppError('Session not found', 404);
     }
     await sessionService.endSession(sessionId, 'admin_terminated');
@@ -518,7 +533,7 @@ export async function terminateSession(req: AuthRequest, res: Response, next: Ne
     });
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'SESSION_TERMINATE',
       targetType: 'Session',
       targetId: sessionId,

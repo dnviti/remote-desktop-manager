@@ -29,7 +29,7 @@
     "client"
   ],
   "scripts": {
-    "predev": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up -d --wait postgres && npm run db:generate",
+    "predev": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up -d postgres && npm run db:generate",
     "db:push": "npm run db:push -w server",
     "dev": "concurrently -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client:wait\"",
     "dev:server": "npm run dev -w server",
@@ -53,6 +53,11 @@
     "verify": "npm run typecheck && npm run lint && npm run sast && npm run build",
     "cli": "npm run cli -w server --",
     "cli:dev": "npm run cli:dev -w server --"
+  },
+  "overrides": {
+    "hono": "4.12.6",
+    "@hono/node-server": "1.19.11",
+    "lodash": "4.17.23"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

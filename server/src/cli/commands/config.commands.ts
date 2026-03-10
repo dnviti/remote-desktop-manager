@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 import { Command } from 'commander';
 import { config } from '../../config';
 import * as appConfigService from '../../services/appConfig.service';

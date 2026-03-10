@@ -22,6 +22,7 @@ function resolveServerEncryptionKey(): Buffer {
       'node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"',
     );
   }
+  // eslint-disable-next-line no-console
   console.warn(
     '[config] SERVER_ENCRYPTION_KEY not set — auto-generating for development. ' +
     'SSH key pairs will not survive server restarts.',
@@ -34,8 +35,8 @@ export const config = {
   guacamoleWsPort: parseInt(process.env.GUACAMOLE_WS_PORT || '3002', 10),
   jwtSecret: (() => {
     const secret = process.env.JWT_SECRET;
-    if (!secret && process.env.NODE_ENV === 'production') {
-      throw new Error('JWT_SECRET is required in production');
+    if (!secret && process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
+      throw new Error('JWT_SECRET is required (set NODE_ENV=development to use a default)');
     }
     return secret || 'dev-secret-change-me';
   })(),
@@ -43,7 +44,13 @@ export const config = {
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   guacdHost: process.env.GUACD_HOST || 'localhost',
   guacdPort: parseInt(process.env.GUACD_PORT || '4822', 10),
-  guacamoleSecret: process.env.GUACAMOLE_SECRET || 'dev-guac-secret',
+  guacamoleSecret: (() => {
+    const secret = process.env.GUACAMOLE_SECRET;
+    if (!secret && process.env.NODE_ENV === 'production') {
+      throw new Error('GUACAMOLE_SECRET is required in production');
+    }
+    return secret || 'dev-guac-secret';
+  })(),
   serverEncryptionKey: resolveServerEncryptionKey(),
   gatewayApiToken: process.env.GATEWAY_API_TOKEN || '',
   vaultTtlMinutes: parseInt(process.env.VAULT_TTL_MINUTES || '30', 10),

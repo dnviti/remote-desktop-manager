@@ -289,7 +289,7 @@ export default function ConnectionTree({ onEditConnection, onShareConnection, on
           folders: [],
         });
       }
-      groups.get(conn.teamId)!.connections.push(conn);
+      groups.get(conn.teamId)?.connections.push(conn);
     }
 
     for (const folder of teamFolders) {

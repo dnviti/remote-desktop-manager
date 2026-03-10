@@ -1,13 +1,11 @@
 import prisma, { ConnectionType } from '../lib/prisma';
-import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { decrypt, getMasterKey } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
 import { generateCSV } from '../utils/csvParser';
 import { parseMremotengXml, mapMremotengProtocol } from '../utils/mremoteNgParser';
 import { parseRdpFile } from '../utils/rdpParser';
-import { validateHost } from '../utils/hostValidation';
 import type { CreateConnectionInput } from './connection.service';
 import * as connectionService from './connection.service';
-import * as folderService from './folder.service';
 
 const BATCH_SIZE = 50;
 

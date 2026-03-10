@@ -251,7 +251,7 @@ export async function batchShareConnections(
 
   const results = await Promise.allSettled(
     connectionIds.map((connectionId) =>
-      shareConnection(actingUserId, connectionId, { userId: targetUser!.id }, permission, tenantId)
+      shareConnection(actingUserId, connectionId, { userId: targetUser.id }, permission, tenantId)
     )
   );
 

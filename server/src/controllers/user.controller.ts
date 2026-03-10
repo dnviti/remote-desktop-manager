@@ -1,11 +1,12 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import * as userService from '../services/user.service';
 import * as domainService from '../services/domain.service';
 import * as identityVerification from '../services/identityVerification.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { passwordSchema } from '../utils/validate';
 
 const updateProfileSchema = z.object({
   username: z.string().min(1).max(50).optional(),
@@ -13,7 +14,7 @@ const updateProfileSchema = z.object({
 
 const changePasswordSchema = z.object({
   oldPassword: z.string().optional().default(''),
-  newPassword: z.string().min(8),
+  newPassword: passwordSchema,
   verificationId: z.string().uuid().optional(),
 });
 
@@ -95,7 +96,8 @@ const searchSchema = z.object({
 
 export async function getProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await userService.getProfile(req.user!.userId);
+    assertAuthenticated(req);
+    const result = await userService.getProfile(req.user.userId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -104,10 +106,11 @@ export async function getProfile(req: AuthRequest, res: Response, next: NextFunc
 
 export async function updateProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = updateProfileSchema.parse(req.body);
-    const result = await userService.updateProfile(req.user!.userId, data);
+    const result = await userService.updateProfile(req.user.userId, data);
     auditService.log({
-      userId: req.user!.userId, action: 'PROFILE_UPDATE',
+      userId: req.user.userId, action: 'PROFILE_UPDATE',
       details: { fields: Object.keys(data) },
       ipAddress: req.ip,
     });
@@ -120,11 +123,12 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
 
 export async function changePassword(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { oldPassword, newPassword, verificationId } = changePasswordSchema.parse(req.body);
     const result = await userService.changePassword(
-      req.user!.userId, oldPassword, newPassword, verificationId,
+      req.user.userId, oldPassword, newPassword, verificationId,
     );
-    auditService.log({ userId: req.user!.userId, action: 'PASSWORD_CHANGE', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'PASSWORD_CHANGE', ipAddress: req.ip });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -134,8 +138,9 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
 
 export async function initiateEmailChange(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { newEmail } = initiateEmailChangeSchema.parse(req.body);
-    const result = await userService.initiateEmailChange(req.user!.userId, newEmail);
+    const result = await userService.initiateEmailChange(req.user.userId, newEmail);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -145,10 +150,11 @@ export async function initiateEmailChange(req: AuthRequest, res: Response, next:
 
 export async function confirmEmailChange(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = confirmEmailChangeSchema.parse(req.body);
-    const result = await userService.confirmEmailChange(req.user!.userId, data);
+    const result = await userService.confirmEmailChange(req.user.userId, data);
     auditService.log({
-      userId: req.user!.userId, action: 'PROFILE_EMAIL_CHANGE',
+      userId: req.user.userId, action: 'PROFILE_EMAIL_CHANGE',
       details: { newEmail: result.email },
       ipAddress: req.ip,
     });
@@ -161,7 +167,8 @@ export async function confirmEmailChange(req: AuthRequest, res: Response, next: 
 
 export async function initiatePasswordChange(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await userService.initiatePasswordChange(req.user!.userId);
+    assertAuthenticated(req);
+    const result = await userService.initiatePasswordChange(req.user.userId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -170,8 +177,9 @@ export async function initiatePasswordChange(req: AuthRequest, res: Response, ne
 
 export async function initiateIdentity(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { purpose } = initiateIdentitySchema.parse(req.body);
-    const result = await identityVerification.initiateVerification(req.user!.userId, purpose);
+    const result = await identityVerification.initiateVerification(req.user.userId, purpose);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -181,9 +189,10 @@ export async function initiateIdentity(req: AuthRequest, res: Response, next: Ne
 
 export async function confirmIdentity(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { verificationId, code, credential, password } = confirmIdentitySchema.parse(req.body);
     const confirmed = await identityVerification.confirmVerification(
-      verificationId, req.user!.userId,
+      verificationId, req.user.userId,
       { code, credential: credential as never, password },
     );
     res.json({ confirmed });
@@ -195,8 +204,9 @@ export async function confirmIdentity(req: AuthRequest, res: Response, next: Nex
 
 export async function updateSshDefaults(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = sshDefaultsSchema.parse(req.body);
-    const result = await userService.updateSshDefaults(req.user!.userId, data);
+    const result = await userService.updateSshDefaults(req.user.userId, data);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -206,8 +216,9 @@ export async function updateSshDefaults(req: AuthRequest, res: Response, next: N
 
 export async function updateRdpDefaults(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = rdpDefaultsSchema.parse(req.body);
-    const result = await userService.updateRdpDefaults(req.user!.userId, data);
+    const result = await userService.updateRdpDefaults(req.user.userId, data);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -217,8 +228,9 @@ export async function updateRdpDefaults(req: AuthRequest, res: Response, next: N
 
 export async function uploadAvatar(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { avatarData } = uploadAvatarSchema.parse(req.body);
-    const result = await userService.uploadAvatar(req.user!.userId, avatarData);
+    const result = await userService.uploadAvatar(req.user.userId, avatarData);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -228,10 +240,11 @@ export async function uploadAvatar(req: AuthRequest, res: Response, next: NextFu
 
 export async function search(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const { q, scope, teamId } = searchSchema.parse(req.query);
     const results = await userService.searchUsers(
-      req.user!.userId,
-      req.user!.tenantId!,
+      req.user.userId,
+      req.user.tenantId,
       q,
       scope,
       teamId
@@ -253,7 +266,8 @@ const updateDomainProfileSchema = z.object({
 
 export async function getDomainProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await domainService.getDomainProfile(req.user!.userId);
+    assertAuthenticated(req);
+    const result = await domainService.getDomainProfile(req.user.userId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -262,10 +276,11 @@ export async function getDomainProfile(req: AuthRequest, res: Response, next: Ne
 
 export async function updateDomainProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = updateDomainProfileSchema.parse(req.body);
-    const result = await domainService.updateDomainProfile(req.user!.userId, data);
+    const result = await domainService.updateDomainProfile(req.user.userId, data);
     auditService.log({
-      userId: req.user!.userId, action: 'DOMAIN_PROFILE_UPDATE',
+      userId: req.user.userId, action: 'DOMAIN_PROFILE_UPDATE',
       details: { fields: Object.keys(data) },
       ipAddress: req.ip,
     });
@@ -278,9 +293,10 @@ export async function updateDomainProfile(req: AuthRequest, res: Response, next:
 
 export async function clearDomainProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await domainService.clearDomainProfile(req.user!.userId);
+    assertAuthenticated(req);
+    await domainService.clearDomainProfile(req.user.userId);
     auditService.log({
-      userId: req.user!.userId, action: 'DOMAIN_PROFILE_CLEAR',
+      userId: req.user.userId, action: 'DOMAIN_PROFILE_CLEAR',
       ipAddress: req.ip,
     });
     res.json({ success: true });

@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
@@ -19,6 +20,7 @@ function Root() {
   );
 }
 
+// eslint-disable-next-line @typescript-eslint/no-non-null-assertion -- standard React entry point pattern
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <Root />

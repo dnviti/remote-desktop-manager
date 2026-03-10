@@ -225,6 +225,7 @@ export async function distributeTenantKeyToUser(
 
 // --- Secret CRUD ---
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function secretSummary(secret: any) {
   return {
     id: secret.id,
@@ -266,7 +267,7 @@ export async function createSecret(
   if (input.scope === 'TEAM') {
     const perm = await permissionService.canManageTeamResource(
       userId,
-      input.teamId!,
+      input.teamId as string,
       'TEAM_EDITOR',
       tenantId
     );
@@ -308,10 +309,10 @@ export async function createSecret(
         type: input.type,
         scope: input.scope,
         userId,
-        teamId: input.scope === 'TEAM' ? input.teamId! : null,
+        teamId: input.scope === 'TEAM' ? (input.teamId as string) : null,
         tenantId:
           input.scope === 'TENANT'
-            ? (input.tenantId || tenantId)!
+            ? ((input.tenantId || tenantId) as string)
             : input.scope === 'TEAM'
               ? tenantId || null
               : null,
@@ -489,6 +490,7 @@ export async function listSecrets(
   filters: SecretListFilters,
   tenantId?: string | null
 ) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const where: any = {};
 
   if (filters.scope === 'PERSONAL') {

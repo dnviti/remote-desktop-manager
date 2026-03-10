@@ -61,6 +61,7 @@ export default function CreateUserDialog({ open, onClose }: CreateUserDialogProp
     if (!email.trim()) { setError('Email is required'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Please enter a valid email address'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
+    // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation, not a security comparison
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
 
     setLoading(true);

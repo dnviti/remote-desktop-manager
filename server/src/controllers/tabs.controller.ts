@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import * as tabsService from '../services/tabs.service';
 import { AppError } from '../middleware/error.middleware';
 
@@ -16,7 +16,8 @@ const syncSchema = z.object({
 
 export async function getTabs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await tabsService.getUserTabs(req.user!.userId);
+    assertAuthenticated(req);
+    const result = await tabsService.getUserTabs(req.user.userId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -25,8 +26,9 @@ export async function getTabs(req: AuthRequest, res: Response, next: NextFunctio
 
 export async function syncTabs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { tabs } = syncSchema.parse(req.body);
-    const result = await tabsService.syncTabs(req.user!.userId, tabs, req.user!.tenantId);
+    const result = await tabsService.syncTabs(req.user.userId, tabs, req.user.tenantId);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -36,7 +38,8 @@ export async function syncTabs(req: AuthRequest, res: Response, next: NextFuncti
 
 export async function clearTabs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await tabsService.clearUserTabs(req.user!.userId);
+    assertAuthenticated(req);
+    await tabsService.clearUserTabs(req.user.userId);
     res.json({ cleared: true });
   } catch (err) {
     next(err);

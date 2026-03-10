@@ -33,12 +33,14 @@ import { openConnectionWindow } from '../../utils/openConnectionWindow';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function getErrorMessage(err: unknown, fallback: string): string {
   return (err as { response?: { data?: { error?: string } } })?.response?.data?.error || fallback;
 }
 
 export const BASE_PL = 2;
 export const INDENT = 2;
+// eslint-disable-next-line react-refresh/only-export-components
 export function depthPl(depth: number) { return BASE_PL + depth * INDENT; }
 
 export interface FolderNode {
@@ -46,6 +48,7 @@ export interface FolderNode {
   children: FolderNode[];
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function matchesSearch(conn: ConnectionData, query: string): boolean {
   const q = query.toLowerCase();
   return conn.name.toLowerCase().includes(q)
@@ -54,6 +57,7 @@ export function matchesSearch(conn: ConnectionData, query: string): boolean {
     || (conn.description?.toLowerCase().includes(q) ?? false);
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function pruneFolderTree(nodes: FolderNode[], folderMap: Map<string, ConnectionData[]>): FolderNode[] {
   return nodes.reduce<FolderNode[]>((acc, node) => {
     const prunedChildren = pruneFolderTree(node.children, folderMap);
@@ -65,6 +69,7 @@ export function pruneFolderTree(nodes: FolderNode[], folderMap: Map<string, Conn
   }, []);
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function buildFolderTree(folders: Folder[]): FolderNode[] {
   const map = new Map<string, FolderNode>();
   for (const f of folders) {
@@ -74,7 +79,7 @@ export function buildFolderTree(folders: Folder[]): FolderNode[] {
   for (const node of map.values()) {
     const pid = node.folder.parentId;
     if (pid && map.has(pid)) {
-      map.get(pid)!.children.push(node);
+      map.get(pid)?.children.push(node);
     } else {
       roots.push(node);
     }
@@ -82,6 +87,7 @@ export function buildFolderTree(folders: Folder[]): FolderNode[] {
   return roots;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function collectFolderConnections(
   folderId: string,
   folderMap: Map<string, ConnectionData[]>,
@@ -99,6 +105,7 @@ export function collectFolderConnections(
   return result;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components
 export function folderHasSubfolders(folderId: string, folders: Folder[]): boolean {
   return folders.some((f) => f.parentId === folderId);
 }

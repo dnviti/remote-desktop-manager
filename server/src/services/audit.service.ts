@@ -169,7 +169,7 @@ export async function getAuditGateways(userId: string): Promise<AuditGateway[]> 
     distinct: ['gatewayId'],
   });
 
-  const gatewayIds = rows.map((r) => r.gatewayId!);
+  const gatewayIds = rows.map((r) => r.gatewayId).filter((id): id is string => id !== null);
   if (gatewayIds.length === 0) return [];
 
   const gateways = await prisma.gateway.findMany({
@@ -372,7 +372,7 @@ export async function getConnectionAuditUsers(connectionId: string): Promise<Con
     distinct: ['userId'],
   });
 
-  const userIds = rows.map((r) => r.userId!);
+  const userIds = rows.map((r) => r.userId).filter((id): id is string => id !== null);
   if (userIds.length === 0) return [];
 
   const users = await prisma.user.findMany({
@@ -397,7 +397,7 @@ export async function getTenantAuditGateways(tenantId: string): Promise<AuditGat
     distinct: ['gatewayId'],
   });
 
-  const gatewayIds = rows.map((r) => r.gatewayId!);
+  const gatewayIds = rows.map((r) => r.gatewayId).filter((id): id is string => id !== null);
   if (gatewayIds.length === 0) return [];
 
   const gateways = await prisma.gateway.findMany({
@@ -422,7 +422,7 @@ export async function getAuditCountries(userId: string): Promise<string[]> {
     distinct: ['geoCountry'],
     orderBy: { geoCountry: 'asc' },
   });
-  return rows.map((r) => r.geoCountry!);
+  return rows.map((r) => r.geoCountry).filter((c): c is string => c !== null);
 }
 
 /**
@@ -442,5 +442,5 @@ export async function getTenantAuditCountries(tenantId: string): Promise<string[
     distinct: ['geoCountry'],
     orderBy: { geoCountry: 'asc' },
   });
-  return rows.map((r) => r.geoCountry!);
+  return rows.map((r) => r.geoCountry).filter((c): c is string => c !== null);
 }

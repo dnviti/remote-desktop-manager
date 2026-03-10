@@ -72,6 +72,8 @@ export const useAuthStore = create<AuthState>()(
     {
       name: 'arsenale-auth',
       partialize: (state) => ({
+        // SECURITY: accessToken is deliberately excluded — it must remain
+        // in-memory only to limit XSS exposure. Never persist it.
         user: state.user,
         isAuthenticated: state.isAuthenticated,
         csrfToken: state.csrfToken,

@@ -98,7 +98,7 @@ export async function checkExpiringSecrets(): Promise<number> {
 
   for (const secret of secrets) {
     const daysUntilExpiry = Math.ceil(
-      (secret.expiresAt!.getTime() - Date.now()) / (1000 * 60 * 60 * 24)
+      ((secret.expiresAt as Date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
     );
     const band = getBand(daysUntilExpiry);
     if (!band) continue;

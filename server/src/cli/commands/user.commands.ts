@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 import { Command } from 'commander';
 import prisma from '../../lib/prisma';
 import * as tenantService from '../../services/tenant.service';

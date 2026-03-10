@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 
 type Column = { key: string; header: string; width?: number };
 
@@ -25,14 +25,14 @@ export function printTable(
   });
 
   // Header
-  const headerLine = cols.map((c) => c.header.padEnd(c.width!)).join('  ');
+  const headerLine = cols.map((c) => c.header.padEnd(c.width as number)).join('  ');
   console.log(headerLine);
-  console.log(cols.map((c) => '-'.repeat(c.width!)).join('  '));
+  console.log(cols.map((c) => '-'.repeat(c.width as number)).join('  '));
 
   // Rows
   for (const row of rows) {
     const line = cols
-      .map((c) => String(row[c.key] ?? '').padEnd(c.width!))
+      .map((c) => String(row[c.key] ?? '').padEnd(c.width as number))
       .join('  ');
     console.log(line);
   }

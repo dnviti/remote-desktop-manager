@@ -125,7 +125,7 @@ export async function getFolderTree(userId: string, tenantId?: string | null) {
 
     teamFolders = rawFolders.map((f) => ({
       ...f,
-      teamName: teamNameMap.get(f.teamId!) ?? null,
+      teamName: f.teamId ? teamNameMap.get(f.teamId) ?? null : null,
       scope: 'team' as const,
     }));
   }

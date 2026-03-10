@@ -44,6 +44,7 @@ export default function ShareDialog({
       setEmail('');
       setError('');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadShares is defined inline and depends on connectionId already in deps
   }, [open, connectionId]);
 
   const loadShares = async () => {

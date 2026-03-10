@@ -206,7 +206,7 @@ export async function accessExternalShare(
   let derivedKey: Buffer;
   try {
     if (share.hasPin) {
-      derivedKey = await deriveKeyFromTokenAndPin(token, pin!, share.pinSalt!);
+      derivedKey = await deriveKeyFromTokenAndPin(token, pin as string, share.pinSalt as string);
     } else {
       derivedKey = await deriveKeyFromToken(token, share.id, share.tokenSalt ?? undefined);
     }

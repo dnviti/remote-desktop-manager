@@ -3055,3 +3055,11 @@
     CREARE:     client/src/components/Dialogs/ExportDialog.tsx
     CREARE:     client/src/api/importExport.api.ts
     MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx (bottoni)
+
+
+================================================================================
+  SEZIONE G — IP ADDRESS INTELLIGENCE
+================================================================================
+
+------------------------------------------------------------------------------
+[x] GEO-106 — IP geolocation enrichment with MaxMind GeoLite2

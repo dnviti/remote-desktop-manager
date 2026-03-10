@@ -18,7 +18,7 @@ export function parseRdpFile(content: string): RdpConnection {
 
     const match = trimmed.match(/^([^:]+):([^:]+):(.*)$/);
     if (match) {
-      const [, key, type, value] = match;
+      const [, key, _type, value] = match;
       properties[key.trim()] = value.trim();
     }
   }

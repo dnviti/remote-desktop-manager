@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 
 export function requireConfirm(
   confirmed: boolean | undefined,

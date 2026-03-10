@@ -1,7 +1,6 @@
 import { Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
-import { config } from '../config';
 import { AuthPayload, AuthRequest } from '../types';
+import { verifyJwt } from '../utils/jwt';
 
 export function authenticate(
   req: AuthRequest,
@@ -17,7 +16,7 @@ export function authenticate(
   const token = authHeader.slice(7);
 
   try {
-    const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+    const payload = verifyJwt<AuthPayload>(token);
     req.user = payload;
     next();
   } catch {

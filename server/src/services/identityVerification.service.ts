@@ -137,8 +137,9 @@ export async function initiateVerification(
       });
       const otp = generateOtp();
       session.emailOtpHash = hashOtp(otp);
-      await sendIdentityVerificationCode(user!.email, otp, purpose);
-      const masked = user!.email.replace(/^(.{2}).*@/, '$1***@');
+      if (!user) throw new AppError('User not found', 404);
+      await sendIdentityVerificationCode(user.email, otp, purpose);
+      const masked = user.email.replace(/^(.{2}).*@/, '$1***@');
       metadata = { maskedEmail: masked };
       break;
     }
@@ -200,7 +201,7 @@ export async function confirmVerification(
     case 'email': {
       if (!payload.code) throw new AppError('Verification code is required.', 400);
       const inputHash = hashOtp(payload.code);
-      valid = timingSafeEqual(inputHash, session.emailOtpHash!);
+      valid = timingSafeEqual(inputHash, session.emailOtpHash as string);
       break;
     }
     case 'totp': {
@@ -231,7 +232,7 @@ export async function confirmVerification(
         const verification = await webauthn.verifyAuthenticationWithChallenge(
           userId,
           payload.credential,
-          session.webauthnOptions!,
+          session.webauthnOptions as Record<string, unknown>,
         );
         valid = verification.verified;
       } catch {

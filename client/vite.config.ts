@@ -8,6 +8,30 @@ const guacTarget = process.env.VITE_GUAC_TARGET || 'http://localhost:3002';
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    chunkSizeWarningLimit: 700,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor-react': [
+            'react',
+            'react-dom',
+            'react-router-dom',
+            'react-router',
+          ],
+          'vendor-mui': [
+            '@mui/material',
+            '@emotion/react',
+            '@emotion/styled',
+          ],
+          'vendor-mui-icons': ['@mui/icons-material'],
+          'vendor-terminal': ['@xterm/xterm', '@xterm/addon-fit'],
+          'vendor-guacamole': ['@glokon/guacamole-common-js'],
+          'vendor-network': ['axios', 'socket.io-client'],
+        },
+      },
+    },
+  },
   server: {
     port: 3000,
     proxy: {

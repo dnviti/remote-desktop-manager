@@ -28,8 +28,9 @@ export default function RegisterPage() {
       .catch(() => { /* fail-open: server guard is authoritative */ });
   }, []);
 
+  const resendActive = resendCountdown > 0;
   useEffect(() => {
-    if (resendCountdown <= 0) {
+    if (!resendActive) {
       clearInterval(countdownRef.current);
       return;
     }
@@ -43,7 +44,7 @@ export default function RegisterPage() {
       });
     }, 1000);
     return () => clearInterval(countdownRef.current);
-  }, [resendCountdown > 0]);
+  }, [resendActive]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

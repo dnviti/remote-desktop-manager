@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertTenantAuthenticated } from '../types';
 import * as gatewayService from '../services/gateway.service';
 import * as sshKeyService from '../services/sshkey.service';
 import * as managedGatewayService from '../services/managedGateway.service';
@@ -127,7 +127,8 @@ const updateSchema = z.object({
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await gatewayService.listGateways(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await gatewayService.listGateways(req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -136,14 +137,15 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const data = createSchema.parse(req.body);
     const result = await gatewayService.createGateway(
-      req.user!.userId,
-      req.user!.tenantId!,
+      req.user.userId,
+      req.user.tenantId,
       data,
     );
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_CREATE',
       targetType: 'Gateway',
       targetId: result.id,
@@ -162,16 +164,17 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const data = updateSchema.parse(req.body);
     const gatewayId = req.params.id as string;
     const result = await gatewayService.updateGateway(
-      req.user!.userId,
-      req.user!.tenantId!,
+      req.user.userId,
+      req.user.tenantId,
       gatewayId,
       data,
     );
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_UPDATE',
       targetType: 'Gateway',
       targetId: gatewayId,
@@ -187,9 +190,10 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
 
 export async function remove(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
     const force = req.query.force === 'true';
-    const result = await gatewayService.deleteGateway(req.user!.tenantId!, gatewayId, force);
+    const result = await gatewayService.deleteGateway(req.user.tenantId, gatewayId, force);
 
     if ('blocked' in result && result.blocked) {
       res.status(409).json({
@@ -200,7 +204,7 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
     }
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_DELETE',
       targetType: 'Gateway',
       targetId: gatewayId,
@@ -217,9 +221,10 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
 
 export async function testConnectivity(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
     const result = await gatewayService.testGatewayConnectivity(
-      req.user!.tenantId!,
+      req.user.tenantId,
       gatewayId,
     );
     res.json(result);
@@ -230,9 +235,10 @@ export async function testConnectivity(req: AuthRequest, res: Response, next: Ne
 
 export async function generateSshKeyPair(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await sshKeyService.generateKeyPair(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await sshKeyService.generateKeyPair(req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'SSH_KEY_GENERATE',
       targetType: 'SshKeyPair',
       targetId: result.id,
@@ -246,7 +252,8 @@ export async function generateSshKeyPair(req: AuthRequest, res: Response, next: 
 
 export async function getSshPublicKey(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await sshKeyService.getPublicKey(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await sshKeyService.getPublicKey(req.user.tenantId);
     if (!result) {
       return next(new AppError('No SSH key pair found for this tenant', 404));
     }
@@ -258,9 +265,10 @@ export async function getSshPublicKey(req: AuthRequest, res: Response, next: Nex
 
 export async function rotateSshKeyPair(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await sshKeyService.rotateKeyPair(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await sshKeyService.rotateKeyPair(req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'SSH_KEY_ROTATE',
       targetType: 'SshKeyPair',
       targetId: result.id,
@@ -268,11 +276,11 @@ export async function rotateSshKeyPair(req: AuthRequest, res: Response, next: Ne
     });
 
     // Best-effort auto-push rotated key to all managed gateways
-    const pushResults = await gatewayService.pushKeyToAllManagedGateways(req.user!.tenantId!);
+    const pushResults = await gatewayService.pushKeyToAllManagedGateways(req.user.tenantId);
     for (const pr of pushResults) {
       if (pr.ok) {
         auditService.log({
-          userId: req.user!.userId,
+          userId: req.user.userId,
           action: 'SSH_KEY_PUSH',
           targetType: 'Gateway',
           targetId: pr.gatewayId,
@@ -290,15 +298,16 @@ export async function rotateSshKeyPair(req: AuthRequest, res: Response, next: Ne
 
 export async function pushKey(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
     const results = await gatewayService.pushKeyToGateway(
-      req.user!.tenantId!,
+      req.user.tenantId,
       gatewayId,
     );
     const succeeded = results.filter(r => r.ok).length;
     const failed = results.filter(r => !r.ok).length;
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'SSH_KEY_PUSH',
       targetType: 'Gateway',
       targetId: gatewayId,
@@ -313,7 +322,8 @@ export async function pushKey(req: AuthRequest, res: Response, next: NextFunctio
 
 export async function downloadSshPrivateKey(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const privateKeyBuf = await sshKeyService.getPrivateKey(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const privateKeyBuf = await sshKeyService.getPrivateKey(req.user.tenantId);
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', 'attachment; filename="tenant_ed25519"');
     res.send(privateKeyBuf.toString('utf8'));
@@ -324,6 +334,7 @@ export async function downloadSshPrivateKey(req: AuthRequest, res: Response, nex
 
 export async function updateRotationPolicy(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const data = rotationPolicySchema.parse(req.body);
 
     const input: sshKeyService.RotationPolicyInput = {};
@@ -337,10 +348,10 @@ export async function updateRotationPolicy(req: AuthRequest, res: Response, next
       input.expiresAt = data.expiresAt ? new Date(data.expiresAt) : null;
     }
 
-    const result = await sshKeyService.updateRotationPolicy(req.user!.tenantId!, input);
+    const result = await sshKeyService.updateRotationPolicy(req.user.tenantId, input);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'SSH_KEY_ROTATE',
       targetType: 'SshKeyPair',
       targetId: result.id,
@@ -357,7 +368,8 @@ export async function updateRotationPolicy(req: AuthRequest, res: Response, next
 
 export async function getRotationStatus(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await sshKeyService.getRotationStatus(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await sshKeyService.getRotationStatus(req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -370,11 +382,12 @@ export async function getRotationStatus(req: AuthRequest, res: Response, next: N
 
 export async function deploy(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
 
     // Verify gateway belongs to tenant
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
@@ -382,7 +395,7 @@ export async function deploy(req: AuthRequest, res: Response, next: NextFunction
       return next(new AppError('Only MANAGED_SSH and GUACD gateways can be deployed as managed containers', 400));
     }
 
-    const result = await managedGatewayService.deployGatewayInstance(gatewayId, req.user!.userId);
+    const result = await managedGatewayService.deployGatewayInstance(gatewayId, req.user.userId);
 
     // Update managed state
     const instanceCount = await prisma.managedGatewayInstance.count({
@@ -401,15 +414,16 @@ export async function deploy(req: AuthRequest, res: Response, next: NextFunction
 
 export async function undeploy(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
 
     // Verify gateway belongs to tenant
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
-    await managedGatewayService.scaleGateway(gatewayId, 0, req.user!.userId);
+    await managedGatewayService.scaleGateway(gatewayId, 0, req.user.userId);
     res.json({ undeployed: true });
   } catch (err) {
     next(err);
@@ -418,16 +432,17 @@ export async function undeploy(req: AuthRequest, res: Response, next: NextFuncti
 
 export async function scale(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
 
     // Verify gateway belongs to tenant
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
     const { replicas } = scaleSchema.parse(req.body);
-    const result = await managedGatewayService.scaleGateway(gatewayId, replicas, req.user!.userId);
+    const result = await managedGatewayService.scaleGateway(gatewayId, replicas, req.user.userId);
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -437,11 +452,12 @@ export async function scale(req: AuthRequest, res: Response, next: NextFunction)
 
 export async function listInstances(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
 
     // Verify gateway belongs to tenant
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
@@ -457,12 +473,13 @@ export async function listInstances(req: AuthRequest, res: Response, next: NextF
 
 export async function restartInstance(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
     const instanceId = req.params.instanceId as string;
 
     // Verify gateway belongs to tenant
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
@@ -480,7 +497,7 @@ export async function restartInstance(req: AuthRequest, res: Response, next: Nex
     });
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_RESTART' as const,
       targetType: 'ManagedGatewayInstance',
       targetId: instanceId,
@@ -499,12 +516,13 @@ export async function restartInstance(req: AuthRequest, res: Response, next: Nex
 
 export async function getInstanceLogs(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
     const instanceId = req.params.instanceId as string;
     const tail = Math.max(1, Math.min(parseInt(req.query.tail as string, 10) || 200, 5000));
 
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
@@ -517,7 +535,7 @@ export async function getInstanceLogs(req: AuthRequest, res: Response, next: Nex
     const logs = await orchestrator.getContainerLogs(instance.containerId, tail);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_VIEW_LOGS' as const,
       targetType: 'ManagedGatewayInstance',
       targetId: instanceId,
@@ -542,10 +560,11 @@ export async function getInstanceLogs(req: AuthRequest, res: Response, next: Nex
 
 export async function getScalingStatus(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
 
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
@@ -558,10 +577,11 @@ export async function getScalingStatus(req: AuthRequest, res: Response, next: Ne
 
 export async function updateScalingConfig(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const gatewayId = req.params.id as string;
 
     const gateway = await prisma.gateway.findFirst({
-      where: { id: gatewayId, tenantId: req.user!.tenantId! },
+      where: { id: gatewayId, tenantId: req.user.tenantId },
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
@@ -604,7 +624,7 @@ export async function updateScalingConfig(req: AuthRequest, res: Response, next:
     });
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_UPDATE',
       targetType: 'Gateway',
       targetId: gatewayId,
@@ -629,7 +649,8 @@ export async function updateScalingConfig(req: AuthRequest, res: Response, next:
 
 export async function listTemplates(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await gatewayTemplateService.listTemplates(req.user!.tenantId!);
+    assertTenantAuthenticated(req);
+    const result = await gatewayTemplateService.listTemplates(req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -638,15 +659,16 @@ export async function listTemplates(req: AuthRequest, res: Response, next: NextF
 
 export async function createTemplate(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const data = createTemplateSchema.parse(req.body);
     // .refine() guarantees port is always defined (defaults for managed types, required for SSH_BASTION)
     const result = await gatewayTemplateService.createTemplate(
-      req.user!.userId,
-      req.user!.tenantId!,
+      req.user.userId,
+      req.user.tenantId,
       data as typeof data & { port: number },
     );
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_TEMPLATE_CREATE',
       targetType: 'GatewayTemplate',
       targetId: result.id,
@@ -662,16 +684,17 @@ export async function createTemplate(req: AuthRequest, res: Response, next: Next
 
 export async function updateTemplate(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const templateId = req.params.templateId as string;
     const data = updateTemplateSchema.parse(req.body);
     const result = await gatewayTemplateService.updateTemplate(
-      req.user!.userId,
-      req.user!.tenantId!,
+      req.user.userId,
+      req.user.tenantId,
       templateId,
       data,
     );
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_TEMPLATE_UPDATE',
       targetType: 'GatewayTemplate',
       targetId: templateId,
@@ -687,10 +710,11 @@ export async function updateTemplate(req: AuthRequest, res: Response, next: Next
 
 export async function deleteTemplate(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const templateId = req.params.templateId as string;
-    await gatewayTemplateService.deleteTemplate(req.user!.tenantId!, templateId);
+    await gatewayTemplateService.deleteTemplate(req.user.tenantId, templateId);
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_TEMPLATE_DELETE',
       targetType: 'GatewayTemplate',
       targetId: templateId,
@@ -704,14 +728,15 @@ export async function deleteTemplate(req: AuthRequest, res: Response, next: Next
 
 export async function deployFromTemplate(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertTenantAuthenticated(req);
     const templateId = req.params.templateId as string;
     const result = await gatewayTemplateService.deployFromTemplate(
-      req.user!.userId,
-      req.user!.tenantId!,
+      req.user.userId,
+      req.user.tenantId,
       templateId,
     );
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'GATEWAY_TEMPLATE_DEPLOY',
       targetType: 'GatewayTemplate',
       targetId: templateId,

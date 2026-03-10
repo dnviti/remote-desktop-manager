@@ -28,11 +28,13 @@ export interface RdpConnectionParams {
 }
 
 /**
- * Derive the AES-256-CBC key from the guacamole secret.
+ * Derive the AES-256-GCM key from the guacamole secret.
  * Must match the key passed to guacamole-lite in index.ts.
  */
 export function getGuacamoleKey(): Buffer {
-  return crypto.createHash('sha256').update(config.guacamoleSecret).digest();
+  // Use a static salt to derive a 32-byte key from the potentially weak secret
+  // using scrypt for better protection against offline dictionary attacks.
+  return crypto.scryptSync(config.guacamoleSecret, 'arsenale-guac-salt', 32, { N: 16384, r: 8, p: 1 });
 }
 
 /** Merge system defaults → user defaults → connection overrides */
@@ -158,20 +160,23 @@ export function generateGuacamoleToken(params: RdpConnectionParams): string {
     /[\u0080-\uffff]/g,
     (ch) => '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'),
   );
-  const iv = crypto.randomBytes(16);
+  const iv = crypto.randomBytes(12); // GCM uses 12 bytes
   const key = getGuacamoleKey();
-  const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
 
   // guacamole-lite Crypt.decrypt() expects:
   //   value = base64( binary_ciphertext )
   //   iv    = base64( iv_bytes )
   // So we must encrypt to 'binary', then base64-encode that binary string.
+  // We patched guacamole-lite to also support AES-256-GCM auth tags.
   let encrypted = cipher.update(data, 'utf8', 'binary');
   encrypted += cipher.final('binary');
+  const tag = cipher.getAuthTag();
 
   const tokenObj = {
     iv: iv.toString('base64'),
     value: Buffer.from(encrypted, 'binary').toString('base64'),
+    tag: tag.toString('base64'),
   };
 
   // Append '=' so base64 always has padding — prevents URL-appended chars

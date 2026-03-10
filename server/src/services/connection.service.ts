@@ -466,8 +466,8 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       ...c,
       credentialSecretName: c.credentialSecret?.name ?? null,
       credentialSecretType: c.credentialSecret?.type ?? null,
-      teamName: teamNameMap.get(c.teamId!) ?? null,
-      teamRole: teamRoleMap.get(c.teamId!) ?? null,
+      teamName: c.teamId ? teamNameMap.get(c.teamId) ?? null : null,
+      teamRole: c.teamId ? teamRoleMap.get(c.teamId) ?? null : null,
       isOwner: false,
       scope: 'team' as const,
     }));
@@ -575,8 +575,8 @@ export async function getConnectionCredentials(
     );
     // If SSH_KEY secret has no username, fall back to inline encrypted username
     if (!creds.username && connection.encryptedUsername && connection.usernameIV && connection.usernameTag) {
-      const key = access.accessType === 'team'
-        ? await resolveTeamKey(connection.teamId!, userId)
+      const key = access.accessType === 'team' && connection.teamId
+        ? await resolveTeamKey(connection.teamId, userId)
         : requireMasterKey(userId);
       creds.username = decrypt(
         { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },
@@ -585,8 +585,8 @@ export async function getConnectionCredentials(
     }
     // If secret has no domain, fall back to inline encrypted domain
     if (!creds.domain && connection.encryptedDomain && connection.domainIV && connection.domainTag) {
-      const key = access.accessType === 'team'
-        ? await resolveTeamKey(connection.teamId!, userId)
+      const key = access.accessType === 'team' && connection.teamId
+        ? await resolveTeamKey(connection.teamId, userId)
         : requireMasterKey(userId);
       creds.domain = decryptDomain(connection, key);
     }
@@ -615,7 +615,7 @@ export async function getConnectionCredentials(
   }
 
   if (access.accessType === 'team') {
-    const teamKey = await resolveTeamKey(connection.teamId!, userId);
+    const teamKey = await resolveTeamKey(connection.teamId as string, userId);
     return {
       username: decrypt(
         { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },
@@ -662,7 +662,7 @@ export async function toggleFavorite(userId: string, connectionId: string, tenan
   }
 
   if (access.accessType === 'team') {
-    if (ROLE_HIERARCHY[access.teamRole!] < ROLE_HIERARCHY['TEAM_EDITOR']) {
+    if (ROLE_HIERARCHY[access.teamRole as string] < ROLE_HIERARCHY['TEAM_EDITOR']) {
       throw new AppError('Viewers cannot toggle favorites on team connections', 403);
     }
   }

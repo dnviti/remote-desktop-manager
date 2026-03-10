@@ -48,6 +48,7 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
     }).catch(() => {
       setError('Failed to load profile');
     });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time profile load on mount
   }, []);
 
   useEffect(() => {
@@ -107,8 +108,8 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
       if (result.flow === 'dual-otp') {
         setEmailChangePhase('dual-otp');
       } else {
-        setVerificationId(result.verificationId!);
-        setVerificationMethod(result.method!);
+        setVerificationId(result.verificationId ?? '');
+        setVerificationMethod(result.method ?? 'password');
         setVerificationMetadata(result.metadata);
         setEmailChangePhase('identity-verifying');
       }

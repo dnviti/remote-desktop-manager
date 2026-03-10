@@ -110,8 +110,9 @@ class OidcStrategy extends passport.Strategy {
     this._verify = verify;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   authenticate(
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     req: any,
     options?: { state?: string; scope?: string[] },
   ): void {
@@ -265,6 +266,7 @@ export async function initializePassport(): Promise<void> {
           callbackURL: config.oauth.google.callbackUrl,
           scope: ['profile', 'email'],
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         makeVerifyCallback('GOOGLE') as any
       )
     );
@@ -281,6 +283,7 @@ export async function initializePassport(): Promise<void> {
           scope: ['user.read'],
           tenant: 'common',
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         makeVerifyCallback('MICROSOFT') as any
       )
     );
@@ -296,6 +299,7 @@ export async function initializePassport(): Promise<void> {
           callbackURL: config.oauth.github.callbackUrl,
           scope: ['user:email'],
         },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         makeVerifyCallback('GITHUB') as any
       )
     );
@@ -314,7 +318,7 @@ export async function initializePassport(): Promise<void> {
             scopes: config.oauth.oidc.scopes,
             discovery,
           },
-          makeVerifyCallback('OIDC') as any,
+          makeVerifyCallback('OIDC') as VerifyCallback,
         )
       );
       logger.info(`OAuth: OIDC strategy registered (${config.oauth.oidc.providerName}, issuer: ${discovery.issuer})`);
@@ -332,11 +336,15 @@ export async function initializePassport(): Promise<void> {
         callbackUrl: config.oauth.saml.callbackUrl,
         idpCert: config.oauth.saml.cert,
         wantAuthnResponseSigned: config.oauth.saml.wantAuthnResponseSigned,
-      } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      samlVerify as any, // eslint-disable-line @typescript-eslint/no-explicit-any
-      samlVerify as any, // logout verify callback // eslint-disable-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      samlVerify as any,
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      samlVerify as any, // logout verify callback
     );
-    passport.use(samlStrategy as any); // eslint-disable-line @typescript-eslint/no-explicit-any
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    passport.use(samlStrategy as any);
     logger.info(`SAML: Strategy registered (${config.oauth.saml.providerName})`);
   }
 }
@@ -401,7 +409,8 @@ function makeSamlVerifyCallback() {
 }
 
 export function getSamlMetadata(): string | null {
-  const strategy = (passport as any)._strategy('saml') as SamlStrategy | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const strategy = (passport as any)._strategy('saml') as SamlStrategy | undefined;
   if (!strategy) return null;
   return strategy.generateServiceProviderMetadata(null, null);
 }

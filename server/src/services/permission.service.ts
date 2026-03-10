@@ -14,6 +14,7 @@ type AccessType = 'owner' | 'team' | 'shared';
 
 interface ViewConnectionResult {
   allowed: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   connection: any;
   accessType: AccessType;
   teamRole?: string;
@@ -21,6 +22,7 @@ interface ViewConnectionResult {
 
 interface ManageConnectionResult {
   allowed: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   connection: any;
   accessType: 'owner' | 'team';
   teamRole?: string;
@@ -33,6 +35,7 @@ interface ManageTeamResourceResult {
 
 interface FolderAccessResult {
   allowed: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   folder: any;
   accessType: 'owner' | 'team';
   teamRole?: string;
@@ -216,6 +219,7 @@ type SecretAccessType = 'owner' | 'team' | 'tenant' | 'shared';
 
 interface SecretAccessResult {
   allowed: boolean;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   secret: any;
   accessType: SecretAccessType;
   teamRole?: string;

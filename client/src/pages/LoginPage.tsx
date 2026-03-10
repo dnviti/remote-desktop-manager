@@ -78,10 +78,12 @@ export default function LoginPage() {
       searchParams.delete('code');
       setSearchParams(searchParams, { replace: true });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time URL param processing on mount
   }, []);
 
+  const resendActive = resendCountdown > 0;
   useEffect(() => {
-    if (resendCountdown <= 0) {
+    if (!resendActive) {
       clearInterval(countdownRef.current);
       return;
     }
@@ -95,7 +97,7 @@ export default function LoginPage() {
       });
     }, 1000);
     return () => clearInterval(countdownRef.current);
-  }, [resendCountdown > 0]);
+  }, [resendActive]);
 
   const completeLogin = (data: AuthSuccessResponse) => {
     const memberships = data.tenantMemberships ?? [];

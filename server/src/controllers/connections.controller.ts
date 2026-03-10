@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import * as connectionService from '../services/connection.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
@@ -97,10 +97,11 @@ const updateSchema = z.object({
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = createSchema.parse(req.body);
-    const result = await connectionService.createConnection(req.user!.userId, data, req.user!.tenantId);
+    const result = await connectionService.createConnection(req.user.userId, data, req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId, action: 'CREATE_CONNECTION',
+      userId: req.user.userId, action: 'CREATE_CONNECTION',
       targetType: 'Connection', targetId: result.id,
       details: { name: data.name, type: data.type, host: data.host, teamId: data.teamId ?? null },
       ipAddress: req.ip,
@@ -114,15 +115,16 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = updateSchema.parse(req.body);
     const result = await connectionService.updateConnection(
-      req.user!.userId,
+      req.user.userId,
       req.params.id as string,
       data,
-      req.user!.tenantId
+      req.user.tenantId
     );
     auditService.log({
-      userId: req.user!.userId, action: 'UPDATE_CONNECTION',
+      userId: req.user.userId, action: 'UPDATE_CONNECTION',
       targetType: 'Connection', targetId: req.params.id as string,
       details: { fields: Object.keys(data) },
       ipAddress: req.ip,
@@ -136,9 +138,10 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
 
 export async function remove(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await connectionService.deleteConnection(req.user!.userId, req.params.id as string, req.user!.tenantId);
+    assertAuthenticated(req);
+    const result = await connectionService.deleteConnection(req.user.userId, req.params.id as string, req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId, action: 'DELETE_CONNECTION',
+      userId: req.user.userId, action: 'DELETE_CONNECTION',
       targetType: 'Connection', targetId: req.params.id as string,
       ipAddress: req.ip,
     });
@@ -150,7 +153,8 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
 
 export async function getOne(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await connectionService.getConnection(req.user!.userId, req.params.id as string, req.user!.tenantId);
+    assertAuthenticated(req);
+    const result = await connectionService.getConnection(req.user.userId, req.params.id as string, req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -159,7 +163,8 @@ export async function getOne(req: AuthRequest, res: Response, next: NextFunction
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await connectionService.listConnections(req.user!.userId, req.user!.tenantId);
+    assertAuthenticated(req);
+    const result = await connectionService.listConnections(req.user.userId, req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);
@@ -168,10 +173,11 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
 
 export async function toggleFavorite(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await connectionService.toggleFavorite(req.user!.userId, req.params.id as string, req.user!.tenantId);
+    assertAuthenticated(req);
+    const result = await connectionService.toggleFavorite(req.user.userId, req.params.id as string, req.user.tenantId);
 
     auditService.log({
-      userId: req.user!.userId,
+      userId: req.user.userId,
       action: 'CONNECTION_FAVORITE',
       targetType: 'Connection',
       targetId: req.params.id as string,

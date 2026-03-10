@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import * as folderService from '../services/folder.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
@@ -18,10 +18,11 @@ const updateSchema = z.object({
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { name, parentId, teamId } = createSchema.parse(req.body);
-    const result = await folderService.createFolder(req.user!.userId, name, parentId, teamId, req.user!.tenantId);
+    const result = await folderService.createFolder(req.user.userId, name, parentId, teamId, req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId, action: 'CREATE_FOLDER',
+      userId: req.user.userId, action: 'CREATE_FOLDER',
       targetType: 'Folder', targetId: result.id,
       details: { name, teamId: teamId ?? null },
       ipAddress: req.ip,
@@ -35,10 +36,11 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const data = updateSchema.parse(req.body);
-    const result = await folderService.updateFolder(req.user!.userId, req.params.id as string, data, req.user!.tenantId);
+    const result = await folderService.updateFolder(req.user.userId, req.params.id as string, data, req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId, action: 'UPDATE_FOLDER',
+      userId: req.user.userId, action: 'UPDATE_FOLDER',
       targetType: 'Folder', targetId: req.params.id as string,
       details: { fields: Object.keys(data) },
       ipAddress: req.ip,
@@ -52,9 +54,10 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
 
 export async function remove(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await folderService.deleteFolder(req.user!.userId, req.params.id as string, req.user!.tenantId);
+    assertAuthenticated(req);
+    const result = await folderService.deleteFolder(req.user.userId, req.params.id as string, req.user.tenantId);
     auditService.log({
-      userId: req.user!.userId, action: 'DELETE_FOLDER',
+      userId: req.user.userId, action: 'DELETE_FOLDER',
       targetType: 'Folder', targetId: req.params.id as string,
       ipAddress: req.ip,
     });
@@ -66,7 +69,8 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    const result = await folderService.getFolderTree(req.user!.userId, req.user!.tenantId);
+    assertAuthenticated(req);
+    const result = await folderService.getFolderTree(req.user.userId, req.user.tenantId);
     res.json(result);
   } catch (err) {
     next(err);

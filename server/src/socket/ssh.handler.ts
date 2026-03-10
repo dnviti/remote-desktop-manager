@@ -1,10 +1,10 @@
 import { Server, Socket } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { SFTPWrapper } from 'ssh2';
 import { config } from '../config';
 import { AuthPayload, SftpEntry } from '../types';
+import { verifyJwt } from '../utils/jwt';
 import { createSshConnection, createSshConnectionViaBastion, createSftpSession, resizeSshTerminal, SshSession } from '../services/ssh.service';
 import { getConnectionCredentials, getConnection } from '../services/connection.service';
 import { resolveDomainCredentials } from '../services/domain.service';
@@ -41,7 +41,7 @@ export function setupSshHandler(io: Server) {
     if (!token) return next(new Error('Authentication required'));
 
     try {
-      const payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+      const payload = verifyJwt<AuthPayload>(token);
       (socket as Socket & { user: AuthPayload }).user = payload;
       next();
     } catch {

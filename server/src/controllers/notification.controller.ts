@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import * as notificationService from '../services/notification.service';
 import { AppError } from '../middleware/error.middleware';
 
@@ -11,9 +11,10 @@ const querySchema = z.object({
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const query = querySchema.parse(req.query);
     const result = await notificationService.listNotifications(
-      req.user!.userId,
+      req.user.userId,
       query.limit,
       query.offset
     );
@@ -26,7 +27,8 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
 
 export async function markRead(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await notificationService.markAsRead(req.params.id as string, req.user!.userId);
+    assertAuthenticated(req);
+    await notificationService.markAsRead(req.params.id as string, req.user.userId);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -35,7 +37,8 @@ export async function markRead(req: AuthRequest, res: Response, next: NextFuncti
 
 export async function markAllRead(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await notificationService.markAllAsRead(req.user!.userId);
+    assertAuthenticated(req);
+    await notificationService.markAllAsRead(req.user.userId);
     res.json({ success: true });
   } catch (err) {
     next(err);
@@ -44,7 +47,8 @@ export async function markAllRead(req: AuthRequest, res: Response, next: NextFun
 
 export async function remove(req: AuthRequest, res: Response, next: NextFunction) {
   try {
-    await notificationService.deleteNotification(req.params.id as string, req.user!.userId);
+    assertAuthenticated(req);
+    await notificationService.deleteNotification(req.params.id as string, req.user.userId);
     res.json({ success: true });
   } catch (err) {
     next(err);

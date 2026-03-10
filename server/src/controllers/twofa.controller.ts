@@ -1,6 +1,6 @@
 import { Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as auditService from '../services/audit.service';
 import * as totpService from '../services/totp.service';
@@ -12,15 +12,16 @@ const codeSchema = z.object({
 
 export async function setup(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const user = await prisma.user.findUnique({
-      where: { id: req.user!.userId },
+      where: { id: req.user.userId },
       select: { email: true, totpEnabled: true },
     });
     if (!user) return next(new AppError('User not found', 404));
     if (user.totpEnabled) return next(new AppError('2FA is already enabled', 400));
 
     const { secret, otpauthUri } = totpService.generateSetup(user.email);
-    await totpService.storeSetupSecret(req.user!.userId, secret);
+    await totpService.storeSetupSecret(req.user.userId, secret);
 
     res.json({ secret, otpauthUri });
   } catch (err) {
@@ -31,9 +32,10 @@ export async function setup(req: AuthRequest, res: Response, next: NextFunction)
 
 export async function verify(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
-    await totpService.verifyAndEnable(req.user!.userId, code);
-    auditService.log({ userId: req.user!.userId, action: 'TOTP_ENABLE', ipAddress: req.ip });
+    await totpService.verifyAndEnable(req.user.userId, code);
+    auditService.log({ userId: req.user.userId, action: 'TOTP_ENABLE', ipAddress: req.ip });
     res.json({ enabled: true });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
@@ -44,9 +46,10 @@ export async function verify(req: AuthRequest, res: Response, next: NextFunction
 
 export async function disable(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
-    await totpService.disable(req.user!.userId, code);
-    auditService.log({ userId: req.user!.userId, action: 'TOTP_DISABLE', ipAddress: req.ip });
+    await totpService.disable(req.user.userId, code);
+    auditService.log({ userId: req.user.userId, action: 'TOTP_DISABLE', ipAddress: req.ip });
     res.json({ enabled: false });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
@@ -57,8 +60,9 @@ export async function disable(req: AuthRequest, res: Response, next: NextFunctio
 
 export async function status(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const user = await prisma.user.findUnique({
-      where: { id: req.user!.userId },
+      where: { id: req.user.userId },
       select: { totpEnabled: true },
     });
     res.json({ enabled: user?.totpEnabled ?? false });

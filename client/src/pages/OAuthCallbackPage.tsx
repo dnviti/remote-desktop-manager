@@ -11,7 +11,6 @@ export default function OAuthCallbackPage() {
   const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const [error, setError] = useState('');
 
-  /* eslint-disable react-hooks/set-state-in-effect -- one-time OAuth callback processing */
   useEffect(() => {
     const accessToken = searchParams.get('accessToken');
     const csrfToken = searchParams.get('csrfToken');
@@ -51,8 +50,8 @@ export default function OAuthCallbackPage() {
       setVaultUnlocked(false);
       navigate('/', { replace: true });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time OAuth callback processing on mount
   }, []);
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   if (error) {
     return (

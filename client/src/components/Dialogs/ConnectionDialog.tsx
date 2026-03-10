@@ -109,7 +109,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setSelectedSecretId(null);
       setDefaultConnectMode('');
     }
-  }, [open, connection]);
+  }, [open, connection, fetchGateways, hasTenant]);
 
   const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC') => {
     setType(newType);
@@ -178,9 +178,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           description: description || undefined,
           enableDrive,
           gatewayId: gatewayId || null,
-          ...(credentialMode === 'keychain'
-            ? { credentialSecretId: selectedSecretId! }
-            : { username, password, ...(domain ? { domain } : {}) }),
+          ...(credentialMode === 'keychain' && selectedSecretId
+            ? { credentialSecretId: selectedSecretId }
+            : credentialMode === 'manual' ? { username, password, ...(domain ? { domain } : {}) } : {}),
           ...(folderId ? { folderId } : {}),
           ...(teamId ? { teamId } : {}),
           ...(type === 'SSH' && Object.keys(sshTerminalConfig).length > 0 && {

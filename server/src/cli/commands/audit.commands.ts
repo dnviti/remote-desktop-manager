@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 import { Command } from 'commander';
 import * as auditService from '../../services/audit.service';
 import { AuditAction } from '../../generated/prisma/client';

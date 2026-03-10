@@ -302,7 +302,7 @@ export default function SecretVersionHistory({
         <DialogActions>
           <Button onClick={() => setRestoreTarget(null)}>Cancel</Button>
           <Button
-            onClick={() => handleRestore(restoreTarget!)}
+            onClick={() => { if (restoreTarget !== null) handleRestore(restoreTarget); }}
             variant="contained"
             disabled={restoring}
           >

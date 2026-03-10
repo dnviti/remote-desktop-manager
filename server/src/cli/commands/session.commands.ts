@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 import { Command } from 'commander';
 import * as sessionService from '../../services/session.service';
 import * as auditService from '../../services/audit.service';

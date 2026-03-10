@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { AuthRequest } from '../types';
+import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as externalShareService from '../services/externalShare.service';
 
@@ -20,10 +20,11 @@ const accessExternalShareSchema = z.object({
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const body = createExternalShareSchema.parse(req.body);
     const secretId = req.params.id as string;
-    const userId = req.user!.userId;
-    const tenantId = req.user!.tenantId;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
 
     const result = await externalShareService.createExternalShare(
       userId,
@@ -41,9 +42,10 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 
 export async function revoke(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const shareId = req.params.shareId as string;
-    const userId = req.user!.userId;
-    const tenantId = req.user!.tenantId;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
 
     await externalShareService.revokeExternalShare(userId, shareId, tenantId);
     res.json({ revoked: true });
@@ -54,9 +56,10 @@ export async function revoke(req: AuthRequest, res: Response, next: NextFunction
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
+    assertAuthenticated(req);
     const secretId = req.params.id as string;
-    const userId = req.user!.userId;
-    const tenantId = req.user!.tenantId;
+    const userId = req.user.userId;
+    const tenantId = req.user.tenantId;
 
     const shares = await externalShareService.listExternalShares(userId, secretId, tenantId);
     res.json(shares);

@@ -1,4 +1,4 @@
-/* eslint-disable no-console */
+ 
 import { Command } from 'commander';
 import { execSync } from 'child_process';
 import { checkDatabase } from '../../services/health.service';

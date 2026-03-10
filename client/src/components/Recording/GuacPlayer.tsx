@@ -55,7 +55,7 @@ export default function GuacPlayer({ recordingId, onError }: GuacPlayerProps) {
 
     // Important: Scale display whenever Guacamole reports a new resolution
     // This fixes the black screen issue by recalculating the scale when the video actually has dimensions
-    (display as any).onresize = scaleToFit;
+    (display as unknown as { onresize: (() => void) | null }).onresize = scaleToFit;
 
     recording.onload = () => {
       setDuration(recording.getDuration() / 1000);

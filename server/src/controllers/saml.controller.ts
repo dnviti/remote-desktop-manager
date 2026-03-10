@@ -1,8 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import passport from 'passport';
-import jwt from 'jsonwebtoken';
 import { config } from '../config';
 import { AuthPayload } from '../types';
+import { verifyJwt } from '../utils/jwt';
 import { AppError } from '../middleware/error.middleware';
 import { OAuthCallbackData, getSamlMetadata } from '../config/passport';
 import { Prisma } from '../lib/prisma';
@@ -26,7 +26,7 @@ export function initiateSamlLink(req: Request, res: Response, next: NextFunction
 
   let payload: AuthPayload;
   try {
-    payload = jwt.verify(token, config.jwtSecret) as AuthPayload;
+    payload = verifyJwt<AuthPayload>(token);
   } catch {
     return next(new AppError('Invalid token', 401));
   }

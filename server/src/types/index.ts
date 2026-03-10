@@ -28,6 +28,51 @@ export interface AuthRequest extends Request {
   teamMembership?: TeamMembershipInfo;
 }
 
+/** AuthRequest after `authenticate` middleware has verified the JWT. */
+export interface AuthenticatedRequest extends Request {
+  user: AuthPayload;
+  teamMembership?: TeamMembershipInfo;
+}
+
+/** AuthRequest where the user is also bound to a tenant. */
+export interface TenantRequest extends Request {
+  user: AuthPayload & { tenantId: string; tenantRole: 'OWNER' | 'ADMIN' | 'MEMBER' };
+  teamMembership?: TeamMembershipInfo;
+}
+
+/**
+ * Narrows `AuthRequest` to `AuthenticatedRequest`.
+ * Call at the top of any handler behind the `authenticate` middleware.
+ */
+export function assertAuthenticated(
+  req: AuthRequest,
+): asserts req is AuthenticatedRequest {
+  if (!req.user) {
+    const err = new Error('Authentication required') as Error & { statusCode: number };
+    err.statusCode = 401;
+    throw err;
+  }
+}
+
+/**
+ * Narrows `AuthRequest` to `TenantRequest`.
+ * Call at the top of any handler that requires a tenant context.
+ */
+export function assertTenantAuthenticated(
+  req: AuthRequest,
+): asserts req is TenantRequest {
+  if (!req.user) {
+    const err = new Error('Authentication required') as Error & { statusCode: number };
+    err.statusCode = 401;
+    throw err;
+  }
+  if (!req.user.tenantId || !req.user.tenantRole) {
+    const err = new Error('Tenant membership required') as Error & { statusCode: number };
+    err.statusCode = 403;
+    throw err;
+  }
+}
+
 export interface EncryptedField {
   ciphertext: string;
   iv: string;
