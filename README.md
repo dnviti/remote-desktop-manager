@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="icons/Arsenale_logo_transparent.png" alt="Arsenale" width="200" />
+  <img src="icons/Arsenale_logo_transparent.png" alt="Arsenale" width="500" />
 </div>
 
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
