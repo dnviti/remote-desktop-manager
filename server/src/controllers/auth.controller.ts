@@ -10,6 +10,7 @@ import { getPublicConfig } from '../services/appConfig.service';
 import type { AuthRequest } from '../types';
 import { assertAuthenticated } from '../types';
 import { passwordSchema } from '../utils/validate';
+import { getClientIp } from '../utils/ip';
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -25,7 +26,7 @@ export async function register(req: Request, res: Response, next: NextFunction) 
   try {
     const { email, password } = registerSchema.parse(req.body);
     const result = await authService.register(email, password);
-    auditService.log({ userId: result.userId, action: 'REGISTER', ipAddress: req.ip });
+    auditService.log({ userId: result.userId, action: 'REGISTER', ipAddress: getClientIp(req) });
     res.status(201).json({
       message: result.message,
       emailVerifyRequired: result.emailVerifyRequired,
@@ -47,7 +48,7 @@ const verifyTotpSchema = z.object({
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = loginSchema.parse(req.body);
-    const result = await authService.login(email, password, req.ip);
+    const result = await authService.login(email, password, getClientIp(req));
 
     if ('mfaSetupRequired' in result && result.mfaSetupRequired) {
       res.json({
@@ -65,7 +66,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         tempToken: result.tempToken,
       });
     } else if (!('requiresMFA' in result) || !result.requiresMFA) {
-      auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: req.ip });
+      auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: getClientIp(req) });
       setRefreshTokenCookie(res, result.refreshToken);
       const csrfToken = setCsrfCookie(res);
       res.json({
@@ -93,7 +94,7 @@ export async function verifyTotp(req: Request, res: Response, next: NextFunction
   try {
     const { tempToken, code } = verifyTotpSchema.parse(req.body);
     const result = await authService.verifyTotp(tempToken, code);
-    auditService.log({ userId: result.user.id, action: 'LOGIN_TOTP', ipAddress: req.ip });
+    auditService.log({ userId: result.user.id, action: 'LOGIN_TOTP', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
@@ -138,7 +139,7 @@ export async function verifySms(req: Request, res: Response, next: NextFunction)
   try {
     const { tempToken, code } = verifySmsSchema.parse(req.body);
     const result = await authService.verifySmsCode(tempToken, code);
-    auditService.log({ userId: result.user.id, action: 'LOGIN_SMS', ipAddress: req.ip });
+    auditService.log({ userId: result.user.id, action: 'LOGIN_SMS', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
@@ -181,7 +182,7 @@ export async function verifyWebAuthn(req: Request, res: Response, next: NextFunc
   try {
     const { tempToken, credential } = verifyWebAuthnSchema.parse(req.body);
     const result = await authService.verifyWebAuthn(tempToken, credential);
-    auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: req.ip });
+    auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
@@ -223,7 +224,7 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
     if (refreshToken) {
       const userId = await authService.logout(refreshToken);
       if (userId) {
-        auditService.log({ userId, action: 'LOGOUT', ipAddress: req.ip });
+        auditService.log({ userId, action: 'LOGOUT', ipAddress: getClientIp(req) });
       }
     }
     clearAuthCookies(res);
@@ -298,8 +299,8 @@ export async function mfaSetupVerify(req: Request, res: Response, next: NextFunc
   try {
     const { tempToken, code } = mfaSetupVerifySchema.parse(req.body);
     const result = await authService.verifyMfaSetupDuringLogin(tempToken, code);
-    auditService.log({ userId: result.user.id, action: 'TOTP_ENABLE', ipAddress: req.ip });
-    auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: req.ip });
+    auditService.log({ userId: result.user.id, action: 'TOTP_ENABLE', ipAddress: getClientIp(req) });
+    auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
@@ -334,7 +335,7 @@ export async function switchTenant(req: Request, res: Response, next: NextFuncti
       action: 'TENANT_SWITCH',
       targetType: 'Tenant',
       targetId: tenantId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     setRefreshTokenCookie(res, result.refreshToken);
@@ -370,7 +371,7 @@ const completeResetSchema = z.object({
 export async function forgotPassword(req: Request, res: Response, next: NextFunction) {
   try {
     const { email } = forgotPasswordSchema.parse(req.body);
-    await passwordResetService.requestPasswordReset(email, req.ip);
+    await passwordResetService.requestPasswordReset(email, getClientIp(req));
     res.json({ message: 'If an account exists with this email, a password reset link has been sent.' });
   } catch (err) {
     if (err instanceof z.ZodError) {
@@ -416,7 +417,7 @@ export async function completePasswordReset(req: Request, res: Response, next: N
     const body = completeResetSchema.parse(req.body);
     const result = await passwordResetService.completePasswordReset({
       ...body,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {

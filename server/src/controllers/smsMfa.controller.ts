@@ -5,6 +5,7 @@ import { AppError } from '../middleware/error.middleware';
 import * as auditService from '../services/audit.service';
 import * as smsOtpService from '../services/smsOtp.service';
 import prisma from '../lib/prisma';
+import { getClientIp } from '../utils/ip';
 
 const setupPhoneSchema = z.object({
   phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Invalid E.164 phone number'),
@@ -32,7 +33,7 @@ export async function verifyPhone(req: AuthRequest, res: Response, next: NextFun
     assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
     await smsOtpService.verifyPhone(req.user.userId, code);
-    auditService.log({ userId: req.user.userId, action: 'SMS_PHONE_VERIFY', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'SMS_PHONE_VERIFY', ipAddress: getClientIp(req) });
     res.json({ verified: true });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
@@ -45,7 +46,7 @@ export async function enable(req: AuthRequest, res: Response, next: NextFunction
   try {
     assertAuthenticated(req);
     await smsOtpService.enableSmsMfa(req.user.userId);
-    auditService.log({ userId: req.user.userId, action: 'SMS_MFA_ENABLE', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'SMS_MFA_ENABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: true });
   } catch (err) {
     if (err instanceof AppError) return next(err);
@@ -76,7 +77,7 @@ export async function disable(req: AuthRequest, res: Response, next: NextFunctio
     assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
     await smsOtpService.disableSmsMfa(req.user.userId, code);
-    auditService.log({ userId: req.user.userId, action: 'SMS_MFA_DISABLE', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'SMS_MFA_DISABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: false });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));

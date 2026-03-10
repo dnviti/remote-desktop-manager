@@ -12,6 +12,7 @@ import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { passwordSchema } from '../utils/validate';
+import { getClientIp } from '../utils/ip';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
 
@@ -75,7 +76,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
             auditService.log({
               userId: stateData.userId, action: 'OAUTH_LINK',
               details: { provider },
-              ipAddress: req.ip,
+              ipAddress: getClientIp(req),
             });
             return res.redirect(`${config.clientUrl}/settings?linked=${provider}`);
           }
@@ -90,7 +91,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
       auditService.log({
         userId: result.user.id, action: 'LOGIN_OAUTH',
         details: { provider },
-        ipAddress: req.ip,
+        ipAddress: getClientIp(req),
       });
 
       setRefreshTokenCookie(res, tokens.refreshToken);
@@ -168,7 +169,7 @@ export async function unlinkOAuth(req: AuthRequest, res: Response, next: NextFun
     auditService.log({
       userId: req.user.userId, action: 'OAUTH_UNLINK',
       details: { provider },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json({ success: true });
   } catch (err) {
@@ -195,7 +196,7 @@ export async function setupVault(req: AuthRequest, res: Response, next: NextFunc
     assertAuthenticated(req);
     const { vaultPassword } = vaultSetupSchema.parse(req.body);
     await oauthService.setupVaultForOAuthUser(req.user.userId, vaultPassword);
-    auditService.log({ userId: req.user.userId, action: 'VAULT_SETUP', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'VAULT_SETUP', ipAddress: getClientIp(req) });
     res.json({ success: true, vaultSetupComplete: true });
   } catch (err) {
     if (err instanceof z.ZodError) {

@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as externalShareService from '../services/externalShare.service';
+import { getClientIp } from '../utils/ip';
 
 // --- Zod schemas ---
 
@@ -84,7 +85,7 @@ export async function access(req: Request, res: Response, next: NextFunction) {
   try {
     const token = req.params.token as string;
     const body = accessExternalShareSchema.parse(req.body);
-    const ipAddress = req.ip;
+    const ipAddress = getClientIp(req);
 
     const result = await externalShareService.accessExternalShare(
       token,

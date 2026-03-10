@@ -6,6 +6,7 @@ import * as secretService from '../services/secret.service';
 import * as secretSharingService from '../services/secretSharing.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { getClientIp } from '../utils/ip';
 
 // --- Zod schemas ---
 
@@ -137,7 +138,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
       targetType: 'VaultSecret',
       targetId: result.id,
       details: { name: data.name, type: data.type, scope: data.scope },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.status(201).json(result);
@@ -183,7 +184,7 @@ export async function getOne(req: AuthRequest, res: Response, next: NextFunction
       action: 'SECRET_READ',
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -212,7 +213,7 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -232,7 +233,7 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
       action: 'SECRET_DELETE',
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -277,7 +278,7 @@ export async function restoreVersion(req: AuthRequest, res: Response, next: Next
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { restoredVersion: version },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -306,7 +307,7 @@ export async function getVersionData(req: AuthRequest, res: Response, next: Next
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { version },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -335,7 +336,7 @@ export async function share(req: AuthRequest, res: Response, next: NextFunction)
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { sharedWith: userId || email, permission },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.status(201).json(result);
@@ -361,7 +362,7 @@ export async function unshare(req: AuthRequest, res: Response, next: NextFunctio
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { targetUserId: req.params.userId as string },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -388,7 +389,7 @@ export async function updateSharePermission(req: AuthRequest, res: Response, nex
       targetType: 'VaultSecret',
       targetId: req.params.id as string,
       details: { targetUserId: req.params.userId as string, permission },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -429,7 +430,7 @@ export async function initTenantVault(req: AuthRequest, res: Response, next: Nex
       action: 'TENANT_VAULT_INIT',
       targetType: 'Tenant',
       targetId: req.user.tenantId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({ initialized: true });
@@ -459,7 +460,7 @@ export async function distributeTenantKey(req: AuthRequest, res: Response, next:
       targetType: 'User',
       targetId: targetUserId,
       details: { tenantId: req.user.tenantId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({ distributed: true });

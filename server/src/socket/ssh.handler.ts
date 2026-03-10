@@ -15,6 +15,7 @@ import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
 import { AsciicastWriter, startRecording, completeRecording, failRecording, buildRecordingPath } from '../services/recording.service';
 import { logger } from '../utils/logger';
+import { getSocketClientIp } from '../utils/ip';
 
 interface ActiveTransfer {
   stream: NodeJS.ReadableStream | NodeJS.WritableStream;
@@ -56,8 +57,7 @@ export function setupSshHandler(io: Server) {
     let sftpSession: SFTPWrapper | null = null;
     const activeTransfers = new Map<string, ActiveTransfer>();
 
-    const clientIp = (socket.handshake.headers['x-forwarded-for'] as string | undefined)
-      || socket.handshake.address;
+    const clientIp = getSocketClientIp(socket);
     let lastActivityUpdate = 0;
     let recordingWriter: AsciicastWriter | null = null;
     let recordingId: string | null = null;

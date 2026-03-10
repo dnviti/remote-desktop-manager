@@ -5,6 +5,7 @@ import { AppError } from '../middleware/error.middleware';
 import * as auditService from '../services/audit.service';
 import * as totpService from '../services/totp.service';
 import prisma from '../lib/prisma';
+import { getClientIp } from '../utils/ip';
 
 const codeSchema = z.object({
   code: z.string().length(6).regex(/^\d{6}$/),
@@ -35,7 +36,7 @@ export async function verify(req: AuthRequest, res: Response, next: NextFunction
     assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
     await totpService.verifyAndEnable(req.user.userId, code);
-    auditService.log({ userId: req.user.userId, action: 'TOTP_ENABLE', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'TOTP_ENABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: true });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
@@ -49,7 +50,7 @@ export async function disable(req: AuthRequest, res: Response, next: NextFunctio
     assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
     await totpService.disable(req.user.userId, code);
-    auditService.log({ userId: req.user.userId, action: 'TOTP_DISABLE', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'TOTP_DISABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: false });
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));

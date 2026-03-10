@@ -4,6 +4,7 @@ import { AuthRequest, assertAuthenticated } from '../types';
 import * as vaultService from '../services/vault.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { getClientIp } from '../utils/ip';
 
 const unlockSchema = z.object({ password: z.string() });
 const codeSchema = z.object({ code: z.string() });
@@ -21,7 +22,7 @@ export async function unlock(req: AuthRequest, res: Response, next: NextFunction
     assertAuthenticated(req);
     const { password } = unlockSchema.parse(req.body);
     const result = await vaultService.unlockVault(req.user.userId, password);
-    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req) });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -32,7 +33,7 @@ export async function unlock(req: AuthRequest, res: Response, next: NextFunction
 export function lock(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
   const result = vaultService.lockVault(req.user.userId);
-  auditService.log({ userId: req.user.userId, action: 'VAULT_LOCK', ipAddress: req.ip });
+  auditService.log({ userId: req.user.userId, action: 'VAULT_LOCK', ipAddress: getClientIp(req) });
   res.json(result);
 }
 
@@ -51,7 +52,7 @@ export async function unlockWithTotp(req: AuthRequest, res: Response, next: Next
     assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
     const result = await vaultService.unlockVaultWithTotp(req.user.userId, code);
-    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: req.ip, details: { method: 'totp' } });
+    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req), details: { method: 'totp' } });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -74,7 +75,7 @@ export async function unlockWithWebAuthn(req: AuthRequest, res: Response, next: 
     assertAuthenticated(req);
     const { credential } = credentialSchema.parse(req.body);
     const result = await vaultService.unlockVaultWithWebAuthn(req.user.userId, credential);
-    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: req.ip, details: { method: 'webauthn' } });
+    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req), details: { method: 'webauthn' } });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -97,7 +98,7 @@ export async function unlockWithSms(req: AuthRequest, res: Response, next: NextF
     assertAuthenticated(req);
     const { code } = codeSchema.parse(req.body);
     const result = await vaultService.unlockVaultWithSms(req.user.userId, code);
-    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: req.ip, details: { method: 'sms' } });
+    auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req), details: { method: 'sms' } });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -139,7 +140,7 @@ export async function revealPassword(req: AuthRequest, res: Response, next: Next
     auditService.log({
       userId: req.user.userId, action: 'PASSWORD_REVEAL',
       targetType: 'Connection', targetId: connectionId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {

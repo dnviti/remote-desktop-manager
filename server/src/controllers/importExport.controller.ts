@@ -5,6 +5,7 @@ import * as importExportService from '../services/importExport.service';
 import * as auditService from '../services/audit.service';
 import { z } from 'zod';
 import multer from 'multer';
+import { getClientIp } from '../utils/ip';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -39,7 +40,7 @@ export async function exportConnections(req: AuthRequest, res: Response, next: N
         includeCredentials: data.includeCredentials,
         connectionCount: data.connectionIds?.length || 1,
       },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     const contentType = data.format === 'JSON' ? 'application/json' : 'text/csv';
@@ -114,7 +115,7 @@ export async function importConnections(req: AuthRequest, res: Response, next: N
         skipped: result.skipped,
         failed: result.failed,
       },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.status(200).json(result);

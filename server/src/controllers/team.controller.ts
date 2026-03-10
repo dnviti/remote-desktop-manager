@@ -4,6 +4,7 @@ import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../
 import * as teamService from '../services/team.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { getClientIp } from '../utils/ip';
 
 const createTeamSchema = z.object({
   name: z.string().min(2).max(100),
@@ -38,7 +39,7 @@ export async function createTeam(req: AuthRequest, res: Response, next: NextFunc
       userId: req.user.userId, action: 'TEAM_CREATE',
       targetType: 'Team', targetId: result.id,
       details: { name },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -77,7 +78,7 @@ export async function updateTeam(req: AuthRequest, res: Response, next: NextFunc
       userId: req.user.userId, action: 'TEAM_UPDATE',
       targetType: 'Team', targetId: teamId,
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -94,7 +95,7 @@ export async function deleteTeam(req: AuthRequest, res: Response, next: NextFunc
     auditService.log({
       userId: req.user.userId, action: 'TEAM_DELETE',
       targetType: 'Team', targetId: teamId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -121,7 +122,7 @@ export async function addMember(req: AuthRequest, res: Response, next: NextFunct
       userId: req.user.userId, action: 'TEAM_ADD_MEMBER',
       targetType: 'TeamMember', targetId: userId,
       details: { teamId, role },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -141,7 +142,7 @@ export async function updateMemberRole(req: AuthRequest, res: Response, next: Ne
       userId: req.user.userId, action: 'TEAM_UPDATE_MEMBER_ROLE',
       targetType: 'TeamMember', targetId: targetUserId,
       details: { teamId, newRole: role },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -160,7 +161,7 @@ export async function removeMember(req: AuthRequest, res: Response, next: NextFu
       userId: req.user.userId, action: 'TEAM_REMOVE_MEMBER',
       targetType: 'TeamMember', targetId: targetUserId,
       details: { teamId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {

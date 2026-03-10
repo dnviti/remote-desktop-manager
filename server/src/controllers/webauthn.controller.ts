@@ -4,6 +4,7 @@ import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as auditService from '../services/audit.service';
 import * as webauthnService from '../services/webauthn.service';
+import { getClientIp } from '../utils/ip';
 
 const registerSchema = z.object({
   credential: z.record(z.string(), z.unknown()),
@@ -40,7 +41,7 @@ export async function register(req: AuthRequest, res: Response, next: NextFuncti
       targetType: 'WebAuthnCredential',
       targetId: result.id,
       details: { friendlyName: result.friendlyName, deviceType: result.deviceType },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -70,7 +71,7 @@ export async function removeCredential(req: AuthRequest, res: Response, next: Ne
       action: 'WEBAUTHN_REMOVE',
       targetType: 'WebAuthnCredential',
       targetId: credentialId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json({ removed: true });
   } catch (err) {

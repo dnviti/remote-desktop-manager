@@ -52,7 +52,7 @@ app.use(helmet({
   frameguard: { action: 'deny' },
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }));
-app.set('trust proxy', 1);
+if (config.trustProxy !== false) app.set('trust proxy', config.trustProxy);
 app.use(cors({ origin: [config.clientUrl], credentials: true }));
 app.use(express.json({ limit: '500kb' }));
 app.use(cookieParser());

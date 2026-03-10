@@ -4,6 +4,7 @@ import { AuthRequest, assertAuthenticated } from '../types';
 import * as sharingService from '../services/sharing.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { getClientIp } from '../utils/ip';
 
 const shareSchema = z.object({
   email: z.string().email().optional(),
@@ -33,7 +34,7 @@ export async function share(req: AuthRequest, res: Response, next: NextFunction)
       userId: req.user.userId, action: 'SHARE_CONNECTION',
       targetType: 'Connection', targetId: req.params.id as string,
       details: { sharedWith: userId || email, permission },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -68,7 +69,7 @@ export async function batchShare(req: AuthRequest, res: Response, next: NextFunc
       userId: req.user.userId, action: 'BATCH_SHARE',
       targetType: 'Connection',
       details: { connectionCount: connectionIds.length, shared: result.shared, failed: result.failed, permission },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(200).json(result);
   } catch (err) {
@@ -90,7 +91,7 @@ export async function unshare(req: AuthRequest, res: Response, next: NextFunctio
       userId: req.user.userId, action: 'UNSHARE_CONNECTION',
       targetType: 'Connection', targetId: req.params.id as string,
       details: { targetUserId: req.params.userId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -113,7 +114,7 @@ export async function updatePermission(req: AuthRequest, res: Response, next: Ne
       userId: req.user.userId, action: 'UPDATE_SHARE_PERMISSION',
       targetType: 'Connection', targetId: req.params.id as string,
       details: { targetUserId: req.params.userId, permission },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {

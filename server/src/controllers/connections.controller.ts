@@ -4,6 +4,7 @@ import { AuthRequest, assertAuthenticated } from '../types';
 import * as connectionService from '../services/connection.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { getClientIp } from '../utils/ip';
 
 const sshTerminalConfigSchema = z.object({
   fontFamily: z.string().optional(),
@@ -104,7 +105,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
       userId: req.user.userId, action: 'CREATE_CONNECTION',
       targetType: 'Connection', targetId: result.id,
       details: { name: data.name, type: data.type, host: data.host, teamId: data.teamId ?? null },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -127,7 +128,7 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
       userId: req.user.userId, action: 'UPDATE_CONNECTION',
       targetType: 'Connection', targetId: req.params.id as string,
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -143,7 +144,7 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
     auditService.log({
       userId: req.user.userId, action: 'DELETE_CONNECTION',
       targetType: 'Connection', targetId: req.params.id as string,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -182,7 +183,7 @@ export async function toggleFavorite(req: AuthRequest, res: Response, next: Next
       targetType: 'Connection',
       targetId: req.params.id as string,
       details: { isFavorite: result.isFavorite },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);

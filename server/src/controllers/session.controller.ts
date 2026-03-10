@@ -18,6 +18,7 @@ import { forceDisconnectSession } from '../services/sessionCleanup.service';
 import { config } from '../config';
 import { startRecording, buildRecordingPath } from '../services/recording.service';
 import { logger } from '../utils/logger';
+import { getClientIp } from '../utils/ip';
 
 const sessionSchema = z.object({
   connectionId: z.string().uuid(),
@@ -192,7 +193,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       metadata: {
         userId: req.user.userId,
         connectionId,
-        ipAddress: req.ip ?? undefined,
+        ipAddress: getClientIp(req) ?? undefined,
         recordingId: rdpRecordingId,
       },
     });
@@ -209,7 +210,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       instanceId: selectedInstanceId,
       protocol: 'RDP',
       guacToken: token,
-      ipAddress: req.ip ?? undefined,
+      ipAddress: getClientIp(req) ?? undefined,
       metadata: { host: conn.host, port: conn.port, credentialSource },
       routingDecision,
     });
@@ -230,7 +231,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
         error: errorMessage,
         ...(connHost ? { host: connHost, port: connPort } : {}),
       },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       gatewayId: gatewayId ?? undefined,
     });
 
@@ -359,7 +360,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       metadata: {
         userId: req.user.userId,
         connectionId,
-        ipAddress: req.ip ?? undefined,
+        ipAddress: getClientIp(req) ?? undefined,
         recordingId: vncRecordingId,
       },
     });
@@ -373,7 +374,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       instanceId: selectedInstanceId,
       protocol: 'VNC',
       guacToken: token,
-      ipAddress: req.ip ?? undefined,
+      ipAddress: getClientIp(req) ?? undefined,
       metadata: { host: conn.host, port: conn.port },
       routingDecision,
     });
@@ -394,7 +395,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
         error: errorMessage,
         ...(connHost ? { host: connHost, port: connPort } : {}),
       },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       gatewayId: gatewayId ?? undefined,
     });
 
@@ -542,7 +543,7 @@ export async function terminateSession(req: AuthRequest, res: Response, next: Ne
         protocol: session.protocol,
         connectionId: session.connectionId,
       },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({ ok: true });

@@ -7,6 +7,7 @@ import * as identityVerification from '../services/identityVerification.service'
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import { passwordSchema } from '../utils/validate';
+import { getClientIp } from '../utils/ip';
 
 const updateProfileSchema = z.object({
   username: z.string().min(1).max(50).optional(),
@@ -112,7 +113,7 @@ export async function updateProfile(req: AuthRequest, res: Response, next: NextF
     auditService.log({
       userId: req.user.userId, action: 'PROFILE_UPDATE',
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -128,7 +129,7 @@ export async function changePassword(req: AuthRequest, res: Response, next: Next
     const result = await userService.changePassword(
       req.user.userId, oldPassword, newPassword, verificationId,
     );
-    auditService.log({ userId: req.user.userId, action: 'PASSWORD_CHANGE', ipAddress: req.ip });
+    auditService.log({ userId: req.user.userId, action: 'PASSWORD_CHANGE', ipAddress: getClientIp(req) });
     res.json(result);
   } catch (err) {
     if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
@@ -156,7 +157,7 @@ export async function confirmEmailChange(req: AuthRequest, res: Response, next: 
     auditService.log({
       userId: req.user.userId, action: 'PROFILE_EMAIL_CHANGE',
       details: { newEmail: result.email },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -282,7 +283,7 @@ export async function updateDomainProfile(req: AuthRequest, res: Response, next:
     auditService.log({
       userId: req.user.userId, action: 'DOMAIN_PROFILE_UPDATE',
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -297,7 +298,7 @@ export async function clearDomainProfile(req: AuthRequest, res: Response, next: 
     await domainService.clearDomainProfile(req.user.userId);
     auditService.log({
       userId: req.user.userId, action: 'DOMAIN_PROFILE_CLEAR',
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json({ success: true });
   } catch (err) {

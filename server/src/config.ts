@@ -190,6 +190,18 @@ export const config = {
   guacencRecordingPath: process.env.GUACENC_RECORDING_PATH || '/recordings',
   // IP Geolocation (MaxMind GeoLite2)
   geoipDbPath: process.env.GEOIP_DB_PATH ? path.resolve(process.env.GEOIP_DB_PATH) : '',
+  // Reverse proxy trust depth for Express.
+  // Controls how `req.ip` is resolved from X-Forwarded-For.
+  // false = disabled, true = trust all, number = hop count to trust.
+  // Example: Client → Caddy → nginx → Express = 2 hops.
+  trustProxy: (() => {
+    const val = process.env.TRUST_PROXY;
+    if (val === undefined || val === '') return false;
+    if (val === 'true') return true;
+    if (val === 'false') return false;
+    const num = parseInt(val, 10);
+    return Number.isNaN(num) ? val : num;   // string = subnet, number = hop count
+  })() as boolean | number | string,
   webauthn: {
     rpId: process.env.WEBAUTHN_RP_ID || 'localhost',
     rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',

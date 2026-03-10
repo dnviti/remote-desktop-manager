@@ -5,6 +5,7 @@ import { sendEmail, getEmailStatus } from '../services/email';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import * as appConfigService from '../services/appConfig.service';
+import { getClientIp } from '../utils/ip';
 
 const testEmailSchema = z.object({
   to: z.string().email(),
@@ -52,7 +53,7 @@ export async function sendTestEmail(
       userId: req.user.userId,
       action: 'EMAIL_TEST_SEND',
       details: { to, provider: status.provider },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({ success: true, message: 'Test email sent successfully' });
@@ -96,7 +97,7 @@ export async function setSelfSignup(
       userId: req.user.userId,
       action: 'APP_CONFIG_UPDATE',
       details: { key: 'selfSignupEnabled', value: enabled },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({ selfSignupEnabled: enabled });

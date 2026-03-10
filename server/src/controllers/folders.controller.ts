@@ -4,6 +4,7 @@ import { AuthRequest, assertAuthenticated } from '../types';
 import * as folderService from '../services/folder.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { getClientIp } from '../utils/ip';
 
 const createSchema = z.object({
   name: z.string().min(1),
@@ -25,7 +26,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
       userId: req.user.userId, action: 'CREATE_FOLDER',
       targetType: 'Folder', targetId: result.id,
       details: { name, teamId: teamId ?? null },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -43,7 +44,7 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
       userId: req.user.userId, action: 'UPDATE_FOLDER',
       targetType: 'Folder', targetId: req.params.id as string,
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -59,7 +60,7 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
     auditService.log({
       userId: req.user.userId, action: 'DELETE_FOLDER',
       targetType: 'Folder', targetId: req.params.id as string,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {

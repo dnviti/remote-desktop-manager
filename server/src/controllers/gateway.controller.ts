@@ -15,6 +15,7 @@ import {
   emitScalingForGateway,
   emitGatewayData,
 } from '../services/gatewayMonitor.service';
+import { getClientIp } from '../utils/ip';
 
 const createSchema = z.object({
   name: z.string().min(1).max(100),
@@ -150,7 +151,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
       targetType: 'Gateway',
       targetId: result.id,
       details: { name: data.name, type: data.type, isDefault: data.isDefault ?? false },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     // Note: for MANAGED_SSH gateways the SSH key is baked into instances
@@ -179,7 +180,7 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
       targetType: 'Gateway',
       targetId: gatewayId,
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -211,7 +212,7 @@ export async function remove(req: AuthRequest, res: Response, next: NextFunction
       details: result.connectionCount > 0
         ? { force: true, disconnectedConnections: result.connectionCount }
         : undefined,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json({ deleted: true });
   } catch (err) {
@@ -242,7 +243,7 @@ export async function generateSshKeyPair(req: AuthRequest, res: Response, next: 
       action: 'SSH_KEY_GENERATE',
       targetType: 'SshKeyPair',
       targetId: result.id,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -272,7 +273,7 @@ export async function rotateSshKeyPair(req: AuthRequest, res: Response, next: Ne
       action: 'SSH_KEY_ROTATE',
       targetType: 'SshKeyPair',
       targetId: result.id,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     // Best-effort auto-push rotated key to all managed gateways
@@ -285,7 +286,7 @@ export async function rotateSshKeyPair(req: AuthRequest, res: Response, next: Ne
           targetType: 'Gateway',
           targetId: pr.gatewayId,
           details: { auto: true, trigger: 'rotate' },
-          ipAddress: req.ip,
+          ipAddress: getClientIp(req),
         });
       }
     }
@@ -311,7 +312,7 @@ export async function pushKey(req: AuthRequest, res: Response, next: NextFunctio
       action: 'SSH_KEY_PUSH',
       targetType: 'Gateway',
       targetId: gatewayId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
       details: { instances: results.length, succeeded, failed },
     });
     res.json({ ok: failed === 0, instances: results });
@@ -356,7 +357,7 @@ export async function updateRotationPolicy(req: AuthRequest, res: Response, next
       targetType: 'SshKeyPair',
       targetId: result.id,
       details: { policyUpdate: data },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);
@@ -502,7 +503,7 @@ export async function restartInstance(req: AuthRequest, res: Response, next: Nex
       targetType: 'ManagedGatewayInstance',
       targetId: instanceId,
       details: { gatewayId, containerId: instance.containerId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     // Push real-time instance status update
@@ -540,7 +541,7 @@ export async function getInstanceLogs(req: AuthRequest, res: Response, next: Nex
       targetType: 'ManagedGatewayInstance',
       targetId: instanceId,
       details: { gatewayId, containerId: instance.containerId, tail },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({
@@ -629,7 +630,7 @@ export async function updateScalingConfig(req: AuthRequest, res: Response, next:
       targetType: 'Gateway',
       targetId: gatewayId,
       details: { scalingConfig: data },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     // Push real-time updates for config change
@@ -673,7 +674,7 @@ export async function createTemplate(req: AuthRequest, res: Response, next: Next
       targetType: 'GatewayTemplate',
       targetId: result.id,
       details: { name: result.name, type: result.type },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -699,7 +700,7 @@ export async function updateTemplate(req: AuthRequest, res: Response, next: Next
       targetType: 'GatewayTemplate',
       targetId: templateId,
       details: data,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -718,7 +719,7 @@ export async function deleteTemplate(req: AuthRequest, res: Response, next: Next
       action: 'GATEWAY_TEMPLATE_DELETE',
       targetType: 'GatewayTemplate',
       targetId: templateId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json({ deleted: true });
   } catch (err) {
@@ -741,7 +742,7 @@ export async function deployFromTemplate(req: AuthRequest, res: Response, next: 
       targetType: 'GatewayTemplate',
       targetId: templateId,
       details: { gatewayId: result.id, gatewayName: result.name },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {

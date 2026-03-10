@@ -9,6 +9,7 @@ import prisma from '../lib/prisma';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { logger } from '../utils/logger';
 import { passwordSchema } from '../utils/validate';
+import { getClientIp } from '../utils/ip';
 
 const createTenantSchema = z.object({
   name: z.string().min(2).max(100),
@@ -69,7 +70,7 @@ export async function createTenant(req: AuthRequest, res: Response, next: NextFu
       userId: req.user.userId, action: 'TENANT_CREATE',
       targetType: 'Tenant', targetId: tenant.id,
       details: { name },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     setRefreshTokenCookie(res, tokens.refreshToken);
     const csrfToken = setCsrfCookie(res);
@@ -106,14 +107,14 @@ export async function updateTenant(req: AuthRequest, res: Response, next: NextFu
         userId: req.user.userId, action: 'TENANT_MFA_POLICY_UPDATE',
         targetType: 'Tenant', targetId: tenantId,
         details: { mfaRequired: data.mfaRequired },
-        ipAddress: req.ip,
+        ipAddress: getClientIp(req),
       });
     }
     auditService.log({
       userId: req.user.userId, action: 'TENANT_UPDATE',
       targetType: 'Tenant', targetId: tenantId,
       details: { fields: Object.keys(data) },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -130,7 +131,7 @@ export async function deleteTenant(req: AuthRequest, res: Response, next: NextFu
     auditService.log({
       userId: req.user.userId, action: 'TENANT_DELETE',
       targetType: 'Tenant', targetId: tenantId,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -173,7 +174,7 @@ export async function inviteUser(req: AuthRequest, res: Response, next: NextFunc
       userId: req.user.userId, action: 'TENANT_INVITE_USER',
       targetType: 'Tenant', targetId: tenantId,
       details: { invitedEmail: email, role },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.status(201).json(result);
   } catch (err) {
@@ -193,7 +194,7 @@ export async function updateUserRole(req: AuthRequest, res: Response, next: Next
       userId: req.user.userId, action: 'TENANT_UPDATE_USER_ROLE',
       targetType: 'User', targetId: targetUserId,
       details: { newRole: role, tenantId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -212,7 +213,7 @@ export async function removeUser(req: AuthRequest, res: Response, next: NextFunc
       userId: req.user.userId, action: 'TENANT_REMOVE_USER',
       targetType: 'User', targetId: targetUserId,
       details: { tenantId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
@@ -255,7 +256,7 @@ export async function createUser(req: AuthRequest, res: Response, next: NextFunc
       targetType: 'User',
       targetId: result.user.id,
       details: { email: data.email, role: data.role, tenantId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.status(201).json(result);
@@ -279,7 +280,7 @@ export async function toggleUserEnabled(req: AuthRequest, res: Response, next: N
       targetType: 'User',
       targetId: targetUserId,
       details: { enabled, tenantId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(result);

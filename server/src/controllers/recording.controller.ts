@@ -7,6 +7,7 @@ import * as recordingService from '../services/recording.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
+import { getClientIp } from '../utils/ip';
 
 const listQuerySchema = z.object({
   connectionId: z.string().uuid().optional(),
@@ -44,7 +45,7 @@ export async function getRecording(req: AuthRequest, res: Response, next: NextFu
       targetType: 'Recording',
       targetId: recording.id,
       details: { protocol: recording.protocol, connectionId: recording.connectionId },
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json(recording);
@@ -199,7 +200,7 @@ export async function exportVideo(req: AuthRequest, res: Response, next: NextFun
       action: 'RECORDING_EXPORT_VIDEO',
       targetType: 'Recording',
       targetId: req.params.id as string,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
   } catch (err) {
     next(err);
@@ -217,7 +218,7 @@ export async function deleteRecording(req: AuthRequest, res: Response, next: Nex
       action: 'RECORDING_DELETE',
       targetType: 'Recording',
       targetId: req.params.id as string,
-      ipAddress: req.ip,
+      ipAddress: getClientIp(req),
     });
 
     res.json({ ok: true });

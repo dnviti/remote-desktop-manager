@@ -81,12 +81,18 @@ export default function IpGeoCell({ ipAddress, geoCountry, geoCity, onGeoIpClick
   const code = getCountryCode(geoCountry);
   const flag = countryFlag(code);
   const geoLabel = [geoCity, geoCountry].filter(Boolean).join(', ');
-  const isExternal = !isPrivateIp(ipAddress);
+
+  // Extract the public IPv4 for display and GeoIP lookup.
+  // The raw value might be a single IP or comma-separated (legacy entries).
+  const publicIp = extractPublicIPv4(ipAddress);
+  // Display the public IPv4 when available, otherwise show the raw value.
+  const displayIp = publicIp ?? ipAddress;
+  const isExternal = !!publicIp;
 
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onGeoIpClick && isExternal) {
-      onGeoIpClick(ipAddress);
+    if (onGeoIpClick && publicIp) {
+      onGeoIpClick(publicIp);
     }
   };
 
@@ -116,19 +122,19 @@ export default function IpGeoCell({ ipAddress, geoCountry, geoCity, onGeoIpClick
               p: 0,
             }}
           >
-            {ipAddress}
+            {displayIp}
             <GlobeIcon sx={{ fontSize: 14, opacity: 0.6 }} />
           </Link>
         </Tooltip>
       ) : isExternal ? (
-        <Tooltip title={geoLabel ? `${geoLabel}` : ipAddress}>
+        <Tooltip title={geoLabel ? `${geoLabel}` : displayIp}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
-            {ipAddress}
+            {displayIp}
             <GlobeIcon sx={{ fontSize: 14, opacity: 0.4 }} />
           </span>
         </Tooltip>
       ) : (
-        <span>{ipAddress}</span>
+        <span>{displayIp}</span>
       )}
       {geoLabel && (
         <Typography
@@ -144,21 +150,42 @@ export default function IpGeoCell({ ipAddress, geoCountry, geoCity, onGeoIpClick
 }
 
 /**
- * Check if an IP address is private/reserved (not externally routable).
+ * Check if a single IP address is private/reserved (not externally routable).
  */
 function isPrivateIp(ip: string): boolean {
+  const clean = ip.startsWith('::ffff:') ? ip.slice(7) : ip;
   // IPv4 private ranges
-  if (ip.startsWith('10.') || ip.startsWith('192.168.') || ip === '127.0.0.1' || ip === '::1') {
+  if (clean.startsWith('10.') || clean.startsWith('192.168.') || clean === '127.0.0.1' || clean === '::1') {
     return true;
   }
   // 172.16.0.0 - 172.31.255.255
-  if (ip.startsWith('172.')) {
-    const second = parseInt(ip.split('.')[1], 10);
+  if (clean.startsWith('172.')) {
+    const second = parseInt(clean.split('.')[1], 10);
     if (second >= 16 && second <= 31) return true;
   }
-  // localhost
-  if (ip === 'localhost' || ip === '::ffff:127.0.0.1') return true;
+  // localhost / IPv6 link-local
+  if (clean === 'localhost' || clean.startsWith('fe80:') || clean.startsWith('fd') || clean.startsWith('fc')) return true;
   return false;
+}
+
+/**
+ * Check if a string looks like a valid IPv4 address (not IPv6).
+ */
+function isIPv4(ip: string): boolean {
+  return /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(ip);
+}
+
+/**
+ * From a raw IP string (which may contain multiple comma-separated IPs),
+ * extract the first public IPv4 address suitable for GeoIP lookup.
+ * Returns null if no public IPv4 is found.
+ */
+function extractPublicIPv4(raw: string): string | null {
+  const parts = raw.split(',').map((s) => {
+    const trimmed = s.trim();
+    return trimmed.startsWith('::ffff:') ? trimmed.slice(7) : trimmed;
+  });
+  return parts.find((p) => isIPv4(p) && !isPrivateIp(p)) ?? null;
 }
 
 /**

@@ -11,6 +11,7 @@ import * as auditService from '../services/audit.service';
 import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
+import { getClientIp } from '../utils/ip';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.saml.enabled) {
@@ -79,7 +80,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
               userId: stateData.userId,
               action: 'OAUTH_LINK',
               details: { provider: 'saml' },
-              ipAddress: req.ip,
+              ipAddress: getClientIp(req),
             });
             return res.redirect(`${config.clientUrl}/settings?linked=saml`);
           }
@@ -97,7 +98,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
         userId: result.user.id,
         action: 'LOGIN_OAUTH',
         details: { provider: 'saml' },
-        ipAddress: req.ip,
+        ipAddress: getClientIp(req),
       });
 
       setRefreshTokenCookie(res, tokens.refreshToken);
