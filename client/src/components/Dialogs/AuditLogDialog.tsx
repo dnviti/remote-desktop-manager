@@ -27,9 +27,10 @@ const SlideUp = forwardRef(function SlideUp(
 interface AuditLogDialogProps {
   open: boolean;
   onClose: () => void;
+  onGeoIpClick?: (ip: string) => void;
 }
 
-export default function AuditLogDialog({ open, onClose }: AuditLogDialogProps) {
+export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLogDialogProps) {
   const auditLogAction = useUiPreferencesStore((s) => s.auditLogAction);
   const auditLogSearch = useUiPreferencesStore((s) => s.auditLogSearch);
   const auditLogTargetType = useUiPreferencesStore((s) => s.auditLogTargetType);
@@ -327,7 +328,7 @@ export default function AuditLogDialog({ open, onClose }: AuditLogDialogProps) {
                               : '\u2014'}
                           </TableCell>
                           <TableCell>
-                            <IpGeoCell ipAddress={log.ipAddress} geoCountry={log.geoCountry} geoCity={log.geoCity} />
+                            <IpGeoCell ipAddress={log.ipAddress} geoCountry={log.geoCountry} geoCity={log.geoCity} onGeoIpClick={onGeoIpClick} />
                           </TableCell>
                           <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {formatDetails(log.details)}

@@ -19,6 +19,70 @@
   SEZIONE G — IP ADDRESS INTELLIGENCE
 ================================================================================
 
+------------------------------------------------------------------------------
+[~] GEO-177 — Popup interno per info GeoIP con mappa OpenStreetMap
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Le funzioni di lookup GeoIP attuali reindirizzano l'utente a un servizio
+  esterno (ipinfo.io). Questo task prevede di non far uscire l'utente
+  dall'applicazione usando un'API interna per ottenere le informazioni e
+  mostrando un popup dedicato direttamente dentro Arsenale, inclusa una
+  mappa visibile basata su OpenStreetMap tramite le coordinate recuperate.
+
+  DETTAGLI TECNICI:
+  - Creare `GeoIpDialog` nel frontend conformemente alle linee guida (MUI
+    Dialog in fullscreen overlay su `MainLayout`).
+  - Il dialog deve mostrare i dati principali (citta', nazione) e integrare
+    una visualizzazione mappa (es. Leaflet) con tiles OpenStreetMap.
+  - Sostituire il link a ipinfo.io in `client/src/components/Audit/IpGeoCell.tsx`
+    con l'apertura del nuovo dialog.
+  - Creare un nuovo endpoint backend `GET /api/system/geoip/:ip` (o simile)
+    che restituisca i risultati integrali (incluse lat/lng) tramite
+    `geoip.service.ts` per evitare di esporre la logica al frontend.
+
+  File coinvolti:
+    CREARE:     client/src/components/Audit/GeoIpDialog.tsx
+    CREARE:     server/src/routes/geoip.routes.ts
+    CREARE:     server/src/controllers/geoip.controller.ts
+    MODIFICARE: client/src/components/Audit/IpGeoCell.tsx
+    MODIFICARE: server/src/app.ts
+    MODIFICARE: client/src/components/MainLayout.tsx
+
+
+------------------------------------------------------------------------------
+[~] GEO-107 — Audit log geolocation map visualization
+------------------------------------------------------------------------------
+  Priorita: BASSA
+  Dipendenze: GEO-106
+
+  DESCRIZIONE:
+  Interactive world map in the Tenant Audit Log showing geographic distribution
+  of login/session events. Markers sized by event count, color-coded by action
+  type. Click a marker to filter the table by that location. Toggle between
+  list and map views.
+
+  DETTAGLI TECNICI:
+  1) npm dependency: react-simple-maps (SVG-based, works offline, no tile server
+     — ideal for self-hosted deployments)
+  2) New component: client/src/components/Audit/AuditGeoMap.tsx — ComposableMap
+     with Geographies (world) and Marker circles, tooltips on hover (city,
+     country, event count, last activity)
+  3) New API endpoint: GET /api/audit/tenant/geo-summary (admin-only) — returns
+     aggregated { points: [{ lat, lng, country, city, count, lastSeen }] },
+     filtered by tenant users, default last 30 days
+  4) TenantAuditLogSection: add ToggleButtonGroup (List/Map icons) above table,
+     persist view mode in uiPreferencesStore (tenantAuditLogViewMode)
+  5) Click-to-filter: clicking a marker sets country filter and switches to
+     table view showing events from that location
+  6) Color-coding: LOGIN events green, LOGIN_FAILURE red, SESSION_START blue
+
+  NOTE:
+  - react-simple-maps bundles a TopoJSON world map (~150KB), no external tiles
+  - Consider lazy-loading the map component to avoid bundle size impact
+
 
 ================================================================================
   SEZIONE H — SCOUTED FEATURES
@@ -45,29 +109,5 @@
 ================================================================================
 
 
-------------------------------------------------------------------------------
-[~] REC-172 — Pipeline GitHub Actions per build container guacenc
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: REC-171
 
-  DESCRIZIONE:
-  Creare un workflow GitHub Actions standalone dedicato per la build e il push
-  del container `guacenc`. Il workflow deve allinearsi agli standard degli altri
-  container, includendo la build multi-architettura (linux/amd64, linux/arm64)
-  tramite QEMU e Buildx, il versionamento semantico (tag generati
-  automaticamente) e il push dell'immagine su ghcr.io.
-
-  DETTAGLI TECNICI:
-  - Creare un nuovo workflow dedicato `.github/workflows/guacenc-build.yml`.
-  - Configurare i trigger su push/tag, in modo simile a `ssh-gateway-build.yml`.
-  - Aggiungere il job `build-and-push` per la compilazione multi-architettura con
-    `docker/build-push-action`, usando il contesto `docker/guacenc` e il
-    relativo `Dockerfile`.
-  - Includere la corretta logica per l'estrazione metadata (tag major/minor/patch).
-  - Implementare il job `scan` che esegue `trivy` sull'immagine locale e carica i
-    risultati SARIF nella Security tab di GitHub Actions.
-
-  File coinvolti:
-    CREARE:     .github/workflows/guacenc-build.yml
 

@@ -68,9 +68,10 @@ interface SettingsDialogProps {
   initialTab?: string;
   linkedProvider?: string | null;
   onViewUserProfile?: (userId: string) => void;
+  onGeoIpClick?: (ip: string) => void;
 }
 
-export default function SettingsDialog({ open, onClose, initialTab, linkedProvider, onViewUserProfile }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onClose, initialTab, linkedProvider, onViewUserProfile, onGeoIpClick }: SettingsDialogProps) {
   const user = useAuthStore((s) => s.user);
   const [hasPassword, setHasPassword] = useState(true);
 
@@ -209,7 +210,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
             <Stack spacing={3}>
               <SelfSignupSection />
               <EmailProviderSection />
-              <TenantAuditLogSection onViewUserProfile={onViewUserProfile} />
+              <TenantAuditLogSection onViewUserProfile={onViewUserProfile} onGeoIpClick={onGeoIpClick} />
             </Stack>
           )}
         </Box>

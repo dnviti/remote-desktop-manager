@@ -68,19 +68,27 @@ interface IpGeoCellProps {
   ipAddress: string | null;
   geoCountry: string | null;
   geoCity: string | null;
+  onGeoIpClick?: (ip: string) => void;
 }
 
 /**
  * Renders an IP address cell with geolocation info and a clickable
- * external link to inspect the IP on a third-party lookup service.
+ * action to inspect the IP in the GeoIpDialog.
  */
-export default function IpGeoCell({ ipAddress, geoCountry, geoCity }: IpGeoCellProps) {
+export default function IpGeoCell({ ipAddress, geoCountry, geoCity, onGeoIpClick }: IpGeoCellProps) {
   if (!ipAddress) return <>{'\u2014'}</>;
 
   const code = getCountryCode(geoCountry);
   const flag = countryFlag(code);
   const geoLabel = [geoCity, geoCountry].filter(Boolean).join(', ');
   const isExternal = !isPrivateIp(ipAddress);
+
+  const handleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onGeoIpClick && isExternal) {
+      onGeoIpClick(ipAddress);
+    }
+  };
 
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -89,24 +97,35 @@ export default function IpGeoCell({ ipAddress, geoCountry, geoCity }: IpGeoCellP
           <span style={{ fontSize: '1rem', lineHeight: 1 }}>{flag}</span>
         </Tooltip>
       )}
-      {isExternal ? (
+      {isExternal && onGeoIpClick ? (
         <Tooltip title={geoLabel ? `${geoLabel} \u2014 Click to inspect` : 'Click to inspect IP'}>
           <Link
-            href={`https://ipinfo.io/${ipAddress}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+            component="button"
+            onClick={handleClick}
             sx={{
               textDecoration: 'none',
               '&:hover': { textDecoration: 'underline' },
               display: 'inline-flex',
               alignItems: 'center',
               gap: 0.3,
+              cursor: 'pointer',
+              border: 'none',
+              background: 'none',
+              font: 'inherit',
+              color: 'primary.main',
+              p: 0,
             }}
           >
             {ipAddress}
             <GlobeIcon sx={{ fontSize: 14, opacity: 0.6 }} />
           </Link>
+        </Tooltip>
+      ) : isExternal ? (
+        <Tooltip title={geoLabel ? `${geoLabel}` : ipAddress}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2 }}>
+            {ipAddress}
+            <GlobeIcon sx={{ fontSize: 14, opacity: 0.4 }} />
+          </span>
         </Tooltip>
       ) : (
         <span>{ipAddress}</span>
@@ -143,7 +162,7 @@ function isPrivateIp(ip: string): boolean {
 }
 
 /**
- * Export the flag helper for CSV export usage.
+ * Export the flag helper for CSV export and map usage.
  */
 // eslint-disable-next-line react-refresh/only-export-components
 export { getCountryCode, countryFlag };

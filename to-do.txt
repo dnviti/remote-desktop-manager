@@ -74,6 +74,7 @@
 
 
 
+
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI
 ================================================================================
@@ -841,36 +842,7 @@
 ================================================================================
 
 
-------------------------------------------------------------------------------
-[ ] GEO-107 — Audit log geolocation map visualization
-------------------------------------------------------------------------------
-  Priorita: BASSA
-  Dipendenze: GEO-106
 
-  DESCRIZIONE:
-  Interactive world map in the Tenant Audit Log showing geographic distribution
-  of login/session events. Markers sized by event count, color-coded by action
-  type. Click a marker to filter the table by that location. Toggle between
-  list and map views.
-
-  DETTAGLI TECNICI:
-  1) npm dependency: react-simple-maps (SVG-based, works offline, no tile server
-     — ideal for self-hosted deployments)
-  2) New component: client/src/components/Audit/AuditGeoMap.tsx — ComposableMap
-     with Geographies (world) and Marker circles, tooltips on hover (city,
-     country, event count, last activity)
-  3) New API endpoint: GET /api/audit/tenant/geo-summary (admin-only) — returns
-     aggregated { points: [{ lat, lng, country, city, count, lastSeen }] },
-     filtered by tenant users, default last 30 days
-  4) TenantAuditLogSection: add ToggleButtonGroup (List/Map icons) above table,
-     persist view mode in uiPreferencesStore (tenantAuditLogViewMode)
-  5) Click-to-filter: clicking a marker sets country filter and switches to
-     table view showing events from that location
-  6) Color-coding: LOGIN events green, LOGIN_FAILURE red, SESSION_START blue
-
-  NOTE:
-  - react-simple-maps bundles a TopoJSON world map (~150KB), no external tiles
-  - Consider lazy-loading the map component to avoid bundle size impact
 
 ------------------------------------------------------------------------------
 [ ] SEC-108 — Impossible travel detection with admin alerts

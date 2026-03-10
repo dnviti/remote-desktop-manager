@@ -31,6 +31,7 @@ interface UiPreferences {
   tenantAuditLogUserId: string;
   tenantAuditLogSortBy: string;
   tenantAuditLogSortOrder: string;
+  tenantAuditLogViewMode: string;
   connAuditLogAction: string;
   connAuditLogSearch: string;
   connAuditLogGatewayId: string;
@@ -42,7 +43,7 @@ interface UiPreferences {
 
 interface UiPreferencesState extends UiPreferences {
   set: <K extends keyof UiPreferences>(key: K, value: UiPreferences[K]) => void;
-  toggle: (key: keyof Omit<UiPreferences, 'sidebarTeamSections' | 'settingsActiveTab' | 'keychainScopeFilter' | 'keychainTypeFilter' | 'keychainSortBy' | 'orchestrationDashboardTab' | 'orchestrationRefreshInterval' | 'gatewayActiveSubTab' | 'auditLogAction' | 'auditLogSearch' | 'auditLogTargetType' | 'auditLogGatewayId' | 'auditLogSortBy' | 'auditLogSortOrder' | 'tenantAuditLogAction' | 'tenantAuditLogSearch' | 'tenantAuditLogTargetType' | 'tenantAuditLogGatewayId' | 'tenantAuditLogUserId' | 'tenantAuditLogSortBy' | 'tenantAuditLogSortOrder' | 'connAuditLogAction' | 'connAuditLogSearch' | 'connAuditLogGatewayId' | 'connAuditLogUserId' | 'connAuditLogSortBy' | 'connAuditLogSortOrder'>) => void;
+  toggle: (key: keyof Omit<UiPreferences, 'sidebarTeamSections' | 'settingsActiveTab' | 'keychainScopeFilter' | 'keychainTypeFilter' | 'keychainSortBy' | 'orchestrationDashboardTab' | 'orchestrationRefreshInterval' | 'gatewayActiveSubTab' | 'auditLogAction' | 'auditLogSearch' | 'auditLogTargetType' | 'auditLogGatewayId' | 'auditLogSortBy' | 'auditLogSortOrder' | 'tenantAuditLogAction' | 'tenantAuditLogSearch' | 'tenantAuditLogTargetType' | 'tenantAuditLogGatewayId' | 'tenantAuditLogUserId' | 'tenantAuditLogSortBy' | 'tenantAuditLogSortOrder' | 'tenantAuditLogViewMode' | 'connAuditLogAction' | 'connAuditLogSearch' | 'connAuditLogGatewayId' | 'connAuditLogUserId' | 'connAuditLogSortBy' | 'connAuditLogSortOrder'>) => void;
   toggleTeamSection: (teamId: string) => void;
 }
 
@@ -76,6 +77,7 @@ const defaults: UiPreferences = {
   tenantAuditLogUserId: '',
   tenantAuditLogSortBy: 'createdAt',
   tenantAuditLogSortOrder: 'desc',
+  tenantAuditLogViewMode: 'table',
   connAuditLogAction: '',
   connAuditLogSearch: '',
   connAuditLogGatewayId: '',

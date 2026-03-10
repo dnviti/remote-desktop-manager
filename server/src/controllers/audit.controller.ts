@@ -153,6 +153,20 @@ export async function listCountries(req: AuthRequest, res: Response, next: NextF
   }
 }
 
+export async function getTenantGeoSummary(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    assertTenantAuthenticated(req);
+    const days = req.query.days ? parseInt(String(req.query.days), 10) : 30;
+    if (isNaN(days) || days < 1 || days > 365) {
+      return next(new AppError('days must be between 1 and 365', 400));
+    }
+    const points = await auditService.getTenantGeoSummary(req.user.tenantId, days);
+    res.json({ points });
+  } catch (err) {
+    next(err);
+  }
+}
+
 export async function listTenantCountries(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertTenantAuthenticated(req);

@@ -428,6 +428,70 @@ export async function getAuditCountries(userId: string): Promise<string[]> {
 /**
  * Get distinct countries found in a tenant's audit logs.
  */
+export interface GeoSummaryPoint {
+  lat: number;
+  lng: number;
+  country: string;
+  city: string;
+  count: number;
+  lastSeen: Date;
+}
+
+/**
+ * Get geo-aggregated summary of audit events for a tenant.
+ * Groups by country+city and returns points with coordinates for map rendering.
+ */
+export async function getTenantGeoSummary(tenantId: string, days: number = 30): Promise<GeoSummaryPoint[]> {
+  const members = await prisma.tenantMember.findMany({
+    where: { tenantId },
+    select: { userId: true },
+  });
+  const ids = members.map((m) => m.userId);
+  if (ids.length === 0) return [];
+
+  const since = new Date();
+  since.setDate(since.getDate() - days);
+
+  const rows = await prisma.auditLog.findMany({
+    where: {
+      userId: { in: ids },
+      geoCountry: { not: null },
+      geoCoords: { isEmpty: false },
+      createdAt: { gte: since },
+    },
+    select: {
+      geoCountry: true,
+      geoCity: true,
+      geoCoords: true,
+      createdAt: true,
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  // Group by country+city and aggregate
+  const groups = new Map<string, GeoSummaryPoint>();
+  for (const row of rows) {
+    if (!row.geoCountry || row.geoCoords.length < 2) continue;
+    const key = `${row.geoCountry}|${row.geoCity ?? ''}`;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.count += 1;
+      // lastSeen is already the most recent due to orderBy desc
+    } else {
+      groups.set(key, {
+        lat: row.geoCoords[0],
+        lng: row.geoCoords[1],
+        country: row.geoCountry,
+        city: row.geoCity ?? '',
+        count: 1,
+        lastSeen: row.createdAt,
+      });
+    }
+  }
+
+  return Array.from(groups.values());
+}
+
 export async function getTenantAuditCountries(tenantId: string): Promise<string[]> {
   const members = await prisma.tenantMember.findMany({
     where: { tenantId },

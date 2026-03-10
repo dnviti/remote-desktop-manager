@@ -30,6 +30,7 @@ import UserProfileDialog from '../Dialogs/UserProfileDialog';
 import RecordingsDialog from '../Recording/RecordingsDialog';
 import ExportDialog from '../Dialogs/ExportDialog';
 import ImportDialog from '../Dialogs/ImportDialog';
+import GeoIpDialog from '../Audit/GeoIpDialog';
 
 import TenantSwitcher from './TenantSwitcher';
 import NotificationBell from './NotificationBell';
@@ -107,6 +108,7 @@ export default function MainLayout() {
   const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const [connectionAuditTarget, setConnectionAuditTarget] = useState<{ id: string; name: string } | null>(null);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
+  const [geoIpTarget, setGeoIpTarget] = useState<string | null>(null);
   const [linkedProvider, setLinkedProvider] = useState<string | null>(() => {
     const linked = new URLSearchParams(window.location.search).get('linked');
     if (linked) window.history.replaceState({}, '', '/');
@@ -354,10 +356,12 @@ export default function MainLayout() {
         initialTab={settingsInitialTab}
         linkedProvider={linkedProvider}
         onViewUserProfile={(uid) => setProfileUserId(uid)}
+        onGeoIpClick={setGeoIpTarget}
       />
       <AuditLogDialog
         open={auditLogOpen}
         onClose={() => setAuditLogOpen(false)}
+        onGeoIpClick={setGeoIpTarget}
       />
       <KeychainDialog
         open={keychainOpen}
@@ -368,6 +372,7 @@ export default function MainLayout() {
         onClose={() => setConnectionAuditTarget(null)}
         connectionId={connectionAuditTarget?.id ?? ''}
         connectionName={connectionAuditTarget?.name ?? ''}
+        onGeoIpClick={setGeoIpTarget}
       />
       <UserProfileDialog
         open={!!profileUserId}
@@ -385,6 +390,11 @@ export default function MainLayout() {
       <ExportDialog
         open={exportDialogOpen}
         onClose={() => setExportDialogOpen(false)}
+      />
+      <GeoIpDialog
+        open={!!geoIpTarget}
+        onClose={() => setGeoIpTarget(null)}
+        ipAddress={geoIpTarget}
       />
     </>
   );

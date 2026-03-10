@@ -3057,6 +3057,17 @@
     MODIFICARE: client/src/components/Sidebar/ConnectionTree.tsx (bottoni)
 
 
+------------------------------------------------------------------------------
+[x] REC-172 — Pipeline GitHub Actions per build container guacenc
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: REC-171
+  COMPLETATO: Created .github/workflows/guacenc-build.yml with multi-arch build (linux/amd64, linux/arm64) via QEMU+Buildx, semantic versioning tags, push to ghcr.io, and Trivy vulnerability scan with SARIF upload to GitHub Security tab.
+
+  File coinvolti:
+    CREARE:     .github/workflows/guacenc-build.yml
+
+
 ================================================================================
   SEZIONE G — IP ADDRESS INTELLIGENCE
 ================================================================================

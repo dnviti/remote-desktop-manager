@@ -128,6 +128,20 @@ export async function getTenantAuditCountries(): Promise<string[]> {
   return res.data;
 }
 
+export interface GeoSummaryPoint {
+  lat: number;
+  lng: number;
+  country: string;
+  city: string;
+  count: number;
+  lastSeen: string;
+}
+
+export async function getTenantGeoSummary(days: number = 30): Promise<GeoSummaryPoint[]> {
+  const res = await api.get('/audit/tenant/geo-summary', { params: { days } });
+  return res.data.points;
+}
+
 export interface ConnectionAuditUser {
   id: string;
   username: string | null;

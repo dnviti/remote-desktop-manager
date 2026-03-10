@@ -1,16 +1,18 @@
-import { useState, useEffect, useCallback, Fragment } from 'react';
+import { useState, useEffect, useCallback, Fragment, lazy, Suspense } from 'react';
 import {
   Card, CardContent, Typography, Box,
   Table, TableHead, TableBody, TableRow, TableCell, TablePagination,
   Select, MenuItem, FormControl, InputLabel, TextField, Stack,
   CircularProgress, Chip, Alert, Collapse, TableSortLabel, InputAdornment,
-  IconButton, Autocomplete, Button,
+  IconButton, Autocomplete, Button, ToggleButtonGroup, ToggleButton, Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   KeyboardArrowDown as ExpandIcon,
   KeyboardArrowUp as CollapseIcon,
   Download as DownloadIcon,
+  ViewList as ListIcon,
+  Map as MapIcon,
 } from '@mui/icons-material';
 import {
   getTenantAuditLogs, getTenantAuditGateways, getTenantAuditCountries,
@@ -20,6 +22,8 @@ import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
 import { useTenantStore } from '../../store/tenantStore';
 import { ACTION_LABELS, getActionColor, formatDetails, ALL_ACTIONS, TARGET_TYPES } from '../Audit/auditConstants';
 import IpGeoCell from '../Audit/IpGeoCell';
+
+const AuditGeoMap = lazy(() => import('../Audit/AuditGeoMap'));
 
 function exportCsv(logs: TenantAuditLogEntry[]) {
   const header = 'Date,User,Email,Action,Target Type,Target ID,IP Address,Country,City,Details';
@@ -48,9 +52,10 @@ function exportCsv(logs: TenantAuditLogEntry[]) {
 
 interface TenantAuditLogSectionProps {
   onViewUserProfile?: (userId: string) => void;
+  onGeoIpClick?: (ip: string) => void;
 }
 
-export default function TenantAuditLogSection({ onViewUserProfile }: TenantAuditLogSectionProps) {
+export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick }: TenantAuditLogSectionProps) {
   const tenantAuditLogAction = useUiPreferencesStore((s) => s.tenantAuditLogAction);
   const tenantAuditLogSearch = useUiPreferencesStore((s) => s.tenantAuditLogSearch);
   const tenantAuditLogTargetType = useUiPreferencesStore((s) => s.tenantAuditLogTargetType);
@@ -58,6 +63,7 @@ export default function TenantAuditLogSection({ onViewUserProfile }: TenantAudit
   const tenantAuditLogUserId = useUiPreferencesStore((s) => s.tenantAuditLogUserId);
   const tenantAuditLogSortBy = useUiPreferencesStore((s) => s.tenantAuditLogSortBy);
   const tenantAuditLogSortOrder = useUiPreferencesStore((s) => s.tenantAuditLogSortOrder);
+  const tenantAuditLogViewMode = useUiPreferencesStore((s) => s.tenantAuditLogViewMode);
   const setUiPref = useUiPreferencesStore((s) => s.set);
 
   const users = useTenantStore((s) => s.users);
@@ -145,14 +151,29 @@ export default function TenantAuditLogSection({ onViewUserProfile }: TenantAudit
       <CardContent>
         <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{ mb: 2 }}>
           <Typography variant="h6">Organization Audit Log</Typography>
-          <Button
-            size="small"
-            startIcon={<DownloadIcon />}
-            onClick={() => exportCsv(logs)}
-            disabled={logs.length === 0}
-          >
-            Export CSV
-          </Button>
+          <Stack direction="row" spacing={1} alignItems="center">
+            <ToggleButtonGroup
+              size="small"
+              value={tenantAuditLogViewMode || 'table'}
+              exclusive
+              onChange={(_, val) => { if (val) setUiPref('tenantAuditLogViewMode', val); }}
+            >
+              <ToggleButton value="table">
+                <Tooltip title="Table view"><ListIcon fontSize="small" /></Tooltip>
+              </ToggleButton>
+              <ToggleButton value="map">
+                <Tooltip title="Map view"><MapIcon fontSize="small" /></Tooltip>
+              </ToggleButton>
+            </ToggleButtonGroup>
+            <Button
+              size="small"
+              startIcon={<DownloadIcon />}
+              onClick={() => exportCsv(logs)}
+              disabled={logs.length === 0}
+            >
+              Export CSV
+            </Button>
+          </Stack>
         </Stack>
 
         <TextField
@@ -282,7 +303,19 @@ export default function TenantAuditLogSection({ onViewUserProfile }: TenantAudit
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {loading ? (
+        {tenantAuditLogViewMode === 'map' && (
+          <Suspense fallback={
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
+          }>
+            <AuditGeoMap onSelectCountry={(country) => {
+              setGeoCountry(country);
+              setUiPref('tenantAuditLogViewMode', 'table');
+              setPage(0);
+            }} />
+          </Suspense>
+        )}
+
+        {tenantAuditLogViewMode !== 'map' && (loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress />
           </Box>
@@ -364,7 +397,7 @@ export default function TenantAuditLogSection({ onViewUserProfile }: TenantAudit
                             : '\u2014'}
                         </TableCell>
                         <TableCell>
-                          <IpGeoCell ipAddress={log.ipAddress} geoCountry={log.geoCountry} geoCity={log.geoCity} />
+                          <IpGeoCell ipAddress={log.ipAddress} geoCountry={log.geoCountry} geoCity={log.geoCity} onGeoIpClick={onGeoIpClick} />
                         </TableCell>
                         <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {formatDetails(log.details as Record<string, unknown> | null)}
@@ -422,7 +455,7 @@ export default function TenantAuditLogSection({ onViewUserProfile }: TenantAudit
               rowsPerPageOptions={[25, 50, 100]}
             />
           </>
-        )}
+        ))}
       </CardContent>
     </Card>
   );

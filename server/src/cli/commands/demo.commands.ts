@@ -194,7 +194,7 @@ export function registerDemoCommands(program: Command): void {
         const demoConnections = [
           { name: 'Demo Windows (RDP)', type: ConnectionType.RDP, host: '192.168.81.11', port: 3389, secretName: 'Demo RDP Login' },
           { name: 'Demo Linux (SSH)', type: ConnectionType.SSH, host: '192.168.81.12', port: 22, secretName: 'Demo SSH Login' },
-          { name: 'Demo Desktop (VNC)', type: ConnectionType.VNC, host: '192.168.81.13', port: 5900, secretName: 'Demo VNC Login' },
+          { name: 'Demo Desktop (VNC)', type: ConnectionType.VNC, host: '192.168.81.13', port: 5901, secretName: 'Demo VNC Login' },
         ];
 
         for (const conn of demoConnections) {

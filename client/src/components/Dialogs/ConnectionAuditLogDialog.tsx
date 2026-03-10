@@ -58,9 +58,10 @@ interface ConnectionAuditLogDialogProps {
   onClose: () => void;
   connectionId: string;
   connectionName: string;
+  onGeoIpClick?: (ip: string) => void;
 }
 
-export default function ConnectionAuditLogDialog({ open, onClose, connectionId, connectionName }: ConnectionAuditLogDialogProps) {
+export default function ConnectionAuditLogDialog({ open, onClose, connectionId, connectionName, onGeoIpClick }: ConnectionAuditLogDialogProps) {
   const connAuditLogAction = useUiPreferencesStore((s) => s.connAuditLogAction);
   const connAuditLogSearch = useUiPreferencesStore((s) => s.connAuditLogSearch);
   const connAuditLogGatewayId = useUiPreferencesStore((s) => s.connAuditLogGatewayId);
@@ -365,7 +366,7 @@ export default function ConnectionAuditLogDialog({ open, onClose, connectionId, 
                             />
                           </TableCell>
                           <TableCell>
-                            <IpGeoCell ipAddress={log.ipAddress} geoCountry={log.geoCountry} geoCity={log.geoCity} />
+                            <IpGeoCell ipAddress={log.ipAddress} geoCountry={log.geoCountry} geoCity={log.geoCity} onGeoIpClick={onGeoIpClick} />
                           </TableCell>
                           <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {formatDetails(log.details as Record<string, unknown> | null)}
