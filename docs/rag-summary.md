@@ -1,6 +1,6 @@
 # Arsenale
 
-> Auto-generated on 2026-03-08. High-level product overview for LLM RAG consumption.
+> Auto-generated on 2026-03-10. High-level product overview for LLM RAG consumption.
 
 ## What is Arsenale
 
@@ -112,51 +112,97 @@ Gateway SSH key pairs are automatically rotated on a configurable schedule (defa
 - **Email verification**: configurable email verification for new accounts with support for SMTP, SendGrid, Amazon SES, Resend, and Mailgun providers
 - **Pop-out sessions**: SSH and RDP sessions can be opened in independent browser windows for multi-monitor workflows
 
-## How Arsenale Compares
+## Arsenale vs. The Entire Guacamole Ecosystem
 
-Arsenale is often compared to Apache Guacamole, since both provide browser-based remote access. However, they target fundamentally different problem spaces. Guacamole is a clientless remote desktop gateway — its sole purpose is proxying RDP, VNC, SSH, and Telnet sessions through a browser. Arsenale is a Privileged Access Management (PAM) platform that uses guacd as its RDP/VNC rendering engine, but builds an entire security and governance layer on top that Guacamole does not provide.
+All these products — CyberArk PSM Gateway, Azure Bastion, Fortinet SSL VPN, Keeper Connection Manager, and vanilla Apache Guacamole — share the same foundation: guacd as the protocol translation engine. They differ in what they wrap around it. Arsenale uses the same core but takes a fundamentally different architectural path. Here's where it wins.
 
-### Arsenale vs Apache Guacamole
+### 1. Architecture: No Java, No Tomcat, No Bloat
+Every single competitor wraps guacd with the full Java/Tomcat stack:
+- CyberArk's architecture is explicitly: Browser → Servlet Container (Tomcat) → PSM Gateway app (Java servlet) → Guacd → RDP.
+- Azure Bastion is Apache Guacamole with a Microsoft layer on top. Fortinet's SSL Web VPN is also Apache Guacamole underneath.
+- Keeper Connection Manager was built by the creators of Apache Guacamole, and while they improved the installer and UI, the engine underneath is still the same Java client + guacd.
 
-**Purpose and scope.** Guacamole is a remote desktop gateway: it connects users to machines and gets out of the way. It has no concept of a credential vault, no encrypted-at-rest secrets, and no sharing governance. Arsenale treats remote access as one function within a broader PAM platform — the core is secure credential management, organizational structure, and auditable sharing, with SSH/RDP/VNC sessions as the delivery mechanism.
+Arsenale replaces that entire Java middleware with guacamole-lite (Node.js) + Express.js + Socket.IO, which is a dramatically lighter, faster path: Browser → WebSocket → guacamole-lite → guacd. No servlet container, no WAR deployment, no Java memory ballooning.
 
-**Technology stack.** Guacamole uses a Java webapp (Tomcat/Spring) with a C-based protocol proxy (guacd) and a vanilla JavaScript client. It is a mature, monolithic project. Arsenale is TypeScript end-to-end: React 19 + Vite + MUI + Zustand on the client, Express + Prisma + Socket.IO on the server. It uses guacamole-lite (a lightweight Node.js reimplementation) instead of the Java webapp, and guacamole-common-js for browser-side rendering. The result is a more cohesive, modern stack with a single language across the entire codebase.
+### 2. Cost & Licensing: Self-Hosted, No Per-Seat Ransoming
+- Azure Bastion charges approximately $0.19/hour (~$140/month) just to exist, plus data transfer fees — and it keeps billing even when you delete your VMs. Users discovered they were still being charged after removing VMs because Bastion keeps consuming resources as long as it's deployed, regardless of usage.
+- CyberArk demands significant upfront and ongoing investment, including infrastructure setup, specialized personnel, and tiered licensing. Around 21% of their revenue comes from "Maintenance and Professional Services," and major upgrades often require additional expensive services. Reviews note that deployment took more time and resources than expected, with complicated configuration, and that getting support answers typically requires paying for a higher support tier.
+- Keeper's business-level deployments generally range from $7,500 to $80,000 annually. They also only offer a SaaS model, which may disappoint fully self-hosted teams, and have minimal PAM capabilities.
 
-**Credential security.** Guacamole stores connection credentials in plaintext in its database (or relies on the database's own access controls). Arsenale encrypts all credentials at rest with AES-256-GCM using per-user master keys derived via Argon2id. The vault auto-locks after configurable inactivity, and even database-level access does not expose secrets. This is the fundamental differentiator for any PAM use case.
+Arsenale is fully self-hosted with no per-seat licensing, no cloud lock-in, no surprise bills for idle resources, and no mandatory professional services engagements. For an SMB or even a mid-size company, this is a massive cost differentiator.
 
-**Supported protocols.** Guacamole supports RDP, VNC, SSH, Telnet, and Kubernetes exec, all handled natively by guacd. Arsenale currently supports SSH (directly via the Node.js server using ssh2 + Socket.IO, giving fine-grained session control), RDP (via guacd + guacamole-lite), and VNC (via guacd + guacamole-lite). SSH sessions are not proxied through guacd, which enables features like integrated SFTP, per-session recording in Asciicast format, and tighter session lifecycle management.
+### 3. Vendor Lock-In & Cloud Dependency
+- Azure Bastion is Azure-only. It only supports IPv4, doesn't work in Virtual WAN hubs, can't be moved between resource groups without full redeployment, and doesn't support custom domains with shareable links. If you're not on Azure, it simply doesn't exist for you.
+- CyberArk's core PAM components rely on Microsoft technologies including Windows Server, Remote Desktop Services, and IIS, requiring Windows-based infrastructure and regular patching.
+- Keeper is SaaS-only — no self-hosted option.
 
-**Organization and sharing.** Guacamole offers connection groups (organizational and balancing) and user groups with permission assignments. The UI is functional but admin-oriented. Arsenale provides hierarchical folder trees with drag-and-drop, connection sharing at four granular permission levels (view, use, edit, admin) with credential re-encryption per recipient, team workspaces with shared vaults, favorites, and external secret sharing via time-limited links. The experience is designed to feel like a modern password manager (1Password, Bitwarden) applied to remote connections.
+Arsenale runs anywhere Docker runs — on-prem, any cloud, hybrid, air-gapped. PostgreSQL, Node.js, and guacd are all cross-platform. No vendor lock-in whatsoever.
 
-**Authentication.** Guacamole has an extensive ecosystem of authentication extensions: LDAP, SAML, CAS, OpenID Connect, RADIUS, Duo, TOTP, and database auth. This is its historical strength for heterogeneous enterprise environments. Arsenale supports JWT-based auth with automatic token refresh, three MFA methods (TOTP, SMS OTP, WebAuthn), and OAuth/SSO via Google, Microsoft, GitHub, custom OIDC, and SAML 2.0 providers. While the number of identity provider integrations is smaller than Guacamole's, the security model is deeper — with identity verification flows, account lockout, and rate limiting built in.
+### 4. Security: Native vs. Bolted-On
+- Vanilla Guacamole's security is "configure it yourself" — optional TOTP extensions, optional SAML, and a track record of severe CVEs including arbitrary code execution via terminal codes in versions through 1.5.5, integer overflow vulnerabilities in VNC handling through 1.5.3, and protocol handshake injection flaws through 1.5.1.
+- CyberArk lacks the flexibility and open-source innovation that Guacamole supports, and has a centralized online vault that is a single point of failure — it must be online at all times and relies on the network to secure data during transmission.
+- Azure Bastion has challenges with protocol speed and reliability, and file transfer requires routing through Azure Storage with additional permissions like ACL or NFS — you can't simply copy/paste files.
 
-**Session recording.** Guacamole records sessions natively in its .guac format, convertible to video with guacenc. Arsenale also supports session recording: SSH sessions are captured in Asciicast v2 format (playable with a built-in terminal player), while RDP and VNC sessions are recorded in .guac format via guacd. Recordings are manageable through a dedicated UI with playback, listing, and deletion. RDP/VNC recordings can be exported as MP4 video files via on-demand server-side conversion using a guacenc sidecar container, enabling playback in any standard media player.
+Arsenale has JWT + TOTP + Argon2id + AES-256-GCM built into the core from day one, not bolted on as extensions. The planned IP blacklisting (manual, automatic, external feeds, geo-blocking), AI-powered threat detection with auto-disconnect, and SBOM support go far beyond what any of these competitors offer at their respective price points.
 
-**Audit logging.** Guacamole provides basic connection history with timestamps and IP addresses. Arsenale has comprehensive audit logging with over 56 tracked action types covering authentication, vault operations, sharing, MFA events, session lifecycle, secrets management, team operations, gateway administration, and more. Logs are filterable by action type, date range, IP address, and target, with full pagination and tenant-wide visibility.
+### 5. UI & Developer Experience
+- Guacamole's UI looks outdated and many dismiss it because it's an Apache project with an aging interface, still running on AngularJS.
+- CyberArk's native console is described as "powerful but hard to navigate for complex policies," with a user interface that is "functional but somewhat less user-friendly compared to the latest PAM competitors." Adding devices is not simple and can't be grouped by department.
+- Azure Bastion's native mode requires PowerShell or az CLI with many parameters on the command line, and it's more compatible with Edge than other browsers.
 
-**Multi-tenancy.** Guacamole has no built-in multi-tenancy concept. Arsenale provides full tenant isolation — each organization has its own users, teams, connections, secrets, gateways, and audit logs. Tenant administrators can enforce security policies like mandatory MFA, vault timeout caps, and session idle timeouts.
+Arsenale is React 19 — a modern, componentized, fully customizable frontend. You own the UX entirely. No AngularJS debt, no Microsoft portal dependency, no ancient Java admin screens.
 
-**User experience.** Guacamole's interface is functional but visually dated, with limited customization options. Arsenale offers a modern Material UI interface with dark/light mode, tabbed workspaces for simultaneous sessions, pop-out windows for multi-monitor setups, customizable terminal and RDP settings, persistent UI preferences, and real-time notifications via WebSocket.
+### 6. Multi-Tenancy
+None of the competitors have proper multi-tenancy at the gateway level:
+- Guacamole has users and connection groups but no tenant isolation.
+- CyberArk has "safes" and vaults but that's PAM-level, not gateway-level — and requires massive infrastructure per tenant.
+- Azure Bastion is per-VNet, not multi-tenant.
+- Keeper Connection Manager is per-organization but SaaS-only.
 
-**Extensibility.** Guacamole is extensible via Java extension JARs — a traditional, powerful, but rigid model. Arsenale plans a sandboxed Lua plugin system (via fengari/wasmoon), webhook outbound integrations, and MCP server integration. The TypeScript/Node.js architecture is inherently more accessible to modern developers for customization and contribution.
+Arsenale has native multi-tenant architecture with per-tenant isolation baked in, including the planned per-tenant Lua plugin sandboxing. This is critical for MSPs and SaaS delivery.
 
-### Summary comparison
+### 7. Extensibility & Integration
+- CyberArk lacks the flexibility and open-source innovation that Guacamole supports, making customization and adaptation more difficult.
+- Keeper Connection Manager does not offer an API.
+- Guacamole extensions are Java-based, tightly coupled to the servlet lifecycle, and poorly documented.
+- Azure Bastion has zero extensibility — it's a managed black box.
 
-| Aspect | Apache Guacamole | Arsenale |
-|--------|-----------------|----------|
-| Category | Remote desktop gateway | Privileged Access Manager |
-| Stack | Java + C + vanilla JS | TypeScript end-to-end |
-| Credential storage | Plaintext in database | AES-256-GCM vault + Argon2id key derivation |
-| Protocols | RDP, VNC, SSH, Telnet, K8s | SSH (native), RDP, VNC (via guacd) |
-| Auth modules | LDAP, SAML, OIDC, CAS, RADIUS, Duo, TOTP | JWT + TOTP + SMS OTP + WebAuthn + OAuth/SAML SSO |
-| Session recording | Native (.guac → video) | Asciicast v2 (SSH) + .guac (RDP/VNC) + MP4 export |
-| Audit logging | Basic connection history | 56+ action types, full filtering |
-| Multi-tenancy | No | Full tenant isolation with policies |
-| Sharing model | User/group permissions | 4-level sharing with credential re-encryption |
-| UI | Functional, admin-oriented | Modern React + MUI, tabs, drag-and-drop |
-| Plugin system | Java extensions | Lua sandboxed plugins (planned) |
+Arsenale's planned stack is leagues ahead: Lua plugin system (sandboxed, event-reactive, per-tenant, with declarative UI rendering), outbound webhooks for third-party integration, MCP server integration for LLM access to platform logs, and multi-channel notifications (email, push, WhatsApp, Telegram, Element). No other product in this space even attempts this level of programmability.
 
-The fundamental difference: Guacamole is the engine for remote access, while Arsenale is the platform that uses that engine as a component and adds the entire PAM layer — vault, organization, sharing, governance, and auditing — that Guacamole does not have and does not aim to provide.
+### 8. Observability & Monitoring
+- Guacamole logs to syslog. That's it.
+- CyberArk has session recording and audit logs, but users report issues like PSM server limitations and memory leaks.
+- Azure Bastion doesn't give you visibility during VM reboots — if you have boot issues, you can't troubleshoot through Bastion at all.
+
+Arsenale's planned monitoring dashboard (global error/connection views, gateway stats, blacklisted IP visibility, real-time active IP tracking, AI-powered log analysis) addresses a gap that none of these products fill at the gateway level. The combination of real-time monitoring + AI threat detection + auto-disconnect + push notifications to admins is unique in this space.
+
+### 9. Deployment Complexity
+- CyberArk's initial setup and configuration is complex and requires specialized expertise. The Vault alone requires 32-256 GB RAM depending on deployment size, 8-60+ physical CPU cores, plus separate resource requirements for PSM, PTA, and other components.
+- Vanilla Guacamole requires configuring a full Tomcat server, manually deploying WAR files, and the first ~10 attempts often fail without clear error messages.
+- Azure Bastion takes 10-15 minutes to deploy, and some teams delete it when not in use and redeploy it every few days to save costs.
+
+Arsenale is Docker containers — docker-compose up and you're running. Node.js + PostgreSQL + guacd, all containerized. No Tomcat, no WAR files, no 256 GB RAM vault servers.
+
+### Summary: Arsenale's Competitive Advantages
+
+| Advantage | vs. Guacamole | vs. CyberArk | vs. Azure Bastion | vs. Keeper CM |
+|-----------|---------------|--------------|-------------------|---------------|
+| No Java/Tomcat | ✅ | ✅ | ✅ | ✅ |
+| Modern React UI | ✅ | ✅ | ✅ | Comparable |
+| Self-hosted, no lock-in | Same | ✅ | ✅ | ✅ |
+| No per-seat/hourly billing | Same | ✅ | ✅ | ✅ |
+| Native security stack | ✅ | ✅ | ✅ | ✅ |
+| Multi-tenancy | ✅ | ✅ | ✅ | ✅ |
+| Plugin system (Lua) | ✅ | ✅ | ✅ | ✅ |
+| Webhook integrations | ✅ | Comparable | ✅ | ✅ |
+| AI threat detection | ✅ | ✅ | ✅ | ✅ |
+| Monitoring dashboard | ✅ | ✅ | ✅ | ✅ |
+| MCP/LLM integration | ✅ | ✅ | ✅ | ✅ |
+| Deployment simplicity | ✅ | ✅ | ✅ | Comparable |
+| No cloud dependency | N/A | ✅ | ✅ | ✅ |
+| SBOM support | ✅ | ✅ | ✅ | ✅ |
+
+The bottom line: these billion-dollar companies took the lazy path — they wrapped the same old Java/Tomcat/guacd stack, slapped their brand on it, and charge enterprise prices. Arsenale rethinks the middleware layer entirely while keeping the battle-tested guacd core, and adds a modern security/extensibility/monitoring layer that none of them offer. You're building what these companies should have built.
 
 ## Deployment
 

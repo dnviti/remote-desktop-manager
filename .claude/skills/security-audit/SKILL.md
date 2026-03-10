@@ -151,12 +151,13 @@ Check for:
 
 ### 2. AUTHENTICATION (scope: `auth`)
 Check for:
+- **MITRE T1078 (Valid Accounts)**: Check for weak default passwords, lack of MFA enforcement, or missing account lockout/brute-force protection on all auth endpoints.
+- **MITRE T1110 (Brute Force)**: Ensure strict rate limiting and progressive delays are applied to login, token refresh, and MFA verification endpoints.
+- **MITRE T1563 (Session Hijacking)**: Check if JWT tokens are bound to client IP/User-Agent. Are tokens rotated? Can a stolen token be used from anywhere?
 - **JWT secret strength**: Is there a weak fallback secret (e.g., `'dev-secret-change-me'`)? Could it silently activate in production if `JWT_SECRET` env var is missing?
-- **JWT algorithm pinning**: Does `jwt.verify()` specify `{ algorithms: ['HS256'] }` to prevent algorithm confusion attacks?
 - **Password policy**: Is the minimum length sufficient? Is complexity enforced?
 - **Bcrypt cost factor**: Is the rounds value adequate (>= 10)?
 - **Refresh token rotation**: After a refresh token is used, is the old one invalidated? (Prevents token reuse/replay.)
-- **Brute-force protection**: Are login/register endpoints rate-limited?
 - **Token storage (client)**: Where are tokens stored? `localStorage` is XSS-accessible.
 - **Account enumeration**: Do error messages distinguish "user not found" vs "wrong password"?
 - **Logout completeness**: Are all tokens and sessions invalidated on logout?
@@ -164,6 +165,7 @@ Check for:
 
 ### 3. ENCRYPTION (scope: `encryption`)
 Check for:
+- **MITRE T1552 (Unsecured Credentials)**: Are credentials stored securely? Is the vault master key zeroed out in memory after use? Are there checks against known breached passwords?
 - **Algorithm suitability**: AES-256-GCM (vault) vs AES-256-CBC (Guacamole) — is CBC used without authentication (HMAC)?
 - **IV generation**: Are IVs generated with `crypto.randomBytes()` and unique per operation?
 - **Key derivation**: Argon2 parameters (memory, time, parallelism) — are they adequate per OWASP recommendations?
@@ -174,6 +176,8 @@ Check for:
 
 ### 4. API SECURITY (scope: `api`)
 Check for:
+- **MITRE T1021 (Remote Services - Lateral Movement)**: Are there anomaly detection mechanisms for unusual connection patterns (e.g., rapid connections to multiple hosts)?
+- **MITRE T1190 (Exploit Public-Facing Application)**: Are all endpoints protected against injection, CSRF, and unexpected payloads?
 - **Input validation coverage**: Are ALL endpoints using Zod validation? Which endpoints are missing it?
 - **Request size limits**: Is the JSON body limit appropriate?
 - **CORS configuration**: Is the origin hardcoded? Is it configurable for production?

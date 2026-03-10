@@ -209,3 +209,60 @@ IDEA-010 — Riscrittura completa del server in Go (Golang)
   scalabilita' e semplificare il deployment in produzione.
 
 
+------------------------------------------------------------------------------
+IDEA-011 — Agente LLM per interazione autonoma con le connessioni
+------------------------------------------------------------------------------
+  Categoria: Automazione
+  Data: 2026-03-10
+
+  DESCRIZIONE:
+  Implementare un agente basato su LLM (locale o remoto) in grado di interagire
+  direttamente con le connessioni. L'agente legge il contesto e pianifica le
+  azioni, che vengono eseguite solo previa revisione e approvazione dell'utente.
+  Include permessi configurabili, auditing completo e caching rigoroso per
+  ridurre l'utilizzo dei token.
+
+  MOTIVAZIONE:
+  Permette di delegare operazioni complesse all'AI aumentando la produttività.
+  Garantisce la sicurezza mantenendo il controllo umano tramite l'approvazione
+  obbligatoria e la registrazione accurata di ogni comando eseguito.
+
+
+------------------------------------------------------------------------------
+IDEA-012 — Integrazione AI per ITSM/CMDB e Analisi Audit Log
+------------------------------------------------------------------------------
+  Categoria: Integrazione
+  Data: 2026-03-10
+
+  DESCRIZIONE:
+  Integrazione di un LLM (locale/remoto) per interfacciarsi con ITSM/CMDB via
+  webhook ed email. L'AI analizza i ticket e le richieste utente, suggerendo le
+  connessioni pertinenti e un piano d'azione. Inoltre, l'LLM monitora gli
+  audit log della piattaforma per diagnosticare anomalie e proporre
+  proattivamente 3 soluzioni realistiche all'amministratore.
+
+  MOTIVAZIONE:
+  Automatizza la categorizzazione dei ticket e il troubleshooting iniziale,
+  riducendo drasticamente il tempo di risoluzione degli incidenti e fungendo da
+  sistema diagnostico proattivo basato sui dati storici di audit.
+
+
+------------------------------------------------------------------------------
+IDEA-013 — Client nativi, PWA ed estensioni browser
+------------------------------------------------------------------------------
+  Categoria: Ecosistema Client
+  Data: 2026-03-10
+
+  DESCRIZIONE:
+  Sviluppare applicazioni dedicate per ogni sistema operativo: una PWA per
+  desktop (basata sul sito web esistente), applicazioni mobili native
+  (React Native) per iOS e Android, e un'estensione per i browser web. Le app
+  native fungeranno da client per la piattaforma, gestendo principalmente
+  il portachiavi (keychain).
+
+  MOTIVAZIONE:
+  Garantisce un'esperienza utente ottimizzata su ogni dispositivo e permette
+  una gestione piu' sicura e integrata delle credenziali (keychain) tramite
+  applicazioni native, migliorando l'accessibilita' della piattaforma.
+
+

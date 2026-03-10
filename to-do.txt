@@ -20,6 +20,54 @@
 ================================================================================
 
 
+------------------------------------------------------------------------------
+[ ] CI-174 — Refactoring pipeline CI/CD: Gate Verify e Security obbligatorio
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Ristrutturare le pipeline GitHub Actions per garantire che nessuna build 
+  (server, client, ssh gateway, guacenc) venga avviata se non passano prima
+  le fasi di Verify e Security in modo sincrono sul medesimo commit. 
+  Attualmente si utilizza `workflow_run`, che incatena le esecuzioni in 
+  modo asincrono. L'obiettivo e' rendere i workflow `verify.yml` e 
+  `security.yml` riutilizzabili tramite `workflow_call` ed includerli come 
+  job di dipendenza (`needs`) all'interno di ogni singola pipeline di build.
+  In questo modo avremo pipeline separate ma con trigger identici e 
+  gate rigorosi: Verify -> Security -> Build.
+
+  DETTAGLI TECNICI:
+  1) Modifica workflow di validazione (`verify.yml`, `security.yml`):
+     - Aggiungere il trigger `workflow_call` per renderli riutilizzabili
+       da altri workflow.
+     - Rimuovere i trigger basati su `workflow_run`.
+     - Mantenere i trigger `push` / `pull_request` su branch main.
+  
+  2) Modifica pipeline di build dei container (`docker-build.yml`, 
+     `ssh-gateway-build.yml`, `guacenc-build.yml`):
+     - Uniformare i trigger su branch `main` e `tags` (es. `v*`).
+     - Importare i workflow di validazione come job iniziali:
+       ```yaml
+       jobs:
+         verify:
+           uses: ./.github/workflows/verify.yml
+         security:
+           needs: verify
+           uses: ./.github/workflows/security.yml
+       ```
+     - Rimuovere l'attuale job fittizio `gate` che si basa su `workflow_run`.
+     - Configurare i job di build dei container affinche' abbiano la 
+       dipendenza rigida `needs: security`.
+     - Utilizzare `secrets: inherit` dove necessario per passare i token 
+       GitHub ai workflow richiamati.
+
+  File coinvolti:
+    MODIFICARE: .github/workflows/verify.yml
+    MODIFICARE: .github/workflows/security.yml
+    MODIFICARE: .github/workflows/docker-build.yml
+    MODIFICARE: .github/workflows/ssh-gateway-build.yml
+    MODIFICARE: .github/workflows/guacenc-build.yml
 
 
 
@@ -1242,3 +1290,128 @@
   visivo in caso di micro-interruzioni di rete (es. cambio Wi-Fi), intercettando 
   i codici di errore di disconnessione di Guacamole per migliorare drasticamente 
   la percezione di stabilita'.
+
+
+================================================================================
+  SEZIONE K — OWASP SECURITY SCOUTED (2026-03-10)
+================================================================================
+
+------------------------------------------------------------------------------
+[ ] SEC-114 — Protezione CSRF e Cookie Security Hardening (OWASP A01)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Implementare protezione Anti-CSRF. Sebbene l'app usi JWT, se i token 
+  sono salvati nei cookie, e' vulnerabile a Cross-Site Request Forgery. 
+  Aggiungere il middleware `csurf` (o logica equivalente basata su header 
+  custom come `X-CSRF-Token` usando il pattern Double Submit Cookie) 
+  e assicurare che tutti i cookie sensibili abbiano `SameSite=Strict` e 
+  `Secure=true`.
+
+------------------------------------------------------------------------------
+[ ] SEC-115 — Protezione Credential Stuffing e Weak Passwords (OWASP A07)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Prevenire l'uso di password compromesse (Credential Stuffing) interrogando 
+  in modo sicuro (k-Anonymity) l'API HaveIBeenPwned durante la registrazione 
+  o il cambio password. Integrare la libreria `zxcvbn` nel frontend per 
+  forzare una complessita' reale delle password invece di semplici regole regex. OWASP raccomanda la verifica contro database di password note.
+
+------------------------------------------------------------------------------
+[ ] SEC-116 — Data Loss Prevention (DLP) su Clipboard e Drive (OWASP A01)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: CLIP-017, RDPFS-018
+
+  DESCRIZIONE:
+  Limitare l'esfiltrazione dei dati (Broken Access Control). Aggiungere policy 
+  a livello Tenant e User per disabilitare selettivamente il copia-incolla 
+  (Clipboard) dal desktop remoto verso il client locale, e disabilitare il 
+  download tramite Drive Redirection. Guacamole supporta il parametro 
+  `disable-copy` e i permessi granulari sul drive.
+
+------------------------------------------------------------------------------
+[ ] SEC-117 — Concurrent Session Limits e Absolute Timeout (OWASP A07)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: ORCH-060
+
+  DESCRIZIONE:
+  Prevenire l'abuso degli account limitando il numero massimo di sessioni 
+  simultanee per utente (es. max 3). Se viene superato, invalidare la 
+  sessione piu' vecchia. Inoltre, introdurre un "Absolute Session Timeout" 
+  (es. 12 ore) che forza la riautenticazione anche se l'utente e' 
+  costantemente attivo, come prescritto dalle linee guida OWASP per la 
+  gestione delle sessioni.
+
+
+================================================================================
+  SEZIONE MITRE — SCOUTED FEATURES (2026-03-10)
+================================================================================
+
+
+------------------------------------------------------------------------------
+[ ] SEC-111 — Token Binding to IP/User-Agent (MITRE T1563: Session Hijacking)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Bind JWT Access Tokens and Refresh Tokens to the client's IP address and
+  User-Agent to prevent session hijacking if a token is stolen. Mitigates MITRE
+  ATT&CK T1563. If a token is presented from a different IP or User-Agent than
+  the one it was issued to, the token is immediately invalidated, the session
+  is terminated, and a security alert is logged.
+
+  DETTAGLI TECNICI:
+  1) Modificare payload JWT per includere l'hash (SHA-256) di IP + User-Agent.
+  2) Aggiornare il middleware auth.middleware.ts per calcolare l'hash
+     della richiesta corrente e confrontarlo con quello nel token.
+  3) In caso di mismatch, restituire 401 e registrare evento audit TOKEN_HIJACK_ATTEMPT.
+  4) Aggiungere eccezione per IP dinamici (configurabile a livello tenant).
+
+------------------------------------------------------------------------------
+[ ] SEC-112 — Pwned Password Check for Vault Secrets (MITRE T1552: Unsecured Credentials)
+------------------------------------------------------------------------------
+  Priorita: MEDIA
+  Dipendenze: VAULT-053 (completato)
+
+  DESCRIZIONE:
+  Integrate the HaveIBeenPwned (HIBP) k-Anonymity API to check if the user's
+  master password or any saved vault credentials have been exposed in known
+  data breaches. Addresses MITRE ATT&CK T1552.
+
+  DETTAGLI TECNICI:
+  1) Aggiungere controllo HIBP durante la creazione/modifica della master password
+     o al salvataggio di un secret di tipo LOGIN.
+  2) Utilizzare esclusivamente l'approccio k-Anonymity: inviare solo i primi
+     5 caratteri dell'hash SHA-1 della password all'API pubblica.
+  3) Salvare un flag isPwned o pwnedCount sul modello VaultSecret.
+  4) Mostrare un warning UI ("Password trovata in un data breach") nella
+     pagina del Keychain e suggerire la rotazione.
+
+------------------------------------------------------------------------------
+[ ] SEC-113 — Lateral Movement Anomaly Detection (MITRE T1021: Remote Services)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: AUDIT-013 (completato), ORCH-060 (completato)
+
+  DESCRIZIONE:
+  Detect unusual lateral movement by monitoring the rate and diversity of
+  remote connections initiated by a user. If a compromised account starts
+  connecting to many machines rapidly (typical of ransomware spreading or
+  network scanning), temporarily suspend access and alert admins.
+
+  DETTAGLI TECNICI:
+  1) Aggiungere logica in session.controller.ts per analizzare la frequenza
+     di SESSION_START negli ultimi 15 minuti per l'utente corrente.
+  2) Definire threshold (es. > 10 target distinti in 5 minuti).
+  3) Se superato, generare un alert (notifica Admin) e opzionalmente applicare
+     un soft-lockout all'account utente.
+  4) Registrare evento audit ANOMALOUS_LATERAL_MOVEMENT.
+
