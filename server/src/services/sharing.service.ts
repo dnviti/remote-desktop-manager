@@ -1,10 +1,11 @@
 import prisma, { Permission } from '../lib/prisma';
-import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { requireMasterKey, reEncryptField } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
 import { createNotificationAsync } from './notification.service';
 import { emitNotification } from '../socket/notification.handler';
 import { resolveTeamKey } from './team.service';
 import * as permissionService from './permission.service';
+import { assertShareableTenantBoundary } from '../utils/tenantScope';
 
 export async function shareConnection(
   actingUserId: string,
@@ -34,32 +35,9 @@ export async function shareConnection(
     throw new AppError('Cannot share with yourself', 400);
   }
 
-  // Tenant boundary check (bidirectional) — both users must share at least one tenant
-  const actingMemberships = await prisma.tenantMember.findMany({
-    where: { userId: actingUserId },
-    select: { tenantId: true },
-  });
-  const targetMemberships = await prisma.tenantMember.findMany({
-    where: { userId: targetUser.id },
-    select: { tenantId: true },
-  });
-  const actingTenantIds = new Set(actingMemberships.map((m) => m.tenantId));
-  const targetTenantIds = new Set(targetMemberships.map((m) => m.tenantId));
-  if (actingTenantIds.size > 0 || targetTenantIds.size > 0) {
-    const hasCommon = [...actingTenantIds].some((id) => targetTenantIds.has(id));
-    if (!hasCommon) {
-      throw new AppError('Cannot share with users outside your organization', 400);
-    }
-  }
+  await assertShareableTenantBoundary(actingUserId, targetUser.id);
 
-  // Get target user's master key (they must have their vault unlocked)
-  const targetKey = getMasterKey(targetUser.id);
-  if (!targetKey) {
-    throw new AppError(
-      'Unable to share with this user at this time.',
-      400
-    );
-  }
+  const targetKey = requireMasterKey(targetUser.id, 'Unable to share with this user at this time.', 400);
 
   // Vault-backed connections: credentials resolved at session time from the vault secret.
   // No inline credential re-encryption needed — the shared user must have access to the vault secret.
@@ -113,46 +91,24 @@ export async function shareConnection(
     throw new AppError('Connection has no credentials to share', 400);
   }
 
-  let decryptionKey: Buffer;
-  if (connection.teamId) {
-    decryptionKey = await resolveTeamKey(connection.teamId, actingUserId);
-  } else {
-    const ownerKey = getMasterKey(actingUserId);
-    if (!ownerKey) throw new AppError('Vault is locked', 403);
-    decryptionKey = ownerKey;
-  }
+  const decryptionKey = connection.teamId
+    ? await resolveTeamKey(connection.teamId, actingUserId)
+    : requireMasterKey(actingUserId);
 
-  // Decrypt credentials with source key
-  const username = decrypt(
-    {
-      ciphertext: connection.encryptedUsername,
-      iv: connection.usernameIV,
-      tag: connection.usernameTag,
-    },
-    decryptionKey
+  const encUsername = reEncryptField(
+    { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },
+    decryptionKey, targetKey
   );
-  const password = decrypt(
-    {
-      ciphertext: connection.encryptedPassword,
-      iv: connection.passwordIV,
-      tag: connection.passwordTag,
-    },
-    decryptionKey
+  const encPassword = reEncryptField(
+    { ciphertext: connection.encryptedPassword, iv: connection.passwordIV, tag: connection.passwordTag },
+    decryptionKey, targetKey
   );
-
-  // Decrypt domain if present
-  let domain: string | undefined;
-  if (connection.encryptedDomain && connection.domainIV && connection.domainTag) {
-    domain = decrypt(
-      { ciphertext: connection.encryptedDomain, iv: connection.domainIV, tag: connection.domainTag },
-      decryptionKey
-    );
-  }
-
-  // Re-encrypt with target user's personal key
-  const encUsername = encrypt(username, targetKey);
-  const encPassword = encrypt(password, targetKey);
-  const encDomain = domain ? encrypt(domain, targetKey) : null;
+  const encDomain = (connection.encryptedDomain && connection.domainIV && connection.domainTag)
+    ? reEncryptField(
+        { ciphertext: connection.encryptedDomain, iv: connection.domainIV, tag: connection.domainTag },
+        decryptionKey, targetKey
+      )
+    : null;
 
   const shared = await prisma.sharedConnection.upsert({
     where: {

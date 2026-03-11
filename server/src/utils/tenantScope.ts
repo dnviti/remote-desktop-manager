@@ -1,4 +1,5 @@
 import { AppError } from '../middleware/error.middleware';
+import prisma from '../lib/prisma';
 
 /**
  * Asserts a resource's tenant matches the user's tenant.
@@ -29,4 +30,32 @@ export function tenantScopedTeamFilter(
 ): Record<string, unknown> {
   if (!tenantId) return {};
   return { team: { tenantId } };
+}
+
+/**
+ * Asserts both users share at least one tenant (bidirectional check).
+ * Passes if neither user belongs to any tenant (backward compat).
+ */
+export async function assertShareableTenantBoundary(
+  actingUserId: string,
+  targetUserId: string
+): Promise<void> {
+  const [actingMemberships, targetMemberships] = await Promise.all([
+    prisma.tenantMember.findMany({
+      where: { userId: actingUserId },
+      select: { tenantId: true },
+    }),
+    prisma.tenantMember.findMany({
+      where: { userId: targetUserId },
+      select: { tenantId: true },
+    }),
+  ]);
+  const actingTenantIds = new Set(actingMemberships.map((m) => m.tenantId));
+  const targetTenantIds = new Set(targetMemberships.map((m) => m.tenantId));
+  if (actingTenantIds.size > 0 || targetTenantIds.size > 0) {
+    const hasCommon = [...actingTenantIds].some((id) => targetTenantIds.has(id));
+    if (!hasCommon) {
+      throw new AppError('Cannot share with users outside your organization', 400);
+    }
+  }
 }

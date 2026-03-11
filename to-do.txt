@@ -23,37 +23,6 @@
 # Scouted 2026-03-11 — Code Optimization & Cleanup
 
 
-------------------------------------------------------------------------------
-[ ] REFAC-204 — Estrarre utility condivise nei servizi (tenant boundary, re-encryption, vault key)
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  Tre pattern di codice sono duplicati tra sharing.service.ts e
-  secretSharing.service.ts (e altri servizi):
-  - Validazione confine tenant (~15 righe identiche copiate)
-  - Re-cifratura credenziali per condivisione (~20 righe identiche copiate)
-  - Helper `requireMasterKey()` esiste in connection.service.ts ma non e'
-    esportato ne' riusato da team.service.ts e secret.service.ts
-  Estrarre queste utility in moduli condivisi per eliminare duplicazione.
-
-  DETTAGLI TECNICI:
-  1) Estrarre `validateTenantBoundary(actingUserId, targetUserId)` in un
-     modulo utility condiviso
-  2) Estrarre `reEncryptCredentials(sourceKey, targetKey, fields)` come
-     helper riusabile
-  3) Esportare `requireMasterKey(userId)` da un modulo condiviso e riusarlo
-     in connection.service, team.service e secret.service
-
-  File coinvolti:
-    CREARE:     server/src/services/shared/tenantBoundary.ts
-    CREARE:     server/src/services/shared/credentialEncryption.ts
-    MODIFICARE: server/src/services/sharing.service.ts
-    MODIFICARE: server/src/services/secretSharing.service.ts
-    MODIFICARE: server/src/services/connection.service.ts
-    MODIFICARE: server/src/services/team.service.ts
-    MODIFICARE: server/src/services/secret.service.ts
 
 
 ------------------------------------------------------------------------------
@@ -433,6 +402,196 @@
     MODIFICARE: client/src/store/uiPreferencesStore.ts
 
 
+------------------------------------------------------------------------------
+[ ] VAULT-207 — Distribuzione asincrona chiave tenant vault (PendingVaultKeyDistribution)
+------------------------------------------------------------------------------
+  Priorita: CRITICA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Attualmente la distribuzione della chiave tenant vault richiede che ENTRAMBI
+  i vault (admin + utente target) siano sbloccati simultaneamente. Questo e'
+  praticamente impossibile da coordinare e blocca completamente gli utenti
+  nuovi del tenant con l'errore "You don't have access to the organization
+  vault yet". Il problema e' in distributeTenantKeyToUser() dentro
+  secret.service.ts: getMasterKey(targetUserId) fallisce se il target non ha
+  il vault aperto.
+
+  Soluzione: implementare distribuzione asincrona/deferred. Quando l'admin
+  distribuisce la chiave e il vault del target e' chiuso, la chiave cifrata
+  viene salvata in una tabella pending. Quando il target sblocca il proprio
+  vault, il sistema controlla automaticamente se ci sono distribuzioni pending
+  e le finalizza (ri-cifra la chiave tenant con la master key dell'utente).
+
+  DETTAGLI TECNICI:
+  1) Nuovo modello Prisma `PendingVaultKeyDistribution`:
+     - id: String @id @default(uuid())
+     - tenantId: String (FK -> Tenant)
+     - targetUserId: String (FK -> User)
+     - encryptedTenantVaultKey: String (cifrato con chiave server-side)
+     - tenantVaultKeyIV: String
+     - tenantVaultKeyTag: String
+     - distributorUserId: String (FK -> User)
+     - createdAt: DateTime @default(now())
+     - @@unique([tenantId, targetUserId])
+     La chiave tenant viene cifrata con una chiave server-side dedicata
+     (VAULT_ESCROW_KEY in .env, derivata via HMAC-SHA256 di tenantId +
+     segreto applicativo). Quando il target sblocca il vault, il server
+     decifra il pending e ri-cifra con la master key del target.
+
+  2) Modificare distributeTenantKeyToUser() in secret.service.ts:
+     - Se getMasterKey(targetUserId) ritorna null, NON lanciare errore
+     - Risolvere la tenant key dell'admin (resolveTenantKey), cifrare con
+       chiave server-side, salvare in PendingVaultKeyDistribution
+     - Ritornare { distributed: false, pending: true } al controller
+     - Se il target HA il vault aperto, comportamento invariato
+
+  3) Modificare initTenantVault() in secret.service.ts:
+     - Nel loop sui tenantUsers, per utenti con vault chiuso creare un
+       record PendingVaultKeyDistribution invece di saltarli silenziosamente
+     - Cosi' TUTTI i membri ricevono la chiave (subito o al prossimo unlock)
+
+  4) Nuovo metodo processPendingDistributions(userId) in secret.service.ts:
+     - Query: trovare tutti i PendingVaultKeyDistribution per targetUserId
+     - Per ciascuno: decifrare con chiave server-side, ri-cifrare con la
+       master key dell'utente, creare TenantVaultMember, eliminare pending
+     - Wrappare in transazione Prisma
+
+  5) Hook in vault.service.ts unlockVault() (e tutte le varianti):
+     - Dopo storeVaultSession(), chiamare processPendingDistributions(userId)
+     - Tutti i path di unlock: unlockVault, unlockVaultWithTotp,
+       unlockVaultWithWebAuthn, unlockVaultWithSms
+     - Gestire errori silenziosamente (log.warn) per non bloccare l'unlock
+
+  6) Aggiornare controller secret.controller.ts distributeKey():
+     - Gestire il caso { pending: true }, ritornare 202 Accepted
+     - Aggiungere campo pendingDistribution: boolean in tenantVaultStatus()
+
+  7) Client - KeychainDialog.tsx:
+     - Se pendingDistribution === true: "Organization vault key is pending.
+       It will be automatically distributed when you unlock your vault."
+     - Se !hasAccess e !pending: "Organization vault key not yet distributed.
+       Ask an admin to distribute the key."
+
+  8) Nuove AuditAction: TENANT_VAULT_KEY_PENDING, TENANT_VAULT_KEY_AUTO_DISTRIBUTE
+
+  File coinvolti:
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/services/secret.service.ts
+    MODIFICARE: server/src/services/vault.service.ts
+    MODIFICARE: server/src/controllers/secret.controller.ts
+    MODIFICARE: server/src/routes/secret.routes.ts
+    MODIFICARE: server/src/config.ts
+    MODIFICARE: .env.example
+    MODIFICARE: client/src/components/Dialogs/KeychainDialog.tsx
+    MODIFICARE: client/src/store/secretStore.ts
+    MODIFICARE: client/src/api/secrets.api.ts
+
+
+------------------------------------------------------------------------------
+[ ] VAULT-208 — Preservazione vault su password reset (Element-style, nessun wipe automatico)
+------------------------------------------------------------------------------
+  Priorita: CRITICA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Quando un utente resetta la password senza recovery key, il sistema esegue
+  un vault wipe completo (passwordReset.service.ts righe 246-337): tutte le
+  credenziali connessioni, segreti vault, team/tenant vault keys vengono
+  cancellati. Questo e' catastrofico per qualsiasi utente.
+
+  Soluzione (stile Element/Matrix): NON cancellare MAI automaticamente i dati
+  cifrati. Se l'utente non fornisce la recovery key durante il reset, i dati
+  restano cifrati e il vault viene marcato come "in attesa di recovery".
+  L'utente puo' fornire la recovery key in qualsiasi momento (sul form di
+  reset password O nella sezione dedicata del Keychain). Se la recovery key
+  e' persa definitivamente, l'utente puo' scegliere esplicitamente di
+  resettare il vault (con warning e conferma esplicita). Stesso comportamento
+  per account personali e membri tenant.
+
+  DETTAGLI TECNICI:
+  1) Nuovo campo User: vaultNeedsRecovery Boolean @default(false)
+     Quando true, il vault e' bloccato e non sbloccabile con la password
+     corrente (la vecchia encryptedVaultKey resta cifrata con la vecchia
+     password-derived key).
+
+  2) Modificare completePasswordReset() in passwordReset.service.ts:
+     - Se l'utente NON fornisce la recovery key:
+       * NON eseguire il vault wipe (rimuovere il blocco $transaction)
+       * NON cancellare credenziali, segreti, team/tenant vault keys
+       * Aggiornare solo: passwordHash (bcrypt nuovo)
+       * Impostare vaultNeedsRecovery = true
+       * La vecchia encryptedVaultKey resta intatta nel DB
+       * Log audit VAULT_NEEDS_RECOVERY
+     - Se l'utente FORNISCE la recovery key: flusso invariato (vault
+       preservato immediatamente come oggi)
+
+  3) Recovery key sul form di password reset (ResetPasswordPage.tsx):
+     - Campo recovery key opzionale nel form di completamento reset
+     - Se fornito e valido: vault preservato (flusso esistente)
+     - Se lasciato vuoto: password cambiata, vault in pending recovery
+     - Messaggio informativo: "If you have your recovery key, enter it now
+       to preserve your vault. You can also enter it later from Keychain."
+
+  4) Zona dedicata recovery nel Keychain (KeychainDialog.tsx):
+     - Quando vaultNeedsRecovery === true, mostrare sezione dedicata:
+       * Alert/banner: "Your vault is locked after a password reset. Enter
+         your recovery key to restore access to your encrypted data."
+       * Campo input per recovery key
+       * Bottone "Restore Vault"
+     - Flow backend: nuovo endpoint POST /api/vault/recover-with-key
+       * Body: { recoveryKey: string }
+       * Decifrare vecchia master key con recovery key + storedSalt
+       * Ri-cifrare con la password corrente (derivare nuova key)
+       * Aggiornare encryptedVaultKey, vaultKeyIV, vaultKeyTag, vaultSalt
+       * Generare nuova recovery key (mostrarla all'utente)
+       * Aggiornare escrow recovery key nel DB
+       * Impostare vaultNeedsRecovery = false
+       * Log audit VAULT_RECOVERY_COMPLETE
+
+  5) Opzione "Reset vault e ricomincia da zero" (entrambi i punti):
+     - Bottone "Reset vault and start fresh" sia nel form di reset password
+       che nella zona recovery del Keychain
+     - Dialog di WARNING: "This will permanently delete ALL your encrypted
+       credentials, secrets, and vault keys. This action cannot be undone."
+     - Conferma esplicita: l'utente deve digitare "DELETE" per procedere
+     - Flow backend: nuovo endpoint POST /api/vault/force-reset
+       * Body: { confirmation: "DELETE" }
+       * Eseguire il vault wipe attuale (codice da passwordReset.service.ts)
+       * Generare nuova master key + nuova recovery key
+       * Impostare vaultNeedsRecovery = false
+       * Log audit VAULT_FORCE_RESET
+
+  6) Blocco vault quando vaultNeedsRecovery === true:
+     - vault.service.ts unlockVault(): se vaultNeedsRecovery, ritornare
+       errore specifico "Vault needs recovery key" (non tentare decryption)
+     - VaultLockedOverlay.tsx: se vaultNeedsRecovery, mostrare UI diversa
+       con link a "Go to Keychain to recover your vault"
+     - Tutte le risorse cifrate appaiono bloccate/illeggibili
+
+  7) Stato recovery nella risposta login:
+     - auth.service.ts login(): includere vaultNeedsRecovery nel payload
+     - Il client salva questo stato per mostrare l'UI appropriata
+
+  8) Nuove AuditAction:
+     - VAULT_NEEDS_RECOVERY (vault marcato come pending recovery)
+     - VAULT_RECOVERY_COMPLETE (vault ripristinato con recovery key)
+     - VAULT_FORCE_RESET (utente ha scelto di cancellare tutto)
+
+  File coinvolti:
+    MODIFICARE: server/prisma/schema.prisma
+    MODIFICARE: server/src/services/passwordReset.service.ts
+    MODIFICARE: server/src/services/vault.service.ts
+    MODIFICARE: server/src/services/crypto.service.ts
+    MODIFICARE: server/src/services/auth.service.ts
+    MODIFICARE: server/src/controllers/auth.controller.ts
+    MODIFICARE: server/src/controllers/vault.controller.ts
+    MODIFICARE: server/src/routes/vault.routes.ts
+    MODIFICARE: client/src/pages/ResetPasswordPage.tsx
+    MODIFICARE: client/src/components/Dialogs/KeychainDialog.tsx
+    MODIFICARE: client/src/components/Overlays/VaultLockedOverlay.tsx
+    MODIFICARE: client/src/api/vault.api.ts
+    MODIFICARE: client/src/store/secretStore.ts
 
 
 

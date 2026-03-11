@@ -4,7 +4,7 @@ import {
   generateTeamMasterKey,
   encryptTeamKey,
   decryptTeamKey,
-  getMasterKey,
+  requireMasterKey,
   storeTeamVaultSession,
   getTeamMasterKey as getCachedTeamKey,
   lockTeamVault,
@@ -24,10 +24,7 @@ export async function createTeam(
   description?: string
 ) {
   // Require creator's vault to be unlocked
-  const userMasterKey = getMasterKey(creatorUserId);
-  if (!userMasterKey) {
-    throw new AppError('Vault is locked. Please unlock it first.', 403);
-  }
+  const userMasterKey = requireMasterKey(creatorUserId);
 
   // Generate and encrypt the team master key
   const teamKey = generateTeamMasterKey();
@@ -220,15 +217,8 @@ export async function addMember(
   if (existing) throw new AppError('User is already a team member', 400);
 
   // Both vaults must be unlocked
-  const adderMasterKey = getMasterKey(addedByUserId);
-  if (!adderMasterKey) {
-    throw new AppError('Your vault is locked. Please unlock it first.', 403);
-  }
-
-  const targetMasterKey = getMasterKey(targetUserId);
-  if (!targetMasterKey) {
-    throw new AppError("Target user's vault is locked. They must unlock their vault first.", 403);
-  }
+  const adderMasterKey = requireMasterKey(addedByUserId, 'Your vault is locked. Please unlock it first.');
+  const targetMasterKey = requireMasterKey(targetUserId, "Target user's vault is locked. They must unlock their vault first.");
 
   // Get team key: try cache first, then decrypt from DB
   let teamKey = getCachedTeamKey(teamId, addedByUserId);
@@ -344,10 +334,7 @@ export async function resolveTeamKey(teamId: string, userId: string): Promise<Bu
   if (cached) return cached;
 
   // Get user's personal master key
-  const userMasterKey = getMasterKey(userId);
-  if (!userMasterKey) {
-    throw new AppError('Vault is locked. Please unlock it first.', 403);
-  }
+  const userMasterKey = requireMasterKey(userId);
 
   // Load from DB and decrypt
   const membership = await prisma.teamMember.findUnique({

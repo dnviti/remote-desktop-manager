@@ -1,16 +1,10 @@
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import prisma from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
-import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { encrypt, decrypt, getMasterKey, requireMasterKey } from './crypto.service';
 import type { EncryptedField } from '../types';
 
 const APP_NAME = 'Arsenale';
-
-function requireMasterKey(userId: string): Buffer {
-  const key = getMasterKey(userId);
-  if (!key) throw new AppError('Vault is locked. Please unlock it first.', 403);
-  return key;
-}
 
 /**
  * Resolve the plaintext TOTP secret from either encrypted or legacy plaintext fields.

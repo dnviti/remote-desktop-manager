@@ -1,5 +1,5 @@
 import prisma, { Prisma, ConnectionType } from '../lib/prisma';
-import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { encrypt, decrypt, requireMasterKey } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
 import { resolveTeamKey } from './team.service';
 import { resolveSecretEncryptionKey } from './secret.service';
@@ -11,12 +11,6 @@ import { logger } from '../utils/logger';
 import { validateHost } from '../utils/hostValidation';
 
 const log = logger.child('connection');
-
-function requireMasterKey(userId: string): Buffer {
-  const key = getMasterKey(userId);
-  if (!key) throw new AppError('Vault is locked. Please unlock it first.', 403);
-  return key;
-}
 
 export interface CreateConnectionInput {
   name: string;

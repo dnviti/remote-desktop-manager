@@ -4,6 +4,7 @@ import {
   encrypt,
   decrypt,
   getMasterKey,
+  requireMasterKey,
   generateTenantMasterKey,
   encryptTenantKey,
   decryptTenantKey,
@@ -60,10 +61,7 @@ export async function resolveTenantKey(tenantId: string, userId: string): Promis
   if (cached) return cached;
 
   // Get user's personal master key
-  const userMasterKey = getMasterKey(userId);
-  if (!userMasterKey) {
-    throw new AppError('Vault is locked. Please unlock it first.', 403);
-  }
+  const userMasterKey = requireMasterKey(userId);
 
   // Load from DB and decrypt
   const membership = await prisma.tenantVaultMember.findUnique({
@@ -96,9 +94,7 @@ export async function resolveSecretEncryptionKey(
 ): Promise<Buffer> {
   switch (scope) {
     case 'PERSONAL': {
-      const key = getMasterKey(userId);
-      if (!key) throw new AppError('Vault is locked. Please unlock it first.', 403);
-      return key;
+      return requireMasterKey(userId);
     }
     case 'TEAM': {
       if (!teamId) throw new AppError('teamId is required for team-scoped secrets', 400);
@@ -123,10 +119,7 @@ export async function initTenantVault(
     throw new AppError('Tenant vault is already initialized', 400);
   }
 
-  const initiatorMasterKey = getMasterKey(initiatorUserId);
-  if (!initiatorMasterKey) {
-    throw new AppError('Vault is locked. Please unlock it first.', 403);
-  }
+  const initiatorMasterKey = requireMasterKey(initiatorUserId);
 
   const tenantKey = generateTenantMasterKey();
   const encKeyForInitiator = encryptTenantKey(tenantKey, initiatorMasterKey);
@@ -205,10 +198,7 @@ export async function distributeTenantKeyToUser(
   const tenantKey = await resolveTenantKey(tenantId, distributorUserId);
 
   // Target user's vault must be unlocked
-  const targetMasterKey = getMasterKey(targetUserId);
-  if (!targetMasterKey) {
-    throw new AppError("Target user's vault is locked. They must unlock their vault first.", 403);
-  }
+  const targetMasterKey = requireMasterKey(targetUserId, "Target user's vault is locked. They must unlock their vault first.");
 
   const encKey = encryptTenantKey(tenantKey, targetMasterKey);
 
@@ -362,8 +352,7 @@ export async function getSecret(
     });
     if (!sharedRecord) throw new AppError('Secret not found', 404);
 
-    const personalKey = getMasterKey(userId);
-    if (!personalKey) throw new AppError('Vault is locked. Please unlock it first.', 403);
+    const personalKey = requireMasterKey(userId);
 
     const decryptedJson = decrypt(
       { ciphertext: sharedRecord.encryptedData, iv: sharedRecord.dataIV, tag: sharedRecord.dataTag },

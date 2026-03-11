@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import argon2 from 'argon2';
 import { EncryptedField, VaultSession } from '../types';
 import { config } from '../config';
+import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import * as auditService from './audit.service';
 
@@ -114,6 +115,25 @@ export function decrypt(field: EncryptedField, key: Buffer): string {
   plaintext += decipher.final('utf8');
 
   return plaintext;
+}
+
+export function requireMasterKey(
+  userId: string,
+  message = 'Vault is locked. Please unlock it first.',
+  statusCode = 403
+): Buffer {
+  const key = getMasterKey(userId);
+  if (!key) throw new AppError(message, statusCode);
+  return key;
+}
+
+export function reEncryptField(
+  field: EncryptedField,
+  sourceKey: Buffer,
+  targetKey: Buffer
+): EncryptedField {
+  const plaintext = decrypt(field, sourceKey);
+  return encrypt(plaintext, targetKey);
 }
 
 export function encryptMasterKey(

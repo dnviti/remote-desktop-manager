@@ -3242,3 +3242,21 @@
   - All 26 files in server/src/controllers/*.controller.ts (modified)
   - 25 route files in server/src/routes/*.routes.ts (modified)
 
+------------------------------------------------------------------------------
+[x] REFAC-204 — Estrarre utility condivise nei servizi (tenant boundary, re-encryption, vault key)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Added requireMasterKey() and reEncryptField() to crypto.service.ts, assertShareableTenantBoundary() to tenantScope.ts. Removed 3 duplicate local requireMasterKey functions (connection, totp, gateway). Replaced 2 identical 16-line tenant boundary blocks with single-line calls (sharing, secretSharing). Replaced ~30 lines of decrypt+encrypt boilerplate with reEncryptField calls. Replaced 9+ inline getMasterKey+throw patterns across team.service.ts and secret.service.ts.
+
+  FILE COINVOLTI:
+  - server/src/services/crypto.service.ts (modified — added requireMasterKey, reEncryptField)
+  - server/src/utils/tenantScope.ts (modified — added assertShareableTenantBoundary)
+  - server/src/services/connection.service.ts (modified)
+  - server/src/services/totp.service.ts (modified)
+  - server/src/services/gateway.service.ts (modified)
+  - server/src/services/sharing.service.ts (modified)
+  - server/src/services/secretSharing.service.ts (modified)
+  - server/src/services/team.service.ts (modified)
+  - server/src/services/secret.service.ts (modified)
+

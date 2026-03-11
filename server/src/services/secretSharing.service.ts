@@ -1,10 +1,11 @@
 import prisma, { Permission } from '../lib/prisma';
-import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { requireMasterKey, reEncryptField } from './crypto.service';
 import { AppError } from '../middleware/error.middleware';
 import { createNotificationAsync } from './notification.service';
 import { emitNotification } from '../socket/notification.handler';
 import { resolveSecretEncryptionKey } from './secret.service';
 import * as permissionService from './permission.service';
+import { assertShareableTenantBoundary } from '../utils/tenantScope';
 
 export async function shareSecret(
   actingUserId: string,
@@ -34,34 +35,11 @@ export async function shareSecret(
     throw new AppError('Cannot share with yourself', 400);
   }
 
-  // Tenant boundary check (bidirectional) — both users must share at least one tenant
-  const actingMemberships = await prisma.tenantMember.findMany({
-    where: { userId: actingUserId },
-    select: { tenantId: true },
-  });
-  const targetMemberships = await prisma.tenantMember.findMany({
-    where: { userId: targetUser.id },
-    select: { tenantId: true },
-  });
-  const actingTenantIds = new Set(actingMemberships.map((m) => m.tenantId));
-  const targetTenantIds = new Set(targetMemberships.map((m) => m.tenantId));
-  if (actingTenantIds.size > 0 || targetTenantIds.size > 0) {
-    const hasCommon = [...actingTenantIds].some((id) => targetTenantIds.has(id));
-    if (!hasCommon) {
-      throw new AppError('Cannot share with users outside your organization', 400);
-    }
-  }
+  await assertShareableTenantBoundary(actingUserId, targetUser.id);
 
-  // Get target user's master key (they must have their vault unlocked)
-  const targetKey = getMasterKey(targetUser.id);
-  if (!targetKey) {
-    throw new AppError(
-      'Unable to share with this user at this time.',
-      400
-    );
-  }
+  const targetKey = requireMasterKey(targetUser.id, 'Unable to share with this user at this time.', 400);
 
-  // Decrypt with scope-appropriate key
+  // Decrypt with scope-appropriate key and re-encrypt for target user
   const decryptionKey = await resolveSecretEncryptionKey(
     actingUserId,
     secret.scope,
@@ -69,13 +47,10 @@ export async function shareSecret(
     secret.tenantId
   );
 
-  const decryptedJson = decrypt(
+  const encData = reEncryptField(
     { ciphertext: secret.encryptedData, iv: secret.dataIV, tag: secret.dataTag },
-    decryptionKey
+    decryptionKey, targetKey
   );
-
-  // Re-encrypt with target user's personal key
-  const encData = encrypt(decryptedJson, targetKey);
 
   const shared = await prisma.sharedSecret.upsert({
     where: {

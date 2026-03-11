@@ -1,7 +1,7 @@
 import prisma, { ManagedInstanceStatus } from '../lib/prisma';
 import type { GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
-import { encrypt, decrypt, getMasterKey } from './crypto.service';
+import { encrypt, decrypt, requireMasterKey } from './crypto.service';
 import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
 import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
@@ -79,12 +79,6 @@ const publicSelect = {
   lastScaleAction: true,
   templateId: true,
 } as const;
-
-function requireMasterKey(userId: string): Buffer {
-  const key = getMasterKey(userId);
-  if (!key) throw new AppError('Vault is locked. Please unlock it first.', 403);
-  return key;
-}
 
 export async function getDefaultGateway(tenantId: string, type: GatewayType) {
   return prisma.gateway.findFirst({
