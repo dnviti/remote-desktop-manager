@@ -3161,3 +3161,22 @@
     MODIFICATO: client/src/store/uiPreferencesStore.ts
     MODIFICATO: client/src/api/audit.api.ts
 
+
+================================================================================
+  SEZIONE H — SCOUTED FEATURES
+================================================================================
+
+------------------------------------------------------------------------------
+[x] REFAC-201 — Extract shared Zod validation middleware and centralize schemas
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Created validate.middleware.ts with validate() and validateUuidParam() middleware. Centralized SSH/RDP/VNC Zod schemas in common.schemas.ts. Refactored all 23 controllers to use route-level validation instead of inline try/catch/ZodError blocks. 141 validation usages across 24 route files. Created centralized schema files under server/src/schemas/.
+
+  FILE COINVOLTI:
+  - server/src/middleware/validate.middleware.ts (new)
+  - server/src/schemas/connection.schemas.ts (new)
+  - server/src/schemas/common.schemas.ts (new)
+  - All 23 files in server/src/controllers/*.controller.ts
+  - All route files in server/src/routes/*.routes.ts
+
