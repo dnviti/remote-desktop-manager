@@ -56,7 +56,7 @@ export async function shareSecret(
   const targetKey = getMasterKey(targetUser.id);
   if (!targetKey) {
     throw new AppError(
-      'Target user vault is locked. They must be logged in to receive shares.',
+      'Unable to share with this user at this time.',
       400
     );
   }

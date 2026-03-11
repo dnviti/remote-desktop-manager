@@ -3206,3 +3206,19 @@
   - client/src/components/Layout/MainLayout.tsx (modified)
   - client/src/hooks/useLazyMount.ts (new)
 
+------------------------------------------------------------------------------
+[x] SEC-201 — Rate limiting on vault unlock and session creation endpoints
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+  COMPLETATO: Added rate limiting to vault unlock (5/min) and MFA unlock (10/min) endpoints, and session creation (20/min) for RDP/VNC/SSH. All limits configurable via env vars. Fixed info-leaking error messages in sharing services that revealed vault/login state. Uses express-rate-limit with ipKeyGenerator for IPv6 safety.
+
+  FILE COINVOLTI:
+  - server/src/middleware/vaultRateLimit.middleware.ts (new)
+  - server/src/middleware/sessionRateLimit.middleware.ts (new)
+  - server/src/routes/vault.routes.ts (modified)
+  - server/src/routes/session.routes.ts (modified)
+  - server/src/config.ts (modified)
+  - server/src/services/secretSharing.service.ts (modified)
+  - server/src/services/sharing.service.ts (modified)
+

@@ -26,48 +26,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] SEC-201 — Rate limiting on vault unlock and session creation endpoints
-------------------------------------------------------------------------------
-  Priorita: ALTA
-  Dipendenze: Nessuna
-
-  DESCRIZIONE:
-  The vault unlock endpoints (POST /vault/unlock, MFA variants) and session
-  creation endpoints (POST /sessions/rdp, /sessions/vnc, /sessions/ssh) have
-  no rate limiting. A compromised JWT could allow unlimited brute-force
-  attempts against the vault password or unbounded session creation (resource
-  exhaustion). Additionally, error messages in sharing services reveal whether
-  a target user is logged in, which is an information disclosure vulnerability.
-
-  DETTAGLI IMPLEMENTAZIONE:
-  1. Create server/src/middleware/vaultRateLimit.middleware.ts following the
-     existing loginRateLimit pattern. Key on req.user.id. Limit: 5 attempts
-     per minute for vault unlock, 10 for MFA variants.
-  2. Create server/src/middleware/sessionRateLimit.middleware.ts for session
-     creation. Allow 20 session creations per minute per user.
-  3. Apply middlewares in vault.routes.ts and session.routes.ts.
-  4. Add config entries in server/src/config.ts for rate limit values.
-  5. Fix info-leaking error message "Target user vault is locked. They must
-     be logged in to receive shares." → "Unable to share with this user at
-     this time." in secretSharing.service.ts and sharing.service.ts.
-
-  FILE COINVOLTI:
-  - server/src/middleware/vaultRateLimit.middleware.ts (new)
-  - server/src/middleware/sessionRateLimit.middleware.ts (new)
-  - server/src/routes/vault.routes.ts
-  - server/src/routes/session.routes.ts
-  - server/src/config.ts
-  - server/src/services/secretSharing.service.ts
-  - server/src/services/sharing.service.ts
-
-  CRITERI DI ACCETTAZIONE:
-  - Vault unlock returns 429 after 5 failed attempts within 60 seconds
-  - Session creation returns 429 after 20 requests within 60 seconds
-  - Rate limit values configurable via environment variables
-  - Error messages do not reveal vault or login state
-  - npm run verify passes
-
 
 ------------------------------------------------------------------------------
 [ ] OPT-202 — Add composite Prisma indexes for audit query performance
