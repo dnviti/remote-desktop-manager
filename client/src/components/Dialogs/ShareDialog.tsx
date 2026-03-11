@@ -12,7 +12,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { UserSearchResult } from '../../api/user.api';
 import UserPicker from '../UserPicker';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface ShareDialogProps {
   open: boolean;
@@ -35,17 +35,16 @@ export default function ShareDialog({
   const [scope, setScope] = useState<'tenant' | 'team'>('tenant');
   const [permission, setPermission] = useState<'READ_ONLY' | 'FULL_ACCESS'>('READ_ONLY');
   const [shares, setShares] = useState<ShareData[]>([]);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
 
   useEffect(() => {
     if (open) {
       loadShares();
       setSelectedUser(null);
       setEmail('');
-      setError('');
+      clearError();
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadShares is defined inline and depends on connectionId already in deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadShares is defined inline; clearError is stable (useCallback with [])
   }, [open, connectionId]);
 
   const loadShares = async () => {
@@ -58,7 +57,6 @@ export default function ShareDialog({
   const sharedUserIds = shares.map((s) => s.userId);
 
   const handleShare = async () => {
-    setError('');
     if (hasTenant) {
       if (!selectedUser) {
         setError('Select a user to share with');
@@ -70,8 +68,7 @@ export default function ShareDialog({
         return;
       }
     }
-    setLoading(true);
-    try {
+    await run(async () => {
       const target = selectedUser
         ? { userId: selectedUser.id }
         : { email };
@@ -79,11 +76,7 @@ export default function ShareDialog({
       setSelectedUser(null);
       setEmail('');
       await loadShares();
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Failed to share connection'));
-    } finally {
-      setLoading(false);
-    }
+    }, 'Failed to share connection');
   };
 
   const handleUnshare = async (userId: string) => {

@@ -14,6 +14,7 @@ import { getTenantAuditLogs, TenantAuditLogEntry } from '../../api/audit.api';
 import { useAuthStore } from '../../store/authStore';
 import { ACTION_LABELS, getActionColor } from '../Audit/auditConstants';
 import { SlideUp } from '../common/SlideUp';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface UserProfileDialogProps {
   open: boolean;
@@ -31,8 +32,7 @@ export default function UserProfileDialog({ open, onClose, userId }: UserProfile
   const tenantId = useAuthStore((s) => s.user?.tenantId);
 
   const [profile, setProfile] = useState<UserProfileData | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, run } = useAsyncAction();
 
   // Audit log state (admin only)
   const [auditLogs, setAuditLogs] = useState<TenantAuditLogEntry[]>([]);
@@ -42,17 +42,11 @@ export default function UserProfileDialog({ open, onClose, userId }: UserProfile
 
   const fetchProfile = useCallback(async () => {
     if (!tenantId || !userId) return;
-    setLoading(true);
-    setError(null);
-    try {
+    await run(async () => {
       const data = await getUserProfile(tenantId, userId);
       setProfile(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profile');
-    } finally {
-      setLoading(false);
-    }
-  }, [tenantId, userId]);
+    }, 'Failed to load profile');
+  }, [tenantId, userId, run]);
 
   const fetchAuditLogs = useCallback(async (page: number) => {
     if (!tenantId || !userId || !profile?.email) return;

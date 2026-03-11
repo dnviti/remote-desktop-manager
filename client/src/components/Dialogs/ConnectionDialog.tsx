@@ -23,7 +23,7 @@ import { useGatewayStore } from '../../store/gatewayStore';
 import { useAuthStore } from '../../store/authStore';
 import SecretPicker from '../Keychain/SecretPicker';
 import { useVaultStore } from '../../store/vaultStore';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -50,8 +50,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const [credentialMode, setCredentialMode] = useState<'manual' | 'keychain'>('manual');
   const [selectedSecretId, setSelectedSecretId] = useState<string | null>(null);
   const [defaultConnectMode, setDefaultConnectMode] = useState<string>('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
   const fetchConnections = useConnectionsStore((s) => s.fetchConnections);
   const userDefaults = useTerminalSettingsStore((s) => s.userDefaults);
   const rdpUserDefaults = useRdpSettingsStore((s) => s.userDefaults);
@@ -65,6 +64,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   useEffect(() => {
     if (open && hasTenant) fetchGateways();
     if (open && connection) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting form state when dialog opens is intentional
       setName(connection.name);
       setType(connection.type);
       setHost(connection.host);
@@ -127,7 +127,6 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   });
 
   const handleSubmit = async () => {
-    setError('');
     if (!name || !host) {
       setError('Name and host are required');
       return;
@@ -141,8 +140,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       return;
     }
 
-    setLoading(true);
-    try {
+    const ok = await run(async () => {
       if (isEditMode && connection) {
         const data: ConnectionUpdate = {
           name,
@@ -198,12 +196,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
         await createConnection(data);
       }
       await fetchConnections();
-      handleClose();
-    } catch (err: unknown) {
-      setError(extractApiError(err, isEditMode ? 'Failed to update connection' : 'Failed to create connection'));
-    } finally {
-      setLoading(false);
-    }
+    }, isEditMode ? 'Failed to update connection' : 'Failed to create connection');
+    if (ok) handleClose();
   };
 
   const handleClose = () => {
@@ -223,7 +217,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     setCredentialMode('manual');
     setSelectedSecretId(null);
     setDefaultConnectMode('');
-    setError('');
+    clearError();
     onClose();
   };
 

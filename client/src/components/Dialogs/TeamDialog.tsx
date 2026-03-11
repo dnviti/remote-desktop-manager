@@ -5,7 +5,7 @@ import {
 import { useTeamStore } from '../../store/teamStore';
 import { useConnectionsStore } from '../../store/connectionsStore';
 import type { TeamData } from '../../api/team.api';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface TeamDialogProps {
   open: boolean;
@@ -16,8 +16,7 @@ interface TeamDialogProps {
 export default function TeamDialog({ open, onClose, team }: TeamDialogProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
   const createTeam = useTeamStore((s) => s.createTeam);
   const updateTeam = useTeamStore((s) => s.updateTeam);
   const fetchConnections = useConnectionsStore((s) => s.fetchConnections);
@@ -32,11 +31,11 @@ export default function TeamDialog({ open, onClose, team }: TeamDialogProps) {
       setName('');
       setDescription('');
     }
-    setError('');
+    clearError();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- clearError is stable (useCallback with [])
   }, [open, team]);
 
   const handleSubmit = async () => {
-    setError('');
     if (!name.trim()) {
       setError('Team name is required');
       return;
@@ -46,8 +45,7 @@ export default function TeamDialog({ open, onClose, team }: TeamDialogProps) {
       return;
     }
 
-    setLoading(true);
-    try {
+    const ok = await run(async () => {
       if (isEditMode && team) {
         const data: { name?: string; description?: string | null } = {};
         if (name.trim() !== team.name) data.name = name.trim();
@@ -61,18 +59,14 @@ export default function TeamDialog({ open, onClose, team }: TeamDialogProps) {
         await createTeam(name.trim(), description.trim() || undefined);
         await fetchConnections();
       }
-      handleClose();
-    } catch (err: unknown) {
-      setError(extractApiError(err, isEditMode ? 'Failed to update team' : 'Failed to create team'));
-    } finally {
-      setLoading(false);
-    }
+    }, isEditMode ? 'Failed to update team' : 'Failed to create team');
+    if (ok) handleClose();
   };
 
   const handleClose = () => {
     setName('');
     setDescription('');
-    setError('');
+    clearError();
     onClose();
   };
 

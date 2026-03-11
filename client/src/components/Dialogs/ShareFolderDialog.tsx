@@ -17,7 +17,7 @@ import { ConnectionData } from '../../api/connections.api';
 import { UserSearchResult } from '../../api/user.api';
 import { collectFolderConnections } from '../Sidebar/treeHelpers';
 import UserPicker from '../UserPicker';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface ShareFolderDialogProps {
   open: boolean;
@@ -40,8 +40,7 @@ export default function ShareFolderDialog({
   const [selectedUser, setSelectedUser] = useState<UserSearchResult | null>(null);
   const [scope, setScope] = useState<'tenant' | 'team'>('tenant');
   const [permission, setPermission] = useState<'READ_ONLY' | 'FULL_ACCESS'>('READ_ONLY');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
   const [result, setResult] = useState<BatchShareResult | null>(null);
 
   // Collect owned connections in this folder (recursively)
@@ -63,13 +62,13 @@ export default function ShareFolderDialog({
     if (open) {
       setSelectedUser(null);
       setEmail('');
-      setError('');
+      clearError();
       setResult(null);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- clearError is stable (useCallback with [])
   }, [open, folderId]);
 
   const handleShare = async () => {
-    setError('');
     if (hasTenant) {
       if (!selectedUser) {
         setError('Select a user to share with');
@@ -87,8 +86,7 @@ export default function ShareFolderDialog({
       return;
     }
 
-    setLoading(true);
-    try {
+    await run(async () => {
       const target = selectedUser
         ? { userId: selectedUser.id }
         : { email };
@@ -97,11 +95,7 @@ export default function ShareFolderDialog({
       setResult(res);
       setSelectedUser(null);
       setEmail('');
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Failed to share connections'));
-    } finally {
-      setLoading(false);
-    }
+    }, 'Failed to share connections');
   };
 
   return (

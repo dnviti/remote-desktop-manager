@@ -8,7 +8,7 @@ import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import { useTenantStore } from '../../store/tenantStore';
 import { getEmailStatus } from '../../api/admin.api';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 import type { CreateUserResult } from '../../api/tenant.api';
 
 interface CreateUserDialogProps {
@@ -31,8 +31,7 @@ export default function CreateUserDialog({ open, onClose }: CreateUserDialogProp
   const [role, setRole] = useState<'ADMIN' | 'MEMBER'>('MEMBER');
   const [sendWelcomeEmail, setSendWelcomeEmail] = useState(false);
   const [emailConfigured, setEmailConfigured] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
   const [result, setResult] = useState<CreateUserResult | null>(null);
   const [copied, setCopied] = useState('');
   const createUser = useTenantStore((s) => s.createUser);
@@ -58,15 +57,13 @@ export default function CreateUserDialog({ open, onClose }: CreateUserDialogProp
   };
 
   const handleSubmit = async () => {
-    setError('');
     if (!email.trim()) { setError('Email is required'); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Please enter a valid email address'); return; }
     if (password.length < 8) { setError('Password must be at least 8 characters'); return; }
     // eslint-disable-next-line security/detect-possible-timing-attacks -- client-side UI validation, not a security comparison
     if (password !== confirmPassword) { setError('Passwords do not match'); return; }
 
-    setLoading(true);
-    try {
+    await run(async () => {
       const res = await createUser({
         email: email.trim(),
         username: username.trim() || undefined,
@@ -75,11 +72,7 @@ export default function CreateUserDialog({ open, onClose }: CreateUserDialogProp
         sendWelcomeEmail: emailConfigured ? sendWelcomeEmail : false,
       });
       setResult(res);
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Failed to create user'));
-    } finally {
-      setLoading(false);
-    }
+    }, 'Failed to create user');
   };
 
   const handleClose = () => {
@@ -89,7 +82,7 @@ export default function CreateUserDialog({ open, onClose }: CreateUserDialogProp
     setConfirmPassword('');
     setRole('MEMBER');
     setSendWelcomeEmail(false);
-    setError('');
+    clearError();
     setResult(null);
     setCopied('');
     onClose();

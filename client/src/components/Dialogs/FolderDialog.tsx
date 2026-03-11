@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import { createFolder, updateFolder, FolderData } from '../../api/folders.api';
 import { useConnectionsStore } from '../../store/connectionsStore';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface FolderDialogProps {
   open: boolean;
@@ -33,8 +33,7 @@ function getDescendantIds(folderId: string, folders: FolderData[]): Set<string> 
 export default function FolderDialog({ open, onClose, folder, parentId, teamId }: FolderDialogProps) {
   const [name, setName] = useState('');
   const [selectedParentId, setSelectedParentId] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
   const folders = useConnectionsStore((s) => s.folders);
   const fetchConnections = useConnectionsStore((s) => s.fetchConnections);
 
@@ -48,7 +47,8 @@ export default function FolderDialog({ open, onClose, folder, parentId, teamId }
       setName('');
       setSelectedParentId(parentId || '');
     }
-    setError('');
+    clearError();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- clearError is stable (useCallback with [])
   }, [open, folder, parentId]);
 
   const excludedIds = folder
@@ -58,14 +58,12 @@ export default function FolderDialog({ open, onClose, folder, parentId, teamId }
   const availableParents = folders.filter((f) => !excludedIds.has(f.id));
 
   const handleSubmit = async () => {
-    setError('');
     if (!name.trim()) {
       setError('Folder name is required');
       return;
     }
 
-    setLoading(true);
-    try {
+    const ok = await run(async () => {
       if (isEditMode && folder) {
         const data: { name?: string; parentId?: string | null } = {};
         if (name !== folder.name) data.name = name.trim();
@@ -83,18 +81,14 @@ export default function FolderDialog({ open, onClose, folder, parentId, teamId }
         });
       }
       await fetchConnections();
-      handleClose();
-    } catch (err: unknown) {
-      setError(extractApiError(err, isEditMode ? 'Failed to update folder' : 'Failed to create folder'));
-    } finally {
-      setLoading(false);
-    }
+    }, isEditMode ? 'Failed to update folder' : 'Failed to create folder');
+    if (ok) handleClose();
   };
 
   const handleClose = () => {
     setName('');
     setSelectedParentId('');
-    setError('');
+    clearError();
     onClose();
   };
 

@@ -18,7 +18,7 @@ import {
 import { CloudDownload as DownloadIcon } from '@mui/icons-material';
 import { downloadExport } from '../../api/importExport.api';
 import { getVaultStatus } from '../../api/vault.api';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface ExportDialogProps {
   open: boolean;
@@ -30,16 +30,16 @@ interface ExportDialogProps {
 export default function ExportDialog({ open, onClose, folderId, connectionIds }: ExportDialogProps) {
   const [format, setFormat] = useState<'CSV' | 'JSON'>('JSON');
   const [includeCredentials, setIncludeCredentials] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
+  const { loading, error, clearError, run } = useAsyncAction();
   const [vaultUnlocked, setVaultUnlocked] = useState(false);
 
   useEffect(() => {
     if (open) {
       checkVaultStatus();
       setIncludeCredentials(false);
-      setError('');
+      clearError();
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- clearError is stable (useCallback with [])
   }, [open]);
 
   const checkVaultStatus = async () => {
@@ -52,10 +52,7 @@ export default function ExportDialog({ open, onClose, folderId, connectionIds }:
   };
 
   const handleExport = async () => {
-    setLoading(true);
-    setError('');
-
-    try {
+    await run(async () => {
       const today = new Date().toISOString().split('T')[0];
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       const filename = format === 'JSON'
@@ -68,16 +65,11 @@ export default function ExportDialog({ open, onClose, folderId, connectionIds }:
         folderId,
         connectionIds,
       }, filename);
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Export failed'));
-    } finally {
-      setLoading(false);
-    }
+    }, 'Export failed');
   };
 
   const handleClose = () => {
-    setError('');
-    setLoading(false);
+    clearError();
     onClose();
   };
 

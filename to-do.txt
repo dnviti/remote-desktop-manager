@@ -25,36 +25,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] REFAC-205 — Migrare i dialog rimanenti al hook useAsyncAction
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: REFAC-202 (completato)
-
-  DESCRIZIONE:
-  Il hook `useAsyncAction` e' stato creato in REFAC-202 ma adottato solo in
-  InviteDialog. Almeno 10 altri dialog gestiscono manualmente `useState` per
-  loading e error con pattern try-catch identici. Migrare tutti i dialog per
-  ridurre ~15 righe per componente e standardizzare la gestione errori.
-
-  DETTAGLI TECNICI:
-  1) Identificare tutti i dialog con pattern manuale loading/error/try-catch
-  2) Sostituire con `useAsyncAction` hook per ogni submit handler
-  3) Verificare che il comportamento rimanga identico (reset error on open,
-     loading state durante submit, messaggio errore visualizzato)
-
-  File coinvolti:
-    MODIFICARE: client/src/components/Dialogs/ConnectionDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/FolderDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/ShareDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/ShareFolderDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/TeamDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/CreateUserDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/ExportDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/ImportDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/ConnectAsDialog.tsx
-    MODIFICARE: client/src/components/Dialogs/UserProfileDialog.tsx
-
 
 ------------------------------------------------------------------------------
 [ ] REFAC-206 — Estendere middleware Zod validate per query params e path params

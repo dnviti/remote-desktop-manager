@@ -28,7 +28,7 @@ import {
   CloudUpload as UploadIcon,
 } from '@mui/icons-material';
 import { importConnections, type ImportResult, type ImportOptions } from '../../api/importExport.api';
-import { extractApiError } from '../../utils/apiError';
+import { useAsyncAction } from '../../hooks/useAsyncAction';
 
 interface ImportDialogProps {
   open: boolean;
@@ -52,9 +52,8 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
   const [format, setFormat] = useState<'CSV' | 'JSON' | 'MREMOTENG' | 'RDP' | null>(null);
   const [preview, setPreview] = useState<ConnectionPreview[]>([]);
   const [duplicateStrategy, setDuplicateStrategy] = useState<'SKIP' | 'OVERWRITE' | 'RENAME'>('SKIP');
-  const [loading, setLoading] = useState(false);
+  const { loading, error, setError, clearError, run } = useAsyncAction();
   const [result, setResult] = useState<ImportResult | null>(null);
-  const [error, setError] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -69,7 +68,7 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
 
     setFile(selected);
     setFormat(detectedFormat);
-    setError('');
+    clearError();
     parseFilePreview(selected, detectedFormat);
   };
 
@@ -130,23 +129,16 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
   const handleImport = async () => {
     if (!file) return;
 
-    setLoading(true);
-    setError('');
-
-    try {
+    await run(async () => {
       const options: ImportOptions = {
         duplicateStrategy,
         format: format || undefined,
       };
 
-      const result = await importConnections(file, options);
-      setResult(result);
+      const res = await importConnections(file, options);
+      setResult(res);
       setStep(3);
-    } catch (err: unknown) {
-      setError(extractApiError(err, 'Import failed'));
-    } finally {
-      setLoading(false);
-    }
+    }, 'Import failed');
   };
 
   const handleClose = () => {
@@ -155,8 +147,7 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
     setFormat(null);
     setPreview([]);
     setResult(null);
-    setError('');
-    setLoading(false);
+    clearError();
     onClose();
   };
 
