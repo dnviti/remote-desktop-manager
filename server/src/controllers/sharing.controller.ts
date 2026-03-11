@@ -1,28 +1,14 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as sharingService from '../services/sharing.service';
 import * as auditService from '../services/audit.service';
-import { AppError } from '../middleware/error.middleware';
 import { getClientIp } from '../utils/ip';
-
-const shareSchema = z.object({
-  email: z.string().email().optional(),
-  userId: z.string().optional(),
-  permission: z.enum(['READ_ONLY', 'FULL_ACCESS']),
-}).refine(
-  (data) => data.email || data.userId,
-  { message: 'Either email or userId is required' }
-);
-
-const updatePermSchema = z.object({
-  permission: z.enum(['READ_ONLY', 'FULL_ACCESS']),
-});
+import type { ShareInput, BatchShareInput, UpdatePermissionInput } from '../schemas/sharing.schemas';
 
 export async function share(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { email, userId, permission } = shareSchema.parse(req.body);
+    const { email, userId, permission } = req.body as ShareInput;
     const result = await sharingService.shareConnection(
       req.user.userId,
       req.params.id as string,
@@ -38,25 +24,14 @@ export async function share(req: AuthRequest, res: Response, next: NextFunction)
     });
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
 
-const batchShareSchema = z.object({
-  connectionIds: z.array(z.string().uuid()).min(1).max(50),
-  target: z.union([
-    z.object({ email: z.string().email(), userId: z.undefined().optional() }),
-    z.object({ userId: z.string().uuid(), email: z.undefined().optional() }),
-  ]),
-  permission: z.enum(['READ_ONLY', 'FULL_ACCESS']),
-  folderName: z.string().optional(),
-});
-
 export async function batchShare(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { connectionIds, target, permission, folderName } = batchShareSchema.parse(req.body);
+    const { connectionIds, target, permission, folderName } = req.body as BatchShareInput;
     const result = await sharingService.batchShareConnections(
       req.user.userId,
       connectionIds,
@@ -73,7 +48,6 @@ export async function batchShare(req: AuthRequest, res: Response, next: NextFunc
     });
     res.status(200).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -102,7 +76,7 @@ export async function unshare(req: AuthRequest, res: Response, next: NextFunctio
 export async function updatePermission(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { permission } = updatePermSchema.parse(req.body);
+    const { permission } = req.body as UpdatePermissionInput;
     const result = await sharingService.updateSharePermission(
       req.user.userId,
       req.params.id as string,
@@ -118,7 +92,6 @@ export async function updatePermission(req: AuthRequest, res: Response, next: Ne
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

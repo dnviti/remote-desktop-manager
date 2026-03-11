@@ -1,19 +1,11 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import { sendEmail, getEmailStatus } from '../services/email';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import * as appConfigService from '../services/appConfig.service';
 import { getClientIp } from '../utils/ip';
-
-const testEmailSchema = z.object({
-  to: z.string().email(),
-});
-
-const selfSignupSchema = z.object({
-  enabled: z.boolean(),
-});
+import type { TestEmailInput, SelfSignupInput } from '../schemas/admin.schemas';
 
 export async function emailStatus(
   _req: AuthRequest,
@@ -34,7 +26,7 @@ export async function sendTestEmail(
 ) {
   try {
     assertAuthenticated(req);
-    const { to } = testEmailSchema.parse(req.body);
+    const { to } = req.body as TestEmailInput;
     const status = getEmailStatus();
 
     await sendEmail({
@@ -57,9 +49,7 @@ export async function sendTestEmail(
     });
 
     res.json({ success: true, message: 'Test email sent successfully' });
-  } catch (err) {
-    if (err instanceof z.ZodError)
-      return next(new AppError(err.issues[0].message, 400));
+  } catch {
     next(
       new AppError(
         'Failed to send test email. Check your email provider configuration.',
@@ -90,7 +80,7 @@ export async function setSelfSignup(
 ) {
   try {
     assertAuthenticated(req);
-    const { enabled } = selfSignupSchema.parse(req.body);
+    const { enabled } = req.body as SelfSignupInput;
     await appConfigService.setSelfSignupEnabled(enabled);
 
     auditService.log({
@@ -102,8 +92,6 @@ export async function setSelfSignup(
 
     res.json({ selfSignupEnabled: enabled });
   } catch (err) {
-    if (err instanceof z.ZodError)
-      return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

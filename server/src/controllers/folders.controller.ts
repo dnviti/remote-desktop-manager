@@ -1,26 +1,14 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as folderService from '../services/folder.service';
 import * as auditService from '../services/audit.service';
-import { AppError } from '../middleware/error.middleware';
 import { getClientIp } from '../utils/ip';
-
-const createSchema = z.object({
-  name: z.string().min(1),
-  parentId: z.string().uuid().optional(),
-  teamId: z.string().uuid().optional(),
-});
-
-const updateSchema = z.object({
-  name: z.string().min(1).optional(),
-  parentId: z.string().uuid().nullable().optional(),
-});
+import type { CreateFolderInput, UpdateFolderInput } from '../schemas/folder.schemas';
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { name, parentId, teamId } = createSchema.parse(req.body);
+    const { name, parentId, teamId } = req.body as CreateFolderInput;
     const result = await folderService.createFolder(req.user.userId, name, parentId, teamId, req.user.tenantId);
     auditService.log({
       userId: req.user.userId, action: 'CREATE_FOLDER',
@@ -30,7 +18,6 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
     });
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -38,7 +25,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const data = updateSchema.parse(req.body);
+    const data = req.body as UpdateFolderInput;
     const result = await folderService.updateFolder(req.user.userId, req.params.id as string, data, req.user.tenantId);
     auditService.log({
       userId: req.user.userId, action: 'UPDATE_FOLDER',
@@ -48,7 +35,6 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

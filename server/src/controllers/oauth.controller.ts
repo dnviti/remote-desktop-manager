@@ -1,6 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
 import passport from 'passport';
-import { z } from 'zod';
 import { config } from '../config';
 import { AuthPayload, AuthRequest, assertAuthenticated } from '../types';
 import { verifyJwt } from '../utils/jwt';
@@ -11,8 +10,8 @@ import * as auditService from '../services/audit.service';
 import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
-import { passwordSchema } from '../utils/validate';
 import { getClientIp } from '../utils/ip';
+import type { VaultSetupInput } from '../schemas/oauth.schemas';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
 
@@ -187,21 +186,14 @@ export async function getLinkedAccounts(req: AuthRequest, res: Response, next: N
   }
 }
 
-const vaultSetupSchema = z.object({
-  vaultPassword: passwordSchema,
-});
-
 export async function setupVault(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { vaultPassword } = vaultSetupSchema.parse(req.body);
+    const { vaultPassword } = req.body as VaultSetupInput;
     await oauthService.setupVaultForOAuthUser(req.user.userId, vaultPassword);
     auditService.log({ userId: req.user.userId, action: 'VAULT_SETUP', ipAddress: getClientIp(req) });
     res.json({ success: true, vaultSetupComplete: true });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError(err.issues[0].message, 400));
-    }
     next(err);
   }
 }

@@ -1,28 +1,19 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as auditService from '../services/audit.service';
 import * as smsOtpService from '../services/smsOtp.service';
 import prisma from '../lib/prisma';
 import { getClientIp } from '../utils/ip';
-
-const setupPhoneSchema = z.object({
-  phoneNumber: z.string().regex(/^\+[1-9]\d{1,14}$/, 'Invalid E.164 phone number'),
-});
-
-const codeSchema = z.object({
-  code: z.string().length(6).regex(/^\d{6}$/),
-});
+import type { SetupPhoneInput, TotpCodeInput } from '../schemas/mfa.schemas';
 
 export async function setupPhone(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { phoneNumber } = setupPhoneSchema.parse(req.body);
+    const { phoneNumber } = req.body as SetupPhoneInput;
     await smsOtpService.setupPhone(req.user.userId, phoneNumber);
     res.json({ message: 'Verification code sent' });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid phone number format', 400));
     if (err instanceof AppError) return next(err);
     next(err);
   }
@@ -31,12 +22,11 @@ export async function setupPhone(req: AuthRequest, res: Response, next: NextFunc
 export async function verifyPhone(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { code } = codeSchema.parse(req.body);
+    const { code } = req.body as TotpCodeInput;
     await smsOtpService.verifyPhone(req.user.userId, code);
     auditService.log({ userId: req.user.userId, action: 'SMS_PHONE_VERIFY', ipAddress: getClientIp(req) });
     res.json({ verified: true });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
     if (err instanceof AppError) return next(err);
     next(err);
   }
@@ -75,12 +65,11 @@ export async function sendDisableCode(req: AuthRequest, res: Response, next: Nex
 export async function disable(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { code } = codeSchema.parse(req.body);
+    const { code } = req.body as TotpCodeInput;
     await smsOtpService.disableSmsMfa(req.user.userId, code);
     auditService.log({ userId: req.user.userId, action: 'SMS_MFA_DISABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: false });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
     if (err instanceof AppError) return next(err);
     next(err);
   }

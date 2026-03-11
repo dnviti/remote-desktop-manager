@@ -9,22 +9,13 @@ import { setRefreshTokenCookie, setCsrfCookie, clearAuthCookies } from '../utils
 import { getPublicConfig } from '../services/appConfig.service';
 import type { AuthRequest } from '../types';
 import { assertAuthenticated } from '../types';
-import { passwordSchema } from '../utils/validate';
 import { getClientIp } from '../utils/ip';
-
-const registerSchema = z.object({
-  email: z.string().email(),
-  password: passwordSchema,
-});
-
-const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
-});
+import { verifyEmailSchema } from '../schemas/auth.schemas';
+import type { RegisterInput, LoginInput, VerifyTotpInput, RequestSmsInput, VerifySmsInput, RequestWebAuthnInput, VerifyWebAuthnInput, ResendVerificationInput, MfaSetupTokenInput, MfaSetupVerifyInput, SwitchTenantInput, ForgotPasswordInput, ResetTokenInput, CompleteResetInput } from '../schemas/auth.schemas';
 
 export async function register(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = registerSchema.parse(req.body);
+    const { email, password } = req.body as RegisterInput;
     const result = await authService.register(email, password);
     auditService.log({ userId: result.userId, action: 'REGISTER', ipAddress: getClientIp(req) });
     res.status(201).json({
@@ -33,21 +24,13 @@ export async function register(req: Request, res: Response, next: NextFunction) 
       recoveryKey: result.recoveryKey,
     });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError(err.issues[0].message, 400));
-    }
     next(err);
   }
 }
 
-const verifyTotpSchema = z.object({
-  tempToken: z.string(),
-  code: z.string().length(6).regex(/^\d{6}$/),
-});
-
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    const { email, password } = req.body as LoginInput;
     const result = await authService.login(email, password, getClientIp(req));
 
     if ('mfaSetupRequired' in result && result.mfaSetupRequired) {
@@ -77,9 +60,6 @@ export async function login(req: Request, res: Response, next: NextFunction) {
       });
     }
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError(err.issues[0].message, 400));
-    }
     if (err instanceof AppError) {
       return next(err);
     }
@@ -92,16 +72,13 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 
 export async function verifyTotp(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken, code } = verifyTotpSchema.parse(req.body);
+    const { tempToken, code } = req.body as VerifyTotpInput;
     const result = await authService.verifyTotp(tempToken, code);
     auditService.log({ userId: result.user.id, action: 'LOGIN_TOTP', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError('Invalid code format', 400));
-    }
     if (err instanceof Error) {
       if (err.message === 'Invalid TOTP code') return next(new AppError(err.message, 401));
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
@@ -111,22 +88,12 @@ export async function verifyTotp(req: Request, res: Response, next: NextFunction
   }
 }
 
-const requestSmsSchema = z.object({
-  tempToken: z.string(),
-});
-
-const verifySmsSchema = z.object({
-  tempToken: z.string(),
-  code: z.string().length(6).regex(/^\d{6}$/),
-});
-
 export async function requestSmsCode(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken } = requestSmsSchema.parse(req.body);
+    const { tempToken } = req.body as RequestSmsInput;
     await authService.requestLoginSmsCode(tempToken);
     res.json({ message: 'SMS code sent' });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
       if (err.message.includes('not available')) return next(new AppError(err.message, 400));
@@ -137,14 +104,13 @@ export async function requestSmsCode(req: Request, res: Response, next: NextFunc
 
 export async function verifySms(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken, code } = verifySmsSchema.parse(req.body);
+    const { tempToken, code } = req.body as VerifySmsInput;
     const result = await authService.verifySmsCode(tempToken, code);
     auditService.log({ userId: result.user.id, action: 'LOGIN_SMS', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
     if (err instanceof Error) {
       if (err.message.includes('SMS code')) return next(new AppError(err.message, 401));
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
@@ -154,22 +120,12 @@ export async function verifySms(req: Request, res: Response, next: NextFunction)
   }
 }
 
-const requestWebAuthnSchema = z.object({
-  tempToken: z.string(),
-});
-
-const verifyWebAuthnSchema = z.object({
-  tempToken: z.string(),
-  credential: z.record(z.string(), z.unknown()),
-});
-
 export async function requestWebAuthnOptions(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken } = requestWebAuthnSchema.parse(req.body);
+    const { tempToken } = req.body as RequestWebAuthnInput;
     const options = await authService.requestWebAuthnOptions(tempToken);
     res.json(options);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
       if (err.message.includes('not available')) return next(new AppError(err.message, 400));
@@ -180,14 +136,13 @@ export async function requestWebAuthnOptions(req: Request, res: Response, next: 
 
 export async function verifyWebAuthn(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken, credential } = verifyWebAuthnSchema.parse(req.body);
+    const { tempToken, credential } = req.body as VerifyWebAuthnInput;
     const result = await authService.verifyWebAuthn(tempToken, credential);
     auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
     if (err instanceof AppError) return next(err);
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
@@ -234,14 +189,6 @@ export async function logout(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-const verifyEmailSchema = z.object({
-  token: z.string().length(64),
-});
-
-const resendVerificationSchema = z.object({
-  email: z.string().email(),
-});
-
 export async function verifyEmail(req: Request, res: Response, next: NextFunction) {
   try {
     const { token } = verifyEmailSchema.parse(req.query);
@@ -260,33 +207,20 @@ export async function verifyEmail(req: Request, res: Response, next: NextFunctio
 
 export async function resendVerification(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email } = resendVerificationSchema.parse(req.body);
+    const { email } = req.body as ResendVerificationInput;
     await authService.resendVerification(email);
     res.json({ message: 'If an account exists with this email, a verification link has been sent.' });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError('Invalid email format', 400));
-    }
     next(err);
   }
 }
 
-const mfaSetupTokenSchema = z.object({
-  tempToken: z.string(),
-});
-
-const mfaSetupVerifySchema = z.object({
-  tempToken: z.string(),
-  code: z.string().length(6).regex(/^\d{6}$/),
-});
-
 export async function mfaSetupInit(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken } = mfaSetupTokenSchema.parse(req.body);
+    const { tempToken } = req.body as MfaSetupTokenInput;
     const result = await authService.setupMfaDuringLogin(tempToken);
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
     if (err instanceof AppError) return next(err);
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
@@ -297,7 +231,7 @@ export async function mfaSetupInit(req: Request, res: Response, next: NextFuncti
 
 export async function mfaSetupVerify(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken, code } = mfaSetupVerifySchema.parse(req.body);
+    const { tempToken, code } = req.body as MfaSetupVerifyInput;
     const result = await authService.verifyMfaSetupDuringLogin(tempToken, code);
     auditService.log({ userId: result.user.id, action: 'TOTP_ENABLE', ipAddress: getClientIp(req) });
     auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: getClientIp(req) });
@@ -305,7 +239,6 @@ export async function mfaSetupVerify(req: Request, res: Response, next: NextFunc
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
     if (err instanceof AppError) return next(err);
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 401));
@@ -317,15 +250,11 @@ export async function mfaSetupVerify(req: Request, res: Response, next: NextFunc
 
 // --- Tenant Switch ---
 
-const switchTenantSchema = z.object({
-  tenantId: z.string().uuid(),
-});
-
 export async function switchTenant(req: Request, res: Response, next: NextFunction) {
   try {
     const authReq = req as AuthRequest;
     assertAuthenticated(authReq);
-    const { tenantId } = switchTenantSchema.parse(req.body);
+    const { tenantId } = req.body as SwitchTenantInput;
     const userId = authReq.user.userId;
 
     const result = await authService.switchTenant(userId, tenantId);
@@ -346,64 +275,41 @@ export async function switchTenant(req: Request, res: Response, next: NextFuncti
       user: result.user,
     });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
 
 // --- Password Reset ---
 
-const forgotPasswordSchema = z.object({
-  email: z.string().email(),
-});
-
-const resetTokenSchema = z.object({
-  token: z.string().length(64),
-});
-
-const completeResetSchema = z.object({
-  token: z.string().length(64),
-  newPassword: passwordSchema,
-  smsCode: z.string().length(6).regex(/^\d{6}$/).optional(),
-  recoveryKey: z.string().optional(),
-});
-
 export async function forgotPassword(req: Request, res: Response, next: NextFunction) {
   try {
-    const { email } = forgotPasswordSchema.parse(req.body);
+    const { email } = req.body as ForgotPasswordInput;
     await passwordResetService.requestPasswordReset(email, getClientIp(req));
     res.json({ message: 'If an account exists with this email, a password reset link has been sent.' });
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError('Invalid email format', 400));
-    }
     next(err);
   }
 }
 
 export async function validateResetToken(req: Request, res: Response, next: NextFunction) {
   try {
-    const { token } = resetTokenSchema.parse(req.body);
+    const { token } = req.body as ResetTokenInput;
     const result = await passwordResetService.validateResetToken(token);
     if (!result.valid) {
       return next(new AppError('Invalid or expired reset link.', 400));
     }
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError('Invalid token format', 400));
-    }
     next(err);
   }
 }
 
 export async function requestResetSmsCode(req: Request, res: Response, next: NextFunction) {
   try {
-    const { token } = resetTokenSchema.parse(req.body);
+    const { token } = req.body as ResetTokenInput;
     await passwordResetService.requestResetSmsCode(token);
     res.json({ message: 'SMS code sent' });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid request', 400));
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 400));
       if (err.message.includes('not available')) return next(new AppError(err.message, 400));
@@ -414,16 +320,13 @@ export async function requestResetSmsCode(req: Request, res: Response, next: Nex
 
 export async function completePasswordReset(req: Request, res: Response, next: NextFunction) {
   try {
-    const body = completeResetSchema.parse(req.body);
+    const body = req.body as CompleteResetInput;
     const result = await passwordResetService.completePasswordReset({
       ...body,
       ipAddress: getClientIp(req),
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) {
-      return next(new AppError(err.issues[0].message, 400));
-    }
     if (err instanceof Error) {
       if (err.message.includes('token')) return next(new AppError(err.message, 400));
       if (err.message.includes('SMS')) return next(new AppError(err.message, 401));

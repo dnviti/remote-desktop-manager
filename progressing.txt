@@ -24,6 +24,43 @@
   SEZIONE H — SCOUTED FEATURES
 ================================================================================
 
+------------------------------------------------------------------------------
+[~] REFAC-201 — Extract shared Zod validation middleware and centralize schemas
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  The Zod validation error-handling pattern (instanceof z.ZodError → AppError)
+  is duplicated 50+ times across all 23 controllers. Additionally, SSH terminal
+  config, RDP settings, and VNC settings Zod schemas are defined identically in
+  both connections.controller.ts and user.controller.ts.
+
+  DETTAGLI IMPLEMENTAZIONE:
+  1. Create server/src/middleware/validate.middleware.ts exporting a validate()
+     Express middleware that parses req.body with a Zod schema, catches ZodError,
+     and calls next(new AppError(...)). Attach validated data to req.body.
+  2. Create server/src/schemas/connection.schemas.ts containing the shared
+     sshTerminalConfigSchema, rdpSettingsSchema, and vncSettingsSchema.
+  3. Refactor all 23 controllers to use the middleware instead of inline
+     try/catch/ZodError blocks.
+  4. Create a validate.params('id') variant for the common req.params.id as
+     string pattern used without Zod parsing in many controllers.
+
+  FILE COINVOLTI:
+  - server/src/middleware/validate.middleware.ts (new)
+  - server/src/schemas/connection.schemas.ts (new)
+  - All 23 files in server/src/controllers/*.controller.ts
+  - All route files in server/src/routes/*.routes.ts
+  - server/src/utils/validate.ts (re-export from new location)
+
+  CRITERI DI ACCETTAZIONE:
+  - Zero instances of `instanceof z.ZodError` in controller files
+  - SSH/RDP/VNC schemas defined exactly once
+  - Route-level param validation for all :id params
+  - npm run verify passes
+  - Existing API behavior unchanged (same error messages, same status codes)
+
 
 ================================================================================
   SEZIONE C — MULTI-TENANT / TEAMS / PERMESSI

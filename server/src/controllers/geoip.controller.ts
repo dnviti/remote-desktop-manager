@@ -1,5 +1,4 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
@@ -36,19 +35,11 @@ const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 let rateLimitRemaining = 45;
 let rateLimitResetAt = 0;
 
-const ipParamSchema = z.object({
-  ip: z.string().min(1).max(45),
-});
-
 export async function lookupIp(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
 
-    const parsed = ipParamSchema.safeParse(req.params);
-    if (!parsed.success) {
-      return next(new AppError('Invalid IP address', 400));
-    }
-    const { ip } = parsed.data;
+    const { ip } = req.params as { ip: string };
 
     // Check cache first
     const cached = cache.get(ip);

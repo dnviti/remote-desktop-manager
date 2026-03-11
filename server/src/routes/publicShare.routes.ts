@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
+import { validate } from '../middleware/validate.middleware';
+import { accessExternalShareSchema } from '../schemas/externalShare.schemas';
 import * as externalShareController from '../controllers/externalShare.controller';
 
 const router = Router();
@@ -14,6 +16,6 @@ const shareAccessLimiter = rateLimit({
 
 // Public endpoints — no authentication required
 router.get('/:token/info', externalShareController.getInfo);
-router.post('/:token', shareAccessLimiter, externalShareController.access);
+router.post('/:token', shareAccessLimiter, validate(accessExternalShareSchema), externalShareController.access);
 
 export default router;

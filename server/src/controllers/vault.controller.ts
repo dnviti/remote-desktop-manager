@@ -1,31 +1,18 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as vaultService from '../services/vault.service';
 import * as auditService from '../services/audit.service';
-import { AppError } from '../middleware/error.middleware';
 import { getClientIp } from '../utils/ip';
-
-const unlockSchema = z.object({ password: z.string() });
-const codeSchema = z.object({ code: z.string() });
-const credentialSchema = z.object({ credential: z.record(z.string(), z.unknown()) });
-const revealSchema = z.object({
-  connectionId: z.string().uuid(),
-  password: z.string().optional(),
-});
-const autoLockSchema = z.object({
-  autoLockMinutes: z.number().int().min(0).nullable(),
-});
+import type { UnlockInput, CodeInput, CredentialInput, RevealInput, AutoLockInput } from '../schemas/vault.schemas';
 
 export async function unlock(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { password } = unlockSchema.parse(req.body);
+    const { password } = req.body as UnlockInput;
     const result = await vaultService.unlockVault(req.user.userId, password);
     auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req) });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -50,12 +37,11 @@ export async function status(req: AuthRequest, res: Response, next: NextFunction
 export async function unlockWithTotp(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { code } = codeSchema.parse(req.body);
+    const { code } = req.body as CodeInput;
     const result = await vaultService.unlockVaultWithTotp(req.user.userId, code);
     auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req), details: { method: 'totp' } });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -73,12 +59,11 @@ export async function requestWebAuthnOptions(req: AuthRequest, res: Response, ne
 export async function unlockWithWebAuthn(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { credential } = credentialSchema.parse(req.body);
+    const { credential } = req.body as CredentialInput;
     const result = await vaultService.unlockVaultWithWebAuthn(req.user.userId, credential);
     auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req), details: { method: 'webauthn' } });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -96,12 +81,11 @@ export async function requestSmsCode(req: AuthRequest, res: Response, next: Next
 export async function unlockWithSms(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { code } = codeSchema.parse(req.body);
+    const { code } = req.body as CodeInput;
     const result = await vaultService.unlockVaultWithSms(req.user.userId, code);
     auditService.log({ userId: req.user.userId, action: 'VAULT_UNLOCK', ipAddress: getClientIp(req), details: { method: 'sms' } });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -119,11 +103,10 @@ export async function getAutoLock(req: AuthRequest, res: Response, next: NextFun
 export async function setAutoLock(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { autoLockMinutes } = autoLockSchema.parse(req.body);
+    const { autoLockMinutes } = req.body as AutoLockInput;
     const result = await vaultService.setAutoLockPreference(req.user.userId, autoLockMinutes);
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -131,7 +114,7 @@ export async function setAutoLock(req: AuthRequest, res: Response, next: NextFun
 export async function revealPassword(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { connectionId, password } = revealSchema.parse(req.body);
+    const { connectionId, password } = req.body as RevealInput;
     const result = await vaultService.revealPassword(
       req.user.userId,
       connectionId,
@@ -144,7 +127,6 @@ export async function revealPassword(req: AuthRequest, res: Response, next: Next
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

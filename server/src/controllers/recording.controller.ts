@@ -1,26 +1,18 @@
 import { Response, NextFunction } from 'express';
 import { readFile, stat } from 'fs/promises';
 import fs from 'fs';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as recordingService from '../services/recording.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
-
-const listQuerySchema = z.object({
-  connectionId: z.string().uuid().optional(),
-  protocol: z.enum(['SSH', 'RDP', 'VNC']).optional(),
-  status: z.enum(['RECORDING', 'COMPLETE', 'ERROR']).optional(),
-  limit: z.coerce.number().int().min(1).max(100).optional(),
-  offset: z.coerce.number().int().min(0).optional(),
-});
+import type { ListRecordingsQueryInput } from '../schemas/recording.schemas';
 
 export async function listRecordings(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const query = listQuerySchema.parse(req.query);
+    const query = req.query as unknown as ListRecordingsQueryInput;
     const result = await recordingService.listRecordings({
       userId: req.user.userId,
       tenantId: req.user.tenantId,
@@ -28,7 +20,6 @@ export async function listRecordings(req: AuthRequest, res: Response, next: Next
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

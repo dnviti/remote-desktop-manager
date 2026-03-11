@@ -1,62 +1,18 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import * as tenantService from '../services/tenant.service';
 import * as auditService from '../services/audit.service';
 import * as authService from '../services/auth.service';
-import { AppError } from '../middleware/error.middleware';
 import prisma from '../lib/prisma';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { logger } from '../utils/logger';
-import { passwordSchema } from '../utils/validate';
 import { getClientIp } from '../utils/ip';
-
-const createTenantSchema = z.object({
-  name: z.string().min(2).max(100),
-});
-
-const updateTenantSchema = z.object({
-  name: z.string().min(2).max(100).optional(),
-  defaultSessionTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
-  mfaRequired: z.boolean().optional(),
-  vaultAutoLockMaxMinutes: z.number().int().min(0).nullable().optional(),
-});
-
-const inviteUserSchema = z.object({
-  email: z.string().email(),
-  role: z.enum(['ADMIN', 'MEMBER']),
-});
-
-const updateRoleSchema = z.object({
-  role: z.enum(['OWNER', 'ADMIN', 'MEMBER']),
-});
-
-const createUserSchema = z.object({
-  email: z.string().email(),
-  username: z.string().min(1).max(100).optional(),
-  password: passwordSchema,
-  role: z.enum(['ADMIN', 'MEMBER']),
-  sendWelcomeEmail: z.boolean().optional().default(false),
-});
-
-const toggleUserEnabledSchema = z.object({
-  enabled: z.boolean(),
-});
-
-const adminChangeEmailSchema = z.object({
-  newEmail: z.string().email(),
-  verificationId: z.string().uuid(),
-});
-
-const adminChangePasswordSchema = z.object({
-  newPassword: passwordSchema,
-  verificationId: z.string().uuid(),
-});
+import type { CreateTenantInput, UpdateTenantInput, InviteUserInput, UpdateRoleInput, CreateUserInput, ToggleUserEnabledInput, AdminChangeEmailInput, AdminChangePasswordInput } from '../schemas/tenant.schemas';
 
 export async function createTenant(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { name } = createTenantSchema.parse(req.body);
+    const { name } = req.body as CreateTenantInput;
     const tenant = await tenantService.createTenant(req.user.userId, name);
 
     // Issue fresh tokens — issueTokens resolves tenantId from active TenantMember
@@ -81,7 +37,6 @@ export async function createTenant(req: AuthRequest, res: Response, next: NextFu
       user: tokens.user,
     });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -99,7 +54,7 @@ export async function getMyTenant(req: AuthRequest, res: Response, next: NextFun
 export async function updateTenant(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const data = updateTenantSchema.parse(req.body);
+    const data = req.body as UpdateTenantInput;
     const tenantId = req.params.id as string;
     const result = await tenantService.updateTenant(tenantId, data);
     if (data.mfaRequired !== undefined) {
@@ -118,7 +73,6 @@ export async function updateTenant(req: AuthRequest, res: Response, next: NextFu
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -151,7 +105,7 @@ export async function listUsers(req: AuthRequest, res: Response, next: NextFunct
 export async function getUserProfile(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertTenantAuthenticated(req);
-    const userId = z.string().uuid().parse(req.params.userId);
+    const userId = req.params.userId as string;
     const result = await tenantService.getUserProfile(
       req.params.id as string,
       userId,
@@ -159,7 +113,6 @@ export async function getUserProfile(req: AuthRequest, res: Response, next: Next
     );
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid user ID', 400));
     next(err);
   }
 }
@@ -167,7 +120,7 @@ export async function getUserProfile(req: AuthRequest, res: Response, next: Next
 export async function inviteUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { email, role } = inviteUserSchema.parse(req.body);
+    const { email, role } = req.body as InviteUserInput;
     const tenantId = req.params.id as string;
     const result = await tenantService.inviteUser(tenantId, email, role);
     auditService.log({
@@ -178,7 +131,6 @@ export async function inviteUser(req: AuthRequest, res: Response, next: NextFunc
     });
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -186,7 +138,7 @@ export async function inviteUser(req: AuthRequest, res: Response, next: NextFunc
 export async function updateUserRole(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { role } = updateRoleSchema.parse(req.body);
+    const { role } = req.body as UpdateRoleInput;
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
     const result = await tenantService.updateUserRole(tenantId, targetUserId, role, req.user.userId);
@@ -198,7 +150,6 @@ export async function updateUserRole(req: AuthRequest, res: Response, next: Next
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -234,7 +185,7 @@ export async function getMfaStats(req: AuthRequest, res: Response, next: NextFun
 export async function createUser(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const data = createUserSchema.parse(req.body);
+    const data = req.body as CreateUserInput;
     const tenantId = req.params.id as string;
     const result = await tenantService.createUser(
       tenantId,
@@ -261,7 +212,6 @@ export async function createUser(req: AuthRequest, res: Response, next: NextFunc
 
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -269,7 +219,7 @@ export async function createUser(req: AuthRequest, res: Response, next: NextFunc
 export async function toggleUserEnabled(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { enabled } = toggleUserEnabledSchema.parse(req.body);
+    const { enabled } = req.body as ToggleUserEnabledInput;
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
     const result = await tenantService.toggleUserEnabled(tenantId, targetUserId, enabled, req.user.userId);
@@ -285,7 +235,6 @@ export async function toggleUserEnabled(req: AuthRequest, res: Response, next: N
 
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -303,7 +252,7 @@ export async function listMyTenants(req: AuthRequest, res: Response, next: NextF
 export async function adminChangeUserEmail(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { newEmail, verificationId } = adminChangeEmailSchema.parse(req.body);
+    const { newEmail, verificationId } = req.body as AdminChangeEmailInput;
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
     const result = await tenantService.adminChangeUserEmail(
@@ -311,7 +260,6 @@ export async function adminChangeUserEmail(req: AuthRequest, res: Response, next
     );
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -319,7 +267,7 @@ export async function adminChangeUserEmail(req: AuthRequest, res: Response, next
 export async function adminChangeUserPassword(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { newPassword, verificationId } = adminChangePasswordSchema.parse(req.body);
+    const { newPassword, verificationId } = req.body as AdminChangePasswordInput;
     const tenantId = req.params.id as string;
     const targetUserId = req.params.userId as string;
     const result = await tenantService.adminChangeUserPassword(
@@ -327,7 +275,6 @@ export async function adminChangeUserPassword(req: AuthRequest, res: Response, n
     );
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

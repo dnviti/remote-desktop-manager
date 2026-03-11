@@ -1,15 +1,11 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as auditService from '../services/audit.service';
 import * as totpService from '../services/totp.service';
 import prisma from '../lib/prisma';
 import { getClientIp } from '../utils/ip';
-
-const codeSchema = z.object({
-  code: z.string().length(6).regex(/^\d{6}$/),
-});
+import type { TotpCodeInput } from '../schemas/mfa.schemas';
 
 export async function setup(req: AuthRequest, res: Response, next: NextFunction) {
   try {
@@ -34,12 +30,11 @@ export async function setup(req: AuthRequest, res: Response, next: NextFunction)
 export async function verify(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { code } = codeSchema.parse(req.body);
+    const { code } = req.body as TotpCodeInput;
     await totpService.verifyAndEnable(req.user.userId, code);
     auditService.log({ userId: req.user.userId, action: 'TOTP_ENABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: true });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
     if (err instanceof AppError) return next(err);
     next(err);
   }
@@ -48,12 +43,11 @@ export async function verify(req: AuthRequest, res: Response, next: NextFunction
 export async function disable(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { code } = codeSchema.parse(req.body);
+    const { code } = req.body as TotpCodeInput;
     await totpService.disable(req.user.userId, code);
     auditService.log({ userId: req.user.userId, action: 'TOTP_DISABLE', ipAddress: getClientIp(req) });
     res.json({ enabled: false });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError('Invalid code format', 400));
     if (err instanceof AppError) return next(err);
     next(err);
   }

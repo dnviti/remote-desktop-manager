@@ -1,7 +1,6 @@
 import { Response, NextFunction } from 'express';
 import path from 'path';
 import { mkdir, chmod } from 'fs/promises';
-import { z } from 'zod';
 import prisma from '../lib/prisma';
 import { AuthRequest, RdpSettings, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import { getConnection, getConnectionCredentials } from '../services/connection.service';
@@ -19,17 +18,7 @@ import { config } from '../config';
 import { startRecording, buildRecordingPath } from '../services/recording.service';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
-
-const sessionSchema = z.object({
-  connectionId: z.string().uuid(),
-  username: z.string().min(1).optional(),
-  password: z.string().min(1).optional(),
-  domain: z.string().min(1).optional(),
-  credentialMode: z.enum(['saved', 'domain', 'manual']).optional(),
-}).refine(
-  (data) => data.credentialMode === 'domain' || (!data.username && !data.password) || (data.username && data.password),
-  { message: 'Both username and password must be provided together' },
-);
+import type { SessionInput } from '../schemas/session.schemas';
 
 // ---- RDP session creation (migrated from rdp.handler.ts) ----
 
@@ -42,7 +31,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
   try {
     assertAuthenticated(req);
-    const parsed = sessionSchema.parse(req.body);
+    const parsed = req.body as SessionInput;
     connectionId = parsed.connectionId;
     const { username: overrideUser, password: overridePass, domain: overrideDomain } = parsed;
 
@@ -217,9 +206,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
     res.json({ token, enableDrive, sessionId, recordingId: rdpRecordingId });
   } catch (err) {
-    const errorMessage = err instanceof z.ZodError
-      ? err.issues[0].message
-      : err instanceof Error ? err.message : 'Unknown error';
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
     auditService.log({
       userId: req.user?.userId,
@@ -235,7 +222,6 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       gatewayId: gatewayId ?? undefined,
     });
 
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -250,7 +236,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
 
   try {
     assertAuthenticated(req);
-    const parsed = sessionSchema.parse(req.body);
+    const parsed = req.body as SessionInput;
     connectionId = parsed.connectionId;
     const { username: _overrideUser, password: overridePass } = parsed;
 
@@ -381,9 +367,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
 
     res.json({ token, sessionId, recordingId: vncRecordingId });
   } catch (err) {
-    const errorMessage = err instanceof z.ZodError
-      ? err.issues[0].message
-      : err instanceof Error ? err.message : 'Unknown error';
+    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
     auditService.log({
       userId: req.user?.userId,
@@ -399,7 +383,6 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       gatewayId: gatewayId ?? undefined,
     });
 
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -409,7 +392,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
 export async function validateSshAccess(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { connectionId } = sessionSchema.parse(req.body);
+    const { connectionId } = req.body as SessionInput;
     const conn = await getConnection(req.user.userId, connectionId, req.user.tenantId);
 
     if (conn.type !== 'SSH') {
@@ -419,7 +402,6 @@ export async function validateSshAccess(req: AuthRequest, res: Response, next: N
     // SSH sessions are handled via Socket.io, we just validate access here
     res.json({ connectionId, type: 'SSH' });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

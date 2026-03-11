@@ -1,18 +1,12 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as notificationService from '../services/notification.service';
-import { AppError } from '../middleware/error.middleware';
-
-const querySchema = z.object({
-  limit: z.coerce.number().int().min(1).max(100).default(50),
-  offset: z.coerce.number().int().min(0).default(0),
-});
+import type { NotificationQueryInput } from '../schemas/notification.schemas';
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const query = querySchema.parse(req.query);
+    const query = req.query as unknown as NotificationQueryInput;
     const result = await notificationService.listNotifications(
       req.user.userId,
       query.limit,
@@ -20,7 +14,6 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
     );
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

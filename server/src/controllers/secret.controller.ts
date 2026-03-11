@@ -1,5 +1,4 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertAuthenticated } from '../types';
 import prisma from '../lib/prisma';
 import * as secretService from '../services/secret.service';
@@ -7,122 +6,14 @@ import * as secretSharingService from '../services/secretSharing.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import { getClientIp } from '../utils/ip';
-
-// --- Zod schemas ---
-
-const loginDataSchema = z.object({
-  type: z.literal('LOGIN'),
-  username: z.string().min(1),
-  password: z.string().min(1),
-  url: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-const sshKeyDataSchema = z.object({
-  type: z.literal('SSH_KEY'),
-  username: z.string().optional(),
-  privateKey: z.string().min(1),
-  publicKey: z.string().optional(),
-  passphrase: z.string().optional(),
-  algorithm: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-const certificateDataSchema = z.object({
-  type: z.literal('CERTIFICATE'),
-  certificate: z.string().min(1),
-  privateKey: z.string().min(1),
-  chain: z.string().optional(),
-  passphrase: z.string().optional(),
-  expiresAt: z.string().optional(),
-  notes: z.string().optional(),
-});
-
-const apiKeyDataSchema = z.object({
-  type: z.literal('API_KEY'),
-  apiKey: z.string().min(1),
-  endpoint: z.string().optional(),
-  headers: z.record(z.string(), z.string()).optional(),
-  notes: z.string().optional(),
-});
-
-const secureNoteDataSchema = z.object({
-  type: z.literal('SECURE_NOTE'),
-  content: z.string().min(1),
-});
-
-const secretDataSchema = z.discriminatedUnion('type', [
-  loginDataSchema,
-  sshKeyDataSchema,
-  certificateDataSchema,
-  apiKeyDataSchema,
-  secureNoteDataSchema,
-]);
-
-const createSecretSchema = z
-  .object({
-    name: z.string().min(1),
-    description: z.string().optional(),
-    type: z.enum(['LOGIN', 'SSH_KEY', 'CERTIFICATE', 'API_KEY', 'SECURE_NOTE']),
-    scope: z.enum(['PERSONAL', 'TEAM', 'TENANT']),
-    teamId: z.string().uuid().optional(),
-    folderId: z.string().uuid().optional(),
-    data: secretDataSchema,
-    metadata: z.record(z.string(), z.unknown()).optional(),
-    tags: z.array(z.string()).optional(),
-    expiresAt: z.string().datetime().optional(),
-  })
-  .refine((data) => data.scope !== 'TEAM' || !!data.teamId, {
-    message: 'teamId is required for team-scoped secrets',
-    path: ['teamId'],
-  });
-
-const updateSecretSchema = z.object({
-  name: z.string().min(1).optional(),
-  description: z.string().nullable().optional(),
-  data: secretDataSchema.optional(),
-  metadata: z.record(z.string(), z.unknown()).nullable().optional(),
-  tags: z.array(z.string()).optional(),
-  folderId: z.string().uuid().nullable().optional(),
-  isFavorite: z.boolean().optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
-  changeNote: z.string().optional(),
-});
-
-const listFiltersSchema = z.object({
-  scope: z.enum(['PERSONAL', 'TEAM', 'TENANT']).optional(),
-  type: z.enum(['LOGIN', 'SSH_KEY', 'CERTIFICATE', 'API_KEY', 'SECURE_NOTE']).optional(),
-  teamId: z.string().uuid().optional(),
-  folderId: z.string().uuid().nullable().optional(),
-  search: z.string().optional(),
-  tags: z.union([z.string(), z.array(z.string())]).optional(),
-  isFavorite: z.enum(['true', 'false']).optional(),
-});
-
-const shareSecretSchema = z
-  .object({
-    email: z.string().email().optional(),
-    userId: z.string().optional(),
-    permission: z.enum(['READ_ONLY', 'FULL_ACCESS']),
-  })
-  .refine((data) => data.email || data.userId, {
-    message: 'Either email or userId is required',
-  });
-
-const updateSharePermSchema = z.object({
-  permission: z.enum(['READ_ONLY', 'FULL_ACCESS']),
-});
-
-const distributeTenantKeySchema = z.object({
-  targetUserId: z.string().uuid(),
-});
+import type { CreateSecretInput, UpdateSecretInput, ListFiltersInput, ShareSecretInput, UpdateSharePermInput, DistributeTenantKeyInput } from '../schemas/secret.schemas';
 
 // --- CRUD handlers ---
 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const data = createSecretSchema.parse(req.body);
+    const data = req.body as CreateSecretInput;
     const result = await secretService.createSecret(
       req.user.userId,
       {
@@ -143,7 +34,6 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -151,7 +41,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const filters = listFiltersSchema.parse(req.query);
+    const filters = req.query as unknown as ListFiltersInput;
     const parsedFilters: secretService.SecretListFilters = {
       scope: filters.scope,
       type: filters.type,
@@ -169,7 +59,6 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
     const result = await secretService.listSecrets(req.user.userId, parsedFilters, req.user.tenantId);
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -196,7 +85,7 @@ export async function getOne(req: AuthRequest, res: Response, next: NextFunction
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const data = updateSecretSchema.parse(req.body);
+    const data = req.body as UpdateSecretInput;
     const result = await secretService.updateSecret(
       req.user.userId,
       req.params.id as string,
@@ -218,7 +107,6 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
 
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -321,7 +209,7 @@ export async function getVersionData(req: AuthRequest, res: Response, next: Next
 export async function share(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { email, userId, permission } = shareSecretSchema.parse(req.body);
+    const { email, userId, permission } = req.body as ShareSecretInput;
     const result = await secretSharingService.shareSecret(
       req.user.userId,
       req.params.id as string,
@@ -341,7 +229,6 @@ export async function share(req: AuthRequest, res: Response, next: NextFunction)
 
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -374,7 +261,7 @@ export async function unshare(req: AuthRequest, res: Response, next: NextFunctio
 export async function updateSharePermission(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertAuthenticated(req);
-    const { permission } = updateSharePermSchema.parse(req.body);
+    const { permission } = req.body as UpdateSharePermInput;
     const result = await secretSharingService.updateSecretSharePermission(
       req.user.userId,
       req.params.id as string,
@@ -394,7 +281,6 @@ export async function updateSharePermission(req: AuthRequest, res: Response, nex
 
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -447,7 +333,7 @@ export async function distributeTenantKey(req: AuthRequest, res: Response, next:
       return next(new AppError('Only admins and owners can distribute tenant vault keys', 403));
     }
 
-    const { targetUserId } = distributeTenantKeySchema.parse(req.body);
+    const { targetUserId } = req.body as DistributeTenantKeyInput;
     await secretService.distributeTenantKeyToUser(
       req.user.tenantId,
       targetUserId,
@@ -465,7 +351,6 @@ export async function distributeTenantKey(req: AuthRequest, res: Response, next:
 
     res.json({ distributed: true });
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

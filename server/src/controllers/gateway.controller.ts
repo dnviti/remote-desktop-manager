@@ -1,5 +1,4 @@
 import { Response, NextFunction } from 'express';
-import { z } from 'zod';
 import { AuthRequest, assertTenantAuthenticated } from '../types';
 import * as gatewayService from '../services/gateway.service';
 import * as sshKeyService from '../services/sshkey.service';
@@ -16,115 +15,7 @@ import {
   emitGatewayData,
 } from '../services/gatewayMonitor.service';
 import { getClientIp } from '../utils/ip';
-
-const createSchema = z.object({
-  name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
-  host: z.string().min(1),
-  port: z.number().int().min(1).max(65535),
-  description: z.string().max(500).optional(),
-  isDefault: z.boolean().optional(),
-  username: z.string().optional(),
-  password: z.string().optional(),
-  sshPrivateKey: z.string().optional(),
-  apiPort: z.number().int().min(1).max(65535).optional(),
-  publishPorts: z.boolean().optional(),
-  lbStrategy: z.enum(['ROUND_ROBIN', 'LEAST_CONNECTIONS']).optional(),
-  monitoringEnabled: z.boolean().optional(),
-  monitorIntervalMs: z.number().int().min(1000).max(3600000).optional(),
-  inactivityTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
-});
-
-const scaleSchema = z.object({
-  replicas: z.number().int().min(0).max(20),
-});
-
-const scalingConfigSchema = z.object({
-  autoScale: z.boolean().optional(),
-  minReplicas: z.number().int().min(0).max(20).optional(),
-  maxReplicas: z.number().int().min(1).max(20).optional(),
-  sessionsPerInstance: z.number().int().min(1).max(100).optional(),
-  scaleDownCooldownSeconds: z.number().int().min(60).max(3600).optional(),
-}).refine(
-  (data) => {
-    if (data.minReplicas !== undefined && data.maxReplicas !== undefined) {
-      return data.minReplicas <= data.maxReplicas;
-    }
-    return true;
-  },
-  { message: 'minReplicas must be less than or equal to maxReplicas' },
-);
-
-const rotationPolicySchema = z.object({
-  autoRotateEnabled: z.boolean().optional(),
-  rotationIntervalDays: z.number().int().min(1).max(365).optional(),
-  expiresAt: z.string().datetime().nullable().optional(),
-});
-
-const createTemplateSchema = z.object({
-  name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
-  host: z.string().default(''),
-  port: z.number().int().min(1).max(65535).optional(),
-  description: z.string().max(500).optional(),
-  apiPort: z.number().int().min(1).max(65535).optional(),
-  autoScale: z.boolean().optional(),
-  minReplicas: z.number().int().min(0).max(20).optional(),
-  maxReplicas: z.number().int().min(1).max(20).optional(),
-  sessionsPerInstance: z.number().int().min(1).max(100).optional(),
-  scaleDownCooldownSeconds: z.number().int().min(60).max(3600).optional(),
-  monitoringEnabled: z.boolean().optional(),
-  monitorIntervalMs: z.number().int().min(1000).max(3600000).optional(),
-  inactivityTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
-  publishPorts: z.boolean().optional(),
-  lbStrategy: z.enum(['ROUND_ROBIN', 'LEAST_CONNECTIONS']).optional(),
-}).transform((data) => {
-  const isManagedType = data.type === 'MANAGED_SSH' || data.type === 'GUACD';
-  return {
-    ...data,
-    host: isManagedType ? '' : data.host,
-    port: data.port ?? (data.type === 'MANAGED_SSH' ? 2222 : data.type === 'GUACD' ? 4822 : undefined),
-  };
-}).refine(
-  (data) => data.port !== undefined,
-  { message: 'Port is required for SSH Bastion gateways', path: ['port'] },
-);
-
-const updateTemplateSchema = z.object({
-  name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
-  host: z.string(),
-  port: z.number().int().min(1).max(65535),
-  description: z.string().max(500),
-  apiPort: z.number().int().min(1).max(65535),
-  autoScale: z.boolean(),
-  minReplicas: z.number().int().min(0).max(20),
-  maxReplicas: z.number().int().min(1).max(20),
-  sessionsPerInstance: z.number().int().min(1).max(100),
-  scaleDownCooldownSeconds: z.number().int().min(60).max(3600),
-  monitoringEnabled: z.boolean(),
-  monitorIntervalMs: z.number().int().min(1000).max(3600000),
-  inactivityTimeoutSeconds: z.number().int().min(60).max(86400),
-  publishPorts: z.boolean(),
-  lbStrategy: z.enum(['ROUND_ROBIN', 'LEAST_CONNECTIONS']),
-}).partial();
-
-const updateSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  host: z.string().min(1).optional(),
-  port: z.number().int().min(1).max(65535).optional(),
-  description: z.string().max(500).nullable().optional(),
-  isDefault: z.boolean().optional(),
-  username: z.string().optional(),
-  password: z.string().optional(),
-  sshPrivateKey: z.string().optional(),
-  apiPort: z.number().int().min(1).max(65535).nullable().optional(),
-  publishPorts: z.boolean().optional(),
-  lbStrategy: z.enum(['ROUND_ROBIN', 'LEAST_CONNECTIONS']).optional(),
-  monitoringEnabled: z.boolean().optional(),
-  monitorIntervalMs: z.number().int().min(1000).max(3600000).optional(),
-  inactivityTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
-});
+import type { CreateGatewayInput, UpdateGatewayInput, ScaleInput, ScalingConfigInput, RotationPolicyInput, CreateTemplateInput, UpdateTemplateInput } from '../schemas/gateway.schemas';
 
 export async function list(req: AuthRequest, res: Response, next: NextFunction) {
   try {
@@ -139,7 +30,7 @@ export async function list(req: AuthRequest, res: Response, next: NextFunction) 
 export async function create(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertTenantAuthenticated(req);
-    const data = createSchema.parse(req.body);
+    const data = req.body as CreateGatewayInput;
     const result = await gatewayService.createGateway(
       req.user.userId,
       req.user.tenantId,
@@ -158,7 +49,6 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
     // at deploy time via SSH_AUTHORIZED_KEYS env var. No push needed here.
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -166,7 +56,7 @@ export async function create(req: AuthRequest, res: Response, next: NextFunction
 export async function update(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertTenantAuthenticated(req);
-    const data = updateSchema.parse(req.body);
+    const data = req.body as UpdateGatewayInput;
     const gatewayId = req.params.id as string;
     const result = await gatewayService.updateGateway(
       req.user.userId,
@@ -184,7 +74,6 @@ export async function update(req: AuthRequest, res: Response, next: NextFunction
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -336,7 +225,7 @@ export async function downloadSshPrivateKey(req: AuthRequest, res: Response, nex
 export async function updateRotationPolicy(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertTenantAuthenticated(req);
-    const data = rotationPolicySchema.parse(req.body);
+    const data = req.body as RotationPolicyInput;
 
     const input: sshKeyService.RotationPolicyInput = {};
     if (data.autoRotateEnabled !== undefined) {
@@ -362,7 +251,6 @@ export async function updateRotationPolicy(req: AuthRequest, res: Response, next
 
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -442,11 +330,10 @@ export async function scale(req: AuthRequest, res: Response, next: NextFunction)
     });
     if (!gateway) return next(new AppError('Gateway not found', 404));
 
-    const { replicas } = scaleSchema.parse(req.body);
+    const { replicas } = req.body as ScaleInput;
     const result = await managedGatewayService.scaleGateway(gatewayId, replicas, req.user.userId);
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -590,7 +477,7 @@ export async function updateScalingConfig(req: AuthRequest, res: Response, next:
       return next(new AppError('Auto-scaling is only available for managed gateways', 400));
     }
 
-    const data = scalingConfigSchema.parse(req.body);
+    const data = req.body as ScalingConfigInput;
 
     // Cross-validate against existing values when only one of min/max is provided
     if (data.minReplicas !== undefined && data.maxReplicas === undefined) {
@@ -639,7 +526,6 @@ export async function updateScalingConfig(req: AuthRequest, res: Response, next:
 
     res.json(updated);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -661,12 +547,12 @@ export async function listTemplates(req: AuthRequest, res: Response, next: NextF
 export async function createTemplate(req: AuthRequest, res: Response, next: NextFunction) {
   try {
     assertTenantAuthenticated(req);
-    const data = createTemplateSchema.parse(req.body);
+    const data = req.body as CreateTemplateInput;
     // .refine() guarantees port is always defined (defaults for managed types, required for SSH_BASTION)
     const result = await gatewayTemplateService.createTemplate(
       req.user.userId,
       req.user.tenantId,
-      data as typeof data & { port: number },
+      data as CreateTemplateInput & { port: number },
     );
     auditService.log({
       userId: req.user.userId,
@@ -678,7 +564,6 @@ export async function createTemplate(req: AuthRequest, res: Response, next: Next
     });
     res.status(201).json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }
@@ -687,7 +572,7 @@ export async function updateTemplate(req: AuthRequest, res: Response, next: Next
   try {
     assertTenantAuthenticated(req);
     const templateId = req.params.templateId as string;
-    const data = updateTemplateSchema.parse(req.body);
+    const data = req.body as UpdateTemplateInput;
     const result = await gatewayTemplateService.updateTemplate(
       req.user.userId,
       req.user.tenantId,
@@ -704,7 +589,6 @@ export async function updateTemplate(req: AuthRequest, res: Response, next: Next
     });
     res.json(result);
   } catch (err) {
-    if (err instanceof z.ZodError) return next(new AppError(err.issues[0].message, 400));
     next(err);
   }
 }

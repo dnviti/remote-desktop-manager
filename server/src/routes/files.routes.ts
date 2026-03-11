@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import { authenticate } from '../middleware/auth.middleware';
+import { validate } from '../middleware/validate.middleware';
+import { fileNameSchema } from '../schemas/files.schemas';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as filesController from '../controllers/files.controller';
 import { config } from '../config';
@@ -44,8 +46,8 @@ const quotaCheck = async (req: AuthRequest, _res: Response, next: NextFunction) 
 };
 
 router.get('/', filesController.list);
-router.get('/:name', filesController.download);
+router.get('/:name', validate(fileNameSchema, 'params'), filesController.download);
 router.post('/', quotaCheck as never, upload.single('file'), filesController.upload as never);
-router.delete('/:name', filesController.remove);
+router.delete('/:name', validate(fileNameSchema, 'params'), filesController.remove);
 
 export default router;

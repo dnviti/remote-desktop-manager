@@ -20,6 +20,152 @@
 ================================================================================
 
 
+# Scouted 2026-03-11 — Code Optimization & Cleanup
+
+
+------------------------------------------------------------------------------
+[ ] REFAC-202 — Extract client shared utilities (SlideUp, apiError, useAsyncAction)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  The SlideUp transition component is copy-pasted identically in 7+ dialog
+  files. API error extraction ((err as {...})?.response?.data?.error) appears
+  in 10+ components. The loading/error state pattern (useState + try/catch/
+  finally) is repeated in every dialog form submission.
+
+  DETTAGLI IMPLEMENTAZIONE:
+  1. Create client/src/components/common/SlideUp.tsx exporting the SlideUp
+     transition as a named export. Update all dialog files to import from this
+     shared location.
+  2. Create client/src/utils/apiError.ts exporting extractApiError(err, fallback)
+     that handles the Axios error shape. Replace inline casts across files.
+  3. Create client/src/hooks/useAsyncAction.ts encapsulating the repeated
+     pattern of [loading, error] + try/catch/finally for dialog form submissions.
+  4. Update CLAUDE.md full-screen dialog pattern to reference the shared
+     SlideUp component.
+
+  FILE COINVOLTI:
+  - client/src/components/common/SlideUp.tsx (new)
+  - client/src/utils/apiError.ts (new)
+  - client/src/hooks/useAsyncAction.ts (new)
+  - 7+ dialog files containing const SlideUp = forwardRef(...)
+  - 10+ files containing inline error extraction
+  - CLAUDE.md (update dialog pattern documentation)
+
+  CRITERI DI ACCETTAZIONE:
+  - Zero duplicate SlideUp definitions — single source in common/SlideUp.tsx
+  - All inline error extraction patterns replaced with extractApiError
+  - npm run verify passes
+  - No visual or behavioral regressions
+
+
+------------------------------------------------------------------------------
+[ ] OPT-201 — Lazy-load full-screen dialogs in MainLayout
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: REFAC-202 (SlideUp extraction should happen first)
+
+  DESCRIZIONE:
+  MainLayout.tsx eagerly imports 13+ dialog components at the top level, all
+  rendered conditionally behind open boolean state. These include heavy
+  components (audit log tables, recording players, settings tabs). Converting
+  to React.lazy() with Suspense will reduce the initial bundle size and
+  improve first paint time.
+
+  DETTAGLI IMPLEMENTAZIONE:
+  1. Convert all 13+ dialog imports in MainLayout.tsx to React.lazy() calls.
+  2. Wrap each lazy dialog in <Suspense fallback={null}>.
+  3. Verify Vite code-splitting generates separate chunks for each dialog.
+  4. Measure bundle size before/after.
+
+  FILE COINVOLTI:
+  - client/src/components/Layout/MainLayout.tsx (primary)
+  - Vite config if manual chunk hints are needed
+
+  CRITERI DI ACCETTAZIONE:
+  - All dialog imports use React.lazy()
+  - npm run build produces separate chunks for dialogs
+  - Initial bundle size measurably reduced
+  - Dialogs still open correctly with no flash or error
+  - npm run verify passes
+
+
+------------------------------------------------------------------------------
+[ ] SEC-201 — Rate limiting on vault unlock and session creation endpoints
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  The vault unlock endpoints (POST /vault/unlock, MFA variants) and session
+  creation endpoints (POST /sessions/rdp, /sessions/vnc, /sessions/ssh) have
+  no rate limiting. A compromised JWT could allow unlimited brute-force
+  attempts against the vault password or unbounded session creation (resource
+  exhaustion). Additionally, error messages in sharing services reveal whether
+  a target user is logged in, which is an information disclosure vulnerability.
+
+  DETTAGLI IMPLEMENTAZIONE:
+  1. Create server/src/middleware/vaultRateLimit.middleware.ts following the
+     existing loginRateLimit pattern. Key on req.user.id. Limit: 5 attempts
+     per minute for vault unlock, 10 for MFA variants.
+  2. Create server/src/middleware/sessionRateLimit.middleware.ts for session
+     creation. Allow 20 session creations per minute per user.
+  3. Apply middlewares in vault.routes.ts and session.routes.ts.
+  4. Add config entries in server/src/config.ts for rate limit values.
+  5. Fix info-leaking error message "Target user vault is locked. They must
+     be logged in to receive shares." → "Unable to share with this user at
+     this time." in secretSharing.service.ts and sharing.service.ts.
+
+  FILE COINVOLTI:
+  - server/src/middleware/vaultRateLimit.middleware.ts (new)
+  - server/src/middleware/sessionRateLimit.middleware.ts (new)
+  - server/src/routes/vault.routes.ts
+  - server/src/routes/session.routes.ts
+  - server/src/config.ts
+  - server/src/services/secretSharing.service.ts
+  - server/src/services/sharing.service.ts
+
+  CRITERI DI ACCETTAZIONE:
+  - Vault unlock returns 429 after 5 failed attempts within 60 seconds
+  - Session creation returns 429 after 20 requests within 60 seconds
+  - Rate limit values configurable via environment variables
+  - Error messages do not reveal vault or login state
+  - npm run verify passes
+
+
+------------------------------------------------------------------------------
+[ ] OPT-202 — Add composite Prisma indexes for audit query performance
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  The AuditLog table has single-column indexes on userId, action, and createdAt
+  separately, but the main audit query always filters by userId + optional
+  action + createdAt range and orders by createdAt desc. PostgreSQL cannot
+  efficiently merge single-column indexes for this pattern. Missing composite
+  indexes also affect TenantMember and VaultSecret queries.
+
+  DETTAGLI IMPLEMENTAZIONE:
+  1. Add @@index([userId, action, createdAt]) to AuditLog model.
+  2. Add @@index([tenantId, isActive]) to TenantMember model.
+  3. Add @@index([expiresAt, userId]) to VaultSecret model.
+  4. Generate Prisma migration and verify indexes are used.
+
+  FILE COINVOLTI:
+  - server/prisma/schema.prisma (add 3 composite indexes)
+  - One new migration file (auto-generated)
+
+  CRITERI DI ACCETTAZIONE:
+  - Three new composite indexes added to schema
+  - Migration runs cleanly (npm run db:migrate)
+  - npm run db:generate produces updated client
+  - npm run verify passes
+  - No existing indexes removed (additive only)
+
+
 ------------------------------------------------------------------------------
 [ ] CI-174 — Refactoring pipeline CI/CD: Gate Verify e Security obbligatorio
 ------------------------------------------------------------------------------
