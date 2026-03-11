@@ -1,11 +1,12 @@
 import { Response } from 'express';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as notificationService from '../services/notification.service';
+import { validatedQuery } from '../middleware/validate.middleware';
 import type { NotificationQueryInput } from '../schemas/notification.schemas';
 
 export async function list(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const query = req.query as unknown as NotificationQueryInput;
+  const query = validatedQuery<NotificationQueryInput>(req);
   const result = await notificationService.listNotifications(
     req.user.userId,
     query.limit,

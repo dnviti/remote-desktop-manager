@@ -3,12 +3,13 @@ import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../
 import * as auditService from '../services/audit.service';
 import * as permissionService from '../services/permission.service';
 import { AppError } from '../middleware/error.middleware';
+import { validatedQuery, validatedParams } from '../middleware/validate.middleware';
 import { AuditAction } from '../lib/prisma';
 import type { AuditQueryInput, TenantAuditQueryInput, ConnectionIdInput, ConnectionAuditQueryInput } from '../schemas/audit.schemas';
 
 export async function list(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const query = req.query as unknown as AuditQueryInput;
+  const query = validatedQuery<AuditQueryInput>(req);
   const result = await auditService.getAuditLogs({
     userId: req.user.userId,
     ...query,
@@ -25,7 +26,7 @@ export async function listGateways(req: AuthRequest, res: Response) {
 
 export async function listTenantLogs(req: AuthRequest, res: Response) {
   assertTenantAuthenticated(req);
-  const query = req.query as unknown as TenantAuditQueryInput;
+  const query = validatedQuery<TenantAuditQueryInput>(req);
   const result = await auditService.getTenantAuditLogs({
     tenantId: req.user.tenantId,
     ...query,
@@ -36,8 +37,8 @@ export async function listTenantLogs(req: AuthRequest, res: Response) {
 
 export async function listConnectionLogs(req: AuthRequest, res: Response) {
   assertTenantAuthenticated(req);
-  const { connectionId } = req.params as unknown as ConnectionIdInput;
-  const query = req.query as unknown as ConnectionAuditQueryInput;
+  const { connectionId } = validatedParams<ConnectionIdInput>(req);
+  const query = validatedQuery<ConnectionAuditQueryInput>(req);
 
   const access = await permissionService.canViewConnection(
     req.user.userId, connectionId, req.user.tenantId
@@ -60,7 +61,7 @@ export async function listConnectionLogs(req: AuthRequest, res: Response) {
 
 export async function listConnectionAuditUsers(req: AuthRequest, res: Response) {
   assertTenantAuthenticated(req);
-  const { connectionId } = req.params as unknown as ConnectionIdInput;
+  const { connectionId } = validatedParams<ConnectionIdInput>(req);
 
   const isAdmin = req.user.tenantRole === 'ADMIN' || req.user.tenantRole === 'OWNER';
   if (!isAdmin) {

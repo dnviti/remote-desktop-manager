@@ -5,13 +5,14 @@ import { AuthRequest, assertAuthenticated } from '../types';
 import * as recordingService from '../services/recording.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { validatedQuery } from '../middleware/validate.middleware';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
 import type { ListRecordingsQueryInput } from '../schemas/recording.schemas';
 
 export async function listRecordings(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const query = req.query as unknown as ListRecordingsQueryInput;
+  const query = validatedQuery<ListRecordingsQueryInput>(req);
   const result = await recordingService.listRecordings({
     userId: req.user.userId,
     tenantId: req.user.tenantId,

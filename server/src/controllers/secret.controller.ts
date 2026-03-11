@@ -5,6 +5,7 @@ import * as secretService from '../services/secret.service';
 import * as secretSharingService from '../services/secretSharing.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
+import { validatedQuery } from '../middleware/validate.middleware';
 import { getClientIp } from '../utils/ip';
 import type { CreateSecretInput, UpdateSecretInput, ListFiltersInput, ShareSecretInput, UpdateSharePermInput, DistributeTenantKeyInput } from '../schemas/secret.schemas';
 
@@ -36,7 +37,7 @@ export async function create(req: AuthRequest, res: Response) {
 
 export async function list(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const filters = req.query as unknown as ListFiltersInput;
+  const filters = validatedQuery<ListFiltersInput>(req);
   const parsedFilters: secretService.SecretListFilters = {
     scope: filters.scope,
     type: filters.type,

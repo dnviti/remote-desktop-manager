@@ -26,34 +26,6 @@
 
 
 
-------------------------------------------------------------------------------
-[ ] REFAC-206 — Estendere middleware Zod validate per query params e path params
-------------------------------------------------------------------------------
-  Priorita: MEDIA
-  Dipendenze: REFAC-201 (completato)
-
-  DESCRIZIONE:
-  Il middleware Zod di validazione da REFAC-201 gestisce solo il body delle
-  request. Oltre 10 controller usano ancora cast `as unknown as SomeType`
-  per req.query, bypassando la validazione runtime. Estendere il middleware
-  per validare anche query string e path params elimina i cast non sicuri e
-  aggiunge type safety a runtime.
-
-  DETTAGLI TECNICI:
-  1) Estendere il middleware `validate()` con opzioni per `query` e `params`:
-     `validate({ body: schema, query: querySchema, params: paramsSchema })`
-  2) Applicare ai controller che usano `as unknown as` per req.query:
-     audit, secret, notification, recording controller
-  3) Rimuovere i type cast non sicuri dai controller aggiornati
-
-  File coinvolti:
-    MODIFICARE: server/src/middleware/validate.middleware.ts
-    MODIFICARE: server/src/controllers/audit.controller.ts
-    MODIFICARE: server/src/controllers/secret.controller.ts
-    MODIFICARE: server/src/controllers/notification.controller.ts
-    MODIFICARE: server/src/controllers/recording.controller.ts
-    MODIFICARE: server/src/routes/*.routes.ts (aggiungere schema query)
-
 
 ------------------------------------------------------------------------------
 [ ] CLEAN-201 — Rimuovere log di debug e standardizzare pattern risposta API client
@@ -564,6 +536,92 @@
     MODIFICARE: client/src/store/secretStore.ts
 
 
+------------------------------------------------------------------------------
+[ ] VAULT-209 — Recovery key obbligatoria su cambio/reset password (conferma + download .key)
+------------------------------------------------------------------------------
+  Priorita: ALTA
+  Dipendenze: Nessuna
+
+  DESCRIZIONE:
+  Attualmente il cambio password (ChangePasswordSection.tsx) ri-cifra il vault
+  con la nuova password ma NON genera una nuova recovery key. L'utente perde
+  la possibilita' di recuperare il vault se dimentica la nuova password.
+  Inoltre, quando la recovery key viene mostrata (registrazione, reset), non
+  c'e' alcun meccanismo per verificare che l'utente l'abbia effettivamente
+  salvata.
+
+  Soluzione: dopo ogni cambio o reset password che genera una nuova recovery
+  key, mostrare un dialog obbligatorio multi-step:
+    1) Mostrare la nuova recovery key in monospace con opzione di copia
+    2) Permettere il download come file "arsenale-{timestamp}.key"
+    3) Al click su "Continue", chiedere all'utente di ri-digitare la key
+    4) Solo dopo verifica corretta: completare il flusso (logout/redirect)
+  Applicare lo stesso pattern sia al cambio password (settings) che al reset
+  password (ResetPasswordPage) quando la recovery key viene rigenerata.
+
+  DETTAGLI TECNICI:
+  1) Backend - user.service.ts changePassword():
+     - Dopo la ri-cifratura del vault (riga ~250), generare nuova recovery
+       key con generateRecoveryKey() e encryptMasterKeyWithRecovery()
+     - Aggiornare i campi User: encryptedVaultRecoveryKey,
+       vaultRecoveryKeyIV, vaultRecoveryKeyTag, vaultRecoveryKeySalt
+     - Ritornare { success: true, recoveryKey: string } invece di
+       { success: boolean }
+     - NON eseguire il logout immediatamente — il client lo fara' dopo
+       che l'utente ha confermato la recovery key
+
+  2) Backend - user.controller.ts changePassword():
+     - Passare la recoveryKey nella risposta JSON
+     - NON invalidare i refresh token fino alla conferma client-side
+       (oppure invalidarli ma dare tempo all'utente di vedere la key)
+
+  3) Client API - user.api.ts:
+     - Aggiornare tipo ritorno changePassword(): { success: boolean;
+       recoveryKey: string }
+
+  4) Nuovo componente client RecoveryKeyConfirmDialog:
+     - Props: { open, recoveryKey, onConfirmed, onClose? }
+     - Step 1 - "Save your recovery key":
+       * Recovery key mostrata in <Typography fontFamily="monospace">
+         con userSelect="all"
+       * Bottone "Copy to clipboard" con feedback visivo
+       * Bottone "Download as file" — genera e scarica file
+         "arsenale-{timestamp}.key" contenente la recovery key in plain text
+         (timestamp formato: YYYYMMDD-HHmmss)
+       * Bottone "Continue" per procedere allo step 2
+     - Step 2 - "Confirm your recovery key":
+       * TextField per ri-digitare la recovery key
+       * Validazione: confronto esatto con la key originale
+       * Se errata: messaggio errore inline "Key does not match"
+       * Se corretta: abilitare bottone "Done" → chiama onConfirmed()
+     - Il dialog e' NON dismissabile (no click-away, no escape, no X button)
+       fino a conferma completata — l'utente DEVE completare la verifica
+
+  5) Integrazione in ChangePasswordSection.tsx:
+     - Nuovo stato: 'showing-recovery-key' dopo 'entering-password'
+     - Dopo successo changePassword API: salvare recoveryKey nello state
+       locale, passare a fase 'showing-recovery-key'
+     - Mostrare RecoveryKeyConfirmDialog
+     - onConfirmed: eseguire logout (come oggi)
+
+  6) Integrazione in ResetPasswordPage.tsx:
+     - La risposta del reset con recovery key gia' include la nuova
+       recoveryKey — mostrare lo stesso RecoveryKeyConfirmDialog
+     - Dopo conferma: redirect a login
+
+  7) Download file .key:
+     - Usare Blob + URL.createObjectURL + link.click() pattern
+     - Contenuto file: solo la recovery key in plain text
+     - Nome: arsenale-{YYYYMMDD-HHmmss}.key
+     - MIME type: text/plain
+
+  File coinvolti:
+    CREARE:     client/src/components/common/RecoveryKeyConfirmDialog.tsx
+    MODIFICARE: server/src/services/user.service.ts
+    MODIFICARE: server/src/controllers/user.controller.ts
+    MODIFICARE: client/src/api/user.api.ts
+    MODIFICARE: client/src/components/Settings/ChangePasswordSection.tsx
+    MODIFICARE: client/src/pages/ResetPasswordPage.tsx
 
 
 
