@@ -182,7 +182,13 @@ Use `/idea-create` to add ideas, `/idea-approve` to promote an idea to a task, `
 
 ### Issues Tracker Integration
 
-**Config file:** `.claude/issues-tracker.json` (preferred) or `.claude/github-issues.json` (legacy fallback) — controls the operating mode, target platform/repo, and label mappings. Copy `.claude/issues-tracker.example.json` to get started.
+**Config file:** `.claude/issues-tracker.json` — controls the operating mode, target platform/repo, and label mappings. Copy `.claude/issues-tracker.example.json` to get started. Legacy fallback: `.claude/github-issues.json`.
+
+**Skill scripts:** Python utilities in `.claude/scripts/` (zero external dependencies, stdlib only):
+- `task_manager.py` — Task/idea parsing, ID generation, platform detection, PostToolUse hook
+- `app_manager.py` — Cross-platform port checking, process management
+- `release_manager.py` — Version detection, commit parsing, changelog generation
+- `setup_labels.py` — Cross-platform label creation (GitHub/GitLab)
 
 **Config parameters:**
 - `platform` (string): `"github"` or `"gitlab"` — determines which CLI tool (`gh` or `glab`) is used
@@ -194,7 +200,7 @@ Use `/idea-create` to add ideas, `/idea-approve` to promote an idea to a task, `
 **Setup:**
 1. Copy `.claude/issues-tracker.example.json` to `.claude/issues-tracker.json` (or use legacy `.claude/github-issues.json`)
 2. Set `"platform"`, `"enabled": true`, and configure `"sync"` (`false` for platform-only, `true` for dual sync)
-3. Run `bash scripts/setup-labels.sh` to create all required labels (cross-platform; legacy: `bash scripts/setup-github-labels.sh`)
+3. Run `python3 .claude/scripts/setup_labels.py` to create all required labels (cross-platform; legacy: `bash scripts/setup-labels.sh`)
 4. Ensure `gh` CLI (GitHub) or `glab` CLI (GitLab) is authenticated
 
 **Behavior in platform-only mode** (`enabled: true`, `sync: false`):

@@ -1,23 +1,20 @@
 ---
 name: app-stop
-description: Stop the Arsenale development environment. Kills dev server processes and optionally stops Docker containers.
+description: Stop the project's development environment. Kills dev server processes and optionally stops Docker containers.
 disable-model-invocation: true
 ---
 
 # Stop the Application
 
-You are a DevOps operator for the Arsenale project. Your job is to cleanly stop the development environment.
+You are a DevOps operator for this project. Your job is to cleanly stop the development environment.
 
 ## Current Environment State
 
-### Ports in use (3000, 3001, 3002):
-!`netstat -ano 2>/dev/null | grep -E ":(3000|3001|3002)\s" | grep LISTENING || echo "No dev ports in use"`
+### Dev port status (JSON — check DEV_PORTS in CLAUDE.md):
+!`python3 .claude/scripts/app_manager.py check-ports 3000 3001 3002`
 
 ### Docker containers:
-!`docker ps --format "{{.Names}}: {{.Status}}" 2>/dev/null | grep -E "guacd|postgres" || echo "No dev containers running"`
-
-### Node processes:
-!`tasklist 2>/dev/null | grep -i node | head -10 || echo "No node processes found"`
+!`docker ps --format "{{.Names}}: {{.Status}}"`
 
 ## Arguments
 
@@ -27,7 +24,7 @@ The user invoked with: **$ARGUMENTS**
 
 ### Step 1: Check if the app is running
 
-Examine the environment state above. The app is considered "running" if **any** of ports 3000, 3001, or 3002 are in use.
+Examine the environment state above. The app is considered "running" if **any** dev ports are in use.
 
 **If no dev ports are in use and no Docker containers are running:**
 - Inform the user: "The application does not appear to be running. Nothing to stop."
@@ -38,18 +35,8 @@ Examine the environment state above. The app is considered "running" if **any** 
 
 ### Step 2: Kill dev server processes
 
-For each dev port (3000, 3001, 3002), find the PID and kill it with its process tree:
-
 ```bash
-for port in 3000 3001 3002; do
-  pids=$(netstat -ano 2>/dev/null | grep -E ":${port}\s" | grep LISTENING | awk '{print $5}' | sort -u | tr -d '\r')
-  for pid in $pids; do
-    if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-      echo "Killing PID $pid (port $port)..."
-      taskkill /PID "$pid" /F /T 2>/dev/null || true
-    fi
-  done
-done
+python3 .claude/scripts/app_manager.py kill-ports 3000 3001 3002
 ```
 
 ### Step 3: Verify processes are stopped
@@ -57,30 +44,23 @@ done
 Wait briefly, then confirm ports are free:
 
 ```bash
-sleep 2
-remaining=$(netstat -ano 2>/dev/null | grep -E ":(3000|3001|3002)\s" | grep LISTENING)
-if [ -n "$remaining" ]; then
-  echo "WARNING: Some ports still in use:"
-  echo "$remaining"
-else
-  echo "All dev server ports are free."
-fi
+python3 .claude/scripts/app_manager.py verify-ports --wait 2 --expect free 3000 3001 3002
 ```
 
-If ports are still occupied, retry the kill one more time. If still occupied after retry, inform the user that manual intervention may be needed and show the PIDs.
+Check the JSON output. If `"all_match": false`, retry the kill one more time. If still occupied after retry, inform the user that manual intervention may be needed and show the PIDs from the JSON output.
 
 ### Step 4: Ask about Docker containers
 
-Check if Docker dev containers (guacd, postgres) are running:
+Check if Docker dev containers are running:
 
 ```bash
-docker ps --format "{{.Names}}: {{.Status}}" 2>/dev/null | grep -E "guacd|postgres"
+docker ps --format "{{.Names}}: {{.Status}}"
 ```
 
 **If Docker containers are running:**
 - If the argument contains "all" or "docker": stop Docker without asking.
-- Otherwise ask the user: "Docker containers (PostgreSQL, guacd) are still running. Would you like me to stop them too?"
-- If yes: run `npm run docker:dev:down` from the project root.
+- Otherwise ask the user: "Docker containers are still running. Would you like me to stop them too?"
+- If yes: run your project's Docker stop command (e.g., `docker compose down`).
 - If no: leave them running (they can be reused on next start).
 
 **If no Docker containers are running:**

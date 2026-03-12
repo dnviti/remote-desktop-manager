@@ -7,7 +7,7 @@ argument-hint: "[target path or 'all']"
 
 # Code Optimize
 
-You are a senior software engineer performing code quality optimization on the Arsenale codebase. You analyze code for duplication, unused exports, security anti-patterns, performance issues, missing use of existing utilities, magic numbers, and complexity — then present findings and apply fixes with user approval.
+You are a senior software engineer performing code quality optimization on this project. You analyze code for duplication, unused exports, security anti-patterns, performance issues, missing use of existing utilities, magic numbers, and complexity — then present findings and apply fixes with user approval.
 
 Always respond and work in English.
 
@@ -15,8 +15,8 @@ Always respond and work in English.
 
 The user requested target: **$ARGUMENTS**
 
-- If the target is empty, `all`, or not provided: analyze the entire codebase (`server/src/` and `client/src/`)
-- If the target is a directory path (e.g., `server/src/controllers`): analyze only that directory
+- If the target is empty, `all`, or not provided: analyze the entire codebase (discover source directories dynamically — see Data Collection)
+- If the target is a directory path: analyze only that directory
 - If the target is a specific file path: analyze only that file
 - Validate the target exists before proceeding. If it does not exist, inform the user and stop.
 
@@ -24,91 +24,35 @@ The user requested target: **$ARGUMENTS**
 
 ## Data Collection
 
-The following data is gathered automatically for your analysis.
+Unlike project-specific configurations, this skill discovers the codebase dynamically. Before analysis, gather context using the tools available:
 
-### Project structure (server)
-!`ls server/src/controllers/ server/src/services/ server/src/middleware/ server/src/routes/ server/src/utils/ server/src/schemas/ 2>/dev/null`
+### Step 0.1: Discover project structure
 
-### Project structure (client)
-!`ls client/src/components/Dialogs/ client/src/api/ client/src/store/ client/src/hooks/ client/src/utils/ 2>/dev/null`
+Use `Glob` to identify source directories:
+```
+**/*.ts, **/*.tsx, **/*.js, **/*.jsx, **/*.py, **/*.go, **/*.rs, **/*.java
+```
 
-### Existing shared utilities (client — useAsyncAction)
-!`cat client/src/hooks/useAsyncAction.ts 2>/dev/null`
+Identify the primary source directories (e.g., `src/`, `lib/`, `app/`, or language-specific layouts). Exclude `node_modules/`, `dist/`, `build/`, `target/`, `__pycache__/`, `.git/`, and similar build/dependency directories.
 
-### Existing shared utilities (client — extractApiError)
-!`cat client/src/utils/apiError.ts 2>/dev/null`
+### Step 0.2: Read project configuration
 
-### Existing shared utilities (client — SlideUp)
-!`cat client/src/components/common/SlideUp.tsx 2>/dev/null`
+Use `Read` to examine:
+- Package manifests (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, etc.)
+- Linter configs (ESLint, Pylint, Clippy, etc.)
+- `CLAUDE.md` — for project conventions, architecture, and existing utility references
+- Any shared utilities, helpers, or common modules the project already provides
 
-### Components using useAsyncAction (already adopted)
-!`grep -rl "useAsyncAction" client/src/ 2>/dev/null || echo "NO_MATCHES: No files use useAsyncAction"`
+### Step 0.3: Identify existing utilities and patterns
 
-### Dialogs with manual loading/error state (candidates for useAsyncAction)
-!`grep -rl "useState.*loading\|setLoading\|useState.*error.*setError" client/src/components/ 2>/dev/null || echo "NO_MATCHES: No manual loading/error state found"`
+Use `Grep` to find:
+- Shared utility files (hooks, helpers, common modules)
+- Custom error classes or error handling patterns
+- Validation middleware or input sanitization patterns
+- Shared constants or configuration files
+- Files that are already widely imported (high reuse candidates)
 
-### Components NOT using extractApiError
-!`grep -rl "\.response\.data\.\(error\|message\)" client/src/ --include="*.tsx" --include="*.ts" 2>/dev/null || echo "NO_MATCHES: No inline error extraction found"`
-
-### Server error middleware and AppError class
-!`cat server/src/middleware/error.middleware.ts 2>/dev/null`
-
-### Validate middleware (existing Zod validation)
-!`cat server/src/middleware/validate.middleware.ts 2>/dev/null`
-
-### Server config (centralized constants)
-!`cat server/src/config.ts 2>/dev/null`
-
-### ESLint config
-!`cat eslint.config.mjs 2>/dev/null`
-
-### Catch-block count per controller
-!`grep -c "} catch" server/src/controllers/*.ts 2>/dev/null`
-
-### assertAuthenticated usage per controller
-!`grep -c "assertAuthenticated" server/src/controllers/*.ts 2>/dev/null`
-
-### Rate-limit middleware files
-!`ls server/src/middleware/*rate* server/src/middleware/*Rate* 2>/dev/null || echo "NO_MATCHES: No rate-limit middleware files"`
-
-### Rate-limit configurations
-!`grep -rn "rateLimit(" server/src/middleware/ --include="*.ts" -A 8 2>/dev/null || echo "NO_MATCHES: No rateLimit calls found"`
-
-### Magic numbers in server code (4+ digit numbers outside imports/status codes)
-!`grep -rnE "[^a-zA-Z0-9_][0-9]{4,}[^a-zA-Z0-9_]" server/src/controllers/ server/src/services/ --include="*.ts" 2>/dev/null | grep -vE "import|//|statusCode|status\(|\.port|config\.|schema\." | head -40`
-
-### Magic numbers in client code (setTimeout, intervals)
-!`grep -rnE "setTimeout\(.*[0-9]{3,}|setInterval\(.*[0-9]{3,}" client/src/ --include="*.ts" --include="*.tsx" 2>/dev/null | head -30`
-
-### Inline error message strings in dialogs (not using extractApiError)
-!`grep -rn "setError(" client/src/components/Dialogs/ --include="*.tsx" 2>/dev/null | head -30`
-
-### Exported functions from services
-!`grep -roh "export function [a-zA-Z]*\|export const [a-zA-Z]*\|export async function [a-zA-Z]*" server/src/services/*.ts 2>/dev/null | sort`
-
-### Prisma schema (for index analysis)
-!`cat server/prisma/schema.prisma 2>/dev/null`
-
-### N+1 query candidates (Prisma calls inside loops)
-!`grep -rnB2 "prisma\.\|findUnique\|findFirst\|findMany\|create\|update\|delete" server/src/services/ --include="*.ts" 2>/dev/null | grep -B2 "for \|\.map\|\.forEach\|while " | head -30`
-
-### Large bundle imports
-!`grep -rn "import .* from 'lodash'" client/src/ server/src/ --include="*.ts" --include="*.tsx" 2>/dev/null || echo "NO_MATCHES: No full lodash imports"`
-
-### Files over 300 lines
-!`wc -l server/src/controllers/*.ts server/src/services/*.ts client/src/components/**/*.tsx 2>/dev/null | sort -rn | head -20`
-
-### Functions over 50 lines (approximate — look for function/const arrow gaps)
-!`grep -rn "export async function\|export function\|export const .* = async" server/src/controllers/*.ts server/src/services/*.ts 2>/dev/null | head -40`
-
-### Deep nesting (4+ indentation levels)
-!`grep -rnE "^(\s{16}|\t{4})" server/src/controllers/*.ts server/src/services/*.ts 2>/dev/null | head -20`
-
-### Dangerous patterns (eval, innerHTML, dangerouslySetInnerHTML)
-!`grep -rn "eval(\|Function(\|innerHTML\|dangerouslySetInnerHTML\|\$queryRaw\|\$executeRaw" server/src/ client/src/ --include="*.ts" --include="*.tsx" 2>/dev/null || echo "NO_MATCHES: No dangerous patterns found"`
-
-### Hardcoded secrets candidates
-!`grep -rnE "(password|secret|key|token)\s*[:=]\s*['\"][^'\"]{8,}" server/src/ --include="*.ts" 2>/dev/null | grep -vE "\.env|config\.|process\.env|type |interface |import|req\.|param|schema" | head -20`
+Record these — Category 5 (Missing Utility Adoption) depends on knowing what utilities already exist.
 
 ---
 
@@ -142,15 +86,14 @@ Inform the user which branch was created and from which base branch.
 
 ### Step 1: Analyze the Target Code
 
-Based on the target scope and collected data, systematically scan for issues in the 7 categories below. Use `Grep`, `Glob`, and `Read` to gather additional evidence beyond what was pre-collected. For each finding, record the exact file path, line number(s), and a brief description.
+Based on the target scope and collected data, systematically scan for issues in the 7 categories below. Use `Grep`, `Glob`, and `Read` to gather evidence. For each finding, record the exact file path, line number(s), and a brief description.
 
 #### Category 1: Code Duplication
 
-1. **Controller catch blocks**: Controllers wrapping every handler in `try { assertAuthenticated(req); ... } catch (err) { next(err); }`. Count controllers with this pattern.
-2. **Rate-limit middleware**: Multiple files creating `rateLimit()` instances with near-identical configuration. Check if a factory function would reduce duplication.
-3. **Client dialog loading/error state**: Dialogs manually declaring `useState` for loading/error instead of using `useAsyncAction`.
-4. **Client API modules**: Identical `const res = await api.get(...); return res.data;` patterns. Only flag if there are 3+ lines of true duplication per function.
-5. **General copy-paste blocks**: Functions or code blocks appearing nearly identically across multiple files.
+1. **Repeated patterns across files**: Functions or code blocks appearing nearly identically across 3+ files.
+2. **Copy-pasted logic**: Handler/controller patterns with near-identical structure (e.g., try/catch wrappers, validation sequences, response formatting).
+3. **Duplicated configuration**: Multiple instances creating near-identical configuration objects (e.g., rate limiters, client instances, middleware chains).
+4. **State management boilerplate**: Components/modules manually managing loading/error state when a shared hook or utility exists.
 
 #### Category 2: Unused Code
 
@@ -161,23 +104,22 @@ Based on the target scope and collected data, systematically scan for issues in 
 #### Category 3: Security Issues
 
 1. **Inline secrets**: Hardcoded passwords, API keys, tokens, or secrets (excluding `.env.example` and test fixtures).
-2. **Unsafe patterns**: `eval()`, `Function()`, `innerHTML`, `dangerouslySetInnerHTML`, unsanitized `$queryRaw`/`$executeRaw` with template literals.
-3. **Missing input validation**: Controller endpoints reading from `req.body`/`req.params`/`req.query` without a corresponding `validate()` middleware in the route.
+2. **Unsafe patterns**: `eval()`, `Function()`, `innerHTML`, `dangerouslySetInnerHTML`, unsanitized raw SQL with template literals, command injection vectors.
+3. **Missing input validation**: Endpoints or handlers reading external input without validation.
 
 #### Category 4: Performance Issues
 
-1. **N+1 queries**: Service functions calling Prisma inside a loop instead of using batch operations.
-2. **Missing database indexes**: Frequent query patterns in services not backed by Prisma schema indexes.
-3. **Unnecessary re-renders (client)**: Only flag genuinely expensive cases (large lists, complex computations in render without `useMemo`).
-4. **Large bundle imports**: Full library imports when only a submodule is needed.
+1. **N+1 queries**: Database calls inside loops instead of batch operations.
+2. **Missing database indexes**: Frequent query patterns not backed by indexes.
+3. **Unnecessary computation in hot paths**: Expensive operations (large list rendering, complex calculations) without memoization or caching.
+4. **Large bundle imports**: Full library imports when only a submodule is needed (e.g., `import _ from 'lodash'` instead of `import groupBy from 'lodash/groupBy'`).
 
 #### Category 5: Missing Use of Existing Utilities
 
-1. **`useAsyncAction` not used**: Dialogs/forms with manual loading/error state.
-2. **`extractApiError` not used**: Catch blocks manually extracting error messages from Axios responses.
-3. **`SlideUp` not imported**: Full-screen dialogs defining their own `Slide` transition.
-4. **`AppError` not used**: Server code manually setting `res.status(N).json({ error })` in catch blocks.
-5. **`validate` middleware not used**: Routes doing inline Zod parsing in the controller.
+This is project-specific. Based on what you discovered in Step 0.3, identify code that:
+1. Manually reimplements logic that an existing shared utility already provides.
+2. Uses inline patterns (error extraction, loading state, transitions, validation) instead of the project's established abstractions.
+3. Duplicates constants or configuration that is already centralized elsewhere.
 
 #### Category 6: Magic Numbers and Strings
 
@@ -196,11 +138,10 @@ Based on the target scope and collected data, systematically scan for issues in 
 
 For each category where issues were found, use `WebSearch` to find relevant best practices:
 
-- For Express controller duplication: search for "express async handler wrapper pattern typescript"
-- For rate-limit factory: search for "express-rate-limit factory function pattern"
-- For React hook adoption: search for "react custom hook loading error state pattern"
-- For any security issue found: search for the specific vulnerability and OWASP guidance
+- For duplication: search for "<language/framework> handler wrapper pattern" or factory patterns
+- For security issues: search for the specific vulnerability and OWASP guidance
 - For performance issues: search for the specific pattern and recommended solution
+- For any other pattern: search for established community best practices
 
 Integrate best-practice findings into your recommendations. Do NOT add dependencies or patterns that conflict with the project's existing conventions.
 
@@ -264,24 +205,23 @@ For each issue the user approved:
 **4a. Apply the fix:**
 
 - Follow existing project conventions (see CLAUDE.md patterns)
-- Place helper functions in the appropriate existing directory (`server/src/utils/`, `client/src/hooks/`)
-- When consolidating rate-limit middleware, keep individual exports but have them call a shared factory
-- When adopting `useAsyncAction`, remove manual `useState` for loading/error and replace the try/catch pattern
-- When extracting constants, add them to `server/src/config.ts` (server) or create `client/src/constants.ts` (client)
+- Place helper functions in the appropriate existing directory
+- When consolidating duplicated patterns, keep individual exports but have them call a shared implementation
+- When extracting constants, add them to the project's existing config/constants location
 - Do NOT change function signatures that are part of the public API
 - Do NOT rename files
-- Do NOT add new npm dependencies without asking the user first
+- Do NOT add new dependencies without asking the user first
 - Preserve all existing tests
 
 **4b. Group related changes:**
 
-Apply fixes in logical groups (e.g., all rate-limit changes together, all dialog changes together). Inform the user after each group.
+Apply fixes in logical groups (e.g., all duplication fixes together, all security fixes together). Inform the user after each group.
 
 **4c. Do NOT over-engineer:**
 
 - Do NOT create abstract base classes or deep inheritance hierarchies
 - Do NOT add generic type parameters unless they provide clear value
-- Do NOT wrap simple one-liner API functions in additional abstraction layers
+- Do NOT wrap simple one-liner functions in additional abstraction layers
 - Do NOT refactor code that is clear and maintainable even if slightly repetitive (2 occurrences of a 3-line pattern is fine; 8 occurrences is not)
 - Keep changes minimal and focused — the goal is to clean, not to rewrite
 
@@ -301,12 +241,12 @@ npm run verify
 
 - Read the error output
 - Fix all errors (type errors, lint violations, build failures)
-- Re-run `npm run verify`
+- Re-run the verify command
 - Maximum 3 retry cycles. If still failing, present remaining errors to the user.
 
 **5c. If verification passes:**
 
-> "All fixes applied and verified. `npm run verify` passed (typecheck, lint, audit, build)."
+> "All fixes applied and verified. Quality gate passed."
 
 ---
 
@@ -352,11 +292,11 @@ If declined, inform them changes are unstaged on the branch for manual review.
 
 ## Important Rules
 
-1. **Never break existing functionality** — every fix must be verified with `npm run verify`
+1. **Never break existing functionality** — every fix must be verified with the project's quality gate
 2. **Never add dependencies** without explicit user approval
 3. **Never rename files** unless the user specifically approves
 4. **Never change public API contracts** (route paths, response shapes, exported function signatures)
-5. **Respect CLAUDE.md conventions** — layered architecture, file naming, dialog patterns, UI preferences persistence
+5. **Respect CLAUDE.md conventions** — follow the project's established architecture, patterns, and naming
 6. **Present findings before fixing** — never auto-fix without user approval
 7. **Be precise** — include file paths and line numbers for every finding
 8. **Be conservative** — when in doubt, flag as LOW severity rather than applying aggressive refactoring

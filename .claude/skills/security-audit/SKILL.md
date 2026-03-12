@@ -142,6 +142,8 @@ The following data is gathered automatically for your analysis.
 Analyze ALL collected data above against each category. For each finding, assign a severity and document it precisely. Only report findings you have clear evidence for — no speculation.
 
 ### 1. DEPENDENCIES (scope: `dependencies`)
+*MITRE ATT&CK: T1195 (Supply Chain Compromise), T1190 (Exploit Public-Facing Application)*
+
 Check for:
 - Known CVEs from `npm audit` output
 - Outdated packages with known security issues
@@ -149,24 +151,30 @@ Check for:
 - Unnecessary dependencies that increase attack surface
 
 ### 2. AUTHENTICATION (scope: `auth`)
+*MITRE ATT&CK: T1078 (Valid Accounts), T1110 (Brute Force), T1528 (Steal Application Access Token)*
+
 Check for:
 - **MITRE T1078 (Valid Accounts)**: Check for weak default passwords, lack of MFA enforcement, or missing account lockout/brute-force protection on all auth endpoints.
 - **MITRE T1110 (Brute Force)**: Ensure strict rate limiting and progressive delays are applied to login, token refresh, and MFA verification endpoints.
 - **MITRE T1563 (Session Hijacking)**: Check if JWT tokens are bound to client IP/User-Agent. Are tokens rotated? Can a stolen token be used from anywhere?
 - **JWT secret strength**: Is there a weak fallback secret (e.g., `'dev-secret-change-me'`)? Could it silently activate in production if `JWT_SECRET` env var is missing?
+- **Algorithm pinning**: Does token verification specify allowed algorithms?
 - **Password policy**: Is the minimum length sufficient? Is complexity enforced?
-- **Bcrypt cost factor**: Is the rounds value adequate (>= 10)?
+- **Hashing cost factor**: Are hash rounds/parameters adequate (>= 10 for bcrypt, adequate Argon2 parameters)?
 - **Refresh token rotation**: After a refresh token is used, is the old one invalidated? (Prevents token reuse/replay.)
+- **Brute-force protection**: Are login/register endpoints rate-limited?
 - **Token storage (client)**: Where are tokens stored? `localStorage` is XSS-accessible.
 - **Account enumeration**: Do error messages distinguish "user not found" vs "wrong password"?
 - **Logout completeness**: Are all tokens and sessions invalidated on logout?
 - **Socket.IO auth**: Is JWT validation applied to WebSocket connections?
 
 ### 3. ENCRYPTION (scope: `encryption`)
+*MITRE ATT&CK: T1557 (Adversary-in-the-Middle), T1552 (Unsecured Credentials)*
+
 Check for:
 - **MITRE T1552 (Unsecured Credentials)**: Are credentials stored securely? Is the vault master key zeroed out in memory after use? Are there checks against known breached passwords?
 - **Algorithm suitability**: AES-256-GCM (vault) vs AES-256-CBC (Guacamole) — is CBC used without authentication (HMAC)?
-- **IV generation**: Are IVs generated with `crypto.randomBytes()` and unique per operation?
+- **IV/nonce generation**: Are they generated with `crypto.randomBytes()` and unique per operation?
 - **Key derivation**: Argon2 parameters (memory, time, parallelism) — are they adequate per OWASP recommendations?
 - **Master key lifecycle**: Is `buffer.fill(0)` called on all code paths after use? Check for missed paths.
 - **Buffer copying**: Does `Buffer.from(masterKey)` create independent copies or references?
@@ -174,6 +182,8 @@ Check for:
 - **In-memory key exposure**: Could heap dumps leak master keys from the vault store?
 
 ### 4. API SECURITY (scope: `api`)
+*MITRE ATT&CK: T1190 (Exploit Public-Facing Application), T1499 (Endpoint Denial of Service)*
+
 Check for:
 - **MITRE T1021 (Remote Services - Lateral Movement)**: Are there anomaly detection mechanisms for unusual connection patterns (e.g., rapid connections to multiple hosts)?
 - **MITRE T1190 (Exploit Public-Facing Application)**: Are all endpoints protected against injection, CSRF, and unexpected payloads?
@@ -187,6 +197,8 @@ Check for:
 - **CSRF**: Bearer token auth is CSRF-resistant — confirm no cookie-based auth paths exist.
 
 ### 5. CLIENT SECURITY (scope: `client`)
+*MITRE ATT&CK: T1059.007 (JavaScript), T1185 (Browser Session Hijacking)*
+
 Check for:
 - **XSS vectors**: `dangerouslySetInnerHTML`, `innerHTML`, unescaped user input in React JSX
 - **Token storage**: Zustand `persist` to `localStorage` — refresh tokens in localStorage are XSS-accessible
@@ -196,6 +208,8 @@ Check for:
 - **Raw error display**: Are server error messages shown directly to users?
 
 ### 6. CONFIGURATION (scope: `config`)
+*MITRE ATT&CK: T1552.001 (Credentials In Files), T1562.001 (Disable or Modify Tools)*
+
 Check for:
 - **Default secrets**: Fallback values like `'dev-secret-change-me'` in config.ts that silently activate when env vars are missing
 - **Environment validation**: Are required env vars validated at startup with clear errors?
@@ -204,22 +218,29 @@ Check for:
 - **Log level**: Could debug logging in production leak sensitive data?
 
 ### 7. INFRASTRUCTURE (scope: `infrastructure`)
+*MITRE ATT&CK: T1610 (Deploy Container), T1613 (Container and Resource Discovery)*
+
 Check for:
 - **Docker security**: Are containers running as non-root? Are images pinned to specific versions/digests?
 - **Network exposure**: Are database and internal service ports exposed to the host in production?
 - **HTTPS/TLS**: Is TLS termination configured? Reverse proxy setup?
 - **Guacamole WebSocket**: Is port 3002 accessible without authentication?
 - **Database credentials**: Default dev credentials that could leak to production
+- **guacd container configuration**: Is the Guacamole daemon properly isolated and secured?
 
 ### 8. CODE QUALITY (scope: `code`)
+*MITRE ATT&CK: T1059 (Command and Scripting Interpreter), T1203 (Exploitation for Client Execution)*
+
 Check for:
-- **SQL injection**: Any `$queryRaw` / `$executeRaw` with string interpolation?
+- **SQL injection**: Any `$queryRaw` / `$executeRaw` with string interpolation? Prisma ORM query injection vectors?
 - **Command injection**: Any `exec`, `spawn`, `child_process` with unsanitized input?
 - **Path traversal**: File operations using user-controlled input?
 - **PrismaClient instances**: Multiple `new PrismaClient()` causing connection pool issues?
 - **Timing attacks**: Are secret comparisons using constant-time functions (`crypto.timingSafeEqual`)?
 - **Unhandled rejections**: Missing error handling on async operations?
 - **TypeScript `any`**: Unsafe type assertions bypassing compile-time safety?
+- **Express middleware chain**: Are middleware applied in the correct order? Any gaps in the auth middleware coverage?
+- **Vite proxy configuration**: Could the dev proxy be exploited in production?
 
 ---
 

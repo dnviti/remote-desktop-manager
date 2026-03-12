@@ -1,48 +1,48 @@
 ---
 name: idea-create
-description: Create a new idea in the idea backlog (ideas.txt or GitHub Issues) for future evaluation. Ideas are lightweight proposals that must be approved before becoming tasks.
+description: Create a new idea in the idea backlog (ideas.txt or platform issues) for future evaluation. Ideas are lightweight proposals that must be approved before becoming tasks.
 disable-model-invocation: true
 argument-hint: "[idea description]"
 ---
 
 # Create a New Idea
 
-You are an idea creation assistant for the Arsenale project. Your job is to generate properly formatted idea blocks and add them to the idea backlog.
+You are an idea creation assistant for this project. Your job is to generate properly formatted idea blocks and add them to the idea backlog.
 
 Ideas are **lightweight proposals** — they describe *what* and *why* at a high level, without implementation details. Technical details are only added when an idea is approved into a task via `/idea-approve`.
 
-Always respond and work in English. However, in local/dual mode, the idea block content (field labels, descriptions) MUST be written in **Italian**, following the exact format below. In GitHub-only mode, all content MUST be in **English**.
+Always respond and work in English. The idea block content (field labels, descriptions) MUST also be written in **English**.
 
 ## Mode Detection
 
-```bash
-TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
-PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
-```
+!`python3 .claude/scripts/task_manager.py platform-config`
 
-- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Create ideas as GitHub Issues only. No local file operations.
-- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Write to `ideas.txt` first, then sync to GitHub.
-- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Write to `ideas.txt` only.
+Use the `mode` field to determine behavior: `platform-only`, `dual-sync`, or `local-only`. The JSON includes `platform`, `enabled`, `sync`, `repo`, `cli` (gh/glab), and `labels`.
+
+## Platform Commands
+
+Use `python3 .claude/scripts/task_manager.py platform-cmd <operation> [key=value ...]` to generate the correct CLI command for the detected platform (GitHub/GitLab).
+
+Supported operations: `list-issues`, `search-issues`, `view-issue`, `edit-issue`, `close-issue`, `comment-issue`, `create-issue`, `create-pr`, `list-pr`, `merge-pr`, `create-release`, `edit-release`.
+
+Example: `python3 .claude/scripts/task_manager.py platform-cmd create-issue title="[CODE] Title" body="Description" labels="task,status:todo"`
 
 ## Current Idea State
 
-### GitHub-only mode — existing idea IDs:
+### Platform-only mode — next idea ID:
 
+In platform-only mode, pipe platform issue titles into:
 ```bash
-gh issue list --repo "$TRACKER_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' 2>/dev/null | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -10
+gh issue list --repo "$TRACKER_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' | python3 .claude/scripts/task_manager.py next-id --type idea --source platform-titles
 ```
 
-### Local/Dual mode — highest idea IDs in ideas.txt:
-!`grep -ohE 'IDEA-[0-9]{3}' ideas.txt 2>/dev/null | sort -t'-' -k2 -n | tail -10`
+### Local/Dual mode:
 
-### Local/Dual mode — highest idea IDs in idea-disapproved.txt:
-!`grep -ohE 'IDEA-[0-9]{3}' idea-disapproved.txt 2>/dev/null | sort -t'-' -k2 -n | tail -10`
+#### Next available idea ID:
+!`python3 .claude/scripts/task_manager.py next-id --type idea`
 
-### Local/Dual mode — current ideas:
-!`grep -E '^IDEA-[0-9]{3}' ideas.txt 2>/dev/null | tr -d '\r'`
+#### Current ideas:
+!`python3 .claude/scripts/task_manager.py list-ideas --file ideas --format summary`
 
 ## Arguments
 
@@ -62,47 +62,41 @@ Do NOT proceed without a clear idea description.
 
 Analyze the idea description and select an appropriate category.
 
-**Available categories:**
+**Suggested categories** (tailored to this project):
 
 | Category | Domain |
 |----------|--------|
-| `Connection Management` | Connection management, folders, organization |
-| `User Interface` | General UI improvements, UX, accessibility |
-| `Security` | Security, authentication, encryption, zero trust |
-| `Protocols` | Protocol support (RDP, SSH, VNC, etc.) |
-| `Collaboration` | Sharing, teams, multi-tenant features |
-| `Integration` | External integrations, APIs, import/export |
-| `File Management` | File transfer, SFTP, clipboard |
-| `Monitoring` | Monitoring, logging, analytics, notifications |
-| `Infrastructure` | Docker, gateway, orchestration, scaling |
-| `Vault` | Password vault, credential management, keychain |
-| `Automation` | Automation, scripting, scheduled tasks |
+| `Remote Connections` | RDP, SSH, VNC sessions, Guacamole integration |
+| `Vault & Credentials` | Credential storage, encryption, master key, vault sessions |
+| `User Interface` | Dashboard, tabs, dialogs, sidebar, MUI components |
+| `Core Features` | Primary functionality, core workflows |
+| `Security` | Authentication, authorization, encryption, audit logging |
+| `Performance` | Optimization, caching, scaling |
+| `Infrastructure` | DevOps, CI/CD, deployment, Docker |
 
-If no existing category fits well, create a concise new one in English.
+If no existing category fits well, create a concise new one.
 
-**Note:** In local/dual mode, use the Italian category names instead: `Gestione Connessioni`, `Interfaccia Utente`, `Sicurezza`, `Protocolli`, `Collaborazione`, `Integrazione`, `Gestione File`, `Monitoraggio`, `Infrastruttura`, `Vault`, `Automazione`.
+*The category table above is configured by `/project-initialization`. If not yet configured, use generic categories: Core Features, User Interface, Security, Integration, Performance, Infrastructure.*
 
 ### Step 3: Compute the Next Idea Number
 
 Idea numbering is **globally sequential**.
 
-**In GitHub-only mode:**
+**In Platform-only mode:**
 1. Query all idea IDs: `gh issue list --repo "$TRACKER_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -5`
+   <!-- GitLab: glab issue list -R "$TRACKER_REPO" -l idea --state all --output json | jq '.[].title' | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -5 -->
 2. Find the maximum number.
 3. The new idea number = `max + 1`, zero-padded to 3 digits.
 4. If no ideas exist yet, start at `IDEA-001`.
 
 **In local/dual mode:**
-1. From the "Highest idea IDs" data above, extract all numeric parts across both `ideas.txt` and `idea-disapproved.txt`.
-2. Find the maximum number across both files.
-3. The new idea number = `max + 1`, zero-padded to 3 digits.
-4. If no ideas exist yet, start at `IDEA-001`.
+Use the `next_number` field from the "Next available idea ID" JSON above. No manual computation needed — the script handles global sequencing across both idea files.
 
 ### Step 4: Draft the Idea
 
-**In GitHub-only mode**, draft the idea as a GitHub Issue:
+**In Platform-only mode**, draft the idea as a platform issue:
 
-**Title:** `[IDEA-NNN] Idea Title (concise, in English)`
+**Title:** `[IDEA-NNN] Idea Title (concise)`
 
 **Body:**
 ```
@@ -121,31 +115,31 @@ adds to the project. Approximately 2-4 lines.
 *Generated by Claude Code via `/idea-create`*
 ```
 
-**In local/dual mode**, draft the idea block in Italian:
+**In local/dual mode**, draft the idea block in English:
 
 ```
 ------------------------------------------------------------------------------
-IDEA-NNN — Titolo dell'idea (conciso, in italiano)
+IDEA-NNN — Idea title (concise)
 ------------------------------------------------------------------------------
-  Categoria: [from Step 2]
-  Data: YYYY-MM-DD
+  Category: [from Step 2]
+  Date: YYYY-MM-DD
 
-  DESCRIZIONE:
-  Descrizione dell'idea in italiano. Spiegare COSA propone l'idea e il
-  contesto generale. Mantenere alto livello, senza dettagli implementativi.
-  Circa 2-6 righe.
+  DESCRIPTION:
+  Description of the idea. Explain WHAT it proposes and the
+  general context. Keep it high-level, without implementation details.
+  Approximately 2-6 lines.
 
-  MOTIVAZIONE:
-  Perche' questa idea potrebbe essere utile. Quale problema risolve o
-  quale valore aggiunge al progetto. Circa 2-4 righe.
+  MOTIVATION:
+  Why this idea could be useful. What problem it solves or
+  what value it adds to the project. Approximately 2-4 lines.
 ```
 
 **Formatting rules for local/dual mode:**
 - Header separator lines are exactly 78 dashes: `------------------------------------------------------------------------------`
-- Title line format: `IDEA-NNN — Titolo` (use `—` em dash, not `-` hyphen)
+- Title line format: `IDEA-NNN — Title` (use `—` em dash, not `-` hyphen)
 - Indent all content with 2 spaces
 - Date format: `YYYY-MM-DD` (today's date)
-- Section labels in order: `DESCRIZIONE:`, `MOTIVAZIONE:`
+- Section labels in order: `DESCRIPTION:`, `MOTIVATION:`
 - End with two blank lines after the last line
 
 ### Step 5: Present the Draft and Ask for Confirmation
@@ -164,39 +158,40 @@ Then use `AskUserQuestion` with these options:
 
 Before writing, perform a duplicate check:
 
-**In GitHub-only mode:**
+**In Platform-only mode:**
 ```bash
 gh issue list --repo "$TRACKER_REPO" --search "keyword1" --label idea --json number,title --jq '.[] | "#\(.number) \(.title)"'
+# GitLab: glab issue list -R "$TRACKER_REPO" --search "keyword1" -l idea --output json | jq '.[] | "#\(.iid) \(.title)"'
 gh issue list --repo "$TRACKER_REPO" --search "keyword2" --label task --json number,title --jq '.[] | "#\(.number) \(.title)"'
+# GitLab: glab issue list -R "$TRACKER_REPO" --search "keyword2" -l task --output json | jq '.[] | "#\(.iid) \(.title)"'
 ```
 
 **In local/dual mode:**
-```
-grep -i "keyword1" ideas.txt idea-disapproved.txt to-do.txt progressing.txt done.txt
-grep -i "keyword2" ideas.txt idea-disapproved.txt to-do.txt progressing.txt done.txt
-```
-
-If a similar idea or task is found, warn the user and ask whether to proceed or abort.
-If no duplicates found, continue to Step 7.
+1. Run: `python3 .claude/scripts/task_manager.py duplicates --keywords "keyword1,keyword2,keyword3"`
+   Use 2-3 key terms from the idea title and description as keywords.
+2. If the JSON output contains matches that look like a similar idea or task, warn the user and ask whether to proceed or abort.
+3. If no duplicates found, continue to Step 7.
 
 ### Step 7: Create the Idea
 
-**In GitHub-only mode:**
+**In Platform-only mode:**
 
-Create the GitHub Issue directly:
+Create the platform issue directly:
 ```bash
 ISSUE_URL=$(gh issue create --repo "$TRACKER_REPO" \
   --title "[IDEA-NNN] Idea Title" \
   --body "$IDEA_BODY" \
   --label "claude-code,idea")
+# GitLab: glab issue create -R "$TRACKER_REPO" --title "[IDEA-NNN] Idea Title" --description "$IDEA_BODY" -l "claude-code,idea"
 ```
 
 **In dual sync mode:**
 
 1. Append the idea block to `ideas.txt` using the `Edit` tool.
-2. Then create the GitHub Issue (same as above).
+2. Then create the platform issue (same as above).
 3. Extract the issue number: `ISSUE_NUM=$(echo "$ISSUE_URL" | grep -oE '[0-9]+$')`
-4. Write `GitHub: #NNN` back to the idea block in `ideas.txt` after the `Data:` line using the `Edit` tool.
+4. Write `GitHub: #NNN` back to the idea block in `ideas.txt` after the `Date:` line using the `Edit` tool.
+5. If the platform command fails, warn the user that platform sync failed but do NOT fail the idea creation — the idea is already in `ideas.txt`.
 
 **In local only mode:**
 
@@ -221,7 +216,7 @@ After successfully creating the idea, report:
 2. **NEVER create duplicate ideas** — always cross-reference all idea and task sources first.
 3. **NEVER reuse an idea number** — always use global max + 1.
 4. **NEVER skip user confirmation** — always present the draft and wait for approval.
-5. **English content in GitHub-only mode** — all labels, descriptions, and content in English.
-6. **Italian content in local/dual mode** — field labels and descriptions in Italian.
-7. **Keep ideas high-level** — no implementation details, no file lists, no technical specifications. Those are added during `/idea-approve`.
-8. **Follow the exact formatting** — same indentation, same dash count (78), same field order for local mode.
+5. **English content** — all labels, descriptions, and content in English across all modes.
+6. **Keep ideas high-level** — no implementation details, no file lists, no technical specifications. Those are added during `/idea-approve`.
+7. **Follow the exact formatting** — same indentation, same dash count (78), same field order for local mode.
+8. **In Platform-only mode, NEVER modify local idea files** — all operations go through platform issues exclusively.

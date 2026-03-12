@@ -1,43 +1,43 @@
 ---
 name: task-continue
-description: Resume work on an in-progress task from progressing.txt or GitHub Issues. Assesses current implementation state and presents what remains.
+description: Resume work on an in-progress task. Assesses current implementation state and presents what remains.
 disable-model-invocation: true
 argument-hint: "[TASK-CODE]"
 ---
 
 # Continue an In-Progress Task
 
-You are a task manager for the Arsenale project. Your job is to help the user resume work on a task that is already in-progress.
+You are a task manager for this project. Your job is to help the user resume work on a task that is already in-progress.
 
 This skill does NOT close or commit tasks — use `/task-pick` for that.
 
 ## Mode Detection
 
-Determine the operating mode first:
+!`python3 .claude/scripts/task_manager.py platform-config`
 
-```bash
-TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
-PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
-```
+Use the `mode` field to determine behavior: `platform-only`, `dual-sync`, or `local-only`. The JSON includes `platform`, `enabled`, `sync`, `repo`, `cli` (gh/glab), and `labels`.
 
-- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Read task data from GitHub Issues. No local file operations.
-- **Dual sync / Local only mode**: Read task data from local files (`progressing.txt`).
+## Platform Commands
+
+Use `python3 .claude/scripts/task_manager.py platform-cmd <operation> [key=value ...]` to generate the correct CLI command for the detected platform (GitHub/GitLab).
+
+Supported operations: `list-issues`, `search-issues`, `view-issue`, `edit-issue`, `close-issue`, `comment-issue`, `create-issue`, `create-pr`, `list-pr`, `merge-pr`, `create-release`, `edit-release`.
+
+Example: `python3 .claude/scripts/task_manager.py platform-cmd create-issue title="[CODE] Title" body="Description" labels="task,status:todo"`
 
 ---
 
 ## Current Task State
 
-### GitHub-only mode — In-progress tasks:
+### Platform-only mode — In-progress tasks:
 
 ```bash
 gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
+# GitLab: glab issue list -R "$TRACKER_REPO" -l "task,status:in-progress" --state opened --output json | jq '.[] | "\(.title)"' 2>/dev/null
 ```
 
-### Local/Dual mode — In-progress tasks (from progressing.txt):
-!`grep '^\[~\]' progressing.txt 2>/dev/null | tr -d '\r'`
+### Local/Dual mode — In-progress tasks:
+!`python3 .claude/scripts/task_manager.py list --status progressing --format summary`
 
 ## Instructions
 
@@ -47,9 +47,11 @@ The user wants to continue working on a task. The argument provided is: **$ARGUM
 
 ### Step 1: Select the Task
 
-**In GitHub-only mode:**
+**In Platform-only mode:**
 - Query in-progress tasks: `gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title`
+  <!-- GitLab: glab issue list -R "$TRACKER_REPO" -l "task,status:in-progress" --state opened --output json -->
 - If a task code was provided, search: `gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label "task,status:in-progress" --json number,title`
+  <!-- GitLab: glab issue list -R "$TRACKER_REPO" --search "[TASK-CODE]" -l "task,status:in-progress" --output json -->
 
 **In local/dual mode:**
 - Read `progressing.txt` and identify all tasks marked `[~]`.
@@ -68,26 +70,33 @@ After selecting the task, check if a dedicated task branch exists:
 git branch --list "task/<task-code-lowercase>"
 ```
 
-- **If the branch exists and you are not already on it:** Switch to it: `git checkout task/<task-code-lowercase>`. Inform the user: "Switched to branch `task/<task-code>`."
+- **If the branch exists and you are not already on it:** Switch to it: `git checkout task/<task-code-lowercase>`. Inform the user.
 - **If the branch does not exist:** Inform the user that no task branch was found and continue on the current branch.
 
 ### Step 2: Read the Full Task Block
 
-**In GitHub-only mode:**
+**In Platform-only mode:**
 - Find the issue number: `gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label task --json number --jq '.[0].number'`
+  <!-- GitLab: glab issue list -R "$TRACKER_REPO" --search "[TASK-CODE]" -l task --output json | jq '.[0].iid' -->
 - Read the full issue body: `gh issue view $ISSUE_NUM --repo "$TRACKER_REPO" --json body --jq '.body'`
+  <!-- GitLab: glab issue view $ISSUE_NUM -R "$TRACKER_REPO" --output json | jq '.body' -->
 - Parse the issue body to extract:
   - **Description** section
   - **Technical Details** section
   - **Files Involved** section (files to CREATE and MODIFY)
 
 **In local/dual mode:**
-- Read the complete task block from `progressing.txt` for the selected task — everything between its `------` separator lines.
-- Extract: **DESCRIZIONE**, **DETTAGLI TECNICI**, **FILE COINVOLTI** (files to CREARE and MODIFICARE)
+- Get the full parsed task data and file existence report:
+```bash
+python3 .claude/scripts/task_manager.py parse TASK-CODE
+python3 .claude/scripts/task_manager.py verify-files TASK-CODE
+```
+- The `parse` command returns all task fields as structured JSON: description, technical_details, files_create, files_modify, priority, dependencies.
+- The `verify-files` command returns a JSON report showing which files exist (`"exists": true/false`) and an `all_exist` summary.
 
 ### Step 3: Assess Current Implementation State
 
-For each file in the FILES INVOLVED section, check what has already been done:
+For each file in the files involved section, check what has already been done:
 
 **For files marked CREATE:**
 1. Use `Glob` to check if the file exists at the specified path

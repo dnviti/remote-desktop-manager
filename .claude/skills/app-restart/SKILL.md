@@ -1,23 +1,20 @@
 ---
 name: app-restart
-description: Restart the Arsenale development environment. Stops existing processes, then starts fresh with Docker + Prisma setup and dev server, with error monitoring.
+description: Restart the project's development environment. Stops existing processes, then starts fresh with setup and dev server, with error monitoring.
 disable-model-invocation: true
 ---
 
 # Restart the Application
 
-You are a DevOps operator for the Arsenale project. Your job is to cleanly restart the development environment — stop everything, then start fresh.
+You are a DevOps operator for this project. Your job is to cleanly restart the development environment — stop everything, then start fresh.
 
 ## Current Environment State
 
-### Ports in use (3000, 3001, 3002):
-!`netstat -ano 2>/dev/null | grep -E ":(3000|3001|3002)\s" | grep LISTENING || echo "No dev ports in use"`
+### Dev port status (JSON — check DEV_PORTS in CLAUDE.md):
+!`python3 .claude/scripts/app_manager.py check-ports 3000 3001 3002`
 
 ### Docker containers:
-!`docker ps --format "{{.Names}}: {{.Status}}" 2>/dev/null | grep -E "guacd|postgres" || echo "No dev containers running"`
-
-### Node processes:
-!`tasklist 2>/dev/null | grep -i node | head -10 || echo "No node processes found"`
+!`docker ps --format "{{.Names}}: {{.Status}}"`
 
 ## Arguments
 
@@ -29,39 +26,18 @@ The user invoked with: **$ARGUMENTS**
 
 Regardless of whether the app appears to be running, perform a clean stop to ensure no stale processes remain.
 
-**Kill all processes on dev ports (3000, 3001, 3002):**
+**Kill all processes on dev ports and verify:**
 
 ```bash
-for port in 3000 3001 3002; do
-  pids=$(netstat -ano 2>/dev/null | grep -E ":${port}\s" | grep LISTENING | awk '{print $5}' | sort -u | tr -d '\r')
-  for pid in $pids; do
-    if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-      echo "Killing PID $pid (port $port)..."
-      taskkill /PID "$pid" /F /T 2>/dev/null || true
-    fi
-  done
-done
+python3 .claude/scripts/app_manager.py kill-ports 3000 3001 3002
+python3 .claude/scripts/app_manager.py verify-ports --wait 2 --expect free 3000 3001 3002
 ```
 
-**Verify ports are free:**
+If `"all_match": false` in the JSON output, retry the kill once more. If still occupied after 2 retries, inform the user and stop.
 
-```bash
-sleep 2
-remaining=$(netstat -ano 2>/dev/null | grep -E ":(3000|3001|3002)\s" | grep LISTENING)
-if [ -n "$remaining" ]; then
-  echo "WARNING: Ports still in use, retrying..."
-  echo "$remaining" | awk '{print $5}' | sort -u | tr -d '\r' | while read pid; do
-    [ -n "$pid" ] && [ "$pid" != "0" ] && taskkill /PID "$pid" /F /T 2>/dev/null || true
-  done
-  sleep 2
-fi
-```
+### Step 2: Run pre-start setup (if applicable)
 
-If ports are still occupied after 2 retries, inform the user and stop.
-
-### Step 2: Start Docker containers and Prisma (predev)
-
-Run the predev script to ensure Docker containers are up and Prisma is synchronized:
+Run the pre-start command to ensure services are up and dependencies are synchronized:
 
 ```bash
 npm run predev
@@ -69,49 +45,41 @@ npm run predev
 
 Wait for it to complete. If it fails:
 - Diagnose the error
-- Common issues: Docker Desktop not running, port 5432 occupied, Prisma schema errors
+- Common issues: Docker not running, port occupied, schema errors
 - Attempt to fix if possible, otherwise inform the user and stop
 
 ### Step 3: Start the dev server (background)
 
-Run `npm run dev` with `run_in_background: true`:
+Run the start command with `run_in_background: true`:
 
 ```bash
 npm run dev
 ```
 
-This starts `concurrently` which runs both the Express server (port 3001) and Vite client (port 3000).
-
 ### Step 4: Monitor startup for errors
 
-1. **Wait 8 seconds** for startup:
+1. **Wait for startup and verify ports are bound:**
    ```bash
-   sleep 8
+   python3 .claude/scripts/app_manager.py verify-ports --wait 8 --expect bound 3000 3001 3002
    ```
 
-2. **Verify ports are bound:**
+3. **Check Docker health** (if applicable):
    ```bash
-   netstat -ano 2>/dev/null | grep -E ":(3000|3001)\s" | grep LISTENING
+   docker ps --format "{{.Names}}: {{.Status}}"
    ```
 
-3. **Check Docker health:**
-   ```bash
-   docker ps --format "{{.Names}}: {{.Status}}" | grep -E "guacd|postgres"
-   ```
-
-4. **Read the background process output** using `TaskOutput` for errors. Look for:
-   - `EADDRINUSE` — port still occupied
-   - `Cannot find module` — missing dependency (run `npm install`)
-   - `ECONNREFUSED` — database unreachable
-   - `Error`, `TypeError`, `SyntaxError` — code or config issues
+4. **Read the background process output** using `TaskOutput` for errors. Look for common error indicators:
+   - Port conflicts: `EADDRINUSE`, `Address already in use`, `port is already allocated`
+   - Missing dependencies: `Cannot find module`, `ModuleNotFoundError`, `no required module`, `package not found`
+   - Connection failures: `ECONNREFUSED`, `Connection refused`, `connection error`
+   - Generic errors: `Error`, `FATAL`, `panic`, `traceback`, stack traces or crash dumps
 
 5. **Report results:**
 
    **Success:**
    > "Application restarted successfully:
-   > - Client: http://localhost:3000
-   > - Server: http://localhost:3001
-   > - Docker containers: healthy"
+   > - [list bound ports and their services]
+   > - Docker containers: [healthy / N/A]"
 
    **Failure:**
    - Show the error output

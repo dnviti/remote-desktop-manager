@@ -216,16 +216,16 @@ Edit the following skill files to configure them for this specific project:
 - `.claude/skills/app-stop/SKILL.md` — Update with the actual DEV_PORTS
 - `.claude/skills/app-restart/SKILL.md` — Update with the actual DEV_PORTS, START_COMMAND, and PREDEV_COMMAND values
 
-In each skill, replace the generic `[DEV_PORTS]`, `[START_COMMAND]`, and `[PREDEV_COMMAND]` placeholders in the bash code blocks with the actual project values, so the skills work without any manual configuration.
+In each skill, replace the generic `3000 3001 3002`, `npm run dev`, and `npm run predev` placeholders in the bash code blocks with the actual project values, so the skills work without any manual configuration.
 
 #### 5d. Update Workflow Skills
 
 Based on the detected project configuration, update the following skill files by replacing their placeholders with project-specific values:
 
 **`.claude/skills/test-engineer/SKILL.md`:**
-- `[TEST_FRAMEWORK]` — The test framework for the stack (e.g., Vitest for Vite/React, pytest for Python, `go test` for Go). If the scaffold did not include a test framework, choose the most popular one for the stack and note it in the orientation report.
-- `[TEST_COMMAND]` — The command to run tests (e.g., `npx vitest run`, `pytest`, `cargo test`).
-- `[TEST_FILE_PATTERN]` — The naming convention for test files (e.g., `*.test.ts`, `test_*.py`).
+- `Vitest` — The test framework for the stack (e.g., Vitest for Vite/React, pytest for Python, `go test` for Go). If the scaffold did not include a test framework, choose the most popular one for the stack and note it in the orientation report.
+- `npx vitest run` — The command to run tests (e.g., `npx vitest run`, `pytest`, `cargo test`).
+- `*.test.ts` or `*.spec.ts` — The naming convention for test files (e.g., `*.test.ts`, `test_*.py`).
 - `[CI_RUNTIME_SETUP]` — The GitHub Actions setup step for the project's runtime. Replace with the actual YAML steps block (e.g., `- uses: actions/setup-node@v4` with the detected Node version, or `- uses: actions/setup-python@v5` with detected Python version).
 
 **`.claude/skills/task-create/SKILL.md` and `.claude/skills/idea-approve/SKILL.md`:**
@@ -274,6 +274,14 @@ Based on the detected project configuration, update the following skill files by
   - **Developer Experience**: Testing, documentation, CI/CD, debugging tools
   ```
 
+**`.claude/skills/release/SKILL.md`:**
+- `package.json`, `server/package.json`, `client/package.json` — Space-separated list of all manifest files that contain a version to bump. Detect by searching for `package.json`, `Cargo.toml`, `pyproject.toml` in the project root and workspace directories (excluding `node_modules`, `target`, `.venv`). Example for npm monorepo: `package.json server/package.json client/package.json`. Example for Python: `pyproject.toml`.
+- `CHANGELOG.md` — Path to the changelog file. Default: `CHANGELOG.md`. If it does not exist, create it with the [Keep a Changelog](https://keepachangelog.com/) boilerplate template.
+- `v` — Git tag prefix for version tags. Default: `v`. Check existing tags (`git tag -l`) and use the detected prefix if tags already exist.
+- `[GITHUB_REPO_URL]` — Base repository URL for changelog comparison links. Detect from `git remote get-url origin` or `package.json` `repository.url`. Convert SSH URLs (`git@github.com:user/repo.git`) to HTTPS (`https://github.com/user/repo`).
+- `develop` — Branch from which releases are cut. Use `develop` if that branch exists, otherwise `main`.
+- `[PUBLISH_SKILL]` — Always `/git-publish`.
+
 ### Step 7: Orientation Report
 
 Present a comprehensive report to the user:
@@ -314,19 +322,72 @@ The following skills are now configured for your project:
 - `/app-start` — starts your dev server on port [port]
 - `/app-stop` — stops your dev server
 - `/app-restart` — restarts your dev server
-- `/test-engineer` — configured for [test framework] with CI pipeline template
-- `/task-create`, `/task-pick` — architecture-aware task templates
+- `/test-engineer` — configured for Vitest with CI pipeline template
+- `/task-create`, `/task-pick` — architecture-aware task templates with platform-agnostic issues tracker support (GitHub and GitLab)
 - `/idea-create` — project-relevant idea categories
 - `/docs` — documentation with project-specific categories
 - `/task-scout` — feature scouting tuned to your project domain
+- `/release` — semantic versioning, changelog generation, and git tagging
+- `/code-optimize` — code quality analysis and optimization
+- `/git-publish` — push develop and open auto-merging PR into main
 ```
+
+### Step 8: Issues Tracker Integration (Optional)
+
+After the orientation report, ask the user if they want to enable issues tracker integration (GitHub or GitLab) for task and idea tracking.
+
+Use `AskUserQuestion` with these options:
+- **"Yes, enable issues tracker"** — proceed with setup
+- **"No, use local files only"** — skip this step
+
+STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user responds.
+
+**If the user chose "Yes, enable issues tracker":**
+
+1. Ask which platform:
+   Use `AskUserQuestion` to ask which platform:
+   - **"GitHub"** — set `platform: "github"`
+   - **"GitLab"** — set `platform: "gitlab"`
+
+   STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user responds.
+
+2. Copy the example config:
+   ```bash
+   cp .claude/issues-tracker.example.json .claude/issues-tracker.json
+   ```
+
+3. Ask the user for their repository (e.g., `user/project`):
+   Use `AskUserQuestion` with a free-text prompt.
+
+4. Update the config with the provided repo and platform:
+   ```bash
+   jq --arg repo "$REPO" --arg platform "$PLATFORM" '.repo = $repo | .platform = $platform | .enabled = true' .claude/issues-tracker.json > tmp.json && mv tmp.json .claude/issues-tracker.json
+   ```
+
+5. Ask the user about the sync mode:
+   Use `AskUserQuestion` with these options:
+   - **"Platform-only (no local task files)"** — set `sync: false`
+   - **"Dual sync (local files + platform)"** — set `sync: true`
+
+6. Run the label setup script:
+   ```bash
+   python3 .claude/scripts/setup_labels.py
+   ```
+
+7. Report the issues tracker setup:
+   > "Issues tracker integration enabled:
+   > - Platform: [GitHub / GitLab]
+   > - Repository: [repo]
+   > - Mode: [Platform-only / Dual sync]
+   > - Labels: created on [platform]
+   > - All task/idea skills will now use [platform] issues"
 
 ## Important Rules
 
 1. **NEVER scaffold without explicit user confirmation** of both the stack and the scaffolding tool.
 2. **NEVER overwrite existing project files** — if the directory is not empty, warn the user and ask how to proceed.
 3. **ALWAYS update CLAUDE.md** with DEV_PORTS, START_COMMAND, PREDEV_COMMAND, and VERIFY_COMMAND after scaffolding.
-4. **ALWAYS update the app lifecycle skills** (app-start, app-stop, app-restart) **AND workflow skills** (test-engineer, task-create, idea-approve, idea-create, docs, task-scout) with project-specific values.
+4. **ALWAYS update the app lifecycle skills** (app-start, app-stop, app-restart) **AND workflow skills** (test-engineer, task-create, idea-approve, idea-create, docs, task-scout, release) with project-specific values.
 5. **ALWAYS verify the scaffold succeeded** by checking that key files exist before reporting success.
 6. **Use the project root directory** (current working directory) for scaffolding unless the user specifies otherwise.
 7. **Respect user choice** — if the user wants a specific stack or tool, use it even if you would recommend differently.

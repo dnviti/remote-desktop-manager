@@ -13,11 +13,8 @@ Always respond and work in English.
 
 ## Current State
 
-### Current version (package.json):
-!`node -p "require('./package.json').version" 2>/dev/null || echo "unknown"`
-
-### Latest git tag:
-!`git tag -l 'v*' --sort=-v:refname | head -1 || echo "(no tags)"`
+### Version and tag info:
+!`python3 .claude/scripts/release_manager.py current-version --tag-prefix "v"`
 
 ### Current branch:
 !`git branch --show-current`
@@ -25,55 +22,54 @@ Always respond and work in English.
 ### Working tree status:
 !`git status --porcelain | head -5; count=$(git status --porcelain | wc -l); [ "$count" -gt 5 ] && echo "... and $((count - 5)) more files" || true`
 
-### Commits since last tag:
-!`TAG=$(git tag -l 'v*' --sort=-v:refname | head -1); if [ -n "$TAG" ]; then git log "$TAG"..HEAD --oneline --no-merges | head -20; else git log --oneline --no-merges | head -20; fi`
-
 ## Arguments
 
 The user invoked with: **$ARGUMENTS**
 
-## Platform Detection
-
-```bash
-TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
-PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
-TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
-```
-
-| Platform command | GitHub (`gh`) | GitLab (`glab`) |
-|-----------------|---------------|-----------------|
-| List issues | `gh issue list --repo` | `glab issue list -R` |
-| Create release | `gh release create` | `glab release create` |
-| Create PR | `gh pr create` | `glab mr create` |
-
 ## Instructions
+
+### Platform Detection
+
+!`python3 .claude/scripts/task_manager.py platform-config`
+
+Use the `mode` field to determine behavior: `platform-only`, `dual-sync`, or `local-only`. The JSON includes `platform`, `enabled`, `sync`, `repo`, `cli` (gh/glab), and `labels`.
+
+## Platform Commands
+
+Use `python3 .claude/scripts/task_manager.py platform-cmd <operation> [key=value ...]` to generate the correct CLI command for the detected platform (GitHub/GitLab).
+
+Supported operations: `list-issues`, `search-issues`, `view-issue`, `edit-issue`, `close-issue`, `comment-issue`, `create-issue`, `create-pr`, `list-pr`, `merge-pr`, `create-release`, `edit-release`.
+
+Example: `python3 .claude/scripts/task_manager.py platform-cmd create-issue title="[CODE] Title" body="Description" labels="task,status:todo"`
 
 ### Step 1: Pre-flight Checks
 
-**Check for untested tasks (if platform integration is enabled):**
+**1a. Check for untested tasks:**
 
-If `TRACKER_ENABLED` is `true`:
+Before proceeding with any release, verify that no `status:to-test` tasks exist that could introduce untested code into the release.
+
+**In platform-only or dual sync mode:**
 ```bash
-TO_TEST=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq 'length' 2>/dev/null)
+TOTEST_TASKS=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null)
+# GitLab: glab issue list -R "$TRACKER_REPO" -l "task,status:to-test" --state opened --output json | jq '.[] | "#\(.iid) \(.title)"'
 ```
 
-If `TO_TEST > 0`, warn the user:
+If any to-test tasks are found, warn the user:
 
-> "There are **N** tasks with `status:to-test` that have not been verified. Releasing with untested tasks is not recommended."
-
-List the untested tasks:
-```bash
-gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
-```
+> "**Warning:** The following tasks are still awaiting testing:
+> - [list of to-test tasks]
+>
+> Their changes may be on the release branch. Consider running `/test-engineer` to complete testing before releasing."
 
 Use `AskUserQuestion` with options:
-- **"Continue release anyway"** — proceed with pre-flight checks
-- **"Abort and test first"** — stop; suggest running `/test-engineer` for each untested task
+- **"Continue release anyway"** — proceed to the next check
+- **"Abort and test first"** — stop here
 
 STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user responds.
 
-Check the working tree and branch status from the "Current State" section above.
+**In local only mode:** Skip this check (no platform labels to query).
+
+**1b. Check the working tree and branch status** from the "Current State" section above.
 
 **If the working tree is dirty (uncommitted changes):**
 
@@ -99,46 +95,31 @@ STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user respond
 
 ### Step 2: Determine Last Release
 
-From the "Current State" section:
-
-1. Read the **Latest git tag** value. This is the last release tag.
-2. Read the **Current version** from `package.json`.
-3. If no tags exist, this is the first tagged release. Use the full commit history and treat the current `package.json` version as the base version to increment from.
+Read the `version`, `is_beta`, `base_version`, and `latest_tag` fields from the "Version and tag info" JSON above.
 
 Store:
-- `LAST_TAG` — the most recent `v*` tag (or empty if none)
-- `CURRENT_VERSION` — the version string from `package.json` (e.g., `1.0.0`)
-- `IS_BETA` — `true` if `CURRENT_VERSION` ends with `-beta`, `false` otherwise
-- `BASE_VERSION` — `CURRENT_VERSION` with the `-beta` suffix stripped (e.g., `2.0.0-beta` → `2.0.0`). Equals `CURRENT_VERSION` when `IS_BETA` is `false`
+- `LAST_TAG` — the `latest_tag` value (or empty if `null`)
+- `CURRENT_VERSION` — the `version` value
+- `IS_BETA` / `BASE_VERSION` — from the JSON fields
 
-### Step 3: Collect Changes Since Last Release
+### Step 3: Collect and Classify Changes
 
-Gather all commits since the last tag:
-
+Run the commit parser:
 ```bash
-# If a tag exists:
-git log <LAST_TAG>..HEAD --oneline --no-merges
-
-# If no tags exist:
-git log --oneline --no-merges
+python3 .claude/scripts/release_manager.py parse-commits --since "$LAST_TAG"
 ```
+(Omit `--since` if no previous tag exists.)
 
-For each commit, parse:
-1. **Conventional commit prefix** — `feat:`, `fix:`, `chore:`, `docs:`, `refactor:`, `perf:`, `test:`, `ci:`, `style:`, `build:`, `revert:`, or `feat!:`/`fix!:` for breaking changes
-2. **Task code** — parenthesized code at the end like `(AUDIT-095)`, `(SSO-076)`
-3. **Description** — the commit message body after the prefix
+This returns JSON with:
+- `commits[]` — each commit with `prefix`, `description`, `task_code`, `changelog_category`, `is_breaking`
+- `summary` — counts: `total`, `features`, `fixes`, `breaking`, `excluded`, `has_meaningful_changes`
+- `suggested_bump` — auto-detected bump type (`major`/`minor`/`patch`)
 
-Also check for `BREAKING CHANGE:` in commit bodies:
-```bash
-git log <LAST_TAG>..HEAD --no-merges --format="%B" | grep -c "BREAKING CHANGE"
-```
-
-**Cross-reference task titles:** For any task codes found in commits, look up the task title for richer changelog entries.
-
-- **In GitHub-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Use `gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json title --jq '.[0].title'` to find task titles.
+**Cross-reference task titles:** For any `task_code` values in commits, look up the task title for richer changelog entries:
+- **In platform-only mode**: Use the platform CLI to search for the task title.
 - **In local/dual mode**: Read `done.txt` and extract the task title.
 
-**If zero meaningful changes are found** (only `chore: update` type commits with no features or fixes):
+**If `has_meaningful_changes` is `false`:**
 
 Warn the user: "No significant changes detected since the last release. Only maintenance commits found."
 
@@ -172,27 +153,16 @@ STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user respond
 
 If promoting: set `NEW_VERSION = BASE_VERSION` and skip to Step 4c.
 
-#### 4b: Determine bump type
+#### 4b: Compute new version
 
-Classify detected changes to determine the bump type:
+Run the bump calculator:
+```bash
+python3 .claude/scripts/release_manager.py suggest-bump --current-version "$CURRENT_VERSION" --suggested-bump "$SUGGESTED_BUMP"
+```
 
-| Change type | Bump | Trigger |
-|-------------|------|---------|
-| `BREAKING CHANGE` or `!` suffix (e.g., `feat!:`) | **major** | Any breaking change commit |
-| `feat:` | **minor** | Any new feature commit |
-| `fix:`, `refactor:`, `perf:` | **patch** | Bug fixes and improvements only |
+If `$ARGUMENTS` contains `major`, `minor`, or `patch`, add `--force $ARGUMENTS` to override auto-detection.
 
-**Priority:** major > minor > patch. Use the highest applicable bump.
-
-**If `$ARGUMENTS` contains `major`, `minor`, or `patch`:** use that override instead of auto-detection.
-
-Calculate the new version by incrementing `BASE_VERSION`:
-- **major**: `X.0.0` (reset minor and patch)
-- **minor**: `M.X.0` (reset patch)
-- **patch**: `M.N.X`
-
-**Major bumps always start as beta.** If the bump type is `major`, append `-beta` to the version:
-- `X.0.0` becomes `X.0.0-beta`
+The script handles: version arithmetic, major→beta suffix, reset rules. Read the `new_version` and `bump_type` from the output.
 
 #### 4c: Confirm version
 
@@ -217,29 +187,16 @@ STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user respond
 
 ### Step 5: Generate Changelog Entries
 
-Map each commit to a [Keep a Changelog](https://keepachangelog.com/) category:
+Run the changelog generator by piping the parse-commits output:
+```bash
+python3 .claude/scripts/release_manager.py parse-commits --since "$LAST_TAG" | python3 .claude/scripts/release_manager.py generate-changelog --version "$NEW_VERSION" --date "$(date +%Y-%m-%d)"
+```
 
-| Commit prefix | Changelog category |
-|---------------|-------------------|
-| `feat:` | `### Added` |
-| `fix:` | `### Fixed` |
-| `refactor:`, `perf:` | `### Changed` |
-| `revert:` | `### Removed` |
-| Security-related (contains "security", "CVE", "vulnerability", or auth hardening) | `### Security` |
-| `docs:`, `chore:`, `ci:`, `test:`, `style:`, `build:` | **Excluded** (not user-facing) |
-
-**Commits without a conventional prefix:** Classify by keyword analysis:
-- Starts with "Add"/"Implement"/"Create" → Added
-- Starts with "Fix"/"Resolve"/"Correct" → Fixed
-- Starts with "Remove"/"Delete"/"Drop" → Removed
-- Starts with "Update"/"Refactor"/"Improve"/"Optimize" → Changed
-- Otherwise → Changed (default)
-
-**Format each entry as:**
-- `- Description (TASK-CODE)` — when a task code is present
-- `- Description` — when no task code
-
-**Group entries** under their category headers, in this order: Added, Changed, Fixed, Removed, Security. Only include categories that have entries.
+This automatically:
+- Maps commits to Keep a Changelog categories (Added, Changed, Fixed, Removed, Security)
+- Excludes non-user-facing commits (chore, ci, test, docs, style, build)
+- Formats entries with task codes where present
+- Orders sections: Added > Changed > Fixed > Removed > Security
 
 ### Step 6: Confirm Changelog Content
 
@@ -285,15 +242,13 @@ Read the current `CHANGELOG.md` file.
 
 Use the `Edit` tool to make these changes.
 
-### Step 8: Bump Version in All package.json Files
+### Step 8: Bump Version in All Manifest Files
 
-Update the `"version"` field in all three package.json files:
+Update the version field in all project manifest files:
 
-1. `package.json` (root)
-2. `server/package.json`
-3. `client/package.json`
+**Files to update:** `package.json`, `server/package.json`, `client/package.json`
 
-For each file, use the `Edit` tool to replace the old version string with the new one. Target the `"version": "X.Y.Z"` line specifically.
+For each file, use the `Edit` tool to replace the old version string with the new one. Target the version field specifically (e.g., `"version": "X.Y.Z"` in package.json).
 
 ### Step 9: Confirm Before Commit
 
@@ -312,6 +267,14 @@ Use `AskUserQuestion` with these options:
 STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user responds.
 
 ### Step 10: Commit
+
+Run `npm run verify` before committing to ensure the release is clean:
+
+```bash
+npm run verify
+```
+
+If verify fails, present the errors to the user and stop. Do not commit a broken release.
 
 Stage and commit the version bump:
 
@@ -389,18 +352,18 @@ If this fails, show the error to the user, provide manual instructions, and stop
 
 ### Step 11b: Create or reuse Pull Request
 
-Check whether an open PR from `develop` into `main` already exists:
+Check whether an open PR/MR from `develop` into `main` already exists:
 
 ```bash
+# GitHub:
 gh pr list --base main --head develop --state open --json number,url --jq '.[0]'
+# GitLab: glab mr list --target-branch main --source-branch develop --state opened --output json | jq '.[0]'
 ```
 
-- If a PR already exists, reuse it. Store its URL.
-- If no PR exists, create one.
+- If a PR/MR already exists, reuse it. Store its URL.
+- If no PR/MR exists, create one.
 
-**Check if platform integration is enabled:**
-
-# Uses TRACKER_ENABLED from Platform Detection above
+**Check if issues tracker integration is enabled** (uses variables from Platform Detection):
 
 **If `TRACKER_ENABLED` is `true`:**
 
@@ -409,14 +372,15 @@ gh pr list --base main --head develop --state open --json number,url --jq '.[0]'
    TASK_CODES=$(git log main..develop --oneline --no-merges | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sort -u)
    ```
 
-2. For each task code, find the corresponding GitHub issue number:
+2. For each task code, find the corresponding issue number:
    ```bash
-   # Uses TRACKER_REPO from Platform Detection above
    # For each code in TASK_CODES:
+   # GitHub:
    ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
+   # GitLab: glab issue list -R "$TRACKER_REPO" --search "[$CODE]" -l task --output json | jq '.[0].iid'
    ```
 
-3. Build the PR body with issue references (use `Refs` not `Closes` — issues are already closed by `/task-pick`):
+3. Build the PR/MR body with issue references:
    ```
    ## Changes
    [commit summaries from git log main..develop --oneline --no-merges]
@@ -429,19 +393,23 @@ gh pr list --base main --head develop --state open --json number,url --jq '.[0]'
    *Generated by Claude Code via `/release`*
    ```
 
-4. Create the PR:
+4. Create the PR/MR:
    ```bash
+   # GitHub:
    gh pr create --base main --head develop \
      --title "Release vX.Y.Z" \
      --body "$PR_BODY"
+   # GitLab: glab mr create --target-branch main --source-branch develop --title "Release vX.Y.Z" --description "$PR_BODY"
    ```
 
-**If `TRACKER_ENABLED` is `false` or the file is missing**, use the simple body:
+**If `TRACKER_ENABLED` is `false` or the config file is missing**, use the simple body:
 
 ```bash
+# GitHub:
 gh pr create --base main --head develop \
   --title "Release vX.Y.Z" \
   --body "Merge develop into main for release vX.Y.Z"
+# GitLab: glab mr create --target-branch main --source-branch develop --title "Release vX.Y.Z" --description "Merge develop into main for release vX.Y.Z"
 ```
 
 Store the returned PR URL.
@@ -451,7 +419,9 @@ If PR creation fails, show the error and provide manual instructions. Stop autom
 ### Step 11c: Enable auto-merge
 
 ```bash
+# GitHub:
 gh pr merge <PR_URL> --auto --merge
+# GitLab: glab mr merge <MR_IID> --auto-merge --when-pipeline-succeeds
 ```
 
 If this fails with an error about auto-merge not being enabled on the repository, warn the user:
@@ -464,9 +434,10 @@ Continue to Step 11d regardless — the user may merge manually while we poll.
 
 ### Step 11d: Wait for PR merge
 
-Poll the PR status every 15 seconds for up to 10 minutes using a single bash command:
+Poll the PR/MR status every 15 seconds for up to 10 minutes using a single bash command:
 
 ```bash
+# GitHub:
 TIMEOUT=600
 INTERVAL=15
 ELAPSED=0
@@ -485,6 +456,8 @@ while [ "$ELAPSED" -lt "$TIMEOUT" ]; do
 done
 echo "TIMEOUT"
 exit 2
+# GitLab: glab mr view <MR_IID> --output json | jq -r '.state'
+# Note: GitLab states are "merged", "closed", "opened" (not "MERGED")
 ```
 
 Run this command with a 600000ms timeout.
@@ -533,9 +506,11 @@ If tagging or pushing fails, show the error and provide the manual commands. Sti
 
 ### Step 11.5: Create GitHub Release (if enabled)
 
-Check if platform integration is enabled:
+Check if GitHub Issues integration is enabled:
 
-# Uses TRACKER_ENABLED from Platform Detection above
+```bash
+TRACKER_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
+```
 
 **If `TRACKER_ENABLED` is `true`:**
 
@@ -545,7 +520,7 @@ Create a GitHub Release with enriched notes:
 
 2. For each task code, find the GitHub issue number:
    ```bash
-   # Uses TRACKER_REPO from Platform Detection above
+   TRACKER_REPO="$(jq -r '.repo' .claude/github-issues.json)"
    ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
    ```
 
@@ -558,7 +533,7 @@ Create a GitHub Release with enriched notes:
    - #N1 — [PREFIX-NNN] Task title
    - #N2 — [PREFIX-NNN] Task title
 
-   **Full Changelog:** https://github.com/REPO/compare/vPREVIOUS...vX.Y.Z
+   **Full Changelog:** https://github.com/dnviti/arsenale/compare/vPREVIOUS...vX.Y.Z
    ```
 
 4. Create or edit the GitHub Release:

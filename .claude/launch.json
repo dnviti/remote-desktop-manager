@@ -3,26 +3,26 @@
   "configurations": [
     {
       "name": "docker-dev",
-      "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "npm", "run", "docker:dev"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "docker:dev"],
       "port": 5432
     },
     {
       "name": "server",
-      "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "npm", "run", "dev:server"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:server"],
       "port": 3001
     },
     {
       "name": "client",
-      "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "npm", "run", "dev:client"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:client"],
       "port": 3000
     },
     {
       "name": "fullstack",
-      "runtimeExecutable": "cmd.exe",
-      "runtimeArgs": ["/c", "npm", "run", "dev"],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
       "port": 3000
     }
   ]

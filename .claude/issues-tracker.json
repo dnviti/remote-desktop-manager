@@ -1,0 +1,33 @@
+{
+  "platform": "github",
+  "enabled": true,
+  "sync": false,
+  "repo": "dnviti/arsenale",
+  "labels": {
+    "source": "claude-code",
+    "task": "task",
+    "idea": "idea",
+    "priority": {
+      "ALTA": "priority:high",
+      "MEDIA": "priority:medium",
+      "BASSA": "priority:low"
+    },
+    "status": {
+      "todo": "status:todo",
+      "in-progress": "status:in-progress",
+      "to-test": "status:to-test",
+      "done": "status:done"
+    },
+    "sections": {
+      "A": "section:core",
+      "B": "section:suggested",
+      "C": "section:multi-tenant",
+      "D": "section:multi-backend",
+      "E": "section:zero-trust",
+      "F": "section:keychain",
+      "G": "section:orchestration",
+      "H": "section:scouted",
+      "I": "section:sso"
+    }
+  }
+}

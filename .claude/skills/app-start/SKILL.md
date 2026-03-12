@@ -1,23 +1,20 @@
 ---
 name: app-start
-description: Start the Arsenale development environment. Checks for running processes, starts Docker containers, runs Prisma setup, and launches the dev server with error monitoring.
+description: Start the project's development environment. Checks for running processes, runs setup commands, and launches the dev server with error monitoring.
 disable-model-invocation: true
 ---
 
 # Start the Application
 
-You are a DevOps operator for the Arsenale project. Your job is to start the development environment safely, avoiding port conflicts and monitoring for startup errors.
+You are a DevOps operator for this project. Your job is to start the development environment safely, avoiding port conflicts and monitoring for startup errors.
 
 ## Current Environment State
 
-### Ports in use (3000, 3001, 3002):
-!`netstat -ano 2>/dev/null | grep -E ":(3000|3001|3002)\s" | grep LISTENING || echo "No dev ports in use"`
+### Dev port status (JSON — check DEV_PORTS in CLAUDE.md):
+!`python3 .claude/scripts/app_manager.py check-ports 3000 3001 3002`
 
 ### Docker containers:
-!`docker ps --format "{{.Names}}: {{.Status}}" 2>/dev/null | grep -E "guacd|postgres" || echo "No dev containers running"`
-
-### Node processes:
-!`tasklist 2>/dev/null | grep -i node | head -10 || echo "No node processes found"`
+!`docker ps --format "{{.Names}}: {{.Status}}"`
 
 ## Arguments
 
@@ -25,9 +22,16 @@ The user invoked with: **$ARGUMENTS**
 
 ## Instructions
 
+> **Arsenale dev environment:**
+> - **Port 3000**: Vite client (React dev server)
+> - **Port 3001**: Express server (API backend)
+> - **Port 3002**: Guacamole WebSocket (RDP tunnel)
+> - **Docker containers**: PostgreSQL (database) + guacd (Guacamole daemon)
+> - **Pre-dev (`npm run predev`)**: Starts Docker containers (PostgreSQL + guacd) and runs `npm run db:generate` (Prisma client generation). Database migrations run automatically on server start.
+
 ### Step 1: Check if the app is already running
 
-Examine the environment state above. The app is considered "running" if **any** of these ports are in use: 3000, 3001, or 3002.
+Examine the environment state above. The app is considered "running" if **any** of the configured dev ports are in use.
 
 **If ports are in use:**
 - Inform the user: "The app appears to be already running (ports in use: [list ports and PIDs])."
@@ -40,38 +44,18 @@ Examine the environment state above. The app is considered "running" if **any** 
 
 ### Step 2: Stop existing processes (only if restarting)
 
-Kill all processes on dev ports. For each port (3000, 3001, 3002), run:
+Kill all processes on dev ports and verify:
 
 ```bash
-for port in 3000 3001 3002; do
-  pids=$(netstat -ano 2>/dev/null | grep -E ":${port}\s" | grep LISTENING | awk '{print $5}' | sort -u | tr -d '\r')
-  for pid in $pids; do
-    if [ -n "$pid" ] && [ "$pid" != "0" ]; then
-      echo "Killing PID $pid (port $port)..."
-      taskkill /PID "$pid" /F /T 2>/dev/null || true
-    fi
-  done
-done
+python3 .claude/scripts/app_manager.py kill-ports 3000 3001 3002
+python3 .claude/scripts/app_manager.py verify-ports --wait 2 --expect free 3000 3001 3002
 ```
 
-After killing, wait 2 seconds then verify all ports are free:
+Check the `verify-ports` JSON output. If `"all_match": false`, retry the kill once more. If still occupied after 2 retries, inform the user and stop.
 
-```bash
-sleep 2
-still_used=$(netstat -ano 2>/dev/null | grep -E ":(3000|3001|3002)\s" | grep LISTENING)
-if [ -n "$still_used" ]; then
-  echo "WARNING: Some ports still in use after kill:"
-  echo "$still_used"
-else
-  echo "All ports are free."
-fi
-```
+### Step 3: Run pre-start setup (if applicable)
 
-If ports are still occupied after 3 retries (kill + 2s wait), inform the user and stop.
-
-### Step 3: Start Docker containers and Prisma (predev)
-
-Run `npm run predev` from the project root. This starts Docker containers (PostgreSQL + guacd) and runs Prisma generate + db push:
+Run the pre-dev command to start Docker containers and generate Prisma client:
 
 ```bash
 npm run predev
@@ -79,65 +63,57 @@ npm run predev
 
 This command runs synchronously. Wait for it to complete.
 
-**If predev fails:**
+**If it fails:**
 - Read the error output carefully
 - Common issues:
-  - Docker not running → inform the user to start Docker Desktop
-  - Port 5432 in use → another PostgreSQL instance; inform the user
-  - Prisma errors → usually schema issues; attempt to diagnose and fix
-- Do NOT proceed to Step 4 if predev fails
+  - Docker not running — inform the user to start Docker
+  - Port conflicts — another service occupying required ports
+  - Database errors — schema or migration issues
+- Do NOT proceed to Step 4 if pre-start fails
 
 ### Step 4: Start the dev server (background)
 
-Run `npm run dev` using the Bash tool with `run_in_background: true`:
+Run the start command using the Bash tool with `run_in_background: true`:
 
 ```bash
 npm run dev
 ```
 
-This starts `concurrently` which runs both the Express server (port 3001) and Vite client (port 3000).
-
 ### Step 5: Monitor startup for errors
 
 After starting the background process:
 
-1. **Wait 8 seconds** for initial startup:
+1. **Wait for startup and check that ports are bound** — verify dev ports are now listening:
    ```bash
-   sleep 8
+   python3 .claude/scripts/app_manager.py verify-ports --wait 8 --expect bound 3000 3001 3002
    ```
 
-2. **Check that ports are bound** — verify both 3000 and 3001 are now listening:
+3. **Check Docker containers are healthy** (if applicable):
    ```bash
-   netstat -ano 2>/dev/null | grep -E ":(3000|3001)\s" | grep LISTENING
+   docker ps --format "{{.Names}}: {{.Status}}"
    ```
 
-3. **Check Docker containers are healthy**:
-   ```bash
-   docker ps --format "{{.Names}}: {{.Status}}" | grep -E "guacd|postgres"
-   ```
-
-4. **Read the background process output** using `TaskOutput` to check for errors. Look for these error patterns:
-   - `EADDRINUSE` — port conflict (should not happen if Step 2 succeeded)
-   - `Cannot find module` — missing dependency (run `npm install`)
-   - `ECONNREFUSED` — database connection failed (Docker issue)
-   - `Error` or `error` — generic errors
-   - `prisma` errors — schema sync issues
-   - `TypeError`, `SyntaxError` — code bugs
+4. **Read the background process output** using `TaskOutput` to check for errors. Look for common error indicators:
+   - Port conflicts: `EADDRINUSE`, `Address already in use`, `port is already allocated`
+   - Missing dependencies: `Cannot find module`, `ModuleNotFoundError`, `no required module`, `package not found`
+   - Connection failures: `ECONNREFUSED`, `Connection refused`, `connection error`
+   - Generic errors: `Error`, `FATAL`, `panic`, `traceback`, stack traces or crash dumps
 
 5. **Report results to the user:**
 
-   **If all checks pass** (both ports listening, no errors in output):
+   **If all checks pass** (all ports listening, no errors in output):
    > "The application is running successfully:
-   > - Client: http://localhost:3000
-   > - Server: http://localhost:3001
-   > - Docker containers: healthy
+   > - Port 3000: Vite client (React dev server)
+   > - Port 3001: Express server (API backend)
+   > - Port 3002: Guacamole WebSocket (RDP tunnel)
+   > - Docker containers: [healthy / N/A]
    >
    > You can access the app at http://localhost:3000"
 
    **If errors are detected:**
    - Show the error output to the user
    - Attempt to diagnose the root cause
-   - If fixable (e.g., missing npm install, stale Prisma client), fix it, stop the failed processes, and restart from Step 3
+   - If fixable (e.g., missing dependency install), fix it, stop the failed processes, and restart from Step 3
    - If not fixable automatically, present the error and suggest next steps
 
 ### Error Recovery
