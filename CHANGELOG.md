@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove debug logs and standardize API response destructuring (CLEAN-201)
 - Consolidate duplicated patterns and extract shared utilities
 
+### Fixed
+- Add OAuth rate limiting
+
 ### Security
 - Rate-limit vault unlock and session creation endpoints (SEC-201)
 
