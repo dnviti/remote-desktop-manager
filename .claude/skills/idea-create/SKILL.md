@@ -16,21 +16,23 @@ Always respond and work in English. However, in local/dual mode, the idea block 
 ## Mode Detection
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): Create ideas as GitHub Issues only. No local file operations.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Write to `ideas.txt` first, then sync to GitHub.
-- **Local only mode** (`GH_ENABLED=false` or config missing): Write to `ideas.txt` only.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Create ideas as GitHub Issues only. No local file operations.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Write to `ideas.txt` first, then sync to GitHub.
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Write to `ideas.txt` only.
 
 ## Current Idea State
 
 ### GitHub-only mode — existing idea IDs:
 
 ```bash
-gh issue list --repo "$GH_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' 2>/dev/null | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -10
+gh issue list --repo "$TRACKER_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' 2>/dev/null | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -10
 ```
 
 ### Local/Dual mode — highest idea IDs in ideas.txt:
@@ -85,7 +87,7 @@ If no existing category fits well, create a concise new one in English.
 Idea numbering is **globally sequential**.
 
 **In GitHub-only mode:**
-1. Query all idea IDs: `gh issue list --repo "$GH_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -5`
+1. Query all idea IDs: `gh issue list --repo "$TRACKER_REPO" --label idea --state all --limit 500 --json title --jq '.[].title' | grep -oE 'IDEA-[0-9]{3}' | sort -t'-' -k2 -n | tail -5`
 2. Find the maximum number.
 3. The new idea number = `max + 1`, zero-padded to 3 digits.
 4. If no ideas exist yet, start at `IDEA-001`.
@@ -164,8 +166,8 @@ Before writing, perform a duplicate check:
 
 **In GitHub-only mode:**
 ```bash
-gh issue list --repo "$GH_REPO" --search "keyword1" --label idea --json number,title --jq '.[] | "#\(.number) \(.title)"'
-gh issue list --repo "$GH_REPO" --search "keyword2" --label task --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --search "keyword1" --label idea --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --search "keyword2" --label task --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
 **In local/dual mode:**
@@ -183,7 +185,7 @@ If no duplicates found, continue to Step 7.
 
 Create the GitHub Issue directly:
 ```bash
-ISSUE_URL=$(gh issue create --repo "$GH_REPO" \
+ISSUE_URL=$(gh issue create --repo "$TRACKER_REPO" \
   --title "[IDEA-NNN] Idea Title" \
   --body "$IDEA_BODY" \
   --label "claude-code,idea")

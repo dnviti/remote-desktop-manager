@@ -13,14 +13,16 @@ You are a task status reporter. Analyze the data below and present a clear, well
 Determine the operating mode:
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): Use GitHub Issues as the sole data source. Skip all local file reads.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Use local files as primary, GitHub as secondary.
-- **Local only mode** (`GH_ENABLED=false` or config missing): Use local files only.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Use GitHub Issues as the sole data source. Skip all local file reads.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Use local files as primary, GitHub as secondary.
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Use local files only.
 
 ---
 
@@ -31,38 +33,38 @@ If in GitHub-only mode, gather all data from GitHub Issues:
 ### Task Summary
 
 ```bash
-TODO_COUNT=$(gh issue list --repo "$GH_REPO" --label "task,status:todo" --state open --json number --jq 'length' 2>/dev/null)
-PROGRESS_COUNT=$(gh issue list --repo "$GH_REPO" --label "task,status:in-progress" --state open --json number --jq 'length' 2>/dev/null)
-DONE_COUNT=$(gh issue list --repo "$GH_REPO" --label "task,status:done" --state closed --json number --jq 'length' 2>/dev/null)
+TODO_COUNT=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:todo" --state open --json number --jq 'length' 2>/dev/null)
+PROGRESS_COUNT=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number --jq 'length' 2>/dev/null)
+DONE_COUNT=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:done" --state closed --json number --jq 'length' 2>/dev/null)
 ```
 
 ### In-Progress Tasks
 
 ```bash
-gh issue list --repo "$GH_REPO" --label "task,status:in-progress" --state open --json number,title,labels --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title,labels --jq '.[] | "#\(.number) \(.title)"'
 ```
 
 ### Completed Tasks
 
 ```bash
-gh issue list --repo "$GH_REPO" --label "task,status:done" --state closed --limit 20 --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --label "task,status:done" --state closed --limit 20 --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
 ### Pending Tasks (by priority)
 
 ```bash
 # High priority
-gh issue list --repo "$GH_REPO" --label "task,status:todo,priority:high" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo,priority:high" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
 # Medium priority
-gh issue list --repo "$GH_REPO" --label "task,status:todo,priority:medium" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo,priority:medium" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
 # Low priority
-gh issue list --repo "$GH_REPO" --label "task,status:todo,priority:low" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo,priority:low" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
 ### Ideas (open)
 
 ```bash
-gh issue list --repo "$GH_REPO" --label "idea" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+gh issue list --repo "$TRACKER_REPO" --label "idea" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
 ```
 
 Present the report following the same format as below (Instructions section).

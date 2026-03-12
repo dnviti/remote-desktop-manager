@@ -16,25 +16,27 @@ This skill is the **ONLY** bridge between the idea backlog and the task pipeline
 Determine the operating mode by reading the GitHub Issues config:
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
 Three modes:
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): All operations happen on GitHub Issues. No local file reads or writes. All content must be in **English**.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Write to local files first, then sync to GitHub. Task block content is in **Italian**.
-- **Local only mode** (`GH_ENABLED=false` or config missing): Write to local files only. Task block content is in **Italian**.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): All operations happen on GitHub Issues. No local file reads or writes. All content must be in **English**.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Write to local files first, then sync to GitHub. Task block content is in **Italian**.
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Write to local files only. Task block content is in **Italian**.
 
 ## Current State
 
 ### GitHub-only mode queries:
 
 Ideas available for approval:
-!`jq -r 'if (.enabled == true) and (.sync != true) then .repo else empty end' .claude/github-issues.json 2>/dev/null | xargs -I{} gh issue list --repo {} --label idea --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; jq -r 'if (.enabled == true) and (.sync != true) then .repo else empty end' "$TRACKER_CFG" 2>/dev/null | xargs -I{} gh issue list --repo {} --label idea --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null`
 
 Highest task IDs from GitHub (last 20):
-!`jq -r 'if (.enabled == true) and (.sync != true) then .repo else empty end' .claude/github-issues.json 2>/dev/null | xargs -I{} gh issue list --repo {} --label task --state all --limit 500 --json title --jq '.[].title' 2>/dev/null | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sort -t'-' -k2 -n | tail -20`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; jq -r 'if (.enabled == true) and (.sync != true) then .repo else empty end' "$TRACKER_CFG" 2>/dev/null | xargs -I{} gh issue list --repo {} --label task --state all --limit 500 --json title --jq '.[].title' 2>/dev/null | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sort -t'-' -k2 -n | tail -20`
 
 ### Local / dual sync mode queries:
 
@@ -59,7 +61,7 @@ The user wants to approve: **$ARGUMENTS**
 ### Step 1: Select the Idea
 
 **GitHub-only mode:**
-- **If an IDEA-NNN code was provided**: Search GitHub Issues: `gh issue list --repo "$GH_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number,title`. If not found, inform the user and list available idea issues.
+- **If an IDEA-NNN code was provided**: Search GitHub Issues: `gh issue list --repo "$TRACKER_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number,title`. If not found, inform the user and list available idea issues.
 - **If no argument was provided**: List all open idea issues from the Current State data above. Use `AskUserQuestion` to ask the user which idea to approve.
 - If there are no open idea issues, inform the user: "No ideas available for approval. Use `/idea-create` to add ideas first."
 
@@ -71,7 +73,7 @@ The user wants to approve: **$ARGUMENTS**
 ### Step 2: Read the Full Idea
 
 **GitHub-only mode:**
-- Fetch the full idea issue body: `gh issue view IDEA_ISSUE_NUMBER --repo "$GH_REPO" --json title,body,number`
+- Fetch the full idea issue body: `gh issue view IDEA_ISSUE_NUMBER --repo "$TRACKER_REPO" --json title,body,number`
 - Extract the title, description, and motivation from the issue body.
 
 **Local / dual sync mode:**
@@ -245,8 +247,8 @@ Then use `AskUserQuestion` with these options:
 **GitHub-only mode:**
 Search GitHub Issues for similar tasks:
 ```bash
-gh issue list --repo "$GH_REPO" --label task --state all --search "keyword1" --json number,title,state
-gh issue list --repo "$GH_REPO" --label task --state all --search "keyword2" --json number,title,state
+gh issue list --repo "$TRACKER_REPO" --label task --state all --search "keyword1" --json number,title,state
+gh issue list --repo "$TRACKER_REPO" --label task --state all --search "keyword2" --json number,title,state
 ```
 
 **Local / dual sync mode:**
@@ -286,18 +288,18 @@ Use the `Edit` tool for both operations.
 
 1. **Close the idea issue:**
    ```bash
-   IDEA_ISSUE=$(gh issue list --repo "$GH_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number --jq '.[0].number' 2>/dev/null)
+   IDEA_ISSUE=$(gh issue list --repo "$TRACKER_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number --jq '.[0].number' 2>/dev/null)
    ```
    If found:
    ```bash
-   gh issue close "$IDEA_ISSUE" --repo "$GH_REPO" --comment "Approved and promoted to task [PREFIX-NNN]." 2>/dev/null || true
+   gh issue close "$IDEA_ISSUE" --repo "$TRACKER_REPO" --comment "Approved and promoted to task [PREFIX-NNN]." 2>/dev/null || true
    ```
 
 2. **Create the task issue:**
    ```bash
-   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" .claude/github-issues.json)"
-   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" .claude/github-issues.json)"
-   TASK_ISSUE_URL=$(gh issue create --repo "$GH_REPO" \
+   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" "$TRACKER_CFG")"
+   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" "$TRACKER_CFG")"
+   TASK_ISSUE_URL=$(gh issue create --repo "$TRACKER_REPO" \
      --title "[PREFIX-NNN] Task Title" \
      --body "$(cat <<'EOF'
    **Code:** PREFIX-NNN | **Priority:** HIGH/MEDIUM/LOW | **Section:** SECTION X | **Dependencies:** DEPS
@@ -323,25 +325,25 @@ Use the `Edit` tool for both operations.
 3. **Cross-reference** between the idea and task issues:
    ```bash
    TASK_ISSUE_NUM=$(echo "$TASK_ISSUE_URL" | grep -oE '[0-9]+$')
-   gh issue comment "$IDEA_ISSUE" --repo "$GH_REPO" --body "Task issue: #$TASK_ISSUE_NUM" 2>/dev/null || true
+   gh issue comment "$IDEA_ISSUE" --repo "$TRACKER_REPO" --body "Task issue: #$TASK_ISSUE_NUM" 2>/dev/null || true
    ```
 
 **Dual sync mode** — sync after local operations:
 
 1. **Close the idea issue:**
    ```bash
-   IDEA_ISSUE=$(gh issue list --repo "$GH_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number --jq '.[0].number' 2>/dev/null)
+   IDEA_ISSUE=$(gh issue list --repo "$TRACKER_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number --jq '.[0].number' 2>/dev/null)
    ```
    If found:
    ```bash
-   gh issue close "$IDEA_ISSUE" --repo "$GH_REPO" --comment "Approved and promoted to task [PREFIX-NNN]." 2>/dev/null || true
+   gh issue close "$IDEA_ISSUE" --repo "$TRACKER_REPO" --comment "Approved and promoted to task [PREFIX-NNN]." 2>/dev/null || true
    ```
 
 2. **Create the task issue:**
    ```bash
-   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" .claude/github-issues.json)"
-   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" .claude/github-issues.json)"
-   TASK_ISSUE_URL=$(gh issue create --repo "$GH_REPO" \
+   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" "$TRACKER_CFG")"
+   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" "$TRACKER_CFG")"
+   TASK_ISSUE_URL=$(gh issue create --repo "$TRACKER_REPO" \
      --title "[PREFIX-NNN] Task Title" \
      --body "$(cat <<'EOF'
    **Code:** PREFIX-NNN | **Priority:** PRIORITY | **Section:** SEZIONE X | **Dependencies:** DEPS
@@ -369,7 +371,7 @@ Use the `Edit` tool for both operations.
 4. **Cross-reference** between the idea and task issues:
    ```bash
    TASK_ISSUE_NUM=$(echo "$TASK_ISSUE_URL" | grep -oE '[0-9]+$')
-   gh issue comment "$IDEA_ISSUE" --repo "$GH_REPO" --body "Task issue: #$TASK_ISSUE_NUM" 2>/dev/null || true
+   gh issue comment "$IDEA_ISSUE" --repo "$TRACKER_REPO" --body "Task issue: #$TASK_ISSUE_NUM" 2>/dev/null || true
    ```
 
 **Local only mode:** Skip this step entirely.

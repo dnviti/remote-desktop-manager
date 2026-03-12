@@ -14,15 +14,17 @@ You are an elite product strategist and feature researcher specializing in remot
 Determine the operating mode by reading the GitHub Issues configuration:
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
 Three modes:
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): Read task data from GitHub Issues, create new tasks as GitHub Issues. No local file operations.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Read/write local files, then sync to GitHub (current behavior).
-- **Local only mode** (`GH_ENABLED=false` or config missing): Read/write local files only.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Read task data from GitHub Issues, create new tasks as GitHub Issues. No local file operations.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Read/write local files, then sync to GitHub (current behavior).
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Read/write local files only.
 
 ## Current Project State
 
@@ -40,13 +42,13 @@ Three modes:
 ### GitHub-only mode
 
 #### In-progress tasks:
-!`jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null | grep -q true && jq -r '.sync // false' .claude/github-issues.json 2>/dev/null | grep -qv true && gh issue list --repo "$(jq -r '.repo' .claude/github-issues.json)" --label "task,status:in-progress" --json number,title --jq '.[] | "- #\(.number) \(.title)"' 2>/dev/null || echo "(not in GitHub-only mode)"`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null | grep -q true && jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null | grep -qv true && gh issue list --repo "$(jq -r '.repo' "$TRACKER_CFG")" --label "task,status:in-progress" --json number,title --jq '.[] | "- #\(.number) \(.title)"' 2>/dev/null || echo "(not in GitHub-only mode)"`
 
 #### Pending tasks:
-!`jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null | grep -q true && jq -r '.sync // false' .claude/github-issues.json 2>/dev/null | grep -qv true && gh issue list --repo "$(jq -r '.repo' .claude/github-issues.json)" --label "task,status:todo" --json number,title --jq '.[] | "- #\(.number) \(.title)"' 2>/dev/null || echo "(not in GitHub-only mode)"`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null | grep -q true && jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null | grep -qv true && gh issue list --repo "$(jq -r '.repo' "$TRACKER_CFG")" --label "task,status:todo" --json number,title --jq '.[] | "- #\(.number) \(.title)"' 2>/dev/null || echo "(not in GitHub-only mode)"`
 
 #### Completed tasks:
-!`jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null | grep -q true && jq -r '.sync // false' .claude/github-issues.json 2>/dev/null | grep -qv true && gh issue list --repo "$(jq -r '.repo' .claude/github-issues.json)" --label "task,status:done" --state closed --limit 200 --json number,title --jq '.[] | "- #\(.number) \(.title)"' 2>/dev/null || echo "(not in GitHub-only mode)"`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null | grep -q true && jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null | grep -qv true && gh issue list --repo "$(jq -r '.repo' "$TRACKER_CFG")" --label "task,status:done" --state closed --limit 200 --json number,title --jq '.[] | "- #\(.number) \(.title)"' 2>/dev/null || echo "(not in GitHub-only mode)"`
 
 ## Arguments
 
@@ -81,7 +83,7 @@ Every time you are invoked, you must:
    ### GitHub-only mode
    Create GitHub Issues directly using:
    ```bash
-   gh issue create --repo "$GH_REPO" \
+   gh issue create --repo "$TRACKER_REPO" \
      --title "[SCOUT-NNN] Feature Title" \
      --label "claude-code,task,priority:medium,status:todo,section:scouted" \
      --body "$(cat <<'EOF'

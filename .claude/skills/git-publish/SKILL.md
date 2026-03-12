@@ -16,6 +16,31 @@ The user invoked with: **$ARGUMENTS**
 
 ## Instructions
 
+### Step 0: Check for untested tasks
+
+Check if there are tasks awaiting testing:
+
+```bash
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
+
+if [ "$TRACKER_ENABLED" = "true" ]; then
+  TO_TEST=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq 'length' 2>/dev/null)
+  if [ "$TO_TEST" -gt 0 ]; then
+    gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+  fi
+fi
+```
+
+If untested tasks exist, warn the user:
+
+> "There are **N** tasks with `status:to-test` that have not been verified yet."
+
+Use `AskUserQuestion` with options:
+- **"Continue publishing anyway"** -- proceed to Step 1
+- **"Abort and test first"** -- stop; suggest running `/test-engineer` for each untested task
+
 ### Step 1: Commit if needed
 
 Check for uncommitted changes:
@@ -53,10 +78,11 @@ gh pr list --base main --head develop --state open --json number,url --jq '.[0]'
 - If no PR exists, create one. **If GitHub Issues integration is enabled**, enrich the PR body with issue references:
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
-**If `GH_ENABLED` is `true`:**
+**If `TRACKER_ENABLED` is `true`:**
 
 1. Collect task codes from commits between main and develop:
    ```bash
@@ -65,9 +91,9 @@ GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
 
 2. For each task code, find the corresponding GitHub issue number:
    ```bash
-   GH_REPO="$(jq -r '.repo' .claude/github-issues.json)"
+   TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG")"
    # For each code in TASK_CODES:
-   ISSUE_NUM=$(gh issue list --repo "$GH_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
+   ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
    ```
 
 3. Build the PR body with issue references (use `Refs` not `Closes` — issues are already closed by `/task-pick`):
@@ -90,7 +116,7 @@ GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
      --body "$PR_BODY"
    ```
 
-**If `GH_ENABLED` is `false` or the file is missing**, use the simple body:
+**If `TRACKER_ENABLED` is `false` or the file is missing**, use the simple body:
 
 ```bash
 gh pr create --base main --head develop \

@@ -16,28 +16,30 @@ Always respond and work in English.
 Determine the operating mode by reading the GitHub Issues configuration:
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
 Three modes:
 
 | Mode | Condition | Behavior |
 |------|-----------|----------|
-| **GitHub-only** | `GH_ENABLED=true` AND `GH_SYNC != true` | Create tasks as GitHub Issues only. No local file operations. |
-| **Dual sync** | `GH_ENABLED=true` AND `GH_SYNC=true` | Write to `to-do.txt` first, then sync to GitHub. |
-| **Local only** | `GH_ENABLED=false` or config missing | Write to `to-do.txt` only. |
+| **GitHub-only** | `TRACKER_ENABLED=true` AND `TRACKER_SYNC != true` | Create tasks as GitHub Issues only. No local file operations. |
+| **Dual sync** | `TRACKER_ENABLED=true` AND `TRACKER_SYNC=true` | Write to `to-do.txt` first, then sync to GitHub. |
+| **Local only** | `TRACKER_ENABLED=false` or config missing | Write to `to-do.txt` only. |
 
 ## Current Task State
 
 ### In GitHub-only mode:
 
 #### Highest task IDs (last 20, sorted by number):
-!`GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"; gh issue list --repo "$GH_REPO" --label task --state all --limit 500 --json title --jq '.[].title' | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sort -t'-' -k2 -n | tail -20`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"; gh issue list --repo "$TRACKER_REPO" --label task --state all --limit 500 --json title --jq '.[].title' | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sort -t'-' -k2 -n | tail -20`
 
 #### All prefixes currently in use:
-!`GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"; gh issue list --repo "$GH_REPO" --label task --state all --limit 500 --json title --jq '.[].title' | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sed 's/-[0-9]*//' | sort -u`
+!`TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"; TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"; gh issue list --repo "$TRACKER_REPO" --label task --state all --limit 500 --json title --jq '.[].title' | grep -oE '[A-Z][A-Z0-9]+-[0-9]{3}' | sed 's/-[0-9]*//' | sort -u`
 
 ### In local only and dual sync modes:
 
@@ -52,7 +54,7 @@ Three modes:
 
 ### Section info (GitHub-only mode):
 
-In GitHub-only mode, section information is derived from the label mappings in `.claude/github-issues.json` rather than from `to-do.txt`. Read the `labels.sections` mapping from the config to determine available sections and their labels.
+In GitHub-only mode, section information is derived from the label mappings in the tracker config rather than from `to-do.txt`. Read the `labels.sections` mapping from the config to determine available sections and their labels.
 
 ## Arguments
 
@@ -148,7 +150,7 @@ Before writing the task block, explore the codebase to generate accurate technic
    - Infrastructure tasks -> check `docker-compose.dev.yml`, `docker-compose.yml`, Dockerfiles
 3. **Look at similar completed tasks** for pattern reference:
    - In local only / dual sync mode: check `done.txt` for a task with similar scope and mirror its structure.
-   - In GitHub-only mode: search closed issues with `gh issue list --repo "$GH_REPO" --label task --state closed --limit 10 --json title,body` for reference.
+   - In GitHub-only mode: search closed issues with `gh issue list --repo "$TRACKER_REPO" --label task --state closed --limit 10 --json title,body` for reference.
 4. **Identify files to create and modify** — be specific about file paths based on the actual directory structure. Use `Glob` to verify paths exist before listing them.
 
 ### Step 5: Draft the Task Block
@@ -247,7 +249,7 @@ Before writing, perform a final duplicate check:
 **In GitHub-only mode:**
 1. Search GitHub issues for key concepts:
    ```bash
-   gh issue list --repo "$GH_REPO" --label task --state all --search "keyword1 keyword2" --json title,number,state --jq '.[] | "#\(.number) [\(.state)] \(.title)"'
+   gh issue list --repo "$TRACKER_REPO" --label task --state all --search "keyword1 keyword2" --json title,number,state --jq '.[] | "#\(.number) [\(.state)] \(.title)"'
    ```
 2. If a potentially similar task is found, warn the user and ask whether to proceed or abort.
 3. If no duplicates found, continue to Step 8.
@@ -295,14 +297,14 @@ Use the `Edit` tool to insert the task block at the correct position.
 
 1. Read the label mappings from config:
    ```bash
-   GH_REPO="$(jq -r '.repo' .claude/github-issues.json)"
-   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" .claude/github-issues.json)"
-   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" .claude/github-issues.json)"
+   TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG")"
+   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" "$TRACKER_CFG")"
+   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" "$TRACKER_CFG")"
    ```
 
 2. Create the GitHub Issue:
    ```bash
-   ISSUE_URL=$(gh issue create --repo "$GH_REPO" \
+   ISSUE_URL=$(gh issue create --repo "$TRACKER_REPO" \
      --title "[PREFIX-NNN] Task Title" \
      --body "$(cat <<'EOF'
    **Code:** PREFIX-NNN | **Priority:** PRIORITY | **Section:** SECTION_NAME | **Dependencies:** DEPS
@@ -330,14 +332,14 @@ Use the `Edit` tool to insert the task block at the correct position.
 
 1. Read the label mappings from config:
    ```bash
-   GH_REPO="$(jq -r '.repo' .claude/github-issues.json)"
-   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" .claude/github-issues.json)"
-   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" .claude/github-issues.json)"
+   TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG")"
+   PRIORITY_LABEL="$(jq -r ".labels.priority.\"$PRIORITY\"" "$TRACKER_CFG")"
+   SECTION_LABEL="$(jq -r ".labels.sections.\"$SECTION_LETTER\"" "$TRACKER_CFG")"
    ```
 
 2. Create the GitHub Issue:
    ```bash
-   ISSUE_URL=$(gh issue create --repo "$GH_REPO" \
+   ISSUE_URL=$(gh issue create --repo "$TRACKER_REPO" \
      --title "[PREFIX-NNN] Task Title" \
      --body "$(cat <<'EOF'
    **Code:** PREFIX-NNN | **Priority:** PRIORITY | **Section:** SEZIONE X | **Dependencies:** DEPS

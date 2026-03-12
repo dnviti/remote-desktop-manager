@@ -1,5 +1,5 @@
 {
-  "_deprecated": "This file is deprecated. Use .claude/issues-tracker.example.json instead, which supports both GitHub and GitLab.",
+  "platform": "github",
   "enabled": false,
   "sync": false,
   "repo": "owner/repo",

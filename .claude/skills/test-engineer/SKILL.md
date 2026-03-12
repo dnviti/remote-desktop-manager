@@ -1,8 +1,8 @@
 ---
 name: test-engineer
-description: Create, update, or optimize tests and CI/CD pipelines. Covers unit tests, integration tests, end-to-end tests, and GitHub Actions workflow configuration.
+description: Create, update, or optimize tests and CI/CD pipelines. Test tasks marked status:to-test. Covers unit tests, integration tests, end-to-end tests, and GitHub Actions workflow configuration.
 disable-model-invocation: true
-argument-hint: "[scope: unit|integration|e2e|pipeline|coverage|all] [target file or area]"
+argument-hint: "[scope: unit|integration|e2e|pipeline|coverage|all|to-test] [target file or area or TASK-CODE]"
 ---
 
 # Test Engineer
@@ -35,6 +35,7 @@ The user invoked with: **$ARGUMENTS**
 2. **Design and maintain GitHub Actions CI/CD pipelines** for automated testing
 3. **Identify test gaps** and proactively fill them
 4. **Ensure test quality** — tests should be reliable, fast, and meaningful
+5. **Test tasks** — When invoked for a `status:to-test` task, run the full testing lifecycle (automated + manual) and report results
 
 ## Project Architecture Awareness
 
@@ -176,6 +177,168 @@ When asked to create or update GitHub Actions pipelines:
 2. **Design**: Plan the pipeline stages based on the project's needs
 3. **Implement**: Write the workflow YAML with proper job dependencies, caching, and service containers
 4. **Validate**: Ensure the YAML is syntactically correct and references valid actions
+
+## Task Testing Workflow (status:to-test)
+
+When invoked to test a specific task (e.g., `/test-engineer TASK-CODE` or `/test-engineer to-test`), follow this structured workflow that covers both automated and manual testing.
+
+### Step T1: Mode Detection
+
+Determine the operating mode first:
+
+```bash
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
+```
+
+### Step T2: Find to-test tasks
+
+**If a specific task code was provided as argument**, use that task directly.
+
+**If the argument is `to-test` or no specific code was given:**
+
+**In platform-only mode:**
+```bash
+gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+```
+
+**In local/dual mode:**
+```bash
+grep '^\[~\]' progressing.txt 2>/dev/null | tr -d '\r'
+```
+
+If multiple tasks are found, use `AskUserQuestion` to ask the user which task they want to test.
+
+If no tasks are found, inform the user: "No tasks found awaiting testing." and stop.
+
+### Step T3: Read task details
+
+**In platform-only mode:**
+```bash
+ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label task --state open --json number --jq '.[0].number')
+gh issue view $ISSUE_NUM --repo "$TRACKER_REPO" --json body --jq '.body'
+```
+
+**In local/dual mode:**
+- Read the complete task block from `progressing.txt` (between `------` separator lines).
+
+Extract the DESCRIPTION, TECHNICAL DETAILS, and Files involved sections. These will inform both the automated test scope and the manual testing guide.
+
+### Step T4: Detect test configuration
+
+Before running tests, determine the project's test setup:
+
+1. **Read CLAUDE.md** for the project's verify command and test commands
+2. **Check the "Existing Test Infrastructure" section above** for detected test config files and existing test files
+3. **Identify the test command**: Use `npm run verify` (typecheck + lint + audit + build) as the primary verification command. For targeted tests, use Vitest or the configured test runner.
+4. **Identify relevant test files**: Based on the task's "Files involved" section, find test files that cover those source files (look for matching names with test/spec patterns)
+
+Present the detected configuration to the user:
+
+> **Test configuration for [TASK-CODE]:**
+> - Test framework: Vitest (server + client)
+> - Verify command: `npm run verify`
+> - Relevant test files: [list of test files related to the task's files]
+
+### Step T5: Run automated tests
+
+1. **Run the project's full verify suite:**
+   ```bash
+   npm run verify
+   ```
+   Capture output and note any failures.
+
+2. **Run targeted tests** (if identifiable): If specific test files relate to the task's files involved, run those individually for detailed output.
+
+3. **Present results summary:**
+
+   > **Automated Test Results for [TASK-CODE]:**
+   > - Typecheck: PASS/FAIL
+   > - Lint: PASS/FAIL
+   > - Audit: PASS/FAIL
+   > - Build: PASS/FAIL
+   > - [Targeted test results if applicable]
+
+4. **If automated tests fail:**
+   - Present the failures to the user
+   - Analyze whether failures are related to the task's changes or pre-existing
+   - Use `AskUserQuestion` with options:
+     - **"Fix the failing tests"** — attempt to fix the tests or implementation, then re-run
+     - **"These failures are pre-existing, continue to manual testing"** — proceed to T6
+     - **"Abort testing"** — stop the testing workflow
+   - Do NOT proceed to manual testing until automated tests pass (or user confirms failures are pre-existing)
+
+### Step T6: Guide manual testing
+
+Once automated tests pass, generate and walk the user through manual testing:
+
+1. **Generate a manual testing guide** derived from the task's TECHNICAL DETAILS and Files involved:
+
+   > ### Manual Testing Guide for [TASK-CODE] — [Task Title]
+   >
+   > **Prerequisites:**
+   > - Docker containers running (`npm run docker:dev`)
+   > - Dev server running (`npm run dev`)
+   > - Ports 3000 (client) and 3001 (server) accessible
+   >
+   > **Steps to test:**
+   > 1. [Concrete action the user can perform in the browser or terminal]
+   >    - **Expected:** [What they should see or what should happen]
+   > 2. [Next action]
+   >    - **Expected:** [Result]
+   >
+   > **Edge cases to check:**
+   > - [2-3 edge cases worth verifying]
+
+   The guide must be actionable and specific — use real URLs (`http://localhost:3000`), real UI element names, and real API endpoints from the implementation.
+
+2. **Ask the user to perform each step** and confirm results using `AskUserQuestion`:
+
+   > "Please follow the manual testing guide above. Did all manual test steps pass?"
+
+   Options:
+   - **"Yes, all tests passed"** — proceed to T7
+   - **"No, found issues"** — ask the user to describe the issues, then offer to fix them. After fixing, re-run automated tests (T5) and repeat manual testing (T6).
+
+### Step T7: Finalize testing
+
+When all tests (automated and manual) pass:
+
+1. **Remove the `status:to-test` label** (if platform integration is enabled):
+
+   ```bash
+   gh issue edit "$ISSUE_NUM" --repo "$TRACKER_REPO" --remove-label "status:to-test"
+   ```
+
+2. **Comment on the issue** with test results:
+
+   ```bash
+   gh issue comment "$ISSUE_NUM" --repo "$TRACKER_REPO" --body "Testing complete. Verify: PASS. Manual: all steps verified."
+   ```
+
+3. **Check if the task branch needs merging**: If the task branch exists but has not been merged to `develop`:
+
+   ```bash
+   git branch --list "task/<task-code-lowercase>"
+   git log develop --oneline | grep -c "Merge task/<task-code-lowercase>"
+   ```
+
+   If the branch exists but was never merged, offer to merge:
+
+   Use `AskUserQuestion` with options:
+   - **"Yes, merge into develop"** — execute:
+     ```bash
+     git checkout develop
+     git merge task/<task-code-lowercase> --no-ff -m "Merge task/<task-code-lowercase> into develop"
+     ```
+   - **"No, stay on current branch"** — skip the merge
+
+4. **Inform the user:**
+
+   > "Testing for [TASK-CODE] is complete. All automated and manual tests passed. The task is now eligible for release."
 
 ## Quality Self-Verification
 

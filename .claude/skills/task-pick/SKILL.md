@@ -16,14 +16,16 @@ You are a task manager for the Arsenale project. Your job is to:
 Determine the operating mode first:
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): Read/write task state via GitHub Issues. No local file operations.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Use local files as primary, then sync to GitHub.
-- **Local only mode** (`GH_ENABLED=false` or config missing): Use local files only.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Read/write task state via GitHub Issues. No local file operations.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Use local files as primary, then sync to GitHub.
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Use local files only.
 
 ## Current Task State
 
@@ -31,13 +33,13 @@ GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
 
 ```bash
 # In-progress tasks
-gh issue list --repo "$GH_REPO" --label "task,status:in-progress" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
 # Pending tasks (by priority)
-gh issue list --repo "$GH_REPO" --label "task,status:todo,priority:high" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
-gh issue list --repo "$GH_REPO" --label "task,status:todo,priority:medium" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
-gh issue list --repo "$GH_REPO" --label "task,status:todo,priority:low" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo,priority:high" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo,priority:medium" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo,priority:low" --state open --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
 # Completed tasks
-gh issue list --repo "$GH_REPO" --label "task,status:done" --state closed --limit 20 --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:done" --state closed --limit 20 --json number,title --jq '.[] | "\(.title)"' 2>/dev/null
 ```
 
 ### Local/Dual mode:
@@ -65,7 +67,7 @@ The user wants to pick up a task. The argument provided is: **$ARGUMENTS**
 Before picking any new task, you MUST process in-progress tasks.
 
 **In GitHub-only mode:**
-- Query in-progress tasks: `gh issue list --repo "$GH_REPO" --label "task,status:in-progress" --state open --json number,title`
+- Query in-progress tasks: `gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title`
 - If a specific task code was provided AND that task has `status:in-progress` label: jump directly to Step 0b for that task only.
 - Otherwise, process ALL in-progress tasks sequentially.
 
@@ -91,8 +93,8 @@ git branch --list "task/<task-code-lowercase>"
 **Read the full task details:**
 
 **In GitHub-only mode:**
-- Find the issue: `ISSUE_NUM=$(gh issue list --repo "$GH_REPO" --search "[TASK-CODE] in:title" --label task --state open --json number --jq '.[0].number')`
-- Read the body: `gh issue view $ISSUE_NUM --repo "$GH_REPO" --json body --jq '.body'`
+- Find the issue: `ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label task --state open --json number --jq '.[0].number')`
+- Read the body: `gh issue view $ISSUE_NUM --repo "$TRACKER_REPO" --json body --jq '.body'`
 - Parse the body to extract **Files Involved** (CREATE / MODIFY) and **Technical Details** sections.
 
 **In local/dual mode:**
@@ -184,8 +186,8 @@ Inform the user, then continue to Step 1.
 This step is only reached when there are NO in-progress tasks remaining.
 
 **In GitHub-only mode:**
-- **If a task code was provided** (e.g., `CRED-006`): Search for it: `gh issue list --repo "$GH_REPO" --search "[TASK-CODE] in:title" --label "task,status:todo" --state open --json number,title`
-  - If not found in todo, check if already done: `gh issue list --repo "$GH_REPO" --search "[TASK-CODE] in:title" --label "task,status:done" --state closed --json number,title`
+- **If a task code was provided** (e.g., `CRED-006`): Search for it: `gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label "task,status:todo" --state open --json number,title`
+  - If not found in todo, check if already done: `gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label "task,status:done" --state closed --json number,title`
   - If done, inform the user and suggest next available task.
 - **If no argument was provided**: Select the next task by priority label ordering: `priority:high` first, then `priority:medium`, then `priority:low`. Within same priority, pick the lowest-numbered task. Check dependencies by reading the task body — dependency task codes should have `status:done` label.
 
@@ -199,9 +201,9 @@ This step is only reached when there are NO in-progress tasks remaining.
 
 Update the GitHub Issue labels:
 ```bash
-ISSUE_NUM=$(gh issue list --repo "$GH_REPO" --search "[TASK-CODE] in:title" --label "task,status:todo" --state open --json number --jq '.[0].number')
-gh issue edit "$ISSUE_NUM" --repo "$GH_REPO" --remove-label "status:todo" --add-label "status:in-progress"
-gh issue comment "$ISSUE_NUM" --repo "$GH_REPO" --body "Task picked up. Branch: \`task/<task-code-lowercase>\`"
+ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label "task,status:todo" --state open --json number --jq '.[0].number')
+gh issue edit "$ISSUE_NUM" --repo "$TRACKER_REPO" --remove-label "status:todo" --add-label "status:in-progress"
+gh issue comment "$ISSUE_NUM" --repo "$TRACKER_REPO" --body "Task picked up. Branch: \`task/<task-code-lowercase>\`"
 ```
 
 **In dual sync mode:**
@@ -243,7 +245,7 @@ git branch --list "task/<task-code-lowercase>"
 ### Step 3: Read the full task details
 
 **In GitHub-only mode:**
-- `gh issue view $ISSUE_NUM --repo "$GH_REPO" --json body --jq '.body'`
+- `gh issue view $ISSUE_NUM --repo "$TRACKER_REPO" --json body --jq '.body'`
 - Parse the structured body: Description, Technical Details, Files Involved sections.
 
 **In local/dual mode:**
@@ -297,19 +299,35 @@ Format:
 
 The guide must be actionable and specific — use real URLs, UI element names, and API endpoints.
 
+**6a.5. Mark task as to-test (if platform integration is enabled):**
+
+If `TRACKER_ENABLED` is `true`:
+```bash
+ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label task --state open --json number --jq '.[0].number')
+gh issue edit "$ISSUE_NUM" --repo "$TRACKER_REPO" --add-label "status:to-test"
+```
+
 **6b. Ask for user confirmation:**
 
 Use `AskUserQuestion` with options:
-- **"Yes, task is done"** — proceed to 6c
+- **"Yes, task is done"** — proceed to 6b.5 then 6c
 - **"Not yet, needs more work"** — stop; task stays in-progress
+- **"Skip testing, mark as done"** — skip to 6c directly (to-test label remains for later verification)
+
+**6b.5. Remove to-test label (if platform integration is enabled):**
+
+If `TRACKER_ENABLED` is `true` and the user confirmed testing:
+```bash
+gh issue edit "$ISSUE_NUM" --repo "$TRACKER_REPO" --remove-label "status:to-test"
+```
 
 **6c. Mark task as done:**
 
 **In GitHub-only mode:**
 ```bash
-ISSUE_NUM=$(gh issue list --repo "$GH_REPO" --search "[TASK-CODE] in:title" --label task --state open --json number --jq '.[0].number')
-gh issue edit "$ISSUE_NUM" --repo "$GH_REPO" --remove-label "status:in-progress" --add-label "status:done"
-gh issue close "$ISSUE_NUM" --repo "$GH_REPO" --comment "Task completed and verified. Quality gate passed."
+ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[TASK-CODE] in:title" --label task --state open --json number --jq '.[0].number')
+gh issue edit "$ISSUE_NUM" --repo "$TRACKER_REPO" --remove-label "status:in-progress" --add-label "status:done"
+gh issue close "$ISSUE_NUM" --repo "$TRACKER_REPO" --comment "Task completed and verified. Quality gate passed."
 ```
 
 **In dual sync mode:**
@@ -341,6 +359,8 @@ Use `AskUserQuestion` with options:
   git merge task/<task-code-lowercase> --no-ff -m "Merge task/<task-code-lowercase> into develop"
   ```
   Use `--no-ff` to preserve branch history.
+
+  **Note:** If the task still has `status:to-test` label (user skipped testing), warn: "This task has not been tested yet. Consider running `/test-engineer TASK-CODE` before merging to a release branch."
 
 - **"No, stay on task branch"** — skip the merge
 

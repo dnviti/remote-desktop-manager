@@ -14,21 +14,23 @@ Always respond and work in English.
 ## Mode Detection
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): Close the GitHub Issue with rejection reason. No local file operations.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Move idea in local files, then close GitHub Issue.
-- **Local only mode** (`GH_ENABLED=false` or config missing): Move idea from `ideas.txt` to `idea-disapproved.txt`.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Close the GitHub Issue with rejection reason. No local file operations.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Move idea in local files, then close GitHub Issue.
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Move idea from `ideas.txt` to `idea-disapproved.txt`.
 
 ## Current State
 
 ### GitHub-only mode — ideas available:
 
 ```bash
-gh issue list --repo "$GH_REPO" --label "idea" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "idea" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
 ```
 
 ### Local/Dual mode — ideas available for disapproval:
@@ -46,7 +48,7 @@ The user wants to disapprove: **$ARGUMENTS**
 ### Step 1: Select the Idea
 
 **In GitHub-only mode:**
-- If an IDEA-NNN code was provided: `gh issue list --repo "$GH_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number,title,body`
+- If an IDEA-NNN code was provided: `gh issue list --repo "$TRACKER_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number,title,body`
 - If no argument: list all open ideas from GitHub and use `AskUserQuestion` to ask which to disapprove.
 
 **In local/dual mode:**
@@ -58,7 +60,7 @@ If no ideas are available, inform the user: "No ideas available for disapproval.
 ### Step 2: Show the Full Idea
 
 **In GitHub-only mode:**
-- Read the issue body: `gh issue view $ISSUE_NUM --repo "$GH_REPO" --json title,body`
+- Read the issue body: `gh issue view $ISSUE_NUM --repo "$TRACKER_REPO" --json title,body`
 
 **In local/dual mode:**
 - Read the complete idea block from `ideas.txt` (everything between `------` separator lines).
@@ -96,8 +98,8 @@ Options:
 
 Close the GitHub Issue with the rejection reason:
 ```bash
-IDEA_ISSUE=$(gh issue list --repo "$GH_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number --jq '.[0].number' 2>/dev/null)
-gh issue close "$IDEA_ISSUE" --repo "$GH_REPO" --reason "not planned" --comment "Idea disapproved. Reason: $REASON" 2>/dev/null || true
+IDEA_ISSUE=$(gh issue list --repo "$TRACKER_REPO" --search "[IDEA-NNN] in:title" --label idea --state open --json number --jq '.[0].number' 2>/dev/null)
+gh issue close "$IDEA_ISSUE" --repo "$TRACKER_REPO" --reason "not planned" --comment "Idea disapproved. Reason: $REASON" 2>/dev/null || true
 ```
 
 **In dual sync mode:**

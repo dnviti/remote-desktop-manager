@@ -16,14 +16,16 @@ Always respond and work in English for communication.
 ## Mode Detection
 
 ```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-GH_SYNC="$(jq -r '.sync // false' .claude/github-issues.json 2>/dev/null)"
-GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_SYNC="$(jq -r '.sync // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
 ```
 
-- **GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true`): Read/write ideas from GitHub Issues. No local file operations.
-- **Dual sync mode** (`GH_ENABLED=true` AND `GH_SYNC=true`): Read/write ideas from local files, then sync to GitHub.
-- **Local only mode** (`GH_ENABLED=false` or config missing): Read/write ideas from local files only.
+- **Platform-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Read/write ideas from GitHub Issues. No local file operations.
+- **Dual sync mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC=true`): Read/write ideas from local files, then sync to GitHub.
+- **Local only mode** (`TRACKER_ENABLED=false` or config missing): Read/write ideas from local files only.
 
 ## Current State
 
@@ -31,13 +33,13 @@ GH_REPO="$(jq -r '.repo' .claude/github-issues.json 2>/dev/null)"
 
 ```bash
 # All ideas
-gh issue list --repo "$GH_REPO" --label idea --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label idea --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
 # Completed tasks
-gh issue list --repo "$GH_REPO" --label "task,status:done" --state closed --limit 200 --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:done" --state closed --limit 200 --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
 # In-progress tasks
-gh issue list --repo "$GH_REPO" --label "task,status:in-progress" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
 # Pending tasks
-gh issue list --repo "$GH_REPO" --label "task,status:todo" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
+gh issue list --repo "$TRACKER_REPO" --label "task,status:todo" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"' 2>/dev/null
 ```
 
 ### Local/Dual mode — data sources:
@@ -63,8 +65,8 @@ The user wants to refactor: **$ARGUMENTS**
 ### Step 1: Load Ideas
 
 **In GitHub-only mode:**
-- If an IDEA-NNN code was provided: `gh issue view $(gh issue list --repo "$GH_REPO" --search "[IDEA-NNN] in:title" --label idea --json number --jq '.[0].number') --repo "$GH_REPO" --json number,title,body`
-- If no argument: `gh issue list --repo "$GH_REPO" --label idea --state open --json number,title,body`
+- If an IDEA-NNN code was provided: `gh issue view $(gh issue list --repo "$TRACKER_REPO" --search "[IDEA-NNN] in:title" --label idea --json number --jq '.[0].number') --repo "$TRACKER_REPO" --json number,title,body`
+- If no argument: `gh issue list --repo "$TRACKER_REPO" --label idea --state open --json number,title,body`
 
 **In local/dual mode:**
 - If an IDEA-NNN code was provided: Read only that specific idea from `ideas.txt`.
@@ -88,9 +90,9 @@ Read key files to understand the current state of the project:
 Also check what tasks have been planned/completed:
 
 **In GitHub-only mode:**
-- Completed tasks: `gh issue list --repo "$GH_REPO" --label "task,status:done" --state closed --limit 200 --json number,title`
-- In-progress tasks: `gh issue list --repo "$GH_REPO" --label "task,status:in-progress" --state open --json number,title`
-- Pending tasks: `gh issue list --repo "$GH_REPO" --label "task,status:todo" --state open --json number,title`
+- Completed tasks: `gh issue list --repo "$TRACKER_REPO" --label "task,status:done" --state closed --limit 200 --json number,title`
+- In-progress tasks: `gh issue list --repo "$TRACKER_REPO" --label "task,status:in-progress" --state open --json number,title`
+- Pending tasks: `gh issue list --repo "$TRACKER_REPO" --label "task,status:todo" --state open --json number,title`
 
 **In local/dual mode:**
 - `done.txt` — completed tasks (fully)
@@ -162,12 +164,12 @@ Use `AskUserQuestion` to ask the user what to do:
 **In GitHub-only mode:**
 
 For ideas marked **NEEDS UPDATE** (and confirmed by user):
-- Read the current issue body: `gh issue view $ISSUE_NUM --repo "$GH_REPO" --json body --jq '.body'`
-- Update the issue body with revised content: `gh issue edit $ISSUE_NUM --repo "$GH_REPO" --body "$NEW_BODY"`
-- Add a comment: `gh issue comment $ISSUE_NUM --repo "$GH_REPO" --body "Idea updated via /idea-refactor (YYYY-MM-DD): [brief description of what changed]"`
+- Read the current issue body: `gh issue view $ISSUE_NUM --repo "$TRACKER_REPO" --json body --jq '.body'`
+- Update the issue body with revised content: `gh issue edit $ISSUE_NUM --repo "$TRACKER_REPO" --body "$NEW_BODY"`
+- Add a comment: `gh issue comment $ISSUE_NUM --repo "$TRACKER_REPO" --body "Idea updated via /idea-refactor (YYYY-MM-DD): [brief description of what changed]"`
 
 For ideas marked **REDUNDANT**, **DUPLICATE**, or **OBSOLETE** (if user confirms):
-- Add a comment: `gh issue comment $ISSUE_NUM --repo "$GH_REPO" --body "Flagged as [status] by /idea-refactor. Recommended for disapproval."`
+- Add a comment: `gh issue comment $ISSUE_NUM --repo "$TRACKER_REPO" --body "Flagged as [status] by /idea-refactor. Recommended for disapproval."`
 - Suggest using `/idea-disapprove IDEA-NNN` for each one
 
 **In dual sync mode:**

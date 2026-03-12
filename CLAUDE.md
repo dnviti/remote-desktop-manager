@@ -137,15 +137,15 @@ All user-facing UI layout state **must** be persisted via the centralized `uiPre
 
 ### Task & Idea Management
 
-Tasks and ideas are managed through one of three modes, controlled by `.claude/github-issues.json`:
+Tasks and ideas are managed through one of three modes, controlled by `.claude/issues-tracker.json` (preferred) or `.claude/github-issues.json` (legacy fallback):
 
 | `enabled` | `sync` | Mode | Data Source |
 |-----------|--------|------|-------------|
-| `true` | `false` (or absent) | **GitHub-only** | GitHub Issues only. No local files. |
-| `true` | `true` | **Dual sync** | Local files first, then GitHub Issues. |
+| `true` | `false` (or absent) | **Platform-only** | GitHub/GitLab Issues only. No local files. |
+| `true` | `true` | **Dual sync** | Local files first, then platform issues. |
 | `false` | — | **Local only** | Local text files only. |
 
-**GitHub-only mode (current):** Tasks are GitHub Issues with status labels (`status:todo`, `status:in-progress`, `status:done`). Ideas are GitHub Issues with the `idea` label. No local task/idea text files exist.
+**Platform-only mode (current):** Tasks are GitHub Issues with status labels (`status:todo`, `status:in-progress`, `status:to-test`, `status:done`). Ideas are GitHub Issues with the `idea` label. No local task/idea text files exist. Tasks in `status:in-progress` may also carry `status:to-test`, indicating they are awaiting test verification before release.
 
 **Local/Dual mode (when enabled):** Tasks are split across three files by status:
 
@@ -176,33 +176,36 @@ Use `/idea-create` to add ideas, `/idea-approve` to promote an idea to a task, `
 | Client API | `*.api.ts` | `connections.api.ts` |
 | Client hooks | `use*.ts` | `useAuth.ts` |
 
-### GitHub Issues Integration
+### Issues Tracker Integration
 
-**Config file:** `.claude/github-issues.json` — controls the operating mode, target repo, and label mappings. Copy `.claude/github-issues.example.json` to get started.
+**Config file:** `.claude/issues-tracker.json` (preferred) or `.claude/github-issues.json` (legacy fallback) — controls the operating mode, target platform/repo, and label mappings. Copy `.claude/issues-tracker.example.json` to get started.
 
 **Config parameters:**
-- `enabled` (boolean): Whether GitHub Issues integration is active
-- `sync` (boolean): Whether to maintain dual sync with local text files. When `false` (or absent), GitHub is the sole data source.
-- `repo` (string): Target GitHub repository (e.g., `dnviti/arsenale`)
-- `labels` (object): Label mappings for source, type, priority, status, and sections
+- `platform` (string): `"github"` or `"gitlab"` — determines which CLI tool (`gh` or `glab`) is used
+- `enabled` (boolean): Whether platform issues integration is active
+- `sync` (boolean): Whether to maintain dual sync with local text files. When `false` (or absent), the platform is the sole data source.
+- `repo` (string): Target repository (e.g., `dnviti/arsenale`)
+- `labels` (object): Label mappings for source, type, priority, status (including `to-test`), and sections
 
 **Setup:**
-1. Copy `.claude/github-issues.example.json` to `.claude/github-issues.json`
-2. Set `"enabled": true` and configure `"sync"` (`false` for GitHub-only, `true` for dual sync)
-3. Run `bash scripts/setup-github-labels.sh` to create all required labels
-4. Ensure `gh` CLI is authenticated (`gh auth status`)
+1. Copy `.claude/issues-tracker.example.json` to `.claude/issues-tracker.json` (or use legacy `.claude/github-issues.json`)
+2. Set `"platform"`, `"enabled": true`, and configure `"sync"` (`false` for platform-only, `true` for dual sync)
+3. Run `bash scripts/setup-labels.sh` to create all required labels (cross-platform; legacy: `bash scripts/setup-github-labels.sh`)
+4. Ensure `gh` CLI (GitHub) or `glab` CLI (GitLab) is authenticated
 
-**Behavior in GitHub-only mode** (`enabled: true`, `sync: false`):
-- All task/idea data lives exclusively in GitHub Issues — no local text files
-- `/task-create` creates a GitHub Issue with labels (`claude-code`, `task`, `priority:*`, `status:todo`, `section:*`)
-- `/task-pick` updates issue status labels (todo → in-progress → done) and closes issue on completion
+**Behavior in platform-only mode** (`enabled: true`, `sync: false`):
+- All task/idea data lives exclusively in platform issues — no local text files
+- `/task-create` creates an issue with labels (`claude-code`, `task`, `priority:*`, `status:todo`, `section:*`)
+- `/task-pick` updates issue status labels (todo → in-progress → to-test → done) and closes issue on completion
+- `/task-pick` marks completed tasks with `status:to-test` before asking for testing confirmation
 - `/task-pick` selects next task by priority label: `priority:high` > `priority:medium` > `priority:low`
-- `/idea-create` creates a GitHub Issue with `idea` label
+- `/test-engineer TASK-CODE` runs the testing workflow for `status:to-test` tasks (automated + manual)
+- `/idea-create` creates an issue with `idea` label
 - `/idea-approve` closes idea issue, creates task issue with cross-reference
 - `/idea-disapprove` closes idea issue with reason
 - `/idea-refactor` updates issue body when ideas are revised
-- `/git-publish` links PRs to related issues via `Refs #N`
-- `/release` enriches GitHub Releases with issue cross-references
+- `/git-publish` checks for untested tasks (`status:to-test`) before publishing, links PRs to issues via `Refs #N`
+- `/release` checks for untested tasks before releasing, enriches GitHub Releases with issue cross-references
 - All new content is written in English
 
 **Behavior in dual sync mode** (`enabled: true`, `sync: true`):

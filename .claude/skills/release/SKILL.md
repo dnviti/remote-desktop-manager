@@ -32,9 +32,46 @@ Always respond and work in English.
 
 The user invoked with: **$ARGUMENTS**
 
+## Platform Detection
+
+```bash
+TRACKER_CFG=".claude/issues-tracker.json"; [ ! -f "$TRACKER_CFG" ] && TRACKER_CFG=".claude/github-issues.json"
+PLATFORM="$(jq -r '.platform // "github"' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_ENABLED="$(jq -r '.enabled // false' "$TRACKER_CFG" 2>/dev/null)"
+TRACKER_REPO="$(jq -r '.repo' "$TRACKER_CFG" 2>/dev/null)"
+```
+
+| Platform command | GitHub (`gh`) | GitLab (`glab`) |
+|-----------------|---------------|-----------------|
+| List issues | `gh issue list --repo` | `glab issue list -R` |
+| Create release | `gh release create` | `glab release create` |
+| Create PR | `gh pr create` | `glab mr create` |
+
 ## Instructions
 
 ### Step 1: Pre-flight Checks
+
+**Check for untested tasks (if platform integration is enabled):**
+
+If `TRACKER_ENABLED` is `true`:
+```bash
+TO_TEST=$(gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq 'length' 2>/dev/null)
+```
+
+If `TO_TEST > 0`, warn the user:
+
+> "There are **N** tasks with `status:to-test` that have not been verified. Releasing with untested tasks is not recommended."
+
+List the untested tasks:
+```bash
+gh issue list --repo "$TRACKER_REPO" --label "task,status:to-test" --state open --json number,title --jq '.[] | "#\(.number) \(.title)"'
+```
+
+Use `AskUserQuestion` with options:
+- **"Continue release anyway"** — proceed with pre-flight checks
+- **"Abort and test first"** — stop; suggest running `/test-engineer` for each untested task
+
+STOP HERE after calling `AskUserQuestion`. Do NOT proceed until the user responds.
 
 Check the working tree and branch status from the "Current State" section above.
 
@@ -98,7 +135,7 @@ git log <LAST_TAG>..HEAD --no-merges --format="%B" | grep -c "BREAKING CHANGE"
 
 **Cross-reference task titles:** For any task codes found in commits, look up the task title for richer changelog entries.
 
-- **In GitHub-only mode** (`GH_ENABLED=true` AND `GH_SYNC != true` — check `.claude/github-issues.json`): Use `gh issue list --repo "$GH_REPO" --search "[$CODE] in:title" --label task --json title --jq '.[0].title'` to find task titles.
+- **In GitHub-only mode** (`TRACKER_ENABLED=true` AND `TRACKER_SYNC != true`): Use `gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json title --jq '.[0].title'` to find task titles.
 - **In local/dual mode**: Read `done.txt` and extract the task title.
 
 **If zero meaningful changes are found** (only `chore: update` type commits with no features or fixes):
@@ -361,13 +398,11 @@ gh pr list --base main --head develop --state open --json number,url --jq '.[0]'
 - If a PR already exists, reuse it. Store its URL.
 - If no PR exists, create one.
 
-**Check if GitHub Issues integration is enabled:**
+**Check if platform integration is enabled:**
 
-```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-```
+# Uses TRACKER_ENABLED from Platform Detection above
 
-**If `GH_ENABLED` is `true`:**
+**If `TRACKER_ENABLED` is `true`:**
 
 1. Collect task codes from commits between main and develop:
    ```bash
@@ -376,9 +411,9 @@ GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
 
 2. For each task code, find the corresponding GitHub issue number:
    ```bash
-   GH_REPO="$(jq -r '.repo' .claude/github-issues.json)"
+   # Uses TRACKER_REPO from Platform Detection above
    # For each code in TASK_CODES:
-   ISSUE_NUM=$(gh issue list --repo "$GH_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
+   ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
    ```
 
 3. Build the PR body with issue references (use `Refs` not `Closes` — issues are already closed by `/task-pick`):
@@ -401,7 +436,7 @@ GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
      --body "$PR_BODY"
    ```
 
-**If `GH_ENABLED` is `false` or the file is missing**, use the simple body:
+**If `TRACKER_ENABLED` is `false` or the file is missing**, use the simple body:
 
 ```bash
 gh pr create --base main --head develop \
@@ -498,13 +533,11 @@ If tagging or pushing fails, show the error and provide the manual commands. Sti
 
 ### Step 11.5: Create GitHub Release (if enabled)
 
-Check if GitHub Issues integration is enabled:
+Check if platform integration is enabled:
 
-```bash
-GH_ENABLED="$(jq -r '.enabled // false' .claude/github-issues.json 2>/dev/null)"
-```
+# Uses TRACKER_ENABLED from Platform Detection above
 
-**If `GH_ENABLED` is `true`:**
+**If `TRACKER_ENABLED` is `true`:**
 
 Create a GitHub Release with enriched notes:
 
@@ -512,8 +545,8 @@ Create a GitHub Release with enriched notes:
 
 2. For each task code, find the GitHub issue number:
    ```bash
-   GH_REPO="$(jq -r '.repo' .claude/github-issues.json)"
-   ISSUE_NUM=$(gh issue list --repo "$GH_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
+   # Uses TRACKER_REPO from Platform Detection above
+   ISSUE_NUM=$(gh issue list --repo "$TRACKER_REPO" --search "[$CODE] in:title" --label task --json number --jq '.[0].number' 2>/dev/null)
    ```
 
 3. Build enriched release notes:
@@ -530,14 +563,14 @@ Create a GitHub Release with enriched notes:
 
 4. Create or edit the GitHub Release:
    ```bash
-   gh release create "vX.Y.Z" --repo "$GH_REPO" \
+   gh release create "vX.Y.Z" --repo "$TRACKER_REPO" \
      --title "vX.Y.Z" \
      --notes "$RELEASE_NOTES" \
      --target main
    ```
    For beta releases, add `--prerelease`:
    ```bash
-   gh release create "vX.Y.Z-beta" --repo "$GH_REPO" \
+   gh release create "vX.Y.Z-beta" --repo "$TRACKER_REPO" \
      --title "vX.Y.Z-beta" \
      --notes "$RELEASE_NOTES" \
      --target main \
@@ -546,10 +579,10 @@ Create a GitHub Release with enriched notes:
 
 5. If the release already exists (created by CI), update it instead:
    ```bash
-   gh release edit "vX.Y.Z" --repo "$GH_REPO" --notes "$RELEASE_NOTES" 2>/dev/null || true
+   gh release edit "vX.Y.Z" --repo "$TRACKER_REPO" --notes "$RELEASE_NOTES" 2>/dev/null || true
    ```
 
-**If `GH_ENABLED` is `false` or the file is missing:** Skip this step.
+**If `TRACKER_ENABLED` is `false` or the file is missing:** Skip this step.
 
 **If `gh` fails:** Warn but do not fail — the local release commit and tag are already done.
 
