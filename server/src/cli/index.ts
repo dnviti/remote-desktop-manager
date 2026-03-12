@@ -10,6 +10,7 @@ import { registerConfigCommands } from './commands/config.commands';
 import { registerDemoCommands } from './commands/demo.commands';
 import { registerSecretCommands } from './commands/secret.commands';
 import { registerConnectionCommands } from './commands/connection.commands';
+import { registerStatsCommands } from './commands/stats.commands';
 
 export function registerCommands(program: Command): void {
   registerHealthCommands(program);
@@ -23,4 +24,5 @@ export function registerCommands(program: Command): void {
   registerDemoCommands(program);
   registerSecretCommands(program);
   registerConnectionCommands(program);
+  registerStatsCommands(program);
 }
