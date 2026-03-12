@@ -15,8 +15,7 @@ import InviteDialog from '../Dialogs/InviteDialog';
 import CreateUserDialog from '../Dialogs/CreateUserDialog';
 import IdentityVerification from '../common/IdentityVerification';
 import { extractApiError } from '../../utils/apiError';
-
-const TENANT_ROLES = ['OWNER', 'ADMIN', 'MEMBER'] as const;
+import { ALL_ROLES, ROLE_LABELS, isAdminOrAbove, type TenantRole } from '../../utils/roles';
 
 interface TenantSectionProps {
   onNavigateToTab?: (tabId: string) => void;
@@ -93,7 +92,7 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
   const [recoveryKey, setRecoveryKey] = useState('');
 
   const tenantRole = user?.tenantRole;
-  const isAdmin = tenantRole === 'OWNER' || tenantRole === 'ADMIN';
+  const isAdmin = isAdminOrAbove(tenantRole);
   const isOwner = tenantRole === 'OWNER';
 
   useEffect(() => {
@@ -212,7 +211,7 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
   const handleRoleChange = async (userId: string, newRole: string) => {
     setError('');
     try {
-      await updateUserRole(userId, newRole as 'OWNER' | 'ADMIN' | 'MEMBER');
+      await updateUserRole(userId, newRole as TenantRole);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to update role'));
     }
@@ -592,8 +591,8 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
                             onChange={(e) => handleRoleChange(u.id, e.target.value)}
                             sx={{ minWidth: 110 }}
                           >
-                            {TENANT_ROLES.map((r) => (
-                              <MenuItem key={r} value={r}>{r}</MenuItem>
+                            {ALL_ROLES.map((r) => (
+                              <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
                             ))}
                           </Select>
                         ) : (

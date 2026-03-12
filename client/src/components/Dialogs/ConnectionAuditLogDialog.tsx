@@ -23,6 +23,7 @@ import { useAuthStore } from '../../store/authStore';
 import { ACTION_LABELS, getActionColor, formatDetails, ALL_ACTIONS } from '../Audit/auditConstants';
 import IpGeoCell from '../Audit/IpGeoCell';
 import { SlideUp } from '../common/SlideUp';
+import { hasAnyRole } from '../../utils/roles';
 
 function exportCsv(logs: TenantAuditLogEntry[], connectionName: string) {
   const header = 'Date,User,Email,Action,IP Address,Country,City,Details';
@@ -65,7 +66,7 @@ export default function ConnectionAuditLogDialog({ open, onClose, connectionId, 
   const setUiPref = useUiPreferencesStore((s) => s.set);
 
   const tenantRole = useAuthStore((s) => s.user?.tenantRole);
-  const isAdmin = tenantRole === 'ADMIN' || tenantRole === 'OWNER';
+  const isAdmin = hasAnyRole(tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
 
   const [logs, setLogs] = useState<TenantAuditLogEntry[]>([]);
   const [total, setTotal] = useState(0);

@@ -1,5 +1,6 @@
 import { Response } from 'express';
 import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../types';
+import { hasAnyRole } from '../middleware/tenant.middleware';
 import * as auditService from '../services/audit.service';
 import * as permissionService from '../services/permission.service';
 import { AppError } from '../middleware/error.middleware';
@@ -47,7 +48,7 @@ export async function listConnectionLogs(req: AuthRequest, res: Response) {
     throw new AppError('Connection not found', 404);
   }
 
-  const isAdmin = req.user.tenantRole === 'ADMIN' || req.user.tenantRole === 'OWNER';
+  const isAdmin = hasAnyRole(req.user.tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
 
   const result = await auditService.getConnectionAuditLogs({
     connectionId,
@@ -63,7 +64,7 @@ export async function listConnectionAuditUsers(req: AuthRequest, res: Response) 
   assertTenantAuthenticated(req);
   const { connectionId } = validatedParams<ConnectionIdInput>(req);
 
-  const isAdmin = req.user.tenantRole === 'ADMIN' || req.user.tenantRole === 'OWNER';
+  const isAdmin = hasAnyRole(req.user.tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
   if (!isAdmin) {
     throw new AppError('Forbidden', 403);
   }

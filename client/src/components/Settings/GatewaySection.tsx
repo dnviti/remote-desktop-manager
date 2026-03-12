@@ -27,6 +27,7 @@ import ScalingControls from '../orchestration/ScalingControls';
 import GatewayInstanceList from '../orchestration/GatewayInstanceList';
 import GatewayTemplateSection from '../gateway/GatewayTemplateSection';
 import { extractApiError } from '../../utils/apiError';
+import { isOperatorOrAbove } from '../../utils/roles';
 
 interface TestState {
   gatewayId: string;
@@ -80,7 +81,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const hasTenant = Boolean(user?.tenantId);
-  const isAdmin = user?.tenantRole === 'OWNER' || user?.tenantRole === 'ADMIN';
+  const isAdmin = isOperatorOrAbove(user?.tenantRole);
 
   useEffect(() => {
     if (hasTenant) {

@@ -35,6 +35,7 @@ import TenantAuditLogSection from '../Settings/TenantAuditLogSection';
 import LdapConfigSection from '../Settings/LdapConfigSection';
 import SyncProfileSection from '../Settings/SyncProfileSection';
 import { SlideUp } from '../common/SlideUp';
+import { isAdminOrAbove } from '../../utils/roles';
 
 interface TabDef {
   id: string;
@@ -73,7 +74,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
   const [hasPassword, setHasPassword] = useState(true);
 
   const hasTenant = Boolean(user?.tenantId);
-  const isAdmin = user?.tenantRole === 'OWNER' || user?.tenantRole === 'ADMIN';
+  const isAdmin = isAdminOrAbove(user?.tenantRole);
 
   const tabs = useMemo(() => {
     const t = [...BASE_TABS];

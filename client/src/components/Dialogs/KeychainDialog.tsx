@@ -32,6 +32,7 @@ import type { SecretListItem, SecretDetail } from '../../api/secrets.api';
 import type { VaultFolderData, VaultFolderScope } from '../../api/vault-folders.api';
 import { getSecret } from '../../api/secrets.api';
 import { SlideUp } from '../common/SlideUp';
+import { isAdminOrAbove } from '../../utils/roles';
 
 interface KeychainDialogProps {
   open: boolean;
@@ -56,7 +57,7 @@ export default function KeychainDialog({ open, onClose }: KeychainDialogProps) {
 
   const moveSecret = useSecretStore((s) => s.moveSecret);
 
-  const isAdmin = user?.tenantRole === 'OWNER' || user?.tenantRole === 'ADMIN';
+  const isAdmin = isAdminOrAbove(user?.tenantRole);
   const hasTenant = !!user?.tenantId;
 
   const [initializingVault, setInitializingVault] = useState(false);

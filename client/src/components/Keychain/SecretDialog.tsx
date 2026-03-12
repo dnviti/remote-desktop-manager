@@ -14,6 +14,7 @@ import { useTeamStore } from '../../store/teamStore';
 import type { SecretDetail, SecretType, SecretScope, SecretPayload } from '../../api/secrets.api';
 import type { TenantVaultStatus } from '../../api/secrets.api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { isAdminOrAbove } from '../../utils/roles';
 
 interface SecretDialogProps {
   open: boolean;
@@ -266,7 +267,7 @@ export default function SecretDialog({ open, onClose, secret }: SecretDialogProp
   };
 
   const canSelectTeam = user?.tenantId && teams.length > 0;
-  const canSelectTenant = user?.tenantId && (user.tenantRole === 'OWNER' || user.tenantRole === 'ADMIN');
+  const canSelectTenant = user?.tenantId && isAdminOrAbove(user.tenantRole);
   const tenantVaultReady = tenantVaultStatus?.initialized && tenantVaultStatus?.hasAccess;
 
   return (

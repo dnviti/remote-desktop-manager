@@ -16,12 +16,12 @@ export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 
 export const inviteUserSchema = z.object({
   email: z.string().email(),
-  role: z.enum(['ADMIN', 'MEMBER']),
+  role: z.enum(['ADMIN', 'OPERATOR', 'MEMBER', 'CONSULTANT', 'AUDITOR', 'GUEST']),
 });
 export type InviteUserInput = z.infer<typeof inviteUserSchema>;
 
 export const updateRoleSchema = z.object({
-  role: z.enum(['OWNER', 'ADMIN', 'MEMBER']),
+  role: z.enum(['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'CONSULTANT', 'AUDITOR', 'GUEST']),
 });
 export type UpdateRoleInput = z.infer<typeof updateRoleSchema>;
 
@@ -29,7 +29,7 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   username: z.string().min(1).max(100).optional(),
   password: passwordSchema,
-  role: z.enum(['ADMIN', 'MEMBER']),
+  role: z.enum(['ADMIN', 'OPERATOR', 'MEMBER', 'CONSULTANT', 'AUDITOR', 'GUEST']),
   sendWelcomeEmail: z.boolean().optional().default(false),
 });
 export type CreateUserInput = z.infer<typeof createUserSchema>;

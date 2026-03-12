@@ -48,7 +48,7 @@ Folder organization supports nested hierarchies with drag-and-drop reordering fo
 
 Arsenale supports multi-tenant architecture where each organization operates in isolation. Users can belong to multiple organizations and switch between them seamlessly. Each tenant has its own set of users, teams, connections, gateways, and vault secrets.
 
-Tenant roles (owner, admin, member) provide hierarchical access control. Owners have full control including tenant deletion. Admins can manage users, configure policies, and administer gateways. Members have standard access to their assigned resources.
+Tenant roles provide a seven-level hierarchical access control: Owner > Admin > Operator > Member > Consultant > Auditor > Guest. Owners have full control including tenant deletion. Admins can manage users, configure policies, and administer gateways. Operators can manage gateways and view active sessions. Members have standard access to their assigned resources. Consultants have access to assigned connections only. Auditors have read-only access to audit logs and sessions. Guests can view shared connection info without connecting. Non-hierarchical access is supported via role-any checks (e.g., Auditors access audit routes despite being below Member in the hierarchy).
 
 Tenant-level policies allow administrators to enforce mandatory multi-factor authentication for all members, set maximum vault auto-lock durations to prevent users from keeping vaults unlocked indefinitely, and configure default session inactivity timeouts. User accounts can be enabled or disabled by administrators, and admins can perform identity-verified operations like changing user emails or resetting passwords.
 

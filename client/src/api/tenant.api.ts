@@ -1,4 +1,5 @@
 import api from './client';
+import type { TenantRole } from '../utils/roles';
 
 export interface TenantData {
   id: string;
@@ -38,7 +39,7 @@ export interface CreateUserData {
   email: string;
   username?: string;
   password: string;
-  role: 'ADMIN' | 'MEMBER';
+  role: TenantRole;
   sendWelcomeEmail?: boolean;
 }
 
@@ -121,7 +122,7 @@ export async function listTenantUsers(tenantId: string): Promise<TenantUser[]> {
 export async function inviteUser(
   tenantId: string,
   email: string,
-  role: 'ADMIN' | 'MEMBER',
+  role: TenantRole,
 ): Promise<InviteResult> {
   const { data } = await api.post(`/tenants/${tenantId}/invite`, { email, role });
   return data;
@@ -130,7 +131,7 @@ export async function inviteUser(
 export async function updateUserRole(
   tenantId: string,
   userId: string,
-  role: 'OWNER' | 'ADMIN' | 'MEMBER',
+  role: TenantRole,
 ): Promise<TenantUser> {
   const { data } = await api.put(`/tenants/${tenantId}/users/${userId}`, { role });
   return data;

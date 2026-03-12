@@ -1,5 +1,7 @@
 import prisma from '../lib/prisma';
+import { TenantRole } from '../generated/prisma/client';
 import bcrypt from 'bcrypt';
+import { TenantRoleType } from '../types';
 import { AppError } from '../middleware/error.middleware';
 import * as sshKeyService from './sshkey.service';
 import * as auditService from './audit.service';
@@ -211,8 +213,8 @@ export async function listTenantUsers(tenantId: string) {
     },
   });
 
-  // Sort by role hierarchy: OWNER first, then ADMIN, then MEMBER
-  const roleOrder: Record<string, number> = { OWNER: 0, ADMIN: 1, MEMBER: 2 };
+  // Sort by role hierarchy: OWNER first, then descending privilege
+  const roleOrder: Record<string, number> = { OWNER: 0, ADMIN: 1, OPERATOR: 2, MEMBER: 3, CONSULTANT: 4, AUDITOR: 5, GUEST: 6 };
   return members
     .map((m) => ({
       id: m.user.id,
@@ -236,7 +238,7 @@ export async function listTenantUsers(tenantId: string) {
 export async function getUserProfile(
   tenantId: string,
   targetUserId: string,
-  viewerRole?: 'OWNER' | 'ADMIN' | 'MEMBER',
+  viewerRole?: string,
 ) {
   const membership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId: targetUserId } },
@@ -301,7 +303,7 @@ export async function getUserProfile(
   return profile;
 }
 
-export async function inviteUser(tenantId: string, email: string, role: 'ADMIN' | 'MEMBER') {
+export async function inviteUser(tenantId: string, email: string, role: TenantRoleType) {
   const targetUser = await prisma.user.findUnique({ where: { email } });
   if (!targetUser) {
     throw new AppError('User not found. They must register first.', 404);
@@ -316,13 +318,17 @@ export async function inviteUser(tenantId: string, email: string, role: 'ADMIN' 
 
   const [membership, tenant] = await Promise.all([
     prisma.tenantMember.create({
-      data: { tenantId, userId: targetUser.id, role, isActive: false },
+      data: { tenantId, userId: targetUser.id, role: role as TenantRole, isActive: false },
     }),
     prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
   ]);
 
   const tenantName = tenant?.name ?? 'an organization';
-  const roleLabel = role === 'ADMIN' ? 'Admin' : 'Member';
+  const roleLabels: Record<string, string> = {
+    ADMIN: 'Admin', OPERATOR: 'Operator', MEMBER: 'Member',
+    CONSULTANT: 'Consultant', AUDITOR: 'Auditor', GUEST: 'Guest',
+  };
+  const roleLabel = roleLabels[role] ?? role;
   const msg = `You've been invited to join "${tenantName}" as ${roleLabel}`;
 
   createNotificationAsync({
@@ -352,7 +358,7 @@ export async function inviteUser(tenantId: string, email: string, role: 'ADMIN' 
 export async function updateUserRole(
   tenantId: string,
   targetUserId: string,
-  newRole: 'OWNER' | 'ADMIN' | 'MEMBER',
+  newRole: TenantRoleType,
   actingUserId: string
 ) {
   const membership = await prisma.tenantMember.findUnique({
@@ -382,7 +388,7 @@ export async function updateUserRole(
 
   const updated = await prisma.tenantMember.update({
     where: { tenantId_userId: { tenantId, userId: targetUserId } },
-    data: { role: newRole },
+    data: { role: newRole as TenantRole },
     include: { user: { select: { id: true, email: true, username: true } } },
   });
 
@@ -429,7 +435,7 @@ export async function removeUser(tenantId: string, targetUserId: string, actingU
 
 export async function createUser(
   tenantId: string,
-  data: { email: string; username?: string; password: string; role: 'ADMIN' | 'MEMBER' },
+  data: { email: string; username?: string; password: string; role: TenantRoleType },
   _actingUserId: string,
 ) {
   // Check for existing user
@@ -482,7 +488,7 @@ export async function createUser(
     });
 
     const membership = await tx.tenantMember.create({
-      data: { tenantId, userId: user.id, role: data.role, isActive: false },
+      data: { tenantId, userId: user.id, role: data.role as TenantRole, isActive: false },
     });
 
     return { ...user, role: membership.role };

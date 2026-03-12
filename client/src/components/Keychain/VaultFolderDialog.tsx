@@ -9,6 +9,7 @@ import { useSecretStore } from '../../store/secretStore';
 import { useAuthStore } from '../../store/authStore';
 import { useTeamStore } from '../../store/teamStore';
 import { extractApiError } from '../../utils/apiError';
+import { isAdminOrAbove } from '../../utils/roles';
 
 interface VaultFolderDialogProps {
   open: boolean;
@@ -58,7 +59,7 @@ export default function VaultFolderDialog({
   const isEditMode = Boolean(folder);
 
   const canSelectTeam = user?.tenantId && teams.length > 0;
-  const canSelectTenant = user?.tenantId && (user.tenantRole === 'OWNER' || user.tenantRole === 'ADMIN');
+  const canSelectTenant = user?.tenantId && isAdminOrAbove(user.tenantRole);
   const tenantVaultReady = tenantVaultStatus?.initialized && tenantVaultStatus?.hasAccess;
 
   // Determine active scope and teamId

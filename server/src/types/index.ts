@@ -1,10 +1,12 @@
 import { Request } from 'express';
 
+export type TenantRoleType = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'MEMBER' | 'CONSULTANT' | 'AUDITOR' | 'GUEST';
+
 export interface AuthPayload {
   userId: string;
   email: string;
   tenantId?: string;
-  tenantRole?: 'OWNER' | 'ADMIN' | 'MEMBER';
+  tenantRole?: TenantRoleType;
 }
 
 // Merge AuthPayload into Express.User so passport's global
@@ -36,7 +38,7 @@ export interface AuthenticatedRequest extends Request {
 
 /** AuthRequest where the user is also bound to a tenant. */
 export interface TenantRequest extends Request {
-  user: AuthPayload & { tenantId: string; tenantRole: 'OWNER' | 'ADMIN' | 'MEMBER' };
+  user: AuthPayload & { tenantId: string; tenantRole: TenantRoleType };
   teamMembership?: TeamMembershipInfo;
 }
 

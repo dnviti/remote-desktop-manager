@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from './authStore';
 import { useTabsStore } from './tabsStore';
 import { useConnectionsStore } from './connectionsStore';
+import type { TenantRole } from '../utils/roles';
 
 interface TenantState {
   tenant: TenantData | null;
@@ -26,8 +27,8 @@ interface TenantState {
   updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null }) => Promise<void>;
   deleteTenant: () => Promise<void>;
   fetchUsers: () => Promise<void>;
-  inviteUser: (email: string, role: 'ADMIN' | 'MEMBER') => Promise<void>;
-  updateUserRole: (userId: string, role: 'OWNER' | 'ADMIN' | 'MEMBER') => Promise<void>;
+  inviteUser: (email: string, role: TenantRole) => Promise<void>;
+  updateUserRole: (userId: string, role: TenantRole) => Promise<void>;
   removeUser: (userId: string) => Promise<void>;
   createUser: (data: CreateUserData) => Promise<CreateUserResult>;
   toggleUserEnabled: (userId: string, enabled: boolean) => Promise<void>;

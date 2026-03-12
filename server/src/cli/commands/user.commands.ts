@@ -3,7 +3,8 @@ import { Command } from 'commander';
 import prisma from '../../lib/prisma';
 import * as tenantService from '../../services/tenant.service';
 import * as auditService from '../../services/audit.service';
-import { AuditAction, Prisma } from '../../generated/prisma/client';
+import { AuditAction, Prisma, TenantRole } from '../../generated/prisma/client';
+import { TenantRoleType } from '../../types';
 import { resolveUser, resolveTenant } from '../helpers/resolve';
 import { requireConfirm } from '../helpers/confirm';
 import { printJson, printTable, printError, printSuccess } from '../helpers/output';
@@ -213,14 +214,14 @@ export function registerUserCommands(program: Command): void {
     .description('Change a user\'s role in a tenant')
     .argument('<identifier>', 'User email or UUID')
     .requiredOption('--tenant-id <id>', 'Tenant ID or slug')
-    .requiredOption('--role <role>', 'New role (OWNER|ADMIN|MEMBER)')
+    .requiredOption('--role <role>', 'New role (OWNER|ADMIN|OPERATOR|MEMBER|CONSULTANT|AUDITOR|GUEST)')
     .option('--format <format>', 'Output format (json|table)', 'table')
     .action(async (identifier: string, opts: { tenantId: string; role: string; format: string }) => {
       const [u, tenant] = await Promise.all([resolveUser(identifier), resolveTenant(opts.tenantId)]);
       if (!u) { printError(`User not found: ${identifier}`); process.exitCode = 1; return; }
       if (!tenant) { printError(`Tenant not found: ${opts.tenantId}`); process.exitCode = 1; return; }
 
-      const validRoles = ['OWNER', 'ADMIN', 'MEMBER'];
+      const validRoles = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'CONSULTANT', 'AUDITOR', 'GUEST'];
       if (!validRoles.includes(opts.role)) {
         printError(`Invalid role: ${opts.role}. Must be one of: ${validRoles.join(', ')}`);
         process.exitCode = 1;
@@ -229,7 +230,7 @@ export function registerUserCommands(program: Command): void {
 
       try {
         const result = await tenantService.updateUserRole(
-          tenant.id, u.id, opts.role as 'OWNER' | 'ADMIN' | 'MEMBER', 'cli-admin',
+          tenant.id, u.id, opts.role as TenantRoleType, 'cli-admin',
         );
 
         auditService.log({
@@ -303,7 +304,7 @@ export function registerUserCommands(program: Command): void {
     .argument('<identifier>', 'User email or UUID')
     .requiredOption('--from <id>', 'Source tenant ID or slug')
     .requiredOption('--to <id>', 'Target tenant ID or slug')
-    .option('--role <role>', 'Role in target tenant (ADMIN|MEMBER)', 'MEMBER')
+    .option('--role <role>', 'Role in target tenant (ADMIN|OPERATOR|MEMBER|CONSULTANT|AUDITOR|GUEST)', 'MEMBER')
     .option('--confirm', 'Confirm destructive operation')
     .option('--format <format>', 'Output format (json|table)', 'table')
     .action(async (identifier: string, opts: { from: string; to: string; role: string; confirm?: boolean; format: string }) => {
@@ -372,7 +373,7 @@ export function registerUserCommands(program: Command): void {
           data: {
             tenantId: toTenant.id,
             userId: u.id,
-            role: opts.role as 'ADMIN' | 'MEMBER',
+            role: opts.role as TenantRole,
           },
         });
       });
@@ -409,7 +410,7 @@ export function registerUserCommands(program: Command): void {
     .requiredOption('--password <password>', 'User password')
     .requiredOption('--tenant-id <id>', 'Tenant ID or slug')
     .option('--username <name>', 'Display name')
-    .option('--role <role>', 'Tenant role (ADMIN|MEMBER)', 'MEMBER')
+    .option('--role <role>', 'Tenant role (ADMIN|OPERATOR|MEMBER|CONSULTANT|AUDITOR|GUEST)', 'MEMBER')
     .option('--format <format>', 'Output format (json|table)', 'table')
     .action(async (opts: { email: string; password: string; tenantId: string; username?: string; role: string; format: string }) => {
       const tenant = await resolveTenant(opts.tenantId);
@@ -421,7 +422,7 @@ export function registerUserCommands(program: Command): void {
           email: opts.email,
           username: opts.username,
           password: opts.password,
-          role: opts.role as 'ADMIN' | 'MEMBER',
+          role: opts.role as TenantRoleType,
         },
         'cli',
       );

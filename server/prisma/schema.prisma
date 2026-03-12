@@ -11,7 +11,11 @@ datasource db {
 enum TenantRole {
   OWNER
   ADMIN
+  OPERATOR
   MEMBER
+  CONSULTANT
+  AUDITOR
+  GUEST
 }
 
 enum TeamRole {

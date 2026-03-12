@@ -5,6 +5,7 @@ import * as tenantService from '../../services/tenant.service';
 import * as auditService from '../../services/audit.service';
 import * as secretService from '../../services/secret.service';
 import { AuditAction } from '../../generated/prisma/client';
+import { TenantRoleType } from '../../types';
 import { resolveUser, resolveTenant } from '../helpers/resolve';
 import { requireConfirm } from '../helpers/confirm';
 import { unlockUserVault } from '../helpers/vault';
@@ -188,13 +189,13 @@ export function registerTenantCommands(program: Command): void {
     .description('Add an existing user to a tenant')
     .argument('<identifier>', 'Tenant UUID or slug')
     .requiredOption('--email <email>', 'User email to add')
-    .option('--role <role>', 'Role (ADMIN|MEMBER)', 'MEMBER')
+    .option('--role <role>', 'Role (ADMIN|OPERATOR|MEMBER|CONSULTANT|AUDITOR|GUEST)', 'MEMBER')
     .option('--format <format>', 'Output format (json|table)', 'table')
     .action(async (identifier: string, opts: { email: string; role: string; format: string }) => {
       const t = await resolveTenant(identifier);
       if (!t) { printError(`Tenant not found: ${identifier}`); process.exitCode = 1; return; }
 
-      const result = await tenantService.inviteUser(t.id, opts.email, opts.role as 'ADMIN' | 'MEMBER');
+      const result = await tenantService.inviteUser(t.id, opts.email, opts.role as TenantRoleType);
 
       auditService.log({
         userId: null,

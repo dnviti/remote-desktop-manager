@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import { useTenantStore } from '../../store/tenantStore';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { ASSIGNABLE_ROLES, ROLE_LABELS, type TenantRole } from '../../utils/roles';
 
 interface InviteDialogProps {
   open: boolean;
@@ -13,7 +14,7 @@ interface InviteDialogProps {
 
 export default function InviteDialog({ open, onClose }: InviteDialogProps) {
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<'ADMIN' | 'MEMBER'>('MEMBER');
+  const [role, setRole] = useState<TenantRole>('MEMBER');
   const { loading, error, setError, run } = useAsyncAction();
   const inviteUser = useTenantStore((s) => s.inviteUser);
 
@@ -60,10 +61,11 @@ export default function InviteDialog({ open, onClose }: InviteDialogProps) {
             <Select
               value={role}
               label="Role"
-              onChange={(e) => setRole(e.target.value as 'ADMIN' | 'MEMBER')}
+              onChange={(e) => setRole(e.target.value as TenantRole)}
             >
-              <MenuItem value="MEMBER">Member</MenuItem>
-              <MenuItem value="ADMIN">Admin</MenuItem>
+              {ASSIGNABLE_ROLES.map((r) => (
+                <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
+              ))}
             </Select>
           </FormControl>
         </Box>

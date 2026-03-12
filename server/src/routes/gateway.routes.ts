@@ -15,38 +15,38 @@ router.use(authenticate);
 router.use(requireTenant);
 
 router.get('/', asyncHandler(gatewayController.list));
-router.post('/', requireTenantRole('ADMIN'), validate(createGatewaySchema), asyncHandler(gatewayController.create));
+router.post('/', requireTenantRole('OPERATOR'), validate(createGatewaySchema), asyncHandler(gatewayController.create));
 
 // SSH key pair management (must be before /:id routes)
-router.post('/ssh-keypair', requireTenantRole('ADMIN'), asyncHandler(gatewayController.generateSshKeyPair));
-router.get('/ssh-keypair', requireTenantRole('ADMIN'), asyncHandler(gatewayController.getSshPublicKey));
-router.get('/ssh-keypair/private', requireTenantRole('ADMIN'), asyncHandler(gatewayController.downloadSshPrivateKey));
-router.post('/ssh-keypair/rotate', requireTenantRole('ADMIN'), asyncHandler(gatewayController.rotateSshKeyPair));
-router.patch('/ssh-keypair/rotation', requireTenantRole('ADMIN'), validate(rotationPolicySchema), asyncHandler(gatewayController.updateRotationPolicy));
-router.get('/ssh-keypair/rotation', requireTenantRole('ADMIN'), asyncHandler(gatewayController.getRotationStatus));
+router.post('/ssh-keypair', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.generateSshKeyPair));
+router.get('/ssh-keypair', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.getSshPublicKey));
+router.get('/ssh-keypair/private', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.downloadSshPrivateKey));
+router.post('/ssh-keypair/rotate', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.rotateSshKeyPair));
+router.patch('/ssh-keypair/rotation', requireTenantRole('OPERATOR'), validate(rotationPolicySchema), asyncHandler(gatewayController.updateRotationPolicy));
+router.get('/ssh-keypair/rotation', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.getRotationStatus));
 
 // Gateway templates (must be before /:id routes)
-router.get('/templates', requireTenantRole('ADMIN'), asyncHandler(gatewayController.listTemplates));
-router.post('/templates', requireTenantRole('ADMIN'), validate(createTemplateSchema), asyncHandler(gatewayController.createTemplate));
-router.put('/templates/:templateId', requireTenantRole('ADMIN'), validate(updateTemplateSchema), asyncHandler(gatewayController.updateTemplate));
-router.delete('/templates/:templateId', requireTenantRole('ADMIN'), asyncHandler(gatewayController.deleteTemplate));
-router.post('/templates/:templateId/deploy', requireTenantRole('ADMIN'), asyncHandler(gatewayController.deployFromTemplate));
+router.get('/templates', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.listTemplates));
+router.post('/templates', requireTenantRole('OPERATOR'), validate(createTemplateSchema), asyncHandler(gatewayController.createTemplate));
+router.put('/templates/:templateId', requireTenantRole('OPERATOR'), validate(updateTemplateSchema), asyncHandler(gatewayController.updateTemplate));
+router.delete('/templates/:templateId', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.deleteTemplate));
+router.post('/templates/:templateId/deploy', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.deployFromTemplate));
 
-router.put('/:id', requireTenantRole('ADMIN'), validateUuidParam(), validate(updateGatewaySchema), asyncHandler(gatewayController.update));
-router.delete('/:id', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.remove));
+router.put('/:id', requireTenantRole('OPERATOR'), validateUuidParam(), validate(updateGatewaySchema), asyncHandler(gatewayController.update));
+router.delete('/:id', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.remove));
 router.post('/:id/test', validateUuidParam(), asyncHandler(gatewayController.testConnectivity));
-router.post('/:id/push-key', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.pushKey));
+router.post('/:id/push-key', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.pushKey));
 
 // Managed gateway lifecycle
-router.post('/:id/deploy', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.deploy));
-router.delete('/:id/deploy', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.undeploy));
-router.post('/:id/scale', requireTenantRole('ADMIN'), validateUuidParam(), validate(scaleSchema), asyncHandler(gatewayController.scale));
-router.get('/:id/instances', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.listInstances));
-router.post('/:id/instances/:instanceId/restart', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.restartInstance));
-router.get('/:id/instances/:instanceId/logs', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.getInstanceLogs));
+router.post('/:id/deploy', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.deploy));
+router.delete('/:id/deploy', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.undeploy));
+router.post('/:id/scale', requireTenantRole('OPERATOR'), validateUuidParam(), validate(scaleSchema), asyncHandler(gatewayController.scale));
+router.get('/:id/instances', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.listInstances));
+router.post('/:id/instances/:instanceId/restart', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.restartInstance));
+router.get('/:id/instances/:instanceId/logs', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.getInstanceLogs));
 
 // Auto-scaling configuration
-router.get('/:id/scaling', requireTenantRole('ADMIN'), validateUuidParam(), asyncHandler(gatewayController.getScalingStatus));
-router.put('/:id/scaling', requireTenantRole('ADMIN'), validateUuidParam(), validate(scalingConfigSchema), asyncHandler(gatewayController.updateScalingConfig));
+router.get('/:id/scaling', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.getScalingStatus));
+router.put('/:id/scaling', requireTenantRole('OPERATOR'), validateUuidParam(), validate(scalingConfigSchema), asyncHandler(gatewayController.updateScalingConfig));
 
 export default router;

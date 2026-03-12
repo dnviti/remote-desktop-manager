@@ -1,10 +1,14 @@
 import { Response, NextFunction } from 'express';
-import { AuthRequest } from '../types';
+import { AuthRequest, TenantRoleType } from '../types';
 
 const ROLE_HIERARCHY: Record<string, number> = {
-  MEMBER: 1,
-  ADMIN: 2,
-  OWNER: 3,
+  GUEST:      0.1,
+  AUDITOR:    0.3,
+  CONSULTANT: 0.5,
+  MEMBER:     1,
+  OPERATOR:   2,
+  ADMIN:      3,
+  OWNER:      4,
 };
 
 /**
@@ -21,10 +25,10 @@ export function requireTenant(req: AuthRequest, res: Response, next: NextFunctio
 
 /**
  * Requires the authenticated user to have at least the given tenant role.
- * Hierarchy: OWNER > ADMIN > MEMBER
+ * Hierarchy: OWNER > ADMIN > OPERATOR > MEMBER > CONSULTANT > AUDITOR > GUEST
  * Must be used AFTER `requireTenant`.
  */
-export function requireTenantRole(minRole: 'MEMBER' | 'ADMIN' | 'OWNER') {
+export function requireTenantRole(minRole: TenantRoleType) {
   return (req: AuthRequest, res: Response, next: NextFunction): void => {
     const userRole = req.user?.tenantRole;
     if (!userRole || ROLE_HIERARCHY[userRole] < ROLE_HIERARCHY[minRole]) {
@@ -33,6 +37,32 @@ export function requireTenantRole(minRole: 'MEMBER' | 'ADMIN' | 'OWNER') {
     }
     next();
   };
+}
+
+/**
+ * Requires the authenticated user to have one of the specified roles.
+ * Unlike requireTenantRole, this does NOT use hierarchy — it checks set membership.
+ * Must be used AFTER `requireTenant`.
+ */
+export function requireTenantRoleAny(...allowedRoles: TenantRoleType[]) {
+  const allowed = new Set<string>(allowedRoles);
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    const userRole = req.user?.tenantRole;
+    if (!userRole || !allowed.has(userRole)) {
+      res.status(403).json({ error: 'Insufficient tenant role' });
+      return;
+    }
+    next();
+  };
+}
+
+/**
+ * Checks whether the given role is one of the allowed roles (non-hierarchical).
+ * Useful in controllers for inline permission checks.
+ */
+export function hasAnyRole(role: string | undefined, ...allowedRoles: string[]): boolean {
+  if (!role) return false;
+  return allowedRoles.includes(role);
 }
 
 /**
