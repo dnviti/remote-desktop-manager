@@ -10,6 +10,7 @@ import { getPublicConfig } from '../services/appConfig.service';
 import type { AuthRequest } from '../types';
 import { assertAuthenticated } from '../types';
 import { getClientIp } from '../utils/ip';
+import { getRequestBinding } from '../utils/tokenBinding';
 import { verifyEmailSchema } from '../schemas/auth.schemas';
 import type { RegisterInput, LoginInput, VerifyTotpInput, RequestSmsInput, VerifySmsInput, RequestWebAuthnInput, VerifyWebAuthnInput, ResendVerificationInput, MfaSetupTokenInput, MfaSetupVerifyInput, SwitchTenantInput, ForgotPasswordInput, ResetTokenInput, CompleteResetInput } from '../schemas/auth.schemas';
 
@@ -27,7 +28,7 @@ export async function register(req: Request, res: Response) {
 export async function login(req: Request, res: Response, next: NextFunction) {
   try {
     const { email, password } = req.body as LoginInput;
-    const result = await authService.login(email, password, getClientIp(req));
+    const result = await authService.login(email, password, getClientIp(req), getRequestBinding(req));
 
     if ('mfaSetupRequired' in result && result.mfaSetupRequired) {
       res.json({
@@ -69,7 +70,7 @@ export async function login(req: Request, res: Response, next: NextFunction) {
 export async function verifyTotp(req: Request, res: Response, next: NextFunction) {
   try {
     const { tempToken, code } = req.body as VerifyTotpInput;
-    const result = await authService.verifyTotp(tempToken, code);
+    const result = await authService.verifyTotp(tempToken, code, getRequestBinding(req));
     auditService.log({ userId: result.user.id, action: 'LOGIN_TOTP', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
@@ -101,7 +102,7 @@ export async function requestSmsCode(req: Request, res: Response, next: NextFunc
 export async function verifySms(req: Request, res: Response, next: NextFunction) {
   try {
     const { tempToken, code } = req.body as VerifySmsInput;
-    const result = await authService.verifySmsCode(tempToken, code);
+    const result = await authService.verifySmsCode(tempToken, code, getRequestBinding(req));
     auditService.log({ userId: result.user.id, action: 'LOGIN_SMS', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
@@ -133,7 +134,7 @@ export async function requestWebAuthnOptions(req: Request, res: Response, next: 
 export async function verifyWebAuthn(req: Request, res: Response, next: NextFunction) {
   try {
     const { tempToken, credential } = req.body as VerifyWebAuthnInput;
-    const result = await authService.verifyWebAuthn(tempToken, credential);
+    const result = await authService.verifyWebAuthn(tempToken, credential, getRequestBinding(req));
     auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
@@ -156,7 +157,7 @@ export async function refresh(req: Request, res: Response, next: NextFunction) {
     if (!refreshToken) {
       return next(new AppError('Missing refresh token', 401));
     }
-    const result = await authService.refreshAccessToken(refreshToken);
+    const result = await authService.refreshAccessToken(refreshToken, getRequestBinding(req));
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user });
@@ -220,7 +221,7 @@ export async function mfaSetupInit(req: Request, res: Response, next: NextFuncti
 export async function mfaSetupVerify(req: Request, res: Response, next: NextFunction) {
   try {
     const { tempToken, code } = req.body as MfaSetupVerifyInput;
-    const result = await authService.verifyMfaSetupDuringLogin(tempToken, code);
+    const result = await authService.verifyMfaSetupDuringLogin(tempToken, code, getRequestBinding(req));
     auditService.log({ userId: result.user.id, action: 'TOTP_ENABLE', ipAddress: getClientIp(req) });
     auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: getClientIp(req) });
     setRefreshTokenCookie(res, result.refreshToken);
@@ -244,7 +245,7 @@ export async function switchTenant(req: Request, res: Response) {
   const { tenantId } = req.body as SwitchTenantInput;
   const userId = authReq.user.userId;
 
-  const result = await authService.switchTenant(userId, tenantId);
+  const result = await authService.switchTenant(userId, tenantId, getRequestBinding(req));
 
   auditService.log({
     userId,

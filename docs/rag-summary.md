@@ -64,6 +64,8 @@ Arsenale supports multiple MFA methods: TOTP authenticator apps, SMS one-time pa
 
 Account lockout protection automatically locks accounts after repeated failed login attempts, with configurable thresholds and durations. Rate limiting is applied to login, registration, password reset, and SMS endpoints to prevent abuse.
 
+Token binding ties JWT access tokens and refresh tokens to the originating client's IP address and User-Agent via a SHA-256 hash embedded in the token payload and stored on refresh token records. If a token is presented from a different IP or User-Agent than the one that issued it, the token is rejected and the session is terminated. For refresh tokens, the entire token family is revoked to prevent further use. A `TOKEN_HIJACK_ATTEMPT` audit event is logged for security monitoring. Token binding is enabled by default and can be disabled globally via the `TOKEN_BINDING_ENABLED` environment variable for environments with dynamic IPs. Tokens issued before token binding was enabled are accepted without verification for backward compatibility.
+
 Comprehensive audit logging tracks over 100 distinct action types across the platform, including authentication events, connection usage, sharing activities, administrative operations, and session lifecycle events. Audit logs include client IP addresses and optional geographic location enrichment using MaxMind GeoLite2 data. Administrators can view tenant-wide audit logs with geographic visualization on an interactive map.
 
 Session monitoring allows administrators to view all active remote sessions across the organization, with the ability to terminate sessions remotely. Idle session detection automatically marks sessions as idle after configurable inactivity periods.

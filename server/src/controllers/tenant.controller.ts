@@ -7,6 +7,7 @@ import prisma from '../lib/prisma';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
+import { getRequestBinding } from '../utils/tokenBinding';
 import type { CreateTenantInput, UpdateTenantInput, InviteUserInput, UpdateRoleInput, CreateUserInput, ToggleUserEnabledInput, AdminChangeEmailInput, AdminChangePasswordInput, UpdateMembershipExpiryInput } from '../schemas/tenant.schemas';
 
 export async function createTenant(req: AuthRequest, res: Response) {
@@ -19,7 +20,7 @@ export async function createTenant(req: AuthRequest, res: Response) {
     where: { id: req.user.userId },
     select: { id: true, email: true, username: true, avatarData: true },
   });
-  const tokens = await authService.issueTokens(updatedUser);
+  const tokens = await authService.issueTokens(updatedUser, undefined, getRequestBinding(req));
 
   auditService.log({
     userId: req.user.userId, action: 'TENANT_CREATE',

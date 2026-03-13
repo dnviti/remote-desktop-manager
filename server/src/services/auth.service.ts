@@ -28,6 +28,7 @@ import { encrypt, getMasterKey } from './crypto.service';
 import { sendVerificationEmail } from './email';
 import * as auditService from './audit.service';
 import { getSelfSignupEnabled } from './appConfig.service';
+import { computeBindingHash } from '../utils/tokenBinding';
 
 const BCRYPT_ROUNDS = 12;
 const RESEND_COOLDOWN_MS = 60 * 1000;
@@ -116,7 +117,7 @@ export async function issueTokens(user: {
   email: string;
   username: string | null;
   avatarData: string | null;
-}, tokenFamily?: string) {
+}, tokenFamily?: string, binding?: { ip: string; userAgent: string }) {
   // Fetch all tenant memberships for the user
   const allMemberships = await prisma.tenantMember.findMany({
     where: { userId: user.id },
@@ -140,11 +141,16 @@ export async function issueTokens(user: {
     activeMembership = { ...validMemberships[0], isActive: true };
   }
 
+  const ipUaHash = binding && config.tokenBindingEnabled
+    ? computeBindingHash(binding.ip, binding.userAgent)
+    : undefined;
+
   const payload: AuthPayload = {
     userId: user.id,
     email: user.email,
     ...(activeMembership && { tenantId: activeMembership.tenantId }),
     ...(activeMembership && { tenantRole: activeMembership.role as AuthPayload['tenantRole'] }),
+    ...(ipUaHash && { ipUaHash }),
   };
   const accessToken = jwt.sign(payload, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn as string,
@@ -159,6 +165,7 @@ export async function issueTokens(user: {
       userId: user.id,
       tokenFamily: family,
       expiresAt: new Date(Date.now() + refreshExpiresMs),
+      ...(ipUaHash && { ipUaHash }),
     },
   });
 
@@ -183,7 +190,7 @@ export async function issueTokens(user: {
   };
 }
 
-export async function switchTenant(userId: string, targetTenantId: string) {
+export async function switchTenant(userId: string, targetTenantId: string, binding?: { ip: string; userAgent: string }) {
   // Verify the user has a membership in the target tenant
   const membership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId: targetTenantId, userId } },
@@ -216,13 +223,14 @@ export async function switchTenant(userId: string, targetTenantId: string) {
     select: { id: true, email: true, username: true, avatarData: true },
   });
 
-  return issueTokens(user);
+  return issueTokens(user, undefined, binding);
 }
 
 async function tryLdapLogin(
   email: string,
   password: string,
   ipAddress?: string | string[],
+  binding?: { ip: string; userAgent: string },
 ) {
   const ldapService = await import('./ldap.service');
   const ldapEntry = await ldapService.authenticateUser(email, password);
@@ -355,15 +363,15 @@ async function tryLdapLogin(
     return { mfaSetupRequired: true as const, tempToken: setupToken };
   }
 
-  const tokens = await issueTokens(user);
+  const tokens = await issueTokens(user, undefined, binding);
   return { requiresMFA: false as const, ...tokens };
 }
 
-export async function login(email: string, password: string, ipAddress?: string | string[]) {
+export async function login(email: string, password: string, ipAddress?: string | string[], binding?: { ip: string; userAgent: string }) {
   // Try LDAP first if enabled
   const ldapService = await import('./ldap.service');
   if (ldapService.isEnabled()) {
-    const ldapResult = await tryLdapLogin(email, password, ipAddress);
+    const ldapResult = await tryLdapLogin(email, password, ipAddress, binding);
     if (ldapResult) return ldapResult;
   }
 
@@ -520,11 +528,11 @@ export async function login(email: string, password: string, ipAddress?: string 
 
   // Normal flow: issue real tokens
   log.verbose(`Login successful for user ${user.id} (${email})`);
-  const tokens = await issueTokens(user);
+  const tokens = await issueTokens(user, undefined, binding);
   return { requiresMFA: false as const, ...tokens };
 }
 
-export async function verifyTotp(tempToken: string, code: string) {
+export async function verifyTotp(tempToken: string, code: string, binding?: { ip: string; userAgent: string }) {
   let decoded: { userId: string; purpose: string };
   try {
     decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
@@ -568,7 +576,7 @@ export async function verifyTotp(tempToken: string, code: string) {
   }
 
   // Issue real tokens (vault was already unlocked during password step)
-  return issueTokens(user);
+  return issueTokens(user, undefined, binding);
 }
 
 export async function requestLoginSmsCode(tempToken: string) {
@@ -620,7 +628,7 @@ export async function requestWebAuthnOptions(tempToken: string) {
   return generateAuthenticationOpts(user.id);
 }
 
-export async function verifyWebAuthn(tempToken: string, credential: Record<string, unknown>) {
+export async function verifyWebAuthn(tempToken: string, credential: Record<string, unknown>, binding?: { ip: string; userAgent: string }) {
   let decoded: { userId: string; purpose: string };
   try {
     decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
@@ -641,10 +649,10 @@ export async function verifyWebAuthn(tempToken: string, credential: Record<strin
   // credential is AuthenticationResponseJSON from the browser — validated by simplewebauthn
   await verifyAuthentication(user.id, credential as unknown as Parameters<typeof verifyAuthentication>[1]);
 
-  return issueTokens(user);
+  return issueTokens(user, undefined, binding);
 }
 
-export async function verifySmsCode(tempToken: string, code: string) {
+export async function verifySmsCode(tempToken: string, code: string, binding?: { ip: string; userAgent: string }) {
   let decoded: { userId: string; purpose: string };
   try {
     decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
@@ -667,12 +675,12 @@ export async function verifySmsCode(tempToken: string, code: string) {
     throw new Error('Invalid or expired SMS code');
   }
 
-  return issueTokens(user);
+  return issueTokens(user, undefined, binding);
 }
 
 const ROTATION_GRACE_PERIOD_MS = 10_000; // 10 seconds for concurrent-tab tolerance
 
-export async function refreshAccessToken(refreshToken: string) {
+export async function refreshAccessToken(refreshToken: string, binding?: { ip: string; userAgent: string }) {
   const stored = await prisma.refreshToken.findUnique({
     where: { token: refreshToken },
     include: { user: true },
@@ -680,6 +688,32 @@ export async function refreshAccessToken(refreshToken: string) {
 
   if (!stored) {
     throw new Error('Invalid or expired refresh token');
+  }
+
+  // Token binding verification: reject if IP/UA changed or binding info is missing
+  if (config.tokenBindingEnabled && stored.ipUaHash) {
+    const currentHash = binding ? computeBindingHash(binding.ip, binding.userAgent) : null;
+    if (!currentHash || currentHash !== stored.ipUaHash) {
+      // Revoke entire token family — likely session hijacking
+      await prisma.refreshToken.deleteMany({
+        where: { tokenFamily: stored.tokenFamily },
+      });
+      auditService.log({
+        userId: stored.userId,
+        action: 'TOKEN_HIJACK_ATTEMPT',
+        ipAddress: binding?.ip ?? 'unknown',
+        details: {
+          tokenFamily: stored.tokenFamily,
+          reason: binding
+            ? 'Refresh token presented from different IP/User-Agent'
+            : 'Refresh token presented without binding info',
+        },
+      });
+      log.warn(
+        `Token binding mismatch for user ${stored.userId}, family ${stored.tokenFamily}. All tokens revoked.`,
+      );
+      throw new Error('Invalid or expired refresh token');
+    }
   }
 
   // Reuse detection: token was already rotated
@@ -711,6 +745,7 @@ export async function refreshAccessToken(refreshToken: string) {
             avatarData: stored.user.avatarData,
           },
           stored.tokenFamily,
+          binding,
         );
       }
     }
@@ -765,6 +800,7 @@ export async function refreshAccessToken(refreshToken: string) {
       avatarData: stored.user.avatarData,
     },
     stored.tokenFamily,
+    binding,
   );
 }
 
@@ -871,7 +907,7 @@ export async function setupMfaDuringLogin(tempToken: string) {
   return { secret, otpauthUri };
 }
 
-export async function verifyMfaSetupDuringLogin(tempToken: string, code: string) {
+export async function verifyMfaSetupDuringLogin(tempToken: string, code: string, binding?: { ip: string; userAgent: string }) {
   let decoded: { userId: string; purpose: string };
   try {
     decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
@@ -893,7 +929,7 @@ export async function verifyMfaSetupDuringLogin(tempToken: string, code: string)
   });
   if (!user) throw new Error('User not found');
 
-  return issueTokens(user);
+  return issueTokens(user, undefined, binding);
 }
 
 export async function cleanupExpiredTokens() {

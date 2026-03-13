@@ -11,6 +11,7 @@ import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { getClientIp } from '../utils/ip';
+import { getRequestBinding } from '../utils/tokenBinding';
 import type { VaultSetupInput } from '../schemas/oauth.schemas';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
@@ -86,7 +87,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
 
       // Login flow
       const result = await oauthService.findOrCreateOAuthUser(oauthProfile, oauthTokens);
-      const tokens = await issueTokens(result.user);
+      const tokens = await issueTokens(result.user, undefined, getRequestBinding(req));
       auditService.log({
         userId: result.user.id, action: 'LOGIN_OAUTH',
         details: { provider },

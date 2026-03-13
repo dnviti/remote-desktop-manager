@@ -7,6 +7,7 @@ export interface AuthPayload {
   email: string;
   tenantId?: string;
   tenantRole?: TenantRoleType;
+  ipUaHash?: string;
 }
 
 // Merge AuthPayload into Express.User so passport's global
