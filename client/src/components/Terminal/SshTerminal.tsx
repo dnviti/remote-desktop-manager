@@ -448,7 +448,7 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
   }, [connectionId, accessToken]);
 
   return (
-    <Box ref={containerRef} sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+    <Box ref={containerRef} data-viewer-type="ssh" sx={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
       {status === 'connecting' && reconnectState === 'idle' && (
         <Box
           sx={{

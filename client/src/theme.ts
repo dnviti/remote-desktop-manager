@@ -6,6 +6,18 @@ const shared = {
   typography: {
     fontFamily: 'Roboto, sans-serif',
   },
+  components: {
+    MuiCssBaseline: {
+      styleOverrides: {
+        '.MuiAppBar-root, .MuiToolbar-root, .MuiTabs-root, .MuiTab-root, .MuiDrawer-root': {
+          userSelect: 'none',
+        },
+        'input, textarea, [contenteditable="true"]': {
+          userSelect: 'text',
+        },
+      },
+    },
+  },
 };
 
 export const darkTheme: Theme = createTheme({

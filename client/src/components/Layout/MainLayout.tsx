@@ -48,6 +48,7 @@ import { useGatewayMonitor } from '../../hooks/useGatewayMonitor';
 import { useShareSync } from '../../hooks/useShareSync';
 import { useSecretStore } from '../../store/secretStore';
 import { useLazyMount } from '../../hooks/useLazyMount';
+import { useDlpBrowserHardening } from '../../hooks/useDlpBrowserHardening';
 import type { NavigationActions } from '../../utils/notificationActions';
 
 const SIDEBAR_WIDTH = 280;
@@ -71,6 +72,7 @@ export default function MainLayout() {
 
   useGatewayMonitor();
   useShareSync();
+  useDlpBrowserHardening();
 
   // Suppress native browser context menu globally to enforce DLP controls (CTX-301)
   useEffect(() => {
@@ -302,6 +304,7 @@ export default function MainLayout() {
             borderColor: 'divider',
             overflow: 'auto',
             bgcolor: 'background.paper',
+            userSelect: 'none',
           }}
         >
           {!user?.tenantId && (
