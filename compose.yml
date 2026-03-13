@@ -7,7 +7,7 @@ services:
       - .env.prod
     volumes:
       - pgdata:/var/lib/postgresql/data
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test:
         [
@@ -27,7 +27,7 @@ services:
     volumes:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
       interval: 10s
@@ -45,7 +45,7 @@ services:
       - label:disable
     volumes:
       - arsenale_recordings:/recordings
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test:
         [
@@ -89,7 +89,7 @@ services:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
       - /run/user/1000/podman/podman.sock:/run/user/1000/podman/podman.sock
-    restart: unless-stopped
+    restart: always
     networks:
       - arsenale_net
 
@@ -110,7 +110,7 @@ services:
     depends_on:
       server:
         condition: service_healthy
-    restart: unless-stopped
+    restart: always
     networks:
       - arsenale_net
 
@@ -133,7 +133,7 @@ services:
       - .env.prod
     volumes:
       - ./config/ssh-gateway/authorized_keys:/config/authorized_keys:ro,z
-    restart: unless-stopped
+    restart: always
     networks:
       - arsenale_net
 

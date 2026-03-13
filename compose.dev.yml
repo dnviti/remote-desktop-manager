@@ -12,7 +12,7 @@ services:
       - pgdata_dev:/var/lib/postgresql/data
     networks:
       - arsenale-dev
-    restart: unless-stopped
+    restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arsenale -d arsenale"]
       interval: 5s
@@ -25,7 +25,7 @@ services:
   #     - ${RECORDING_PATH:-./data/recordings}:/recordings
   #   networks:
   #     - arsenale-dev
-  #   restart: unless-stopped
+  #   restart: always
   #   healthcheck:
   #     test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
   #     interval: 10s
@@ -38,7 +38,7 @@ services:
       context: docker/guacenc
       dockerfile: Dockerfile
     container_name: guacenc
-    restart: unless-stopped
+    restart: always
     ports:
       - "3003:3003"
     environment:

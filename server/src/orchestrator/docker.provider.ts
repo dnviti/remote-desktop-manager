@@ -67,8 +67,8 @@ export class DockerProvider implements IOrchestratorProvider {
       'on-failure': 'on-failure',
     };
     const restartPolicyName =
-      restartPolicyMap[containerConfig.restartPolicy ?? 'unless-stopped'] ??
-      'unless-stopped';
+      restartPolicyMap[containerConfig.restartPolicy ?? 'always'] ??
+      'always';
 
     const createOptions: Dockerode.ContainerCreateOptions = {
       Image: containerConfig.image,
