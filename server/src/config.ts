@@ -188,6 +188,8 @@ export const config = {
   guacencServiceUrl: process.env.GUACENC_SERVICE_URL || 'http://guacenc:3003',
   guacencTimeoutMs: parseInt(process.env.GUACENC_TIMEOUT_MS || '120000', 10),
   guacencRecordingPath: process.env.GUACENC_RECORDING_PATH || '/recordings',
+  // Token binding — bind JWT tokens to client IP + User-Agent (MITRE T1563)
+  tokenBindingEnabled: process.env.TOKEN_BINDING_ENABLED !== 'false',
   // IP Geolocation (MaxMind GeoLite2)
   geoipDbPath: process.env.GEOIP_DB_PATH ? path.resolve(process.env.GEOIP_DB_PATH) : '',
   // Impossible travel detection — maximum plausible speed in km/h (default: 900, faster than commercial aviation)

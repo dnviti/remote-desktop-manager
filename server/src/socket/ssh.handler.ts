@@ -16,6 +16,7 @@ import * as auditService from '../services/audit.service';
 import { AsciicastWriter, startRecording, completeRecording, failRecording, buildRecordingPath } from '../services/recording.service';
 import { logger } from '../utils/logger';
 import { getSocketClientIp } from '../utils/ip';
+import { computeBindingHash } from '../utils/tokenBinding';
 import prisma from '../lib/prisma';
 import { resolveDlpPolicy } from '../utils/dlp';
 
@@ -45,6 +46,18 @@ export function setupSshHandler(io: Server) {
 
     try {
       const payload = verifyJwt<AuthPayload>(token);
+
+      // Token binding check for Socket.IO connections
+      if (config.tokenBindingEnabled && payload.ipUaHash) {
+        const currentHash = computeBindingHash(
+          getSocketClientIp(socket),
+          (socket.handshake.headers['user-agent'] as string) ?? '',
+        );
+        if (currentHash !== payload.ipUaHash) {
+          return next(new Error('Token binding mismatch'));
+        }
+      }
+
       (socket as Socket & { user: AuthPayload }).user = payload;
       next();
     } catch {

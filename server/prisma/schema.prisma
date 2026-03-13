@@ -453,6 +453,7 @@ model RefreshToken {
   token       String    @unique
   userId      String
   tokenFamily String
+  ipUaHash    String?
   revokedAt   DateTime?
   expiresAt   DateTime
   createdAt   DateTime  @default(now())
@@ -596,6 +597,7 @@ enum AuditAction {
   TENANT_MEMBERSHIP_EXPIRY_UPDATE
   TEAM_MEMBERSHIP_EXPIRY_UPDATE
   TENANT_DLP_POLICY_UPDATE
+  TOKEN_HIJACK_ATTEMPT
 }
 
 model AuditLog {

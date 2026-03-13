@@ -12,6 +12,7 @@ import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { getClientIp } from '../utils/ip';
+import { getRequestBinding } from '../utils/tokenBinding';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.saml.enabled) {
@@ -93,7 +94,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       const result = await oauthService.findOrCreateOAuthUser(
         oauthProfile, oauthTokens, samlAttributes,
       );
-      const tokens = await issueTokens(result.user);
+      const tokens = await issueTokens(result.user, undefined, getRequestBinding(req));
       auditService.log({
         userId: result.user.id,
         action: 'LOGIN_OAUTH',

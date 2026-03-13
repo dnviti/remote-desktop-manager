@@ -1,6 +1,9 @@
 import { Server, Socket } from 'socket.io';
 import { AuthPayload } from '../types';
 import { verifyJwt } from '../utils/jwt';
+import { config } from '../config';
+import { getSocketClientIp } from '../utils/ip';
+import { computeBindingHash } from '../utils/tokenBinding';
 import {
   setHealthEmitter, GatewayHealthEvent,
   setInstancesEmitter, InstancesUpdatedEvent,
@@ -17,6 +20,17 @@ export function setupGatewayMonitorHandler(io: Server) {
 
     try {
       const payload = verifyJwt<AuthPayload>(token);
+
+      if (config.tokenBindingEnabled && payload.ipUaHash) {
+        const currentHash = computeBindingHash(
+          getSocketClientIp(socket),
+          (socket.handshake.headers['user-agent'] as string) ?? '',
+        );
+        if (currentHash !== payload.ipUaHash) {
+          return next(new Error('Token binding mismatch'));
+        }
+      }
+
       (socket as Socket & { user: AuthPayload }).user = payload;
       next();
     } catch {
