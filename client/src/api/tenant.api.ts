@@ -211,3 +211,19 @@ export async function updateMembershipExpiry(
 ): Promise<void> {
   await api.patch(`/tenants/${tenantId}/users/${userId}/expiry`, { expiresAt });
 }
+
+export interface IpAllowlistData {
+  enabled: boolean;
+  mode: 'flag' | 'block';
+  entries: string[];
+}
+
+export async function getIpAllowlist(tenantId: string): Promise<IpAllowlistData> {
+  const { data } = await api.get<IpAllowlistData>(`/tenants/${tenantId}/ip-allowlist`);
+  return data;
+}
+
+export async function updateIpAllowlist(tenantId: string, payload: IpAllowlistData): Promise<IpAllowlistData> {
+  const { data } = await api.put<IpAllowlistData>(`/tenants/${tenantId}/ip-allowlist`, payload);
+  return data;
+}

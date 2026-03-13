@@ -61,3 +61,13 @@ export const updateMembershipExpirySchema = z.object({
   expiresAt: z.string().datetime().nullable(),
 });
 export type UpdateMembershipExpiryInput = z.infer<typeof updateMembershipExpirySchema>;
+
+// IPv4 CIDR: e.g. 10.0.0.0/8  |  IPv6 CIDR: e.g. 2001:db8::/32  |  single IPs without prefix
+// eslint-disable-next-line security/detect-unsafe-regex
+const cidrRegex = /^(?:(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|[0-9a-fA-F:]+(?:\/\d{1,3})?)$/;
+export const ipAllowlistSchema = z.object({
+  enabled: z.boolean(),
+  mode: z.enum(['flag', 'block']),
+  entries: z.array(z.string().regex(cidrRegex, 'Invalid IP/CIDR format')).max(200),
+});
+export type IpAllowlistInput = z.infer<typeof ipAllowlistSchema>;

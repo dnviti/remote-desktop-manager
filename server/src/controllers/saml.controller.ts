@@ -12,6 +12,7 @@ import { issueTokens } from '../services/auth.service';
 import { logger } from '../utils/logger';
 import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { getClientIp } from '../utils/ip';
+import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
@@ -95,11 +96,18 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
         oauthProfile, oauthTokens, samlAttributes,
       );
       const tokens = await issueTokens(result.user, undefined, getRequestBinding(req));
+      const ip = getClientIp(req);
+      const { flagged, blocked } = await enforceIpAllowlist(tokens.user.tenantId ?? null, ip);
+      if (blocked) {
+        auditService.log({ userId: result.user.id, action: 'LOGIN_FAILURE', ipAddress: ip, details: { reason: 'ip_not_allowed' } });
+        return res.redirect(`${config.clientUrl}/login?error=ip_not_allowed`);
+      }
       auditService.log({
         userId: result.user.id,
         action: 'LOGIN_OAUTH',
         details: { provider: 'saml' },
-        ipAddress: getClientIp(req),
+        ipAddress: ip,
+        ...(flagged && { flags: ['UNTRUSTED_IP'] }),
       });
 
       setRefreshTokenCookie(res, tokens.refreshToken);

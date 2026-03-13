@@ -5,7 +5,7 @@ import { validate, validateUuidParam } from '../middleware/validate.middleware';
 import {
   createTenantSchema, updateTenantSchema, inviteUserSchema, updateRoleSchema,
   createUserSchema, toggleUserEnabledSchema, adminChangeEmailSchema, adminChangePasswordSchema,
-  updateMembershipExpirySchema,
+  updateMembershipExpirySchema, ipAllowlistSchema,
 } from '../schemas/tenant.schemas';
 import * as tenantController from '../controllers/tenant.controller';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -44,5 +44,9 @@ router.patch('/:id/users/:userId/expiry', validateUuidParam(), requireTenant, re
 // Admin identity-verified operations on users
 router.put('/:id/users/:userId/email', validateUuidParam(), requireTenant, requireOwnTenant, requireTenantRole('ADMIN'), validateUuidParam('userId'), validate(adminChangeEmailSchema), asyncHandler(tenantController.adminChangeUserEmail));
 router.put('/:id/users/:userId/password', validateUuidParam(), requireTenant, requireOwnTenant, requireTenantRole('ADMIN'), validateUuidParam('userId'), validate(adminChangePasswordSchema), asyncHandler(tenantController.adminChangeUserPassword));
+
+// IP allowlist management (admin only)
+router.get('/:id/ip-allowlist', validateUuidParam(), requireTenant, requireOwnTenant, requireTenantRole('ADMIN'), asyncHandler(tenantController.getIpAllowlist));
+router.put('/:id/ip-allowlist', validateUuidParam(), requireTenant, requireOwnTenant, requireTenantRole('ADMIN'), validate(ipAllowlistSchema), asyncHandler(tenantController.updateIpAllowlist));
 
 export default router;

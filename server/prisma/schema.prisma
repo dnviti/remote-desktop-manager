@@ -36,6 +36,9 @@ model Tenant {
   dlpDisablePaste              Boolean  @default(false)
   dlpDisableDownload           Boolean  @default(false)
   dlpDisableUpload             Boolean  @default(false)
+  ipAllowlistEnabled           Boolean  @default(false)
+  ipAllowlistMode              String   @default("flag")
+  ipAllowlistEntries           String[] @default([])
   createdAt                    DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
