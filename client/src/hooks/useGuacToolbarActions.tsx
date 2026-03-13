@@ -1,4 +1,4 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo, useCallback, useRef } from 'react';
 import {
   ContentCopy as CopyIcon,
   ContentPaste as PasteIcon,
@@ -28,6 +28,12 @@ interface UseGuacToolbarActionsOptions {
   onToggleDrive?: () => void;
 }
 
+export interface UseGuacToolbarActionsResult {
+  actions: ToolbarAction[];
+  /** Call this with the text received from the remote onclipboard event */
+  onRemoteClipboard: (text: string) => void;
+}
+
 export function useGuacToolbarActions({
   protocol,
   clientRef,
@@ -38,7 +44,9 @@ export function useGuacToolbarActions({
   enableDrive = false,
   fileBrowserOpen = false,
   onToggleDrive,
-}: UseGuacToolbarActionsOptions): ToolbarAction[] {
+}: UseGuacToolbarActionsOptions): UseGuacToolbarActionsResult {
+
+  const lastRemoteClipboardRef = useRef<string>('');
 
   const sendKeys = useCallback((keysyms: readonly number[]) => {
     const client = clientRef.current;
@@ -47,11 +55,17 @@ export function useGuacToolbarActions({
     [...keysyms].reverse().forEach((k) => client.sendKeyEvent(0, k));
   }, [clientRef]);
 
+  const onRemoteClipboard = useCallback((text: string) => {
+    lastRemoteClipboardRef.current = text;
+  }, []);
+
   const handleCopy = useCallback(() => {
-    // Remote→local clipboard sync is automatic via Guacamole onclipboard.
-    // This button serves as explicit confirmation/no-op.
-    if (!navigator.clipboard?.readText) return;
-    navigator.clipboard.readText().catch(() => {});
+    // Write the last received remote clipboard content to the local clipboard.
+    const text = lastRemoteClipboardRef.current;
+    if (!text || !navigator.clipboard?.writeText) return;
+    navigator.clipboard.writeText(text).catch((err) => {
+      console.warn('Failed to write remote clipboard to browser clipboard:', err);
+    });
   }, []);
 
   const handlePaste = useCallback(() => {
@@ -86,11 +100,11 @@ export function useGuacToolbarActions({
   const driveHiddenByDlp = dlpPolicy?.disableDownload && dlpPolicy?.disableUpload;
 
   /* eslint-disable react-hooks/refs -- callbacks capture clientRef but only read .current on click, never during render */
-  return useMemo<ToolbarAction[]>(() => {
-    const actions: ToolbarAction[] = [];
+  const actions = useMemo<ToolbarAction[]>(() => {
+    const list: ToolbarAction[] = [];
 
     // Clipboard: Copy
-    actions.push({
+    list.push({
       id: 'clipboard-copy',
       icon: <CopyIcon fontSize="small" />,
       tooltip: 'Copy',
@@ -99,7 +113,7 @@ export function useGuacToolbarActions({
     });
 
     // Clipboard: Paste
-    actions.push({
+    list.push({
       id: 'clipboard-paste',
       icon: <PasteIcon fontSize="small" />,
       tooltip: 'Paste',
@@ -108,7 +122,7 @@ export function useGuacToolbarActions({
     });
 
     // Ctrl+Alt+Del
-    actions.push({
+    list.push({
       id: 'ctrl-alt-del',
       icon: <KeyboardIcon fontSize="small" />,
       tooltip: 'Ctrl+Alt+Del',
@@ -116,7 +130,7 @@ export function useGuacToolbarActions({
     });
 
     // Send Keys submenu
-    actions.push({
+    list.push({
       id: 'send-keys',
       icon: <KeyboardIcon fontSize="small" />,
       tooltip: 'Send Keys',
@@ -130,7 +144,7 @@ export function useGuacToolbarActions({
     });
 
     // Screenshot
-    actions.push({
+    list.push({
       id: 'screenshot',
       icon: <ScreenshotIcon fontSize="small" />,
       tooltip: 'Screenshot',
@@ -139,7 +153,7 @@ export function useGuacToolbarActions({
     });
 
     // Fullscreen
-    actions.push({
+    list.push({
       id: 'fullscreen',
       icon: isFullscreen ? <FullscreenExitIcon fontSize="small" /> : <FullscreenIcon fontSize="small" />,
       tooltip: isFullscreen ? 'Exit Fullscreen' : 'Fullscreen',
@@ -149,7 +163,7 @@ export function useGuacToolbarActions({
 
     // Shared Drive (RDP only)
     if (protocol === 'RDP') {
-      actions.push({
+      list.push({
         id: 'shared-drive',
         icon: <FolderOpenIcon fontSize="small" />,
         tooltip: fileBrowserOpen ? 'Close Shared Drive' : 'Shared Drive',
@@ -160,7 +174,7 @@ export function useGuacToolbarActions({
     }
 
     // Disconnect
-    actions.push({
+    list.push({
       id: 'disconnect',
       icon: <DisconnectIcon fontSize="small" />,
       tooltip: 'Disconnect',
@@ -168,7 +182,7 @@ export function useGuacToolbarActions({
       color: 'error.main',
     });
 
-    return actions;
+    return list;
   }, [
     protocol, dlpPolicy, isFullscreen, toggleFullscreen,
     enableDrive, fileBrowserOpen, driveHiddenByDlp,
@@ -176,4 +190,6 @@ export function useGuacToolbarActions({
     onToggleDrive,
   ]);
   /* eslint-enable react-hooks/refs */
+
+  return { actions, onRemoteClipboard };
 }

@@ -237,6 +237,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
       let data = '';
       reader.ontext = (text: string) => { data += text; };
       reader.onend = () => {
+        onRemoteClipboard(data);
         if (dlpPolicyRef.current?.disableCopy) return;
         if (data && navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(data).catch((err) => {
@@ -313,7 +314,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
   });
 
   // Build toolbar actions via shared hook
-  const toolbarActions = useGuacToolbarActions({
+  const { actions: toolbarActions, onRemoteClipboard } = useGuacToolbarActions({
     protocol: 'RDP',
     clientRef,
     tabId,

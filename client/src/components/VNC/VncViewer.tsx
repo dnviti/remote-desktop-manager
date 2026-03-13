@@ -204,6 +204,7 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
       let data = '';
       reader.ontext = (text: string) => { data += text; };
       reader.onend = () => {
+        onRemoteClipboard(data);
         if (dlpPolicyRef.current?.disableCopy) return;
         if (data && navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(data).catch((err) => {
@@ -273,7 +274,7 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
   });
 
   // Build toolbar actions via shared hook
-  const toolbarActions = useGuacToolbarActions({
+  const { actions: toolbarActions, onRemoteClipboard } = useGuacToolbarActions({
     protocol: 'VNC',
     clientRef,
     tabId,

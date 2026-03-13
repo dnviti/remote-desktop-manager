@@ -87,7 +87,15 @@ export default function DockedToolbar({ actions, containerRef }: DockedToolbarPr
 
   const visibleActions = actions.filter((a) => !a.hidden);
 
-  const clampY = useCallback((percent: number) => {
+  const clampY = useCallback((percent: number, containerHeight?: number) => {
+    const toolbar = toolbarRef.current;
+    const h = containerHeight && toolbar ? toolbar.offsetHeight : 0;
+    const ch = containerHeight ?? window.innerHeight;
+    if (ch > 0 && h > 0) {
+      const minPercent = (h / 2 / ch) * 100;
+      const maxPercent = ((ch - h / 2) / ch) * 100;
+      return Math.max(minPercent, Math.min(maxPercent, percent));
+    }
     return Math.max(5, Math.min(95, percent));
   }, []);
 
@@ -109,9 +117,10 @@ export default function DockedToolbar({ actions, containerRef }: DockedToolbarPr
 
     const container = containerRef?.current;
     const containerHeight = container ? container.clientHeight : window.innerHeight;
+    if (!containerHeight) return;
     const deltaPixels = e.clientY - dragStartClientY.current;
     const deltaPercent = (deltaPixels / containerHeight) * 100;
-    setLocalY(clampY(dragStartPercent.current + deltaPercent));
+    setLocalY(clampY(dragStartPercent.current + deltaPercent, containerHeight));
 
     // Side-switching: check if pointer crossed container center
     if (container) {
@@ -136,7 +145,14 @@ export default function DockedToolbar({ actions, containerRef }: DockedToolbarPr
 
   const handleTriggerClick = useCallback(() => {
     if (wasDragged.current) return;
-    setOpen((prev) => !prev);
+    setOpen((prev) => {
+      if (prev) {
+        // Closing: clear submenu too
+        setSubMenuAnchor(null);
+        setSubMenuActions([]);
+      }
+      return !prev;
+    });
   }, []);
 
   const handleFlipSide = useCallback(() => {
@@ -216,6 +232,7 @@ export default function DockedToolbar({ actions, containerRef }: DockedToolbarPr
         {/* Expandable action panel */}
         <Paper
           elevation={4}
+          aria-hidden={!open}
           sx={{
             display: 'flex',
             flexDirection: 'column',
@@ -226,6 +243,8 @@ export default function DockedToolbar({ actions, containerRef }: DockedToolbarPr
             overflow: 'hidden',
             maxWidth: open ? 48 : 0,
             opacity: open ? 1 : 0,
+            visibility: open ? 'visible' : 'hidden',
+            pointerEvents: open ? 'auto' : 'none',
             transition: 'max-width 0.2s ease-in-out, opacity 0.15s ease-in-out',
             borderRadius: isLeft ? '0 8px 8px 0' : '8px 0 0 8px',
             bgcolor: 'background.paper',
