@@ -3,7 +3,7 @@ import {
   IconButton, Badge, Popover, Box, Typography, List, ListItemButton,
   ListItemText, ListItemIcon, Button, Divider,
 } from '@mui/material';
-import { NotificationsOutlined, DoneAll } from '@mui/icons-material';
+import { NotificationsOutlined, DoneAll, Close as CloseIcon } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../../store/authStore';
 import { useNotificationListStore } from '../../store/notificationListStore';
@@ -39,6 +39,7 @@ export default function NotificationBell({ navigationActions }: NotificationBell
   const markAsRead = useNotificationListStore((s) => s.markAsRead);
   const markAllAsRead = useNotificationListStore((s) => s.markAllAsRead);
   const addNotification = useNotificationListStore((s) => s.addNotification);
+  const removeNotification = useNotificationListStore((s) => s.removeNotification);
 
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -147,6 +148,17 @@ export default function NotificationBell({ navigationActions }: NotificationBell
                   }}
                   secondaryTypographyProps={{ variant: 'caption' }}
                 />
+                <IconButton
+                  size="small"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeNotification(n.id);
+                  }}
+                  sx={{ ml: 0.5, opacity: 0.5, '&:hover': { opacity: 1 } }}
+                  title="Dismiss"
+                >
+                  <CloseIcon fontSize="small" />
+                </IconButton>
               </ListItemButton>
             ))}
           </List>
