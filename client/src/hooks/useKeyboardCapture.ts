@@ -130,8 +130,8 @@ export function useKeyboardCapture({
       setIsFullscreen(nowFullscreen);
       onFullscreenChangeRef.current?.(nowFullscreen);
 
-      if (!nowFullscreen) {
-        // Unlock keyboard when exiting fullscreen
+      // Only unlock when the document has fully exited fullscreen
+      if (document.fullscreenElement === null) {
         try {
           navigator.keyboard?.unlock();
         } catch {
