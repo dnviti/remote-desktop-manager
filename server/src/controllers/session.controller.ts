@@ -9,6 +9,7 @@ import { resolveDomainCredentials } from '../services/domain.service';
 import { generateGuacamoleToken, mergeRdpSettings } from '../services/rdp.service';
 import { generateVncGuacamoleToken, mergeVncSettings } from '../services/vnc.service';
 import { resolveDlpPolicy } from '../utils/dlp';
+import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
 import { selectInstance } from '../services/loadBalancer.service';
@@ -122,15 +123,16 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     });
     const userRdpDefaults = (user?.rdpDefaults as Partial<RdpSettings>) ?? null;
     const connRdpSettings = (conn.rdpSettings as Partial<RdpSettings>) ?? null;
-    const mergedRdp = mergeRdpSettings(userRdpDefaults, connRdpSettings);
 
     // Resolve DLP policy: tenant floor + connection override
     const tenantDlp = req.user.tenantId
       ? await prisma.tenant.findUnique({
           where: { id: req.user.tenantId },
-          select: { dlpDisableCopy: true, dlpDisablePaste: true, dlpDisableDownload: true, dlpDisableUpload: true },
+          select: { dlpDisableCopy: true, dlpDisablePaste: true, dlpDisableDownload: true, dlpDisableUpload: true, enforcedConnectionSettings: true },
         })
       : null;
+    const tenantEnforced = (tenantDlp?.enforcedConnectionSettings as EnforcedConnectionSettings) ?? null;
+    const mergedRdp = mergeRdpSettings(userRdpDefaults, connRdpSettings, tenantEnforced?.rdp);
     const dlpPolicy = resolveDlpPolicy(
       tenantDlp ?? { dlpDisableCopy: false, dlpDisablePaste: false, dlpDisableDownload: false, dlpDisableUpload: false },
       conn.dlpPolicy as DlpPolicy | null,
@@ -318,15 +320,16 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
     }
 
     const connVncSettings = (conn.vncSettings as Partial<VncSettings>) ?? null;
-    const mergedVnc = mergeVncSettings(connVncSettings);
 
     // Resolve DLP policy: tenant floor + connection override
     const vncTenantDlp = req.user.tenantId
       ? await prisma.tenant.findUnique({
           where: { id: req.user.tenantId },
-          select: { dlpDisableCopy: true, dlpDisablePaste: true, dlpDisableDownload: true, dlpDisableUpload: true },
+          select: { dlpDisableCopy: true, dlpDisablePaste: true, dlpDisableDownload: true, dlpDisableUpload: true, enforcedConnectionSettings: true },
         })
       : null;
+    const vncTenantEnforced = (vncTenantDlp?.enforcedConnectionSettings as EnforcedConnectionSettings) ?? null;
+    const mergedVnc = mergeVncSettings(connVncSettings, vncTenantEnforced?.vnc);
     const vncDlpPolicy = resolveDlpPolicy(
       vncTenantDlp ?? { dlpDisableCopy: false, dlpDisablePaste: false, dlpDisableDownload: false, dlpDisableUpload: false },
       conn.dlpPolicy as DlpPolicy | null,

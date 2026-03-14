@@ -17,6 +17,7 @@ import {
   Tooltip,
 } from '@mui/material';
 import type { SshTerminalConfig, TerminalThemeColors } from '../../constants/terminalThemes';
+import { Lock as LockIcon } from '@mui/icons-material';
 import {
   FONT_FAMILIES,
   TERMINAL_DEFAULTS,
@@ -30,6 +31,7 @@ interface TerminalSettingsSectionProps {
   onChange: (updated: Partial<SshTerminalConfig>) => void;
   mode: 'global' | 'connection';
   resolvedDefaults?: ReturnType<typeof import('../../constants/terminalThemes').mergeTerminalConfig>;
+  enforcedFields?: Partial<SshTerminalConfig>;
 }
 
 function themeLabel(name: string): string {
@@ -84,6 +86,7 @@ export default function TerminalSettingsSection({
   onChange,
   mode,
   resolvedDefaults,
+  enforcedFields,
 }: TerminalSettingsSectionProps) {
   const defaults = resolvedDefaults ?? TERMINAL_DEFAULTS;
 
@@ -129,8 +132,11 @@ export default function TerminalSettingsSection({
     return THEME_PRESETS[currentTheme] ?? THEME_PRESETS['default-dark'];
   }, [currentTheme, value.customColors]);
 
+  const isEnforced = (key: keyof SshTerminalConfig) => enforcedFields !== undefined && enforcedFields[key] !== undefined;
+
   const renderOverrideCheckbox = (key: keyof SshTerminalConfig) => {
     if (mode !== 'connection') return null;
+    const enforced = isEnforced(key);
     return (
       <FormControlLabel
         control={
@@ -138,16 +144,17 @@ export default function TerminalSettingsSection({
             size="small"
             checked={isOverridden(key)}
             onChange={() => toggleOverride(key)}
+            disabled={enforced}
           />
         }
-        label="Override"
+        label={<>{enforced && <Tooltip title="Enforced by organization policy" arrow><LockIcon sx={{ fontSize: 14, mr: 0.5, color: 'warning.main', verticalAlign: 'middle' }} /></Tooltip>}Override</>}
         sx={{ ml: 0, mr: 1, minWidth: 100 }}
       />
     );
   };
 
   const isDisabled = (key: keyof SshTerminalConfig) =>
-    mode === 'connection' && !isOverridden(key);
+    isEnforced(key) || (mode === 'connection' && !isOverridden(key));
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>

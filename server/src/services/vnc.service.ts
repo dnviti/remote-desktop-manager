@@ -24,9 +24,10 @@ export interface VncConnectionParams {
   };
 }
 
-/** Merge system defaults with connection overrides */
+/** Merge system defaults → connection overrides → tenant enforced */
 export function mergeVncSettings(
   connectionOverrides?: Partial<VncSettings> | null,
+  tenantEnforced?: Partial<VncSettings> | null,
 ): VncSettings {
   const systemDefaults: Required<Omit<VncSettings, 'colorDepth'>> = {
     cursor: 'local',
@@ -40,6 +41,12 @@ export function mergeVncSettings(
 
   if (connectionOverrides) {
     for (const [k, v] of Object.entries(connectionOverrides)) {
+      if (v !== undefined) (merged as Record<string, unknown>)[k] = v;
+    }
+  }
+
+  if (tenantEnforced) {
+    for (const [k, v] of Object.entries(tenantEnforced)) {
       if (v !== undefined) (merged as Record<string, unknown>)[k] = v;
     }
   }

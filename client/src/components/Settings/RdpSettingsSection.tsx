@@ -13,7 +13,9 @@ import {
   ToggleButtonGroup,
   Typography,
   Collapse,
+  Tooltip,
 } from '@mui/material';
+import { Lock as LockIcon } from '@mui/icons-material';
 import type { RdpSettings } from '../../constants/rdpDefaults';
 import {
   RDP_DEFAULTS,
@@ -22,11 +24,20 @@ import {
   COMMON_TIMEZONES,
 } from '../../constants/rdpDefaults';
 
-function OverrideCheckbox({ label, mode, isOverridden, onToggle }: {
+function EnforcedBadge() {
+  return (
+    <Tooltip title="Enforced by organization policy" arrow>
+      <LockIcon sx={{ fontSize: 14, ml: 0.5, color: 'warning.main', verticalAlign: 'middle' }} />
+    </Tooltip>
+  );
+}
+
+function OverrideCheckbox({ label, mode, isOverridden, onToggle, enforced }: {
   label: string;
   mode: 'global' | 'connection';
   isOverridden: boolean;
   onToggle: () => void;
+  enforced?: boolean;
 }) {
   if (mode !== 'connection') return null;
   return (
@@ -36,9 +47,10 @@ function OverrideCheckbox({ label, mode, isOverridden, onToggle }: {
           size="small"
           checked={isOverridden}
           onChange={onToggle}
+          disabled={enforced}
         />
       }
-      label={<Typography variant="caption">Override {label}</Typography>}
+      label={<Typography variant="caption">Override {label}{enforced && <EnforcedBadge />}</Typography>}
       sx={{ mb: 0.5 }}
     />
   );
@@ -49,9 +61,10 @@ interface RdpSettingsSectionProps {
   onChange: (updated: Partial<RdpSettings>) => void;
   mode: 'global' | 'connection';
   resolvedDefaults?: RdpSettings;
+  enforcedFields?: Partial<RdpSettings>;
 }
 
-export default function RdpSettingsSection({ value, onChange, mode, resolvedDefaults }: RdpSettingsSectionProps) {
+export default function RdpSettingsSection({ value, onChange, mode, resolvedDefaults, enforcedFields }: RdpSettingsSectionProps) {
   const defaults = resolvedDefaults ?? RDP_DEFAULTS;
 
   function get<K extends keyof RdpSettings>(key: K): RdpSettings[K] {
@@ -74,7 +87,9 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
     }
   };
 
-  const fieldDisabled = (key: keyof RdpSettings) => mode === 'connection' && !isOverridden(key);
+  const isEnforced = (key: keyof RdpSettings) => enforcedFields !== undefined && enforcedFields[key] !== undefined;
+
+  const fieldDisabled = (key: keyof RdpSettings) => isEnforced(key) || (mode === 'connection' && !isOverridden(key));
 
   const qualityPreset = get('qualityPreset') ?? 'balanced';
   const isCustom = qualityPreset === 'custom';
@@ -93,7 +108,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       {/* ── Quality Preset ─────────────────────────────────────── */}
       <Box>
         <Typography variant="subtitle2" gutterBottom>Quality Preset</Typography>
-        <OverrideCheckbox label="quality preset" mode={mode} isOverridden={isOverridden('qualityPreset')} onToggle={() => toggleOverride('qualityPreset', get('qualityPreset'))} />
+        <OverrideCheckbox label="quality preset" mode={mode} isOverridden={isOverridden('qualityPreset')} onToggle={() => toggleOverride('qualityPreset', get('qualityPreset'))} enforced={isEnforced('qualityPreset')} />
         <ToggleButtonGroup
           value={qualityPreset}
           exclusive
@@ -148,7 +163,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Display & Resolution</Typography>
 
-        <OverrideCheckbox label="color depth" mode={mode} isOverridden={isOverridden('colorDepth')} onToggle={() => toggleOverride('colorDepth', get('colorDepth'))} />
+        <OverrideCheckbox label="color depth" mode={mode} isOverridden={isOverridden('colorDepth')} onToggle={() => toggleOverride('colorDepth', get('colorDepth'))} enforced={isEnforced('colorDepth')} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('colorDepth')}>
           <InputLabel>Color Depth</InputLabel>
           <Select
@@ -163,7 +178,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox label="DPI" mode={mode} isOverridden={isOverridden('dpi')} onToggle={() => toggleOverride('dpi', get('dpi'))} />
+        <OverrideCheckbox label="DPI" mode={mode} isOverridden={isOverridden('dpi')} onToggle={() => toggleOverride('dpi', get('dpi'))} enforced={isEnforced('dpi')} />
         <Box sx={{ mb: 1.5 }}>
           <Typography variant="body2" gutterBottom>DPI: {get('dpi') ?? 96}</Typography>
           <Slider
@@ -181,7 +196,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           />
         </Box>
 
-        <OverrideCheckbox label="resolution" mode={mode} isOverridden={isOverridden('width')} onToggle={() => toggleOverride('width', get('width'))} />
+        <OverrideCheckbox label="resolution" mode={mode} isOverridden={isOverridden('width')} onToggle={() => toggleOverride('width', get('width'))} enforced={isEnforced('width')} />
         <Box sx={{ display: 'flex', gap: 1, mb: 1.5 }}>
           <TextField
             label="Width"
@@ -205,7 +220,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           />
         </Box>
 
-        <OverrideCheckbox label="resize method" mode={mode} isOverridden={isOverridden('resizeMethod')} onToggle={() => toggleOverride('resizeMethod', get('resizeMethod'))} />
+        <OverrideCheckbox label="resize method" mode={mode} isOverridden={isOverridden('resizeMethod')} onToggle={() => toggleOverride('resizeMethod', get('resizeMethod'))} enforced={isEnforced('resizeMethod')} />
         <FormControl fullWidth size="small" disabled={fieldDisabled('resizeMethod')}>
           <InputLabel>Resize Method</InputLabel>
           <Select
@@ -223,7 +238,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Audio</Typography>
 
-        <OverrideCheckbox label="audio" mode={mode} isOverridden={isOverridden('disableAudio')} onToggle={() => toggleOverride('disableAudio', get('disableAudio'))} />
+        <OverrideCheckbox label="audio" mode={mode} isOverridden={isOverridden('disableAudio')} onToggle={() => toggleOverride('disableAudio', get('disableAudio'))} enforced={isEnforced('disableAudio')} />
         <FormControlLabel
           control={
             <Switch
@@ -236,7 +251,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           label={<Typography variant="body2">Enable remote audio playback</Typography>}
         />
 
-        <OverrideCheckbox label="microphone" mode={mode} isOverridden={isOverridden('enableAudioInput')} onToggle={() => toggleOverride('enableAudioInput', get('enableAudioInput'))} />
+        <OverrideCheckbox label="microphone" mode={mode} isOverridden={isOverridden('enableAudioInput')} onToggle={() => toggleOverride('enableAudioInput', get('enableAudioInput'))} enforced={isEnforced('enableAudioInput')} />
         <FormControlLabel
           control={
             <Switch
@@ -254,7 +269,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Security</Typography>
 
-        <OverrideCheckbox label="security type" mode={mode} isOverridden={isOverridden('security')} onToggle={() => toggleOverride('security', get('security'))} />
+        <OverrideCheckbox label="security type" mode={mode} isOverridden={isOverridden('security')} onToggle={() => toggleOverride('security', get('security'))} enforced={isEnforced('security')} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('security')}>
           <InputLabel>Security Type</InputLabel>
           <Select
@@ -270,7 +285,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox label="certificate" mode={mode} isOverridden={isOverridden('ignoreCert')} onToggle={() => toggleOverride('ignoreCert', get('ignoreCert'))} />
+        <OverrideCheckbox label="certificate" mode={mode} isOverridden={isOverridden('ignoreCert')} onToggle={() => toggleOverride('ignoreCert', get('ignoreCert'))} enforced={isEnforced('ignoreCert')} />
         <FormControlLabel
           control={
             <Switch
@@ -288,7 +303,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
       <Box>
         <Typography variant="subtitle2" gutterBottom>Session</Typography>
 
-        <OverrideCheckbox label="keyboard layout" mode={mode} isOverridden={isOverridden('serverLayout')} onToggle={() => toggleOverride('serverLayout', get('serverLayout'))} />
+        <OverrideCheckbox label="keyboard layout" mode={mode} isOverridden={isOverridden('serverLayout')} onToggle={() => toggleOverride('serverLayout', get('serverLayout'))} enforced={isEnforced('serverLayout')} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('serverLayout')}>
           <InputLabel>Keyboard Layout</InputLabel>
           <Select
@@ -303,7 +318,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox label="timezone" mode={mode} isOverridden={isOverridden('timezone')} onToggle={() => toggleOverride('timezone', get('timezone'))} />
+        <OverrideCheckbox label="timezone" mode={mode} isOverridden={isOverridden('timezone')} onToggle={() => toggleOverride('timezone', get('timezone'))} enforced={isEnforced('timezone')} />
         <FormControl fullWidth size="small" sx={{ mb: 1.5 }} disabled={fieldDisabled('timezone')}>
           <InputLabel>Timezone</InputLabel>
           <Select
@@ -318,7 +333,7 @@ export default function RdpSettingsSection({ value, onChange, mode, resolvedDefa
           </Select>
         </FormControl>
 
-        <OverrideCheckbox label="console session" mode={mode} isOverridden={isOverridden('console')} onToggle={() => toggleOverride('console', get('console'))} />
+        <OverrideCheckbox label="console session" mode={mode} isOverridden={isOverridden('console')} onToggle={() => toggleOverride('console', get('console'))} enforced={isEnforced('console')} />
         <FormControlLabel
           control={
             <Switch

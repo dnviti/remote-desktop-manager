@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { EnforcedConnectionSettings } from '../api/tenant.api';
 import {
   TenantData, TenantUser, TenantMembership, CreateUserData, CreateUserResult,
   getMyTenant, createTenant as createTenantApi,
@@ -25,7 +26,7 @@ interface TenantState {
   fetchMemberships: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   createTenant: (name: string) => Promise<TenantData>;
-  updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean }) => Promise<void>;
+  updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean; enforcedConnectionSettings?: EnforcedConnectionSettings | null }) => Promise<void>;
   deleteTenant: () => Promise<void>;
   fetchUsers: () => Promise<void>;
   inviteUser: (email: string, role: TenantRole, expiresAt?: string) => Promise<void>;

@@ -67,6 +67,14 @@ export async function updateTenant(req: AuthRequest, res: Response) {
       ipAddress: getClientIp(req),
     });
   }
+  if (data.enforcedConnectionSettings !== undefined) {
+    auditService.log({
+      userId: req.user.userId, action: 'TENANT_CONNECTION_POLICY_UPDATE',
+      targetType: 'Tenant', targetId: tenantId,
+      details: { enforcedConnectionSettings: data.enforcedConnectionSettings },
+      ipAddress: getClientIp(req),
+    });
+  }
   auditService.log({
     userId: req.user.userId, action: 'TENANT_UPDATE',
     targetType: 'Tenant', targetId: tenantId,

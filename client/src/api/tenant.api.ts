@@ -1,5 +1,14 @@
 import api from './client';
 import type { TenantRole } from '../utils/roles';
+import type { SshTerminalConfig } from '../constants/terminalThemes';
+import type { RdpSettings } from '../constants/rdpDefaults';
+import type { VncSettings } from '../constants/vncDefaults';
+
+export interface EnforcedConnectionSettings {
+  ssh?: Partial<SshTerminalConfig>;
+  rdp?: Partial<RdpSettings>;
+  vnc?: Partial<VncSettings>;
+}
 
 export interface TenantData {
   id: string;
@@ -15,6 +24,7 @@ export interface TenantData {
   dlpDisablePaste: boolean;
   dlpDisableDownload: boolean;
   dlpDisableUpload: boolean;
+  enforcedConnectionSettings?: EnforcedConnectionSettings | null;
   teamCount: number;
   createdAt: string;
   updatedAt: string;
@@ -92,7 +102,7 @@ export async function getTenantMfaStats(tenantId: string): Promise<{ total: numb
   return data;
 }
 
-export async function updateTenant(id: string, payload: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean }): Promise<TenantData> {
+export async function updateTenant(id: string, payload: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean; enforcedConnectionSettings?: EnforcedConnectionSettings | null }): Promise<TenantData> {
   const { data } = await api.put(`/tenants/${id}`, payload);
   return data;
 }

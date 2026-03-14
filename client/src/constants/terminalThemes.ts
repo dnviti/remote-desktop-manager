@@ -570,6 +570,7 @@ export type MergedConfig = Required<Omit<SshTerminalConfig, 'customColors'>> & {
 export function mergeTerminalConfig(
   userDefaults?: Partial<SshTerminalConfig> | null,
   connectionOverrides?: Partial<SshTerminalConfig> | null,
+  tenantEnforced?: Partial<SshTerminalConfig> | null,
 ): MergedConfig {
   const merged: MergedConfig = { ...TERMINAL_DEFAULTS };
 
@@ -596,6 +597,19 @@ export function mergeTerminalConfig(
     }
     if (connectionOverrides.customColors) {
       merged.customColors = { ...merged.customColors, ...connectionOverrides.customColors };
+    }
+  }
+
+  // Layer 4: tenant-enforced settings (cannot be overridden)
+  if (tenantEnforced) {
+    for (const key of Object.keys(tenantEnforced) as (keyof SshTerminalConfig)[]) {
+      if (key === 'customColors') continue;
+      if (tenantEnforced[key] !== undefined) {
+        (merged as Record<string, unknown>)[key] = tenantEnforced[key];
+      }
+    }
+    if (tenantEnforced.customColors) {
+      merged.customColors = { ...merged.customColors, ...tenantEnforced.customColors };
     }
   }
 

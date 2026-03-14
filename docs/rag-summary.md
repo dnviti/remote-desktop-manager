@@ -86,6 +86,10 @@ The native browser right-click context menu is globally suppressed across the en
 
 Browser-level exfiltration vectors are blocked as an additional DLP hardening layer in both development and production builds. DevTools shortcuts (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C), View Source (Ctrl+U), Save Page (Ctrl+S), and Print (Ctrl+P) are all intercepted and suppressed. Ctrl+Shift+C is carved out when an SSH terminal is focused so the terminal's own DLP-aware copy handler processes it instead. Drag-and-drop from the page to external applications is also prevented. Text selection is disabled on UI chrome elements (AppBar, toolbar, tabs, sidebar, drawers) while remaining enabled in form inputs, text areas, and terminal/viewer content.
 
+## Connection Policy Enforcement
+
+Organization administrators can define enforced connection settings that override user and per-connection configurations for SSH, RDP, and VNC protocols. These policies are stored as a JSON field on the Tenant model and applied as the highest-priority layer in the settings merge chain (system defaults, user defaults, connection overrides, then tenant-enforced). On the client side, enforced fields are shown with a lock icon and cannot be modified by users. The policy is configured in the Organization tab of Settings and audited via the TENANT_CONNECTION_POLICY_UPDATE audit action.
+
 ## Infrastructure Management
 
 SSH gateways can be managed entirely by Arsenale through container orchestration. The platform supports Docker, Podman, and Kubernetes as orchestration backends, automatically detecting the available runtime. Managed gateways can be deployed, scaled, and monitored from the web interface.

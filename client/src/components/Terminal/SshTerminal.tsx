@@ -45,6 +45,7 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
   const [dlpPolicy, setDlpPolicy] = useState<ResolvedDlpPolicy | null>(null);
   const dlpPolicyRef = useRef<ResolvedDlpPolicy | null>(null);
   useEffect(() => { dlpPolicyRef.current = dlpPolicy; }, [dlpPolicy]);
+  const [enforcedSshSettings, setEnforcedSshSettings] = useState<Partial<SshTerminalConfig> | null>(null);
   const [contextMenu, setContextMenu] = useState<{ top: number; left: number } | null>(null);
   const accessToken = useAuthStore((s) => s.accessToken);
   const userDefaults = useTerminalSettingsStore((s) => s.userDefaults);
@@ -64,8 +65,8 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
 
   // Compute xterm options from merged config (applied at mount only)
   const xtermOptions = useMemo(
-    () => toXtermOptions(mergeTerminalConfig(userDefaults, sshTerminalConfig), webUiMode),
-    [userDefaults, sshTerminalConfig, webUiMode],
+    () => toXtermOptions(mergeTerminalConfig(userDefaults, sshTerminalConfig, enforcedSshSettings), webUiMode),
+    [userDefaults, sshTerminalConfig, enforcedSshSettings, webUiMode],
   );
   const xtermOptionsRef = useRef(xtermOptions);
   useEffect(() => {
@@ -77,7 +78,7 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
     const terminal = terminalRef.current;
     if (!terminal) return;
 
-    const merged = mergeTerminalConfig(userDefaults, sshTerminalConfig);
+    const merged = mergeTerminalConfig(userDefaults, sshTerminalConfig, enforcedSshSettings);
     const effectiveTheme = resolveThemeForMode(merged, webUiMode);
     const colors = effectiveTheme === 'custom'
       ? merged.customColors
@@ -105,10 +106,10 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
       brightCyan: colors.brightCyan,
       brightWhite: colors.brightWhite,
     };
-  }, [webUiMode, userDefaults, sshTerminalConfig]);
+  }, [webUiMode, userDefaults, sshTerminalConfig, enforcedSshSettings]);
 
   // Resolve bell style for onBell handler
-  const bellStyle = mergeTerminalConfig(userDefaults, sshTerminalConfig).bellStyle;
+  const bellStyle = mergeTerminalConfig(userDefaults, sshTerminalConfig, enforcedSshSettings).bellStyle;
   const bellStyleRef = useRef(bellStyle);
   useEffect(() => {
     bellStyleRef.current = bellStyle;
@@ -210,8 +211,9 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
         });
       });
 
-      socket.on('session:ready', (data?: { dlpPolicy?: ResolvedDlpPolicy }) => {
+      socket.on('session:ready', (data?: { dlpPolicy?: ResolvedDlpPolicy; enforcedSshSettings?: Partial<SshTerminalConfig> | null }) => {
         if (data?.dlpPolicy) { setDlpPolicy(data.dlpPolicy); dlpPolicyRef.current = data.dlpPolicy; }
+        if (data?.enforcedSshSettings) { setEnforcedSshSettings(data.enforcedSshSettings); }
         wasConnectedRef.current = true;
         setStatus('connected');
         resetReconnect();

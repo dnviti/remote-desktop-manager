@@ -19,6 +19,7 @@ import { getSocketClientIp } from '../utils/ip';
 import { computeBindingHash, getSocketUserAgent } from '../utils/tokenBinding';
 import prisma from '../lib/prisma';
 import { resolveDlpPolicy } from '../utils/dlp';
+import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
 
 interface ActiveTransfer {
   stream: NodeJS.ReadableStream | NodeJS.WritableStream;
@@ -159,9 +160,10 @@ export function setupSshHandler(io: Server) {
         const tenantDlp = user.tenantId
           ? await prisma.tenant.findUnique({
               where: { id: user.tenantId },
-              select: { dlpDisableCopy: true, dlpDisablePaste: true, dlpDisableDownload: true, dlpDisableUpload: true },
+              select: { dlpDisableCopy: true, dlpDisablePaste: true, dlpDisableDownload: true, dlpDisableUpload: true, enforcedConnectionSettings: true },
             })
           : null;
+        const tenantEnforced = (tenantDlp?.enforcedConnectionSettings as EnforcedConnectionSettings) ?? null;
         dlpPolicy = resolveDlpPolicy(
           tenantDlp ?? { dlpDisableCopy: false, dlpDisablePaste: false, dlpDisableDownload: false, dlpDisableUpload: false },
           conn.dlpPolicy as DlpPolicy | null,
@@ -297,7 +299,7 @@ export function setupSshHandler(io: Server) {
         const sessionId = `${user.userId}:${socket.id}`;
         activeSessions.set(sessionId, session);
 
-        socket.emit('session:ready', { dlpPolicy });
+        socket.emit('session:ready', { dlpPolicy, enforcedSshSettings: tenantEnforced?.ssh ?? null });
 
         // Start recording if enabled
         if (config.recordingEnabled) {

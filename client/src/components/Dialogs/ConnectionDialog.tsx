@@ -21,6 +21,7 @@ import { mergeVncConfig } from '../../constants/vncDefaults';
 import VncSettingsSection from '../Settings/VncSettingsSection';
 import { useGatewayStore } from '../../store/gatewayStore';
 import { useAuthStore } from '../../store/authStore';
+import { useTenantStore } from '../../store/tenantStore';
 import SecretPicker from '../Keychain/SecretPicker';
 import { useVaultStore } from '../../store/vaultStore';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
@@ -62,6 +63,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const gateways = useGatewayStore((s) => s.gateways);
   const fetchGateways = useGatewayStore((s) => s.fetchGateways);
   const hasTenant = Boolean(useAuthStore((s) => s.user)?.tenantId);
+  const tenantEnforced = useTenantStore((s) => s.tenant?.enforcedConnectionSettings);
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
 
   const isEditMode = Boolean(connection);
@@ -448,6 +450,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                   onChange={setSshTerminalConfig}
                   mode="connection"
                   resolvedDefaults={mergeTerminalConfig(userDefaults)}
+                  enforcedFields={tenantEnforced?.ssh}
                 />
               </AccordionDetails>
             </Accordion>
@@ -463,6 +466,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                   onChange={setRdpSettings}
                   mode="connection"
                   resolvedDefaults={mergeRdpConfig(rdpUserDefaults)}
+                  enforcedFields={tenantEnforced?.rdp}
                 />
               </AccordionDetails>
             </Accordion>
@@ -478,6 +482,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                   onChange={setVncSettings}
                   mode="connection"
                   resolvedDefaults={mergeVncConfig()}
+                  enforcedFields={tenantEnforced?.vnc}
                 />
               </AccordionDetails>
             </Accordion>

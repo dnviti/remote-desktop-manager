@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma';
-import { TenantRole } from '../generated/prisma/client';
+import { Prisma, TenantRole } from '../generated/prisma/client';
 import bcrypt from 'bcrypt';
 import { TenantRoleType } from '../types';
 import { AppError } from '../middleware/error.middleware';
@@ -116,6 +116,7 @@ export async function getTenant(tenantId: string) {
     dlpDisablePaste: tenant.dlpDisablePaste,
     dlpDisableDownload: tenant.dlpDisableDownload,
     dlpDisableUpload: tenant.dlpDisableUpload,
+    enforcedConnectionSettings: tenant.enforcedConnectionSettings,
     userCount: tenant._count.members,
     teamCount: tenant._count.teams,
     createdAt: tenant.createdAt,
@@ -134,6 +135,7 @@ export async function updateTenant(tenantId: string, data: {
   dlpDisablePaste?: boolean;
   dlpDisableDownload?: boolean;
   dlpDisableUpload?: boolean;
+  enforcedConnectionSettings?: Prisma.InputJsonValue | null;
 }) {
   const updateData: Record<string, unknown> = {};
 
@@ -168,6 +170,11 @@ export async function updateTenant(tenantId: string, data: {
   if (data.dlpDisableUpload !== undefined) {
     updateData.dlpDisableUpload = data.dlpDisableUpload;
   }
+  if (data.enforcedConnectionSettings !== undefined) {
+    updateData.enforcedConnectionSettings = data.enforcedConnectionSettings === null
+      ? Prisma.JsonNull
+      : data.enforcedConnectionSettings;
+  }
 
   if (Object.keys(updateData).length === 0) {
     throw new AppError('No fields to update', 400);
@@ -191,6 +198,7 @@ export async function updateTenant(tenantId: string, data: {
     dlpDisablePaste: tenant.dlpDisablePaste,
     dlpDisableDownload: tenant.dlpDisableDownload,
     dlpDisableUpload: tenant.dlpDisableUpload,
+    enforcedConnectionSettings: tenant.enforcedConnectionSettings,
     updatedAt: tenant.updatedAt,
   };
 }

@@ -38,6 +38,7 @@ model Tenant {
   dlpDisablePaste              Boolean  @default(false)
   dlpDisableDownload           Boolean  @default(false)
   dlpDisableUpload             Boolean  @default(false)
+  enforcedConnectionSettings   Json?
   ipAllowlistEnabled           Boolean  @default(false)
   ipAllowlistMode              String   @default("flag")
   ipAllowlistEntries           String[] @default([])
@@ -608,6 +609,7 @@ enum AuditAction {
   TENANT_MEMBERSHIP_EXPIRY_UPDATE
   TEAM_MEMBERSHIP_EXPIRY_UPDATE
   TENANT_DLP_POLICY_UPDATE
+  TENANT_CONNECTION_POLICY_UPDATE
   TOKEN_HIJACK_ATTEMPT
   SESSION_LIMIT_EXCEEDED
   SESSION_ABSOLUTE_TIMEOUT

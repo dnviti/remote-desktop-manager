@@ -38,10 +38,11 @@ export function getGuacamoleKey(): Buffer {
   return crypto.scryptSync(config.guacamoleSecret, 'arsenale-guac-salt', 32, { N: 16384, r: 8, p: 1 });
 }
 
-/** Merge system defaults → user defaults → connection overrides */
+/** Merge system defaults → user defaults → connection overrides → tenant enforced */
 export function mergeRdpSettings(
   userDefaults?: Partial<RdpSettings> | null,
   connectionOverrides?: Partial<RdpSettings> | null,
+  tenantEnforced?: Partial<RdpSettings> | null,
 ): RdpSettings {
   const systemDefaults: Required<Omit<RdpSettings, 'colorDepth' | 'width' | 'height' | 'serverLayout' | 'timezone'>> = {
     dpi: 96,
@@ -71,6 +72,12 @@ export function mergeRdpSettings(
 
   if (connectionOverrides) {
     for (const [k, v] of Object.entries(connectionOverrides)) {
+      if (v !== undefined) (merged as Record<string, unknown>)[k] = v;
+    }
+  }
+
+  if (tenantEnforced) {
+    for (const [k, v] of Object.entries(tenantEnforced)) {
       if (v !== undefined) (merged as Record<string, unknown>)[k] = v;
     }
   }

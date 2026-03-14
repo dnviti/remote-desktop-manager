@@ -1,6 +1,15 @@
 import * as net from 'net';
 import { z } from 'zod';
 import { passwordSchema } from '../utils/validate';
+import { sshTerminalConfigSchema, rdpSettingsSchema, vncSettingsSchema } from './common.schemas';
+
+export const enforcedConnectionSettingsSchema = z.object({
+  ssh: sshTerminalConfigSchema.optional(),
+  rdp: rdpSettingsSchema.optional(),
+  vnc: vncSettingsSchema.optional(),
+}).optional().nullable();
+
+export type EnforcedConnectionSettings = z.infer<typeof enforcedConnectionSettingsSchema>;
 
 export const createTenantSchema = z.object({
   name: z.string().min(2).max(100),
@@ -18,6 +27,7 @@ export const updateTenantSchema = z.object({
   dlpDisablePaste: z.boolean().optional(),
   dlpDisableDownload: z.boolean().optional(),
   dlpDisableUpload: z.boolean().optional(),
+  enforcedConnectionSettings: enforcedConnectionSettingsSchema,
 });
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 
