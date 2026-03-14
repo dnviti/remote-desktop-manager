@@ -186,30 +186,20 @@ jobs:
       - name: Install CTDF plugin
         run: |
           PLUGIN_DIR="$HOME/.claude/plugins"
-          CACHE_DIR="$PLUGIN_DIR/cache/dnviti-plugins/ctdf/2.1.0"
-          mkdir -p "$CACHE_DIR" "$PLUGIN_DIR/marketplaces"
+          MARKET_DIR="$PLUGIN_DIR/marketplaces/dnviti-plugins"
+          mkdir -p "$PLUGIN_DIR/marketplaces"
 
-          git clone --depth 1 https://github.com/dnviti/claude-task-development-framework.git \
-            "$PLUGIN_DIR/marketplaces/dnviti-plugins"
+          git clone --depth 1 https://github.com/dnviti/claude-task-development-framework.git "$MARKET_DIR"
 
-          cp -r "$PLUGIN_DIR/marketplaces/dnviti-plugins/." "$CACHE_DIR/"
+          CTDF_VERSION=$(python3 -c "import json; print(json.load(open('$MARKET_DIR/.claude-plugin/plugin.json'))['version'])")
+          CACHE_DIR="$PLUGIN_DIR/cache/dnviti-plugins/ctdf/$CTDF_VERSION"
+          mkdir -p "$CACHE_DIR"
+          cp -r "$MARKET_DIR/." "$CACHE_DIR/"
+          NOW=$(date -u +%Y-%m-%dT%H:%M:%S.000Z)
 
-          cat > "$PLUGIN_DIR/installed_plugins.json" << 'PLUGINS_EOF'
-          {
-            "version": 2,
-            "plugins": {
-              "ctdf@dnviti-plugins": [
-                {
-                  "scope": "user",
-                  "installPath": "$CACHE_DIR_PLACEHOLDER",
-                  "version": "2.1.0"
-                }
-              ]
-            }
-          }
-          PLUGINS_EOF
+          echo "{\"version\":2,\"plugins\":{\"ctdf@dnviti-plugins\":[{\"scope\":\"user\",\"installPath\":\"$CACHE_DIR\",\"version\":\"$CTDF_VERSION\",\"installedAt\":\"$NOW\",\"lastUpdated\":\"$NOW\"}]}}" > "$PLUGIN_DIR/installed_plugins.json"
 
-          sed -i "s|\$CACHE_DIR_PLACEHOLDER|$CACHE_DIR|g" "$PLUGIN_DIR/installed_plugins.json"
+          echo "{\"dnviti-plugins\":{\"source\":{\"source\":\"git\",\"url\":\"https://github.com/dnviti/claude-task-development-framework.git\"},\"installLocation\":\"$MARKET_DIR\",\"lastUpdated\":\"$NOW\"}}" > "$PLUGIN_DIR/known_marketplaces.json"
 
       - name: Run Opus task implementation agent
         env:
