@@ -696,8 +696,27 @@ export async function refreshAccessToken(refreshToken: string, binding?: { ip: s
 
   // Token binding verification: reject if IP/UA changed or binding info is missing
   if (config.tokenBindingEnabled && stored.ipUaHash) {
-    const currentHash = binding ? computeBindingHash(binding.ip, binding.userAgent) : null;
-    if (!currentHash || currentHash !== stored.ipUaHash) {
+    if (!binding) {
+      // Missing binding when token has stored hash = potential hijack
+      await prisma.refreshToken.deleteMany({
+        where: { tokenFamily: stored.tokenFamily },
+      });
+      auditService.log({
+        userId: stored.userId,
+        action: 'TOKEN_HIJACK_ATTEMPT',
+        ipAddress: 'unknown',
+        details: {
+          tokenFamily: stored.tokenFamily,
+          reason: 'Refresh token presented without binding info',
+        },
+      });
+      log.warn(
+        `Token binding missing for user ${stored.userId}, family ${stored.tokenFamily}. All tokens revoked.`,
+      );
+      throw new AppError('Token binding validation failed', 401);
+    }
+    const currentHash = computeBindingHash(binding.ip, binding.userAgent);
+    if (currentHash !== stored.ipUaHash) {
       // Revoke entire token family — likely session hijacking
       await prisma.refreshToken.deleteMany({
         where: { tokenFamily: stored.tokenFamily },
