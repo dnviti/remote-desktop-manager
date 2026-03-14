@@ -174,6 +174,34 @@ jobs:
       - name: Install Claude Code
         run: npm install -g @anthropic-ai/claude-code
 
+      - name: Install CTDF plugin
+        run: |
+          PLUGIN_DIR="$HOME/.claude/plugins"
+          CACHE_DIR="$PLUGIN_DIR/cache/dnviti-plugins/ctdf/2.1.0"
+          mkdir -p "$CACHE_DIR" "$PLUGIN_DIR/marketplaces"
+
+          git clone --depth 1 https://github.com/dnviti/claude-task-development-framework.git \
+            "$PLUGIN_DIR/marketplaces/dnviti-plugins"
+
+          cp -r "$PLUGIN_DIR/marketplaces/dnviti-plugins/." "$CACHE_DIR/"
+
+          cat > "$PLUGIN_DIR/installed_plugins.json" << 'PLUGINS_EOF'
+          {
+            "version": 2,
+            "plugins": {
+              "ctdf@dnviti-plugins": [
+                {
+                  "scope": "user",
+                  "installPath": "$CACHE_DIR_PLACEHOLDER",
+                  "version": "2.1.0"
+                }
+              ]
+            }
+          }
+          PLUGINS_EOF
+
+          sed -i "s|\$CACHE_DIR_PLACEHOLDER|$CACHE_DIR|g" "$PLUGIN_DIR/installed_plugins.json"
+
       - name: Run Opus idea scout
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
