@@ -11,13 +11,51 @@ import { extractApiError } from '../../utils/apiError';
 // eslint-disable-next-line security/detect-unsafe-regex
 const CIDR_RE = /^(?:(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|[0-9a-fA-F:]+(?:\/\d{1,3})?)$/;
 
-/** Client-side IPv4 CIDR check for the "Test IP" feature. */
+function expandIPv6(ip: string): string | null {
+  if (!ip.includes('::')) return ip;
+  const sides = ip.split('::');
+  if (sides.length !== 2) return null;
+  const left = sides[0] ? sides[0].split(':') : [];
+  const right = sides[1] ? sides[1].split(':') : [];
+  const missing = 8 - left.length - right.length;
+  if (missing < 0) return null;
+  return [...left, ...Array(missing).fill('0'), ...right].join(':');
+}
+
+function ipv6ToBigInt(ip: string): bigint | null {
+  try {
+    const expanded = expandIPv6(ip);
+    if (!expanded) return null;
+    const groups = expanded.split(':');
+    if (groups.length !== 8) return null;
+    let result = BigInt(0);
+    for (const g of groups) result = (result << BigInt(16)) | BigInt(parseInt(g, 16));
+    return result;
+  } catch { return null; }
+}
+
+/** Client-side CIDR check for the "Test IP" feature — supports IPv4 and IPv6. */
 function isIpInCidr(ip: string, cidr: string): boolean {
   try {
     const slash = cidr.lastIndexOf('/');
     if (slash === -1) return ip === cidr;
     const base = cidr.slice(0, slash);
     const prefix = parseInt(cidr.slice(slash + 1), 10);
+
+    if (base.includes(':')) {
+      // IPv6
+      const ipBig = ipv6ToBigInt(ip);
+      const baseBig = ipv6ToBigInt(base);
+      if (ipBig === null || baseBig === null) return false;
+      const bits = BigInt(128);
+      const p = BigInt(prefix);
+      // mask = all-ones for the top `prefix` bits, zeroes for the rest
+      const allOnes = (BigInt(1) << bits) - BigInt(1);
+      const trailingZeros = prefix === 0 ? allOnes : (BigInt(1) << (bits - p)) - BigInt(1);
+      const mask = prefix === 0 ? BigInt(0) : allOnes ^ trailingZeros;
+      return (ipBig & mask) === (baseBig & mask);
+    }
+    // IPv4
     const toInt = (a: string) => a.split('.').reduce((acc, o) => (acc << 8) | parseInt(o, 10), 0) >>> 0;
     const mask = prefix === 0 ? 0 : (~0 << (32 - prefix)) >>> 0;
     return (toInt(ip) & mask) === (toInt(base) & mask);

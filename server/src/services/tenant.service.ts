@@ -845,7 +845,7 @@ export async function getIpAllowlist(tenantId: string) {
 
 export async function updateIpAllowlist(
   tenantId: string,
-  payload: { enabled: boolean; mode: string; entries: string[] },
+  payload: { enabled: boolean; mode: 'flag' | 'block'; entries: string[] },
 ) {
   const tenant = await prisma.tenant.update({
     where: { id: tenantId },
