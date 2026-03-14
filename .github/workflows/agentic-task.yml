@@ -142,13 +142,13 @@ jobs:
           # Build PR section conditionally
           if [ "$AGENTIC_AUTO_PR" = "true" ] || [ "$AGENTIC_AUTO_PR" = "1" ]; then
             PR_SECTION='
-          15. Check for existing PR (avoid duplicates):
+          16. Check for existing PR (avoid duplicates):
               ```bash
               gh pr list --head task/<task-code-lowercase> --state open --json number,url
               ```
               If a PR already exists, skip creation.
 
-          16. Create the Pull Request:
+          17. Create the Pull Request. Include the testing guide IN the PR body:
               ```bash
               gh pr create \
                 --base <RELEASE_BRANCH> \
@@ -162,22 +162,19 @@ jobs:
               ### Verify Command Result
               <PASS or FAIL with details>
 
+              ### Testing Guide
+              <concrete numbered steps to manually verify the implementation,
+               including prerequisites, setup, expected behavior, and edge cases>
+
               ### Related Issue
               Refs #<ISSUE_NUM> (<TASK-CODE>)
 
               ---
               *Implemented autonomously by Agentic Fleet (Opus 4.6)*"
-              ```
-
-          17. Generate a testing guide based on the implementation and post it
-              as a PR comment:
-              ```bash
-              gh pr comment <PR_NUMBER> --body "## Testing Guide
-              <concrete steps to manually verify the implementation>"
               ```'
           else
             PR_SECTION='
-          15. Skip PR creation — auto_pr is disabled. The branch has been pushed; a human will create the PR manually.'
+          16. Skip PR creation — auto_pr is disabled. The branch has been pushed; a human will create the PR manually.'
           fi
 
           cat > /tmp/agent-prompt.md << PROMPT_EOF
@@ -192,6 +189,37 @@ jobs:
           - @report-features.md — feature analysis
           - @report-quality.md — code quality analysis
 
+          ## Live Progress Updates (Issue Comments)
+
+          Throughout your work, post real-time status comments on the GitHub
+          issue to document your reasoning and progress. This creates a
+          transparent log of what was done and why, like a team member
+          updating the ticket as they work.
+
+          **When to comment on the issue:**
+          - After selecting the task: what you picked and why
+          - After reading the codebase: your implementation plan and approach
+          - During implementation: key decisions, trade-offs, patterns you followed
+          - If you hit a problem: what went wrong, how you resolved it
+          - After verify passes/fails: the result and any fixes applied
+          - After delivery: summary of what was done, link to PR/branch
+
+          **How to comment:**
+          ```bash
+          gh issue comment <ISSUE_NUM> --body "<your update>"
+          ```
+
+          **Comment style:** Write naturally, like a developer updating their
+          team. Be specific about files changed and decisions made. Use
+          markdown formatting. Keep each comment focused on one phase/decision.
+          Prefix each comment with a phase emoji:
+          - 🔍 for task selection and analysis
+          - 📋 for implementation planning
+          - 🔨 for implementation progress
+          - ⚠️ for problems encountered
+          - ✅ for verification results
+          - 🚀 for delivery
+
           ## Your Mission
 
           ### Phase 1: Select a Task
@@ -205,8 +233,8 @@ jobs:
              ```
 
           3. List pending tasks:
-             - Local/dual mode: `python3 .claude/scripts/task_manager.py list --status todo --format summary`
-             - Platform-only mode: use `gh issue list` with `status:todo` label
+             - Local/dual mode: \`python3 .claude/scripts/task_manager.py list --status todo --format summary\`
+             - Platform-only mode: use \`gh issue list\` with \`status:todo\` label
 
           4. If NO pending tasks exist, output "No pending tasks found." and stop.
 
@@ -216,48 +244,55 @@ jobs:
              - Skip tasks whose dependencies are not yet in done status
 
           6. Parse the full task details:
-             - Local/dual: `python3 .claude/scripts/task_manager.py parse <TASK-CODE>`
-             - Platform-only: `gh issue view <ISSUE_NUM> --json body`
+             - Local/dual: \`python3 .claude/scripts/task_manager.py parse <TASK-CODE>\`
+             - Platform-only: \`gh issue view <ISSUE_NUM> --json body\`
+
+          7. **Post a comment on the issue** explaining which task you selected and why.
 
           ### Phase 2: Prepare
 
-          7. Mark the task as in-progress:
-             - Local/dual: `python3 .claude/scripts/task_manager.py move <TASK-CODE> --to progressing`
+          8. Mark the task as in-progress:
+             - Local/dual: \`python3 .claude/scripts/task_manager.py move <TASK-CODE> --to progressing\`
              - Platform-only: update issue labels (remove status:todo, add status:in-progress)
 
-          8. Determine the release branch from CLAUDE.md RELEASE_BRANCH.
+          9. Determine the release branch from CLAUDE.md RELEASE_BRANCH.
              Default: use 'develop' if it exists, otherwise 'main'.
 
-          9. Create a task branch:
-             ```bash
-             git fetch origin <RELEASE_BRANCH>
-             git checkout -b task/<task-code-lowercase> origin/<RELEASE_BRANCH>
-             ```
+          10. Create a task branch:
+              ```bash
+              git fetch origin <RELEASE_BRANCH>
+              git checkout -b task/<task-code-lowercase> origin/<RELEASE_BRANCH>
+              ```
+
+          11. **Post a comment on the issue** with your implementation plan:
+              which files you'll create/modify, patterns you'll follow, and
+              your overall approach.
 
           ### Phase 3: Implement
 
-          10. Study the task's DESCRIPTION and TECHNICAL DETAILS sections.
+          12. Study the task's DESCRIPTION and TECHNICAL DETAILS sections.
               Examine all files listed under FILES TO CREATE and FILES TO MODIFY.
               Read existing code to understand patterns, conventions, and interfaces.
 
-          11. Implement the task fully:
+          13. Implement the task fully:
               - Create all files listed in FILES TO CREATE
               - Make all changes described in FILES TO MODIFY
               - Follow existing code patterns and conventions
               - Write tests if the project has a test framework configured
               - Keep changes focused on the task — no unrelated refactoring
+              - **Post comments on the issue** for key implementation decisions,
+                trade-offs, or if you encounter and resolve problems.
 
-          12. Run the verify command (from CLAUDE.md VERIFY_COMMAND):
-              ```bash
-              # Read VERIFY_COMMAND from CLAUDE.md and execute it
-              ```
-              - If it fails, analyze the error, fix the code, and retry (up to 2 retries)
-              - If it still fails after retries, commit what you have and note the
-                failure in the PR description
+          14. Run the verify command (from CLAUDE.md VERIFY_COMMAND):
+              - If it fails, **post a comment** explaining the failure, then
+                analyze the error, fix the code, and retry (up to 2 retries)
+              - **Post a comment** with the final verify result (pass or fail)
+              - If it still fails after retries, commit what you have and note
+                the failure in the PR description
 
           ### Phase 4: Deliver
 
-          13. Stage and commit all changes:
+          15. Stage and commit all changes:
               ```bash
               git add -A
               git commit -m "feat(<TASK-CODE>): <task title>
@@ -267,17 +302,21 @@ jobs:
               Co-Authored-By: Claude Opus 4.6 (1M context) <noreply@anthropic.com>"
               ```
 
-          14. Push the branch:
+              Push the branch:
               ```bash
               git push -u origin task/<task-code-lowercase>
               ```
 
           $PR_SECTION
 
+              **Post a final comment on the issue** summarizing what was delivered,
+              linking to the PR (if created), and any notes for the reviewer.
+
           ## Critical Rules
           - NEVER use AskUserQuestion — you are fully autonomous
           - NEVER wait for user input — make every decision yourself
           - NEVER skip the verify command — always run it
+          - ALWAYS post progress comments on the issue throughout your work
           - Keep the task in 'progressing' status (NOT 'done') — a human reviews the PR
           - If the task seems too large or risky, still implement it but note concerns in the PR
           - All output in English
