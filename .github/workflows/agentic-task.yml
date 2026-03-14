@@ -62,7 +62,7 @@ jobs:
     name: "Read — ${{ matrix.focus }}"
     needs: build-memory
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +129,7 @@ jobs:
         run: |
           claude -p "${{ matrix.prompt }} Use @project-memory.md as structural context." \
             --model claude-sonnet-4-6 \
-            --max-turns 6 \
+            --max-turns 15 \
             --allowedTools "Read,Grep,Glob,Write"
 
       - name: Upload focus report
