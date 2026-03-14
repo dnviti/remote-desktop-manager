@@ -31,7 +31,7 @@ jobs:
   build-memory:
     name: Build Project Memory
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -62,7 +62,7 @@ jobs:
     name: "Read — ${{ matrix.focus }}"
     needs: build-memory
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -129,7 +129,7 @@ jobs:
         run: |
           claude -p "${{ matrix.prompt }} Use @project-memory.md as structural context." \
             --model claude-sonnet-4-6 \
-            --max-turns 15 \
+            --max-turns 30 \
             --allowedTools "Read,Grep,Glob,Write"
 
       - name: Upload focus report
@@ -144,7 +144,7 @@ jobs:
     name: "Implement Task (Opus 4.6)"
     needs: deep-read
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - name: Checkout code
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
@@ -325,5 +325,5 @@ jobs:
 
           claude -p "$(cat /tmp/agent-prompt.md)" \
             --model claude-opus-4-6 \
-            --max-turns 30 \
+            --max-turns 60 \
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
