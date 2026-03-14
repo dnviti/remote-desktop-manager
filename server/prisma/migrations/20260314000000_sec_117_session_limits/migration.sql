@@ -5,6 +5,16 @@ ALTER TABLE "Tenant" ADD COLUMN IF NOT EXISTS "absoluteSessionTimeoutSeconds" IN
 -- AlterTable: Add family creation timestamp to RefreshToken for absolute timeout tracking
 ALTER TABLE "RefreshToken" ADD COLUMN IF NOT EXISTS "familyCreatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
 
+-- Backfill: set familyCreatedAt to the earliest createdAt per tokenFamily
+UPDATE "RefreshToken" t
+SET "familyCreatedAt" = sub."earliest"
+FROM (
+  SELECT "tokenFamily", MIN("createdAt") AS "earliest"
+  FROM "RefreshToken"
+  GROUP BY "tokenFamily"
+) sub
+WHERE t."tokenFamily" = sub."tokenFamily";
+
 -- CreateIndex
 CREATE INDEX IF NOT EXISTS "RefreshToken_userId_familyCreatedAt_idx" ON "RefreshToken"("userId", "familyCreatedAt");
 

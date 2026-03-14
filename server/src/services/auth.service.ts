@@ -127,7 +127,7 @@ async function enforceConcurrentSessionLimit(
       where: { id: tenantId },
       select: { maxConcurrentSessions: true },
     });
-    if (tenant && tenant.maxConcurrentSessions > 0) {
+    if (tenant && tenant.maxConcurrentSessions !== null && tenant.maxConcurrentSessions !== undefined) {
       maxSessions = tenant.maxConcurrentSessions;
     }
   }
@@ -152,7 +152,7 @@ async function enforceConcurrentSessionLimit(
   const familiesToEvict = activeFamilies.slice(0, activeFamilies.length - maxSessions);
   for (const family of familiesToEvict) {
     await prisma.refreshToken.deleteMany({
-      where: { tokenFamily: family.tokenFamily },
+      where: { tokenFamily: family.tokenFamily, userId },
     });
 
     auditService.log({
@@ -801,7 +801,7 @@ export async function refreshAccessToken(refreshToken: string, binding?: { ip: s
     const familyAge = Date.now() - stored.familyCreatedAt.getTime();
     if (familyAge > absoluteTimeout * 1000) {
       await prisma.refreshToken.deleteMany({
-        where: { tokenFamily: stored.tokenFamily },
+        where: { tokenFamily: stored.tokenFamily, userId: stored.userId },
       });
       auditService.log({
         userId: stored.userId,
