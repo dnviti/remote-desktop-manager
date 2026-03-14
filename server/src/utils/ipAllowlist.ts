@@ -17,7 +17,10 @@ export function isIpInCidr(ip: string, cidr: string): boolean {
   try {
     const clean = stripV4Mapped(ip);
     const slashIdx = cidr.lastIndexOf('/');
-    if (slashIdx === -1) return false;
+    if (slashIdx === -1) {
+      // Bare IP — treat as /32 (IPv4) or /128 (IPv6)
+      return clean === cidr;
+    }
 
     const base = cidr.slice(0, slashIdx);
     const prefixLen = parseInt(cidr.slice(slashIdx + 1), 10);
