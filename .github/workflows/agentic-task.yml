@@ -274,5 +274,5 @@ jobs:
 
           claude -p "$(cat /tmp/agent-prompt.md)" \
             --model claude-opus-4-6 \
-            --max-turns 20 \
+            --max-budget-usd 15 \
             --allowedTools "Bash,Read,Grep,Glob,Edit,Write"
