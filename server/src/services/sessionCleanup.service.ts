@@ -44,7 +44,7 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
       where: { status: { in: ['ACTIVE', 'IDLE'] } },
       include: {
         gateway: { select: { id: true, name: true, inactivityTimeoutSeconds: true } },
-        user: { select: { tenantMemberships: { where: { isActive: true }, take: 1, include: { tenant: { select: { defaultSessionTimeoutSeconds: true } } } } } },
+        user: { select: { tenantMemberships: { where: { isActive: true }, take: 1, include: { tenant: { select: { defaultSessionTimeoutSeconds: true, absoluteSessionTimeoutSeconds: true } } } } } },
       },
     });
 
@@ -52,6 +52,52 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
     let closedCount = 0;
 
     for (const session of sessions) {
+      const durationMs = now - session.startedAt.getTime();
+
+      // Absolute timeout: close session regardless of activity
+      const effectiveAbsoluteTimeout =
+        session.user?.tenantMemberships[0]?.tenant.absoluteSessionTimeoutSeconds ??
+        config.absoluteSessionTimeoutSeconds;
+
+      if (effectiveAbsoluteTimeout > 0 && durationMs >= effectiveAbsoluteTimeout * 1000) {
+        await prisma.activeSession.update({
+          where: { id: session.id },
+          data: { status: 'CLOSED', endedAt: new Date(now) },
+        });
+
+        auditService.log({
+          userId: session.userId,
+          action: 'SESSION_ABSOLUTE_TIMEOUT',
+          targetType: 'Connection',
+          targetId: session.connectionId,
+          details: {
+            sessionId: session.id,
+            protocol: session.protocol,
+            durationMs,
+            durationFormatted: formatDuration(durationMs),
+            absoluteTimeoutSeconds: effectiveAbsoluteTimeout,
+            ...(session.gatewayId ? { gatewayName: session.gateway?.name ?? null, instanceId: session.instanceId } : {}),
+          },
+          ipAddress: session.ipAddress ?? undefined,
+          gatewayId: session.gatewayId,
+        });
+
+        if (session.protocol === 'SSH' && session.socketId && ioInstance) {
+          const socket = ioInstance.of('/ssh').sockets.get(session.socketId);
+          if (socket) {
+            socket.emit('session:timeout', { reason: 'absolute_timeout' });
+            socket.disconnect(true);
+          }
+        }
+        if (session.protocol === 'RDP' || session.protocol === 'VNC') {
+          emitSessionTerminated(session.userId, session.id, 'absolute_timeout');
+        }
+
+        closedCount++;
+        continue; // Skip inactivity check for this session
+      }
+
+      // Inactivity timeout
       const effectiveTimeout =
         session.gateway?.inactivityTimeoutSeconds ??
         session.user?.tenantMemberships[0]?.tenant.defaultSessionTimeoutSeconds ??
@@ -59,8 +105,6 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
 
       const inactiveMs = now - session.lastActivityAt.getTime();
       if (inactiveMs < effectiveTimeout * 1000) continue;
-
-      const durationMs = now - session.startedAt.getTime();
 
       // Mark CLOSED in DB first (before socket disconnect) to prevent
       // double audit logging — ssh.handler's endSessionBySocketId will

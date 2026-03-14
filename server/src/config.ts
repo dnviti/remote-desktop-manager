@@ -167,6 +167,8 @@ export const config = {
   sessionIdleThresholdMinutes: parseInt(process.env.SESSION_IDLE_THRESHOLD_MINUTES || '5', 10),
   sessionCleanupRetentionDays: parseInt(process.env.SESSION_CLEANUP_RETENTION_DAYS || '30', 10),
   sessionInactivityTimeoutSeconds: parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_SECONDS || '3600', 10),
+  maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '0', 10),
+  absoluteSessionTimeoutSeconds: parseInt(process.env.ABSOLUTE_SESSION_TIMEOUT_SECONDS || '43200', 10),
   // Container orchestrator
   orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'podman' | 'kubernetes' | 'none',
   dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',

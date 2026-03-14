@@ -12,7 +12,7 @@ import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, stopAl
 import { startAllSyncJobs, stopAllSyncJobs } from './services/syncScheduler.service';
 import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
 import { cleanupExpiredShares } from './services/externalShare.service';
-import { cleanupExpiredTokens } from './services/auth.service';
+import { cleanupExpiredTokens, cleanupAbsolutelyTimedOutFamilies } from './services/auth.service';
 import { checkExpiringSecrets } from './services/secretExpiry.service';
 import { markServerReady } from './services/health.service';
 import * as sessionService from './services/session.service';
@@ -148,6 +148,13 @@ async function main() {
       logger.error('Failed to cleanup expired refresh tokens:', err);
     });
   }, 60 * 60 * 1000);
+
+  // Cleanup token families that exceeded absolute session timeout (every 5 minutes)
+  setInterval(() => {
+    cleanupAbsolutelyTimedOutFamilies().catch((err) => {
+      logger.error('Absolute timeout family cleanup failed:', err);
+    });
+  }, 5 * 60 * 1000);
 
   // Check for expiring secrets every 6 hours
   setInterval(() => {

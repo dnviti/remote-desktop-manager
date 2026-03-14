@@ -10,6 +10,8 @@ export type CreateTenantInput = z.infer<typeof createTenantSchema>;
 export const updateTenantSchema = z.object({
   name: z.string().min(2).max(100).optional(),
   defaultSessionTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
+  maxConcurrentSessions: z.number().int().min(0).max(100).optional(),
+  absoluteSessionTimeoutSeconds: z.number().int().min(0).max(604800).optional(),
   mfaRequired: z.boolean().optional(),
   vaultAutoLockMaxMinutes: z.number().int().min(0).nullable().optional(),
   dlpDisableCopy: z.boolean().optional(),

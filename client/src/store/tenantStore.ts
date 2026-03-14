@@ -25,7 +25,7 @@ interface TenantState {
   fetchMemberships: () => Promise<void>;
   switchTenant: (tenantId: string) => Promise<void>;
   createTenant: (name: string) => Promise<TenantData>;
-  updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null }) => Promise<void>;
+  updateTenant: (data: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean }) => Promise<void>;
   deleteTenant: () => Promise<void>;
   fetchUsers: () => Promise<void>;
   inviteUser: (email: string, role: TenantRole, expiresAt?: string) => Promise<void>;

@@ -116,6 +116,65 @@ export async function register(email: string, password: string) {
   };
 }
 
+async function enforceConcurrentSessionLimit(
+  userId: string,
+  tenantId: string | undefined,
+): Promise<void> {
+  // Resolve effective limit: tenant > config fallback
+  let maxSessions = config.maxConcurrentSessions;
+  if (tenantId) {
+    const tenant = await prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { maxConcurrentSessions: true },
+    });
+    if (tenant && tenant.maxConcurrentSessions !== null && tenant.maxConcurrentSessions !== undefined) {
+      maxSessions = tenant.maxConcurrentSessions;
+    }
+  }
+
+  if (maxSessions <= 0) return; // unlimited
+
+  // Count distinct active token families for this user
+  const activeFamilies = await prisma.refreshToken.findMany({
+    where: {
+      userId,
+      revokedAt: null,
+      expiresAt: { gt: new Date() },
+    },
+    select: { tokenFamily: true, familyCreatedAt: true },
+    distinct: ['tokenFamily'],
+    orderBy: { familyCreatedAt: 'asc' },
+  });
+
+  if (activeFamilies.length <= maxSessions) return;
+
+  // Evict the oldest families until we're at the limit
+  const familiesToEvict = activeFamilies.slice(0, activeFamilies.length - maxSessions);
+  for (const family of familiesToEvict) {
+    await prisma.refreshToken.deleteMany({
+      where: { tokenFamily: family.tokenFamily, userId },
+    });
+
+    auditService.log({
+      userId,
+      action: 'SESSION_LIMIT_EXCEEDED',
+      details: {
+        evictedFamily: family.tokenFamily,
+        maxConcurrentSessions: maxSessions,
+        reason: 'Concurrent session limit exceeded — oldest session evicted',
+      },
+    });
+  }
+}
+
+async function getEffectiveAbsoluteTimeout(userId: string): Promise<number> {
+  const membership = await prisma.tenantMember.findFirst({
+    where: { userId, isActive: true },
+    include: { tenant: { select: { absoluteSessionTimeoutSeconds: true } } },
+  });
+  return membership?.tenant.absoluteSessionTimeoutSeconds ?? config.absoluteSessionTimeoutSeconds;
+}
+
 export async function issueTokens(user: {
   id: string;
   email: string;
@@ -163,6 +222,18 @@ export async function issueTokens(user: {
   const refreshTokenValue = uuidv4();
   const refreshExpiresMs = parseExpiry(config.jwtRefreshExpiresIn);
   const family = tokenFamily ?? uuidv4();
+
+  // Preserve familyCreatedAt during token rotation (existing family)
+  let familyCreatedAt: Date | undefined;
+  if (tokenFamily) {
+    const existing = await prisma.refreshToken.findFirst({
+      where: { tokenFamily, userId: user.id },
+      select: { familyCreatedAt: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    familyCreatedAt = existing?.familyCreatedAt ?? undefined;
+  }
+
   await prisma.refreshToken.create({
     data: {
       token: refreshTokenValue,
@@ -170,8 +241,12 @@ export async function issueTokens(user: {
       tokenFamily: family,
       expiresAt: new Date(Date.now() + refreshExpiresMs),
       ...(ipUaHash && { ipUaHash }),
+      ...(familyCreatedAt && { familyCreatedAt }),
     },
   });
+
+  // Enforce concurrent session limit (evict oldest families if over limit)
+  await enforceConcurrentSessionLimit(user.id, activeMembership?.tenantId);
 
   return {
     accessToken,
@@ -739,6 +814,33 @@ export async function refreshAccessToken(refreshToken: string, binding?: { ip: s
     }
   }
 
+  // Absolute session timeout: check if the token family has exceeded its lifetime
+  const absoluteTimeout = await getEffectiveAbsoluteTimeout(stored.userId);
+  if (absoluteTimeout > 0) {
+    const familyAge = Date.now() - stored.familyCreatedAt.getTime();
+    if (familyAge > absoluteTimeout * 1000) {
+      await prisma.refreshToken.deleteMany({
+        where: { tokenFamily: stored.tokenFamily, userId: stored.userId },
+      });
+      auditService.log({
+        userId: stored.userId,
+        action: 'SESSION_ABSOLUTE_TIMEOUT',
+        details: {
+          tokenFamily: stored.tokenFamily,
+          familyAgeSeconds: Math.round(familyAge / 1000),
+          absoluteTimeoutSeconds: absoluteTimeout,
+          reason: 'Absolute session timeout — re-authentication required',
+        },
+        ipAddress: binding?.ip,
+      });
+      log.info(
+        `Absolute timeout for user ${stored.userId}, family ${stored.tokenFamily} ` +
+        `(age: ${Math.round(familyAge / 1000)}s, limit: ${absoluteTimeout}s)`,
+      );
+      throw new Error('Invalid or expired refresh token');
+    }
+  }
+
   // Reuse detection: token was already rotated
   if (stored.revokedAt) {
     const timeSinceRevocation = Date.now() - stored.revokedAt.getTime();
@@ -961,6 +1063,20 @@ export async function cleanupExpiredTokens() {
   });
   if (result.count > 0) {
     log.info(`Cleaned up ${result.count} expired refresh token(s)`);
+  }
+  return result.count;
+}
+
+export async function cleanupAbsolutelyTimedOutFamilies() {
+  const absoluteTimeout = config.absoluteSessionTimeoutSeconds;
+  if (absoluteTimeout <= 0) return 0;
+
+  const cutoff = new Date(Date.now() - absoluteTimeout * 1000);
+  const result = await prisma.refreshToken.deleteMany({
+    where: { familyCreatedAt: { lt: cutoff } },
+  });
+  if (result.count > 0) {
+    log.info(`Cleaned up ${result.count} token(s) from absolutely timed-out families`);
   }
   return result.count;
 }
