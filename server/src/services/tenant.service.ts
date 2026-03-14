@@ -837,3 +837,36 @@ export async function listUserTenants(userId: string) {
     joinedAt: m.joinedAt,
   }));
 }
+
+export async function getIpAllowlist(tenantId: string) {
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { ipAllowlistEnabled: true, ipAllowlistMode: true, ipAllowlistEntries: true },
+  });
+  if (!tenant) throw new AppError('Organization not found', 404);
+  return {
+    enabled: tenant.ipAllowlistEnabled ?? false,
+    mode: (tenant.ipAllowlistMode ?? 'flag') as 'flag' | 'block',
+    entries: tenant.ipAllowlistEntries ?? [],
+  };
+}
+
+export async function updateIpAllowlist(
+  tenantId: string,
+  payload: { enabled: boolean; mode: 'flag' | 'block'; entries: string[] },
+) {
+  const tenant = await prisma.tenant.update({
+    where: { id: tenantId },
+    data: {
+      ipAllowlistEnabled: payload.enabled,
+      ipAllowlistMode: payload.mode,
+      ipAllowlistEntries: payload.entries,
+    },
+    select: { ipAllowlistEnabled: true, ipAllowlistMode: true, ipAllowlistEntries: true },
+  });
+  return {
+    enabled: tenant.ipAllowlistEnabled ?? false,
+    mode: (tenant.ipAllowlistMode ?? 'flag') as 'flag' | 'block',
+    entries: tenant.ipAllowlistEntries ?? [],
+  };
+}

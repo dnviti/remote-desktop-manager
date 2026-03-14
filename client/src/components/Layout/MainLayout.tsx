@@ -153,6 +153,7 @@ export default function MainLayout() {
     openKeychain: () => setKeychainOpen(true),
     openRecordings: () => setRecordingsOpen(true),
     openSettings: handleOpenSettings,
+    openAuditLog: () => setAuditLogOpen(true),
     selectConnection: (connectionId: string) => {
       const store = useConnectionsStore.getState();
       const all = [...store.ownConnections, ...store.sharedConnections, ...store.teamConnections];

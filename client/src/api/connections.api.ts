@@ -26,6 +26,8 @@ export interface ConnectionInput {
   password?: string;
   domain?: string;
   credentialSecretId?: string;
+  externalVaultProviderId?: string | null;
+  externalVaultPath?: string | null;
   description?: string;
   folderId?: string;
   teamId?: string;
@@ -52,6 +54,8 @@ export interface ConnectionData {
   credentialSecretId?: string | null;
   credentialSecretName?: string | null;
   credentialSecretType?: string | null;
+  externalVaultProviderId?: string | null;
+  externalVaultPath?: string | null;
   description: string | null;
   isFavorite: boolean;
   enableDrive: boolean;
@@ -93,6 +97,8 @@ export interface ConnectionUpdate {
   password?: string;
   domain?: string;
   credentialSecretId?: string | null;
+  externalVaultProviderId?: string | null;
+  externalVaultPath?: string | null;
   description?: string | null;
   folderId?: string | null;
   enableDrive?: boolean;

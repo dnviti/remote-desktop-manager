@@ -384,4 +384,6 @@ marimo/_lsp/
 __marimo__/
 
 # Streamlit
-.streamlit/secrets.toml.worktrees/
+.streamlit/secrets.toml
+
+.worktrees/

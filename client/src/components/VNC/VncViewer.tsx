@@ -204,7 +204,7 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
       let data = '';
       reader.ontext = (text: string) => { data += text; };
       reader.onend = () => {
-        onRemoteClipboard(data);
+        onRemoteClipboardRef.current(data);
         if (dlpPolicyRef.current?.disableCopy) return;
         if (data && navigator.clipboard?.writeText) {
           navigator.clipboard.writeText(data).catch((err) => {
@@ -273,6 +273,9 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
     suppressBrowserKeys: true,
   });
 
+  // Ref-based bridge so connectSession (defined before the hook) always gets the latest callback
+  const onRemoteClipboardRef = useRef<(text: string) => void>(() => {});
+
   // Build toolbar actions via shared hook
   const { actions: toolbarActions, onRemoteClipboard } = useGuacToolbarActions({
     protocol: 'VNC',
@@ -282,6 +285,7 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
     isFullscreen,
     toggleFullscreen,
   });
+  useEffect(() => { onRemoteClipboardRef.current = onRemoteClipboard; }, [onRemoteClipboard]);
 
   // Listen for admin-initiated session termination
   useEffect(() => {

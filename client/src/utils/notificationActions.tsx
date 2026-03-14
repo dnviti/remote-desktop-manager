@@ -9,6 +9,7 @@ import {
   Error as ErrorIcon,
   GroupAdd as GroupAddIcon,
   Videocam as VideocamIcon,
+  AirplanemodeActive as FlightIcon,
   Notifications as DefaultIcon,
 } from '@mui/icons-material';
 import type { NotificationType, NotificationEntry } from '../api/notifications.api';
@@ -20,6 +21,7 @@ export interface NavigationActions {
   openKeychain: () => void;
   openRecordings: () => void;
   openSettings: (tab?: string) => void;
+  openAuditLog: () => void;
   selectConnection: (connectionId: string) => void;
 }
 
@@ -83,6 +85,10 @@ const NOTIFICATION_ACTIONS: Record<NotificationType, NotificationActionDef> = {
   RECORDING_READY: {
     icon: <VideocamIcon fontSize="small" color="success" />,
     onNavigate: (_n, actions) => actions.openRecordings(),
+  },
+  IMPOSSIBLE_TRAVEL_DETECTED: {
+    icon: <FlightIcon fontSize="small" color="error" />,
+    onNavigate: (_n, actions) => actions.openAuditLog(),
   },
 };
 

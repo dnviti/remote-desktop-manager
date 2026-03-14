@@ -68,7 +68,7 @@ function buildContainerConfig(
         'arsenale.type': 'ssh',
       },
       ...(config.dockerNetwork ? { network: config.dockerNetwork } : {}),
-      restartPolicy: 'unless-stopped',
+      restartPolicy: 'always',
     };
   }
 
@@ -99,7 +99,7 @@ function buildContainerConfig(
       binds: [`${config.recordingVolume || config.recordingPath}:/recordings`],
       user: '0:0',
     } : {}),
-    restartPolicy: 'unless-stopped',
+    restartPolicy: 'always',
   };
 }
 

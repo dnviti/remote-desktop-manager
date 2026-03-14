@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  IconButton, Badge, Popover, Box, Typography, List, ListItemButton,
+  IconButton, Badge, Popover, Box, Typography, List, ListItem, ListItemButton,
   ListItemText, ListItemIcon, Button, Divider,
 } from '@mui/material';
-import { NotificationsOutlined, DoneAll } from '@mui/icons-material';
+import { NotificationsOutlined, DoneAll, Close as CloseIcon } from '@mui/icons-material';
 import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../../store/authStore';
 import { useNotificationListStore } from '../../store/notificationListStore';
@@ -39,6 +39,7 @@ export default function NotificationBell({ navigationActions }: NotificationBell
   const markAsRead = useNotificationListStore((s) => s.markAsRead);
   const markAllAsRead = useNotificationListStore((s) => s.markAllAsRead);
   const addNotification = useNotificationListStore((s) => s.addNotification);
+  const removeNotification = useNotificationListStore((s) => s.removeNotification);
 
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
@@ -126,28 +127,43 @@ export default function NotificationBell({ navigationActions }: NotificationBell
         ) : (
           <List dense disablePadding sx={{ overflow: 'auto', maxHeight: 400 }}>
             {notifications.map((n) => (
-              <ListItemButton
+              <ListItem
                 key={n.id}
-                onClick={() => handleClick(n)}
-                sx={{
-                  bgcolor: n.read ? 'transparent' : 'action.hover',
-                  borderLeft: n.read ? 'none' : '3px solid',
-                  borderColor: 'primary.main',
-                }}
+                secondaryAction={
+                  <IconButton
+                    edge="end"
+                    size="small"
+                    aria-label="dismiss notification"
+                    onClick={() => removeNotification(n.id)}
+                    sx={{ opacity: 0.5, '&:hover': { opacity: 1 } }}
+                  >
+                    <CloseIcon fontSize="small" />
+                  </IconButton>
+                }
+                disablePadding
               >
-                <ListItemIcon sx={{ minWidth: 36 }}>
-                  {getNotificationIcon(n.type)}
-                </ListItemIcon>
-                <ListItemText
-                  primary={n.message}
-                  secondary={timeAgo(n.createdAt)}
-                  primaryTypographyProps={{
-                    variant: 'body2',
-                    fontWeight: n.read ? 400 : 600,
+                <ListItemButton
+                  onClick={() => handleClick(n)}
+                  sx={{
+                    bgcolor: n.read ? 'transparent' : 'action.hover',
+                    borderLeft: n.read ? 'none' : '3px solid',
+                    borderColor: 'primary.main',
                   }}
-                  secondaryTypographyProps={{ variant: 'caption' }}
-                />
-              </ListItemButton>
+                >
+                  <ListItemIcon sx={{ minWidth: 36 }}>
+                    {getNotificationIcon(n.type)}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={n.message}
+                    secondary={timeAgo(n.createdAt)}
+                    primaryTypographyProps={{
+                      variant: 'body2',
+                      fontWeight: n.read ? 400 : 600,
+                    }}
+                    secondaryTypographyProps={{ variant: 'caption' }}
+                  />
+                </ListItemButton>
+              </ListItem>
             ))}
           </List>
         )}

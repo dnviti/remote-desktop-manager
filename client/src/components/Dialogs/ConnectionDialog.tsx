@@ -5,7 +5,7 @@ import {
   FormControlLabel, Checkbox, Accordion, AccordionSummary, AccordionDetails, Typography,
   ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
-import { ExpandMore as ExpandMoreIcon, Keyboard, VpnKey } from '@mui/icons-material';
+import { ExpandMore as ExpandMoreIcon, Keyboard, VpnKey, Cloud as CloudIcon } from '@mui/icons-material';
 import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy } from '../../api/connections.api';
 import { useConnectionsStore } from '../../store/connectionsStore';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
@@ -25,6 +25,7 @@ import { useTenantStore } from '../../store/tenantStore';
 import SecretPicker from '../Keychain/SecretPicker';
 import { useVaultStore } from '../../store/vaultStore';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { listVaultProviders, VaultProviderData } from '../../api/externalVault.api';
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -48,8 +49,11 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const [rdpSettings, setRdpSettings] = useState<Partial<RdpSettings>>({});
   const [vncSettings, setVncSettings] = useState<Partial<VncSettings>>({});
   const [gatewayId, setGatewayId] = useState('');
-  const [credentialMode, setCredentialMode] = useState<'manual' | 'keychain'>('manual');
+  const [credentialMode, setCredentialMode] = useState<'manual' | 'keychain' | 'external-vault'>('manual');
   const [selectedSecretId, setSelectedSecretId] = useState<string | null>(null);
+  const [selectedVaultProviderId, setSelectedVaultProviderId] = useState<string | null>(null);
+  const [vaultSecretPath, setVaultSecretPath] = useState('');
+  const [vaultProviders, setVaultProviders] = useState<VaultProviderData[]>([]);
   const [defaultConnectMode, setDefaultConnectMode] = useState<string>('');
   const [dlpPolicy, setDlpPolicy] = useState<DlpPolicy>({});
   const { loading, error, setError, clearError, run } = useAsyncAction();
@@ -65,7 +69,10 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const isEditMode = Boolean(connection);
 
   useEffect(() => {
-    if (open && hasTenant) fetchGateways();
+    if (open && hasTenant) {
+      fetchGateways();
+      listVaultProviders().then(setVaultProviders).catch(() => setVaultProviders([]));
+    }
     if (open && connection) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- resetting form state when dialog opens is intentional
       setName(connection.name);
@@ -87,12 +94,21 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setVncSettings(
         (connection.vncSettings as Partial<VncSettings>) ?? {}
       );
-      if (connection.credentialSecretId) {
+      if (connection.externalVaultProviderId) {
+        setCredentialMode('external-vault');
+        setSelectedVaultProviderId(connection.externalVaultProviderId);
+        setVaultSecretPath(connection.externalVaultPath ?? '');
+        setSelectedSecretId(null);
+      } else if (connection.credentialSecretId) {
         setCredentialMode('keychain');
         setSelectedSecretId(connection.credentialSecretId);
+        setSelectedVaultProviderId(null);
+        setVaultSecretPath('');
       } else {
         setCredentialMode('manual');
         setSelectedSecretId(null);
+        setSelectedVaultProviderId(null);
+        setVaultSecretPath('');
       }
       setDefaultConnectMode(connection.defaultCredentialMode ?? '');
       setDlpPolicy((connection.dlpPolicy as DlpPolicy) ?? {});
@@ -112,6 +128,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setVncSettings({});
       setCredentialMode('manual');
       setSelectedSecretId(null);
+      setSelectedVaultProviderId(null);
+      setVaultSecretPath('');
       setDefaultConnectMode('');
       setDlpPolicy({});
     }
@@ -140,6 +158,10 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setError('Please select a secret from the keychain');
       return;
     }
+    if (credentialMode === 'external-vault' && (!selectedVaultProviderId || !vaultSecretPath)) {
+      setError('Please select a vault provider and enter a secret path');
+      return;
+    }
     if (credentialMode === 'manual' && !isEditMode && !username) {
       setError('Username is required for new connections');
       return;
@@ -156,6 +178,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           enableDrive,
           gatewayId: gatewayId || null,
           credentialSecretId: credentialMode === 'keychain' ? selectedSecretId : null,
+          externalVaultProviderId: credentialMode === 'external-vault' ? selectedVaultProviderId : null,
+          externalVaultPath: credentialMode === 'external-vault' ? vaultSecretPath : null,
           ...(type === 'SSH' && {
             sshTerminalConfig: Object.keys(sshTerminalConfig).length > 0 ? sshTerminalConfig : null,
           }),
@@ -187,7 +211,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           gatewayId: gatewayId || null,
           ...(credentialMode === 'keychain' && selectedSecretId
             ? { credentialSecretId: selectedSecretId }
-            : credentialMode === 'manual' ? { username, password, ...(domain ? { domain } : {}) } : {}),
+            : credentialMode === 'external-vault' && selectedVaultProviderId
+              ? { externalVaultProviderId: selectedVaultProviderId, externalVaultPath: vaultSecretPath }
+              : credentialMode === 'manual' ? { username, password, ...(domain ? { domain } : {}) } : {}),
           ...(folderId ? { folderId } : {}),
           ...(teamId ? { teamId } : {}),
           ...(type === 'SSH' && Object.keys(sshTerminalConfig).length > 0 && {
@@ -227,6 +253,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     setVncSettings({});
     setCredentialMode('manual');
     setSelectedSecretId(null);
+    setSelectedVaultProviderId(null);
+    setVaultSecretPath('');
     setDefaultConnectMode('');
     setDlpPolicy({});
     clearError();
@@ -309,9 +337,40 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
               <ToggleButton value="keychain" disabled={!vaultUnlocked}>
                 <VpnKey fontSize="small" sx={{ mr: 0.5 }} /> From Keychain
               </ToggleButton>
+              {hasTenant && vaultProviders.length > 0 && (
+                <ToggleButton value="external-vault">
+                  <CloudIcon fontSize="small" sx={{ mr: 0.5 }} /> External Vault
+                </ToggleButton>
+              )}
             </ToggleButtonGroup>
           </Box>
-          {credentialMode === 'keychain' ? (
+          {credentialMode === 'external-vault' ? (
+            <>
+              <FormControl fullWidth>
+                <InputLabel>Vault Provider</InputLabel>
+                <Select
+                  value={selectedVaultProviderId ?? ''}
+                  label="Vault Provider"
+                  onChange={(e) => setSelectedVaultProviderId(e.target.value || null)}
+                >
+                  {vaultProviders.filter((p) => p.enabled).map((p) => (
+                    <MenuItem key={p.id} value={p.id}>
+                      {p.name} — {p.serverUrl}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <TextField
+                label="Secret Path"
+                value={vaultSecretPath}
+                onChange={(e) => setVaultSecretPath(e.target.value)}
+                fullWidth
+                required
+                placeholder="e.g. servers/web1"
+                helperText="Path within the KV v2 mount (must contain username/password fields)"
+              />
+            </>
+          ) : credentialMode === 'keychain' ? (
             <SecretPicker
               value={selectedSecretId}
               onChange={(id) => setSelectedSecretId(id)}

@@ -14,6 +14,7 @@ import { initiateIdentityVerification, type VerificationMethod } from '../../api
 import InviteDialog from '../Dialogs/InviteDialog';
 import CreateUserDialog from '../Dialogs/CreateUserDialog';
 import IdentityVerification from '../common/IdentityVerification';
+import VaultProvidersSection from './VaultProvidersSection';
 import { extractApiError } from '../../utils/apiError';
 import { ALL_ROLES, ROLE_LABELS, isAdminOrAbove, type TenantRole } from '../../utils/roles';
 
@@ -571,6 +572,15 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
           )}
         </CardContent>
       </Card>
+
+      {/* External Vault Providers */}
+      {isAdmin && tenant && (
+        <Card sx={{ mb: 3 }}>
+          <CardContent>
+            <VaultProvidersSection tenantId={tenant.id} />
+          </CardContent>
+        </Card>
+      )}
 
       {/* Members */}
       <Card sx={{ mb: 3 }}>

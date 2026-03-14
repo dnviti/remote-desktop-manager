@@ -37,6 +37,9 @@ model Tenant {
   dlpDisableDownload           Boolean  @default(false)
   dlpDisableUpload             Boolean  @default(false)
   enforcedConnectionSettings   Json?
+  ipAllowlistEnabled           Boolean  @default(false)
+  ipAllowlistMode              String   @default("flag")
+  ipAllowlistEntries           String[] @default([])
   createdAt                    DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -48,6 +51,7 @@ model Tenant {
   vaultSecrets       VaultSecret[]
   tenantVaultMembers TenantVaultMember[]
   syncProfiles       SyncProfile[]
+  externalVaultProviders ExternalVaultProvider[]
 }
 
 model Team {
@@ -237,16 +241,19 @@ model Connection {
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
 
-  gatewayId         String?
-  syncProfileId     String?
-  externalId        String?
+  gatewayId                 String?
+  syncProfileId             String?
+  externalId                String?
+  externalVaultProviderId   String?
+  externalVaultPath         String?
 
-  folder           Folder?       @relation(fields: [folderId], references: [id], onDelete: SetNull)
-  team             Team?         @relation(fields: [teamId], references: [id])
-  user             User          @relation(fields: [userId], references: [id])
-  gateway          Gateway?      @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
-  credentialSecret VaultSecret?  @relation(fields: [credentialSecretId], references: [id], onDelete: SetNull)
-  syncProfile      SyncProfile?  @relation(fields: [syncProfileId], references: [id], onDelete: SetNull)
+  folder           Folder?                @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  team             Team?                  @relation(fields: [teamId], references: [id])
+  user             User                   @relation(fields: [userId], references: [id])
+  gateway          Gateway?               @relation(fields: [gatewayId], references: [id], onDelete: SetNull)
+  credentialSecret VaultSecret?           @relation(fields: [credentialSecretId], references: [id], onDelete: SetNull)
+  syncProfile      SyncProfile?           @relation(fields: [syncProfileId], references: [id], onDelete: SetNull)
+  externalVaultProvider ExternalVaultProvider? @relation(fields: [externalVaultProviderId], references: [id], onDelete: SetNull)
   shares           SharedConnection[]
   openTabs         OpenTab[]
   activeSessions   ActiveSession[]
@@ -600,6 +607,10 @@ enum AuditAction {
   TENANT_DLP_POLICY_UPDATE
   TENANT_CONNECTION_POLICY_UPDATE
   TOKEN_HIJACK_ATTEMPT
+  VAULT_PROVIDER_CREATE
+  VAULT_PROVIDER_UPDATE
+  VAULT_PROVIDER_DELETE
+  VAULT_PROVIDER_TEST
 }
 
 model AuditLog {
@@ -929,6 +940,35 @@ enum RecordingStatus {
   RECORDING
   COMPLETE
   ERROR
+}
+
+enum ExternalVaultAuthMethod {
+  TOKEN
+  APPROLE
+}
+
+model ExternalVaultProvider {
+  id                    String                   @id @default(uuid())
+  tenantId              String
+  name                  String
+  serverUrl             String
+  authMethod            ExternalVaultAuthMethod
+  namespace             String?
+  mountPath             String                   @default("secret")
+  encryptedAuthPayload  String
+  authPayloadIV         String
+  authPayloadTag        String
+  caCertificate         String?
+  cacheTtlSeconds       Int                      @default(300)
+  enabled               Boolean                  @default(true)
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+
+  tenant      Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  connections Connection[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
 }
 
 enum SyncProvider {

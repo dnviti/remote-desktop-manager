@@ -10,6 +10,7 @@ import { getPublicConfig } from '../services/appConfig.service';
 import type { AuthRequest } from '../types';
 import { assertAuthenticated } from '../types';
 import { getClientIp } from '../utils/ip';
+import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
 import { verifyEmailSchema } from '../schemas/auth.schemas';
 import type { RegisterInput, LoginInput, VerifyTotpInput, RequestSmsInput, VerifySmsInput, RequestWebAuthnInput, VerifyWebAuthnInput, ResendVerificationInput, MfaSetupTokenInput, MfaSetupVerifyInput, SwitchTenantInput, ForgotPasswordInput, ResetTokenInput, CompleteResetInput } from '../schemas/auth.schemas';
@@ -46,7 +47,14 @@ export async function login(req: Request, res: Response, next: NextFunction) {
         tempToken: result.tempToken,
       });
     } else if (!('requiresMFA' in result) || !result.requiresMFA) {
-      auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: getClientIp(req) });
+      const ip = getClientIp(req);
+      const activeTenantId = result.tenantMemberships?.find((m) => m.isActive)?.tenantId ?? null;
+      const { flagged, blocked } = await enforceIpAllowlist(activeTenantId, ip);
+      if (blocked) {
+        auditService.log({ userId: result.user.id, action: 'LOGIN_FAILURE', ipAddress: ip, details: { reason: 'ip_not_allowed' } });
+        return next(new AppError('Access denied: IP address not in tenant allowlist', 403));
+      }
+      auditService.log({ userId: result.user.id, action: 'LOGIN', ipAddress: ip, ...(flagged && { flags: ['UNTRUSTED_IP'] }) });
       setRefreshTokenCookie(res, result.refreshToken);
       const csrfToken = setCsrfCookie(res);
       res.json({
@@ -71,7 +79,14 @@ export async function verifyTotp(req: Request, res: Response, next: NextFunction
   try {
     const { tempToken, code } = req.body as VerifyTotpInput;
     const result = await authService.verifyTotp(tempToken, code, getRequestBinding(req));
-    auditService.log({ userId: result.user.id, action: 'LOGIN_TOTP', ipAddress: getClientIp(req) });
+    const ip = getClientIp(req);
+    const activeTenantId = result.tenantMemberships?.find((m) => m.isActive)?.tenantId ?? null;
+    const { flagged, blocked } = await enforceIpAllowlist(activeTenantId, ip);
+    if (blocked) {
+      auditService.log({ userId: result.user.id, action: 'LOGIN_FAILURE', ipAddress: ip, details: { reason: 'ip_not_allowed' } });
+      return next(new AppError('Access denied: IP address not in tenant allowlist', 403));
+    }
+    auditService.log({ userId: result.user.id, action: 'LOGIN_TOTP', ipAddress: ip, ...(flagged && { flags: ['UNTRUSTED_IP'] }) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
@@ -103,7 +118,14 @@ export async function verifySms(req: Request, res: Response, next: NextFunction)
   try {
     const { tempToken, code } = req.body as VerifySmsInput;
     const result = await authService.verifySmsCode(tempToken, code, getRequestBinding(req));
-    auditService.log({ userId: result.user.id, action: 'LOGIN_SMS', ipAddress: getClientIp(req) });
+    const ip = getClientIp(req);
+    const activeTenantId = result.tenantMemberships?.find((m) => m.isActive)?.tenantId ?? null;
+    const { flagged, blocked } = await enforceIpAllowlist(activeTenantId, ip);
+    if (blocked) {
+      auditService.log({ userId: result.user.id, action: 'LOGIN_FAILURE', ipAddress: ip, details: { reason: 'ip_not_allowed' } });
+      return next(new AppError('Access denied: IP address not in tenant allowlist', 403));
+    }
+    auditService.log({ userId: result.user.id, action: 'LOGIN_SMS', ipAddress: ip, ...(flagged && { flags: ['UNTRUSTED_IP'] }) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });
@@ -135,7 +157,14 @@ export async function verifyWebAuthn(req: Request, res: Response, next: NextFunc
   try {
     const { tempToken, credential } = req.body as VerifyWebAuthnInput;
     const result = await authService.verifyWebAuthn(tempToken, credential, getRequestBinding(req));
-    auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: getClientIp(req) });
+    const ip = getClientIp(req);
+    const activeTenantId = result.tenantMemberships?.find((m) => m.isActive)?.tenantId ?? null;
+    const { flagged, blocked } = await enforceIpAllowlist(activeTenantId, ip);
+    if (blocked) {
+      auditService.log({ userId: result.user.id, action: 'LOGIN_FAILURE', ipAddress: ip, details: { reason: 'ip_not_allowed' } });
+      return next(new AppError('Access denied: IP address not in tenant allowlist', 403));
+    }
+    auditService.log({ userId: result.user.id, action: 'LOGIN_WEBAUTHN', ipAddress: ip, ...(flagged && { flags: ['UNTRUSTED_IP'] }) });
     setRefreshTokenCookie(res, result.refreshToken);
     const csrfToken = setCsrfCookie(res);
     res.json({ accessToken: result.accessToken, csrfToken, user: result.user, tenantMemberships: result.tenantMemberships });

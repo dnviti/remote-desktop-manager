@@ -31,6 +31,7 @@ import TeamSection from '../Settings/TeamSection';
 import GatewaySection from '../Settings/GatewaySection';
 import EmailProviderSection from '../Settings/EmailProviderSection';
 import SelfSignupSection from '../Settings/SelfSignupSection';
+import IpAllowlistSection from '../Settings/IpAllowlistSection';
 import TenantAuditLogSection from '../Settings/TenantAuditLogSection';
 import LdapConfigSection from '../Settings/LdapConfigSection';
 import SyncProfileSection from '../Settings/SyncProfileSection';
@@ -212,6 +213,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           {resolvedTab === 'administration' && (
             <Stack spacing={3}>
               <SelfSignupSection />
+              <IpAllowlistSection />
               <EmailProviderSection />
               <LdapConfigSection />
               <TenantAuditLogSection onViewUserProfile={onViewUserProfile} onGeoIpClick={onGeoIpClick} />

@@ -134,11 +134,15 @@ export function useKeyboardCapture({
       onFullscreenChangeRef.current?.(nowFullscreen);
 
       // Only unlock when the document has fully exited fullscreen
+      // and this hook instance actually acquired the lock
       if (document.fullscreenElement === null) {
-        try {
-          navigator.keyboard?.unlock();
-        } catch {
-          // Keyboard Lock API not supported
+        if (lockAcquiredRef.current) {
+          try {
+            navigator.keyboard?.unlock();
+          } catch {
+            // Keyboard Lock API not supported
+          }
+          lockAcquiredRef.current = false;
         }
       }
     };

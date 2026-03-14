@@ -7,6 +7,7 @@ import * as permissionService from './permission.service';
 import { ROLE_HIERARCHY } from './permission.service';
 import { tenantScopedTeamFilter } from '../utils/tenantScope';
 import type { ResolvedCredentials, SecretPayload } from '../types';
+import { resolveExternalVaultCredentials } from './externalVault.service';
 import { logger } from '../utils/logger';
 import { validateHost } from '../utils/hostValidation';
 
@@ -21,6 +22,8 @@ export interface CreateConnectionInput {
   password?: string;
   domain?: string;
   credentialSecretId?: string;
+  externalVaultProviderId?: string | null;
+  externalVaultPath?: string | null;
   description?: string;
   folderId?: string;
   teamId?: string;
@@ -42,6 +45,8 @@ export interface UpdateConnectionInput {
   password?: string;
   domain?: string;
   credentialSecretId?: string | null;
+  externalVaultProviderId?: string | null;
+  externalVaultPath?: string | null;
   description?: string | null;
   folderId?: string | null;
   enableDrive?: boolean;
@@ -54,9 +59,9 @@ export interface UpdateConnectionInput {
 }
 
 export async function createConnection(userId: string, input: CreateConnectionInput, tenantId?: string | null) {
-  // Validate: must provide EITHER credentialSecretId OR (username + password)
-  if (!input.credentialSecretId && (input.username === undefined || input.password === undefined)) {
-    throw new AppError('Either credentialSecretId or both username and password must be provided', 400);
+  // Validate: must provide credentialSecretId, externalVaultProviderId, or (username + password)
+  if (!input.credentialSecretId && !input.externalVaultProviderId && (input.username === undefined || input.password === undefined)) {
+    throw new AppError('Either credentialSecretId, externalVaultProviderId, or both username and password must be provided', 400);
   }
 
   // If credentialSecretId: validate access and type compatibility
@@ -105,6 +110,8 @@ export async function createConnection(userId: string, input: CreateConnectionIn
       folderId: input.folderId || null,
       teamId: input.teamId || null,
       credentialSecretId: input.credentialSecretId || null,
+      externalVaultProviderId: input.externalVaultProviderId || null,
+      externalVaultPath: input.externalVaultPath || null,
       encryptedUsername: encUsername?.ciphertext ?? null,
       usernameIV: encUsername?.iv ?? null,
       usernameTag: encUsername?.tag ?? null,
@@ -138,6 +145,8 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     teamId: connection.teamId,
     gatewayId: connection.gatewayId,
     credentialSecretId: connection.credentialSecretId,
+    externalVaultProviderId: connection.externalVaultProviderId,
+    externalVaultPath: connection.externalVaultPath,
     description: connection.description,
     enableDrive: connection.enableDrive,
     sshTerminalConfig: connection.sshTerminalConfig,
@@ -181,6 +190,25 @@ export async function updateConnection(
   if (input.dlpPolicy !== undefined) data.dlpPolicy = input.dlpPolicy;
   if (input.defaultCredentialMode !== undefined) data.defaultCredentialMode = input.defaultCredentialMode;
 
+  // Handle externalVaultProvider changes
+  if (input.externalVaultProviderId !== undefined) {
+    data.externalVaultProviderId = input.externalVaultProviderId;
+    data.externalVaultPath = input.externalVaultPath ?? null;
+    if (input.externalVaultProviderId) {
+      // Clear inline credentials and keychain ref when switching to external vault
+      data.credentialSecretId = null;
+      data.encryptedUsername = null;
+      data.usernameIV = null;
+      data.usernameTag = null;
+      data.encryptedPassword = null;
+      data.passwordIV = null;
+      data.passwordTag = null;
+      data.encryptedDomain = null;
+      data.domainIV = null;
+      data.domainTag = null;
+    }
+  }
+
   // Handle credentialSecretId changes
   if (input.credentialSecretId !== undefined) {
     if (input.credentialSecretId === null) {
@@ -198,7 +226,9 @@ export async function updateConnection(
         throw new AppError('SSH_KEY secrets cannot be used with RDP/VNC connections', 400);
       }
       data.credentialSecretId = input.credentialSecretId;
-      // Clear inline credentials when switching to vault secret
+      // Clear inline credentials and external vault when switching to vault secret
+      data.externalVaultProviderId = null;
+      data.externalVaultPath = null;
       data.encryptedUsername = null;
       data.usernameIV = null;
       data.usernameTag = null;
@@ -255,6 +285,8 @@ export async function updateConnection(
     teamId: updated.teamId,
     gatewayId: updated.gatewayId,
     credentialSecretId: updated.credentialSecretId,
+    externalVaultProviderId: updated.externalVaultProviderId,
+    externalVaultPath: updated.externalVaultPath,
     description: updated.description,
     enableDrive: updated.enableDrive,
     sshTerminalConfig: updated.sshTerminalConfig,
@@ -299,6 +331,8 @@ export async function getConnection(userId: string, connectionId: string, tenant
       credentialSecretId,
       credentialSecretName,
       credentialSecretType,
+      externalVaultProviderId: connection.externalVaultProviderId,
+      externalVaultPath: connection.externalVaultPath,
       description: connection.description,
       enableDrive: connection.enableDrive,
       sshTerminalConfig: connection.sshTerminalConfig,
@@ -326,6 +360,8 @@ export async function getConnection(userId: string, connectionId: string, tenant
       credentialSecretId,
       credentialSecretName,
       credentialSecretType,
+      externalVaultProviderId: connection.externalVaultProviderId,
+      externalVaultPath: connection.externalVaultPath,
       description: connection.description,
       enableDrive: connection.enableDrive,
       sshTerminalConfig: connection.sshTerminalConfig,
@@ -357,6 +393,8 @@ export async function getConnection(userId: string, connectionId: string, tenant
     credentialSecretId,
     credentialSecretName,
     credentialSecretType,
+    externalVaultProviderId: connection.externalVaultProviderId,
+    externalVaultPath: connection.externalVaultPath,
     description: connection.description,
     enableDrive: connection.enableDrive,
     sshTerminalConfig: connection.sshTerminalConfig,
@@ -388,6 +426,8 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       gatewayId: true,
       credentialSecretId: true,
       credentialSecret: { select: { name: true, type: true } },
+      externalVaultProviderId: true,
+      externalVaultPath: true,
       description: true,
       isFavorite: true,
       enableDrive: true,
@@ -416,6 +456,8 @@ export async function listConnections(userId: string, tenantId?: string | null) 
           gatewayId: true,
           credentialSecretId: true,
           credentialSecret: { select: { name: true, type: true } },
+          externalVaultProviderId: true,
+          externalVaultPath: true,
           description: true,
           enableDrive: true,
           sshTerminalConfig: true,
@@ -455,6 +497,8 @@ export async function listConnections(userId: string, tenantId?: string | null) 
         gatewayId: true,
         credentialSecretId: true,
         credentialSecret: { select: { name: true, type: true } },
+        externalVaultProviderId: true,
+        externalVaultPath: true,
         description: true,
         isFavorite: true,
         enableDrive: true,
@@ -573,6 +617,18 @@ export async function getConnectionCredentials(
   if (!access.allowed) throw new AppError('Connection not found or credentials unavailable', 404);
 
   const connection = access.connection;
+
+  // External vault provider: resolve credentials from HashiCorp Vault
+  if (connection.externalVaultProviderId && connection.externalVaultPath) {
+    if (!tenantId) {
+      throw new AppError('Tenant context is required for external vault credential resolution', 400);
+    }
+    return resolveExternalVaultCredentials(
+      connection.externalVaultProviderId,
+      connection.externalVaultPath,
+      tenantId,
+    );
+  }
 
   // Vault secret reference: resolve credentials from keychain
   if (connection.credentialSecretId) {
