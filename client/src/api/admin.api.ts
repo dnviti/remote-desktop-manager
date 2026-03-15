@@ -38,3 +38,15 @@ export async function setSelfSignup(enabled: boolean): Promise<AppConfig> {
   const { data } = await api.put<AppConfig>('/admin/app-config/self-signup', { enabled });
   return data;
 }
+
+export interface AuthProviderDetail {
+  key: string;
+  label: string;
+  enabled: boolean;
+  providerName?: string;
+}
+
+export async function getAuthProviderDetails(): Promise<AuthProviderDetail[]> {
+  const { data } = await api.get<AuthProviderDetail[]>('/admin/auth-providers');
+  return data;
+}

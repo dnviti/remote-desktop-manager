@@ -4,6 +4,7 @@ import { sendEmail, getEmailStatus } from '../services/email';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import * as appConfigService from '../services/appConfig.service';
+import { config } from '../config';
 import { getClientIp } from '../utils/ip';
 import type { TestEmailInput, SelfSignupInput } from '../schemas/admin.schemas';
 
@@ -79,4 +80,24 @@ export async function setSelfSignup(
   });
 
   res.json({ selfSignupEnabled: enabled });
+}
+
+export async function getProviderDetails(
+  _req: AuthRequest,
+  res: Response,
+) {
+  const providers: Array<{
+    key: string;
+    label: string;
+    enabled: boolean;
+    providerName?: string;
+  }> = [
+    { key: 'google', label: 'Google', enabled: config.oauth.google.enabled },
+    { key: 'microsoft', label: 'Microsoft', enabled: config.oauth.microsoft.enabled },
+    { key: 'github', label: 'GitHub', enabled: config.oauth.github.enabled },
+    { key: 'oidc', label: 'OIDC', enabled: config.oauth.oidc.enabled, providerName: config.oauth.oidc.providerName },
+    { key: 'saml', label: 'SAML', enabled: config.oauth.saml.enabled, providerName: config.oauth.saml.providerName },
+    { key: 'ldap', label: 'LDAP', enabled: config.ldap.enabled && !!config.ldap.serverUrl, providerName: config.ldap.providerName },
+  ];
+  res.json(providers);
 }

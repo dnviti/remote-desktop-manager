@@ -14,5 +14,6 @@ router.get('/email/status', requireTenantRole('ADMIN'), asyncHandler(adminContro
 router.post('/email/test', requireTenantRole('ADMIN'), validate(testEmailSchema), adminController.sendTestEmail);
 router.get('/app-config', requireTenantRole('ADMIN'), asyncHandler(adminController.getAppConfig));
 router.put('/app-config/self-signup', requireTenantRole('ADMIN'), validate(selfSignupSchema), asyncHandler(adminController.setSelfSignup));
+router.get('/auth-providers', requireTenantRole('ADMIN'), asyncHandler(adminController.getProviderDetails));
 
 export default router;

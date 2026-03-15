@@ -7,19 +7,23 @@ import {
   Security as SecurityIcon,
   OpenInNew as OpenInNewIcon,
 } from '@mui/icons-material';
-import { getOAuthProviders } from '../../api/oauth.api';
+import { getAuthProviderDetails } from '../../api/admin.api';
 import { extractApiError } from '../../utils/apiError';
 
 export default function SamlConfigSection() {
   const [enabled, setEnabled] = useState(false);
-  const providerName = 'SAML';
+  const [providerName, setProviderName] = useState('SAML');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getOAuthProviders()
+    getAuthProviderDetails()
       .then((providers) => {
-        setEnabled(!!providers.saml);
+        const saml = providers.find((p) => p.key === 'saml');
+        setEnabled(!!saml?.enabled);
+        if (saml?.providerName) {
+          setProviderName(saml.providerName);
+        }
       })
       .catch((err: unknown) => {
         setError(extractApiError(err, 'Failed to load SAML configuration'));

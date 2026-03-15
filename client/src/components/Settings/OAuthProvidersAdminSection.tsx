@@ -6,33 +6,17 @@ import {
   CheckCircle as CheckIcon,
   Block as BlockIcon,
 } from '@mui/icons-material';
-import { getOAuthProviders } from '../../api/oauth.api';
-import type { OAuthProviders } from '../../api/oauth.api';
+import { getAuthProviderDetails } from '../../api/admin.api';
+import type { AuthProviderDetail } from '../../api/admin.api';
 import { extractApiError } from '../../utils/apiError';
 
-interface ProviderRow {
-  label: string;
-  enabled: boolean;
-}
-
-function buildProviderRows(providers: OAuthProviders): ProviderRow[] {
-  return [
-    { label: 'Google', enabled: !!providers.google },
-    { label: 'Microsoft', enabled: !!providers.microsoft },
-    { label: 'GitHub', enabled: !!providers.github },
-    { label: 'OIDC', enabled: !!providers.oidc },
-    { label: 'SAML', enabled: !!providers.saml },
-    { label: 'LDAP', enabled: !!providers.ldap },
-  ];
-}
-
 export default function OAuthProvidersAdminSection() {
-  const [providers, setProviders] = useState<OAuthProviders | null>(null);
+  const [providers, setProviders] = useState<AuthProviderDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    getOAuthProviders()
+    getAuthProviderDetails()
       .then(setProviders)
       .catch((err: unknown) => {
         setError(extractApiError(err, 'Failed to load authentication providers'));
@@ -41,8 +25,6 @@ export default function OAuthProvidersAdminSection() {
   }, []);
 
   if (loading) return null;
-
-  const rows = providers ? buildProviderRows(providers) : [];
 
   return (
     <Card>
@@ -56,16 +38,22 @@ export default function OAuthProvidersAdminSection() {
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {providers && (
+        {providers.length > 0 && (
           <Stack spacing={1}>
-            {rows.map((row) => (
-              <Stack key={row.label} direction="row" spacing={1} alignItems="center">
+            {providers.map((row) => (
+              <Stack key={row.key} direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2" sx={{ minWidth: 80 }}>
                   {row.label}
                 </Typography>
                 <Chip
                   icon={row.enabled ? <CheckIcon /> : <BlockIcon />}
-                  label={row.enabled ? 'Enabled' : 'Disabled'}
+                  label={
+                    row.enabled
+                      ? row.providerName
+                        ? `Enabled — ${row.providerName}`
+                        : 'Enabled'
+                      : 'Disabled'
+                  }
                   color={row.enabled ? 'success' : 'default'}
                   variant="outlined"
                   size="small"
