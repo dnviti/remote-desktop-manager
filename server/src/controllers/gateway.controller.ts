@@ -567,3 +567,9 @@ export async function revokeTunnelToken(req: AuthRequest, res: Response) {
   // Audit logging is handled by tunnel.service — no duplicate here
   res.json({ revoked: true, tunnelEnabled: false });
 }
+
+export async function tunnelOverview(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const overview = await gatewayService.getTunnelOverview(req.user.tenantId);
+  res.json(overview);
+}

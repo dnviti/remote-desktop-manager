@@ -11,6 +11,10 @@ export const enforcedConnectionSettingsSchema = z.object({
 
 export type EnforcedConnectionSettings = z.infer<typeof enforcedConnectionSettingsSchema>;
 
+// IPv4 CIDR: e.g. 10.0.0.0/8  |  IPv6 CIDR: e.g. 2001:db8::/32  |  single IPs without prefix
+// eslint-disable-next-line security/detect-unsafe-regex
+const cidrRegex = /^(?:(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|[0-9a-fA-F:]+(?:\/\d{1,3})?)$/;
+
 export const createTenantSchema = z.object({
   name: z.string().min(2).max(100),
 });
@@ -28,6 +32,26 @@ export const updateTenantSchema = z.object({
   dlpDisableDownload: z.boolean().optional(),
   dlpDisableUpload: z.boolean().optional(),
   enforcedConnectionSettings: enforcedConnectionSettingsSchema,
+  tunnelDefaultEnabled: z.boolean().optional(),
+  tunnelAutoTokenRotation: z.boolean().optional(),
+  tunnelTokenRotationDays: z.number().int().min(1).max(365).optional(),
+  tunnelRequireForRemote: z.boolean().optional(),
+  tunnelTokenMaxLifetimeDays: z.number().int().min(1).max(365).nullable().optional(),
+  tunnelAgentAllowedCidrs: z.array(z.string().regex(cidrRegex, 'Invalid IP/CIDR format')).max(100).optional()
+    .refine((entries) => {
+      if (!entries) return true;
+      return entries.every((entry) => {
+        const slash = entry.lastIndexOf('/');
+        if (slash === -1) {
+          return net.isIPv4(entry) || net.isIPv6(entry);
+        }
+        const ip = entry.substring(0, slash);
+        const prefix = parseInt(entry.substring(slash + 1), 10);
+        if (net.isIPv4(ip)) return prefix >= 0 && prefix <= 32;
+        if (net.isIPv6(ip)) return prefix >= 0 && prefix <= 128;
+        return false;
+      });
+    }, { message: 'Invalid IP address or CIDR notation' }),
 });
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 
@@ -75,9 +99,6 @@ export const updateMembershipExpirySchema = z.object({
 });
 export type UpdateMembershipExpiryInput = z.infer<typeof updateMembershipExpirySchema>;
 
-// IPv4 CIDR: e.g. 10.0.0.0/8  |  IPv6 CIDR: e.g. 2001:db8::/32  |  single IPs without prefix
-// eslint-disable-next-line security/detect-unsafe-regex
-const cidrRegex = /^(?:(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|[0-9a-fA-F:]+(?:\/\d{1,3})?)$/;
 export const ipAllowlistSchema = z.object({
   enabled: z.boolean(),
   mode: z.enum(['flag', 'block']),

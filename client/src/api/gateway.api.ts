@@ -398,6 +398,18 @@ export interface TunnelTokenResponse {
   tunnelConnected: boolean;
 }
 
+export interface TunnelOverviewData {
+  total: number;
+  connected: number;
+  disconnected: number;
+  avgRttMs: number | null;
+}
+
+export async function fetchTunnelOverview(): Promise<TunnelOverviewData> {
+  const { data } = await api.get('/gateways/tunnel-overview');
+  return data;
+}
+
 export async function generateTunnelToken(gatewayId: string): Promise<TunnelTokenResponse> {
   const { data } = await api.post(`/gateways/${gatewayId}/tunnel-token`);
   return data;

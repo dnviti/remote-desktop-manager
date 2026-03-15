@@ -6,7 +6,7 @@ import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
 import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
-import { generateTunnelToken, revokeTunnelToken, isTunnelConnected } from './tunnel.service';
+import { generateTunnelToken, revokeTunnelToken, isTunnelConnected, getTunnelInfo } from './tunnel.service';
 
 const log = logger.child('gateway');
 import { removeGatewayInstance } from './managedGateway.service';
@@ -589,4 +589,36 @@ export async function revokeGatewayTunnelToken(
   if (!existing) throw new AppError('Gateway not found', 404);
 
   return revokeTunnelToken(gatewayId, operatorUserId);
+}
+
+export async function getTunnelOverview(tenantId: string) {
+  const gateways = await prisma.gateway.findMany({
+    where: { tenantId, tunnelEnabled: true },
+    select: { id: true },
+  });
+
+  let connected = 0;
+  let disconnected = 0;
+  let rttSum = 0;
+  let rttCount = 0;
+
+  for (const gw of gateways) {
+    const info = getTunnelInfo(gw.id);
+    if (info) {
+      connected++;
+      if (info.pingPongLatency != null) {
+        rttSum += info.pingPongLatency;
+        rttCount++;
+      }
+    } else {
+      disconnected++;
+    }
+  }
+
+  return {
+    total: gateways.length,
+    connected,
+    disconnected,
+    avgRttMs: rttCount > 0 ? Math.round(rttSum / rttCount) : null,
+  };
 }

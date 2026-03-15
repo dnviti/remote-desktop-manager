@@ -16,6 +16,8 @@ import {
   type GatewayTemplateInput,
   type GatewayTemplateUpdate,
   type TunnelTokenResponse,
+  type TunnelOverviewData,
+  fetchTunnelOverview as fetchTunnelOverviewApi,
   listActiveSessions as listActiveSessionsApi,
   getSessionCount as getSessionCountApi,
   getSessionCountByGateway as getSessionCountByGatewayApi,
@@ -106,6 +108,11 @@ interface GatewayState {
   revokeTunnelToken: (gatewayId: string) => Promise<void>;
   applyTunnelStatusUpdate: (event: TunnelStatusEvent) => void;
 
+  // Tunnel fleet overview
+  tunnelOverview: TunnelOverviewData | null;
+  tunnelOverviewLoading: boolean;
+  fetchTunnelOverview: () => Promise<void>;
+
   reset: () => void;
 }
 
@@ -119,6 +126,8 @@ const initialOrchestrationState = {
   templates: [] as GatewayTemplateData[],
   templatesLoading: false,
   tunnelStatuses: {} as Record<string, TunnelStatusEvent>,
+  tunnelOverview: null as TunnelOverviewData | null,
+  tunnelOverviewLoading: false,
 };
 
 export const useGatewayStore = create<GatewayState>((set) => ({
@@ -391,6 +400,16 @@ export const useGatewayStore = create<GatewayState>((set) => ({
         g.id === event.gatewayId ? { ...g, tunnelConnected: event.connected } : g,
       ),
     }));
+  },
+
+  fetchTunnelOverview: async () => {
+    set({ tunnelOverviewLoading: true });
+    try {
+      const tunnelOverview = await fetchTunnelOverviewApi();
+      set({ tunnelOverview, tunnelOverviewLoading: false });
+    } catch {
+      set({ tunnelOverviewLoading: false });
+    }
   },
 
   reset: () => set({

@@ -25,6 +25,12 @@ export interface TenantData {
   dlpDisableDownload: boolean;
   dlpDisableUpload: boolean;
   enforcedConnectionSettings?: EnforcedConnectionSettings | null;
+  tunnelDefaultEnabled: boolean;
+  tunnelAutoTokenRotation: boolean;
+  tunnelTokenRotationDays: number;
+  tunnelRequireForRemote: boolean;
+  tunnelTokenMaxLifetimeDays: number | null;
+  tunnelAgentAllowedCidrs: string[];
   teamCount: number;
   createdAt: string;
   updatedAt: string;
@@ -102,7 +108,7 @@ export async function getTenantMfaStats(tenantId: string): Promise<{ total: numb
   return data;
 }
 
-export async function updateTenant(id: string, payload: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean; enforcedConnectionSettings?: EnforcedConnectionSettings | null }): Promise<TenantData> {
+export async function updateTenant(id: string, payload: { name?: string; defaultSessionTimeoutSeconds?: number; maxConcurrentSessions?: number; absoluteSessionTimeoutSeconds?: number; mfaRequired?: boolean; vaultAutoLockMaxMinutes?: number | null; dlpDisableCopy?: boolean; dlpDisablePaste?: boolean; dlpDisableDownload?: boolean; dlpDisableUpload?: boolean; enforcedConnectionSettings?: EnforcedConnectionSettings | null; tunnelDefaultEnabled?: boolean; tunnelAutoTokenRotation?: boolean; tunnelTokenRotationDays?: number; tunnelRequireForRemote?: boolean; tunnelTokenMaxLifetimeDays?: number | null; tunnelAgentAllowedCidrs?: string[] }): Promise<TenantData> {
   const { data } = await api.put(`/tenants/${id}`, payload);
   return data;
 }

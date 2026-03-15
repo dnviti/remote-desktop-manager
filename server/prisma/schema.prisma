@@ -42,6 +42,12 @@ model Tenant {
   ipAllowlistEnabled           Boolean  @default(false)
   ipAllowlistMode              String   @default("flag")
   ipAllowlistEntries           String[] @default([])
+  tunnelDefaultEnabled         Boolean  @default(false)
+  tunnelAutoTokenRotation      Boolean  @default(false)
+  tunnelTokenRotationDays      Int      @default(90)
+  tunnelRequireForRemote       Boolean  @default(false)
+  tunnelTokenMaxLifetimeDays   Int?
+  tunnelAgentAllowedCidrs      String[] @default([])
   createdAt                    DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
