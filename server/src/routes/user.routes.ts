@@ -3,6 +3,7 @@ import { authenticate } from '../middleware/auth.middleware';
 import { requireTenant } from '../middleware/tenant.middleware';
 import { identityVerificationLimiter } from '../middleware/identityRateLimit.middleware';
 import { validate } from '../middleware/validate.middleware';
+import { createRateLimiter } from '../middleware/rateLimitFactory';
 import {
   updateProfileSchema, changePasswordSchema, initiateEmailChangeSchema,
   confirmEmailChangeSchema, initiateIdentitySchema, confirmIdentitySchema,
@@ -12,11 +13,18 @@ import { sshTerminalConfigSchema, rdpSettingsSchema } from '../schemas/common.sc
 import * as userController from '../controllers/user.controller';
 import { asyncHandler } from '../middleware/asyncHandler';
 
+const userSearchRateLimiter = createRateLimiter({
+  windowMs: 60_000,
+  max: 20,
+  message: 'Too many search requests, please try again later',
+  keyPrefix: 'user-search',
+});
+
 const router = Router();
 
 router.use(authenticate);
 
-router.get('/search', requireTenant, validate(userSearchSchema, 'query'), asyncHandler(userController.search));
+router.get('/search', requireTenant, userSearchRateLimiter, validate(userSearchSchema, 'query'), asyncHandler(userController.search));
 router.get('/profile', asyncHandler(userController.getProfile));
 router.put('/profile', validate(updateProfileSchema), asyncHandler(userController.updateProfile));
 router.put('/password', validate(changePasswordSchema), asyncHandler(userController.changePassword));

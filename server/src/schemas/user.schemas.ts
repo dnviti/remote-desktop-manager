@@ -51,7 +51,7 @@ export type UploadAvatarInput = z.infer<typeof uploadAvatarSchema>;
 
 export const userSearchSchema = z.object({
   q: z.string().min(1).max(100),
-  scope: z.enum(['tenant', 'team']).optional().default('tenant'),
+  scope: z.enum(['tenant', 'team']).optional().default('team'),
   teamId: z.string().optional(),
 }).refine(
   (data) => !(data.scope === 'team' && !data.teamId),

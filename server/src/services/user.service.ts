@@ -349,7 +349,12 @@ export async function searchUsers(
     ],
   };
 
-  if (scope === 'team' && teamId) {
+  if (scope === 'team') {
+    if (!teamId) {
+      // Safety: if team-scoped but no teamId provided, return empty to prevent
+      // falling through to tenant-wide results (security bypass).
+      return [];
+    }
     where.teamMembers = { some: { teamId } };
   }
 
