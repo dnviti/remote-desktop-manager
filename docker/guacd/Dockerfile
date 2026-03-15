@@ -8,7 +8,7 @@
 # TUNNEL_GATEWAY_ID environment variables are set.
 
 # ── Tunnel agent build stage ─────────────────────────────────────────────────
-FROM node:22-alpine AS tunnel-builder
+FROM --platform=$BUILDPLATFORM node:22-alpine AS tunnel-builder
 
 WORKDIR /tunnel-agent
 
