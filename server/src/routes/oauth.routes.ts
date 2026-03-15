@@ -11,8 +11,11 @@ const router = Router();
 // Public: list available OAuth providers
 router.get('/oauth/providers', oauthFlowRateLimiter, oauthController.getAvailableProviders);
 
-// Account linking initiation (uses JWT from query param, not middleware)
+// Account linking initiation (uses JWT from Authorization header or query param)
 router.get('/oauth/link/:provider', oauthLinkRateLimiter, oauthController.initiateLinkOAuth);
+
+// Exchange a one-time authorization code for token data (public, replaces tokens in URL)
+router.post('/oauth/exchange-code', oauthFlowRateLimiter, oauthController.exchangeCode);
 
 // Protected routes
 router.get('/oauth/accounts', authenticate, oauthAccountRateLimiter, asyncHandler(oauthController.getLinkedAccounts));

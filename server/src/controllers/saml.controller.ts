@@ -14,6 +14,7 @@ import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { getClientIp } from '../utils/ip';
 import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
+import { generateAuthCode } from '../utils/authCodeStore';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.saml.enabled) {
@@ -24,7 +25,10 @@ export function initiateSaml(req: Request, res: Response, next: NextFunction) {
 }
 
 export function initiateSamlLink(req: Request, res: Response, next: NextFunction) {
-  const token = req.query.token as string;
+  // Accept token from Authorization header first, fall back to query param for backward compat
+  const authHeader = req.headers.authorization;
+  const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined)
+    || req.query.token as string;
   if (!token) return next(new AppError('Missing token', 401));
 
   let payload: AuthPayload;
@@ -113,10 +117,11 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       setRefreshTokenCookie(res, tokens.refreshToken);
       const csrfToken = setCsrfCookie(res);
 
-      const params = new URLSearchParams({
+      // Use a short-lived one-time code instead of putting tokens in the URL
+      const code = generateAuthCode({
         accessToken: tokens.accessToken,
         csrfToken,
-        needsVaultSetup: String(!result.user.vaultSetupComplete),
+        needsVaultSetup: !result.user.vaultSetupComplete,
         userId: result.user.id,
         email: result.user.email,
         username: result.user.username || '',
@@ -125,7 +130,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
         tenantRole: tokens.user.tenantRole || '',
       });
 
-      res.redirect(`${config.clientUrl}/oauth/callback?${params.toString()}`);
+      res.redirect(`${config.clientUrl}/oauth/callback?code=${code}`);
     } catch (error) {
       logger.error('SAML callback error:', error);
       let errorCode = 'authentication_failed';

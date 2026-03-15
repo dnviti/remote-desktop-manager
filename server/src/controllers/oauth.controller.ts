@@ -13,6 +13,7 @@ import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { getClientIp } from '../utils/ip';
 import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
+import { generateAuthCode, consumeAuthCode } from '../utils/authCodeStore';
 import type { VaultSetupInput } from '../schemas/oauth.schemas';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
@@ -105,10 +106,11 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
       setRefreshTokenCookie(res, tokens.refreshToken);
       const csrfToken = setCsrfCookie(res);
 
-      const params = new URLSearchParams({
+      // Use a short-lived one-time code instead of putting tokens in the URL
+      const code = generateAuthCode({
         accessToken: tokens.accessToken,
         csrfToken,
-        needsVaultSetup: String(!result.user.vaultSetupComplete),
+        needsVaultSetup: !result.user.vaultSetupComplete,
         userId: result.user.id,
         email: result.user.email,
         username: result.user.username || '',
@@ -117,7 +119,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
         tenantRole: tokens.user.tenantRole || '',
       });
 
-      res.redirect(`${config.clientUrl}/oauth/callback?${params.toString()}`);
+      res.redirect(`${config.clientUrl}/oauth/callback?code=${code}`);
     } catch (error) {
       logger.error('OAuth callback error:', error);
       let errorCode = 'authentication_failed';
@@ -144,7 +146,10 @@ export function getAvailableProviders(_req: Request, res: Response) {
 }
 
 export function initiateLinkOAuth(req: Request, res: Response, next: NextFunction) {
-  const token = req.query.token as string;
+  // Accept token from Authorization header first, fall back to query param for backward compat
+  const authHeader = req.headers.authorization;
+  const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined)
+    || req.query.token as string;
   if (!token) return next(new AppError('Missing token', 401));
 
   let payload: AuthPayload;
@@ -169,6 +174,20 @@ export function initiateLinkOAuth(req: Request, res: Response, next: NextFunctio
     session: false,
     state,
   })(req, res, next);
+}
+
+export function exchangeCode(req: Request, res: Response, next: NextFunction) {
+  const { code } = req.body as { code?: string };
+  if (!code || typeof code !== 'string') {
+    return next(new AppError('Missing authorization code', 400));
+  }
+
+  const data = consumeAuthCode(code);
+  if (!data) {
+    return next(new AppError('Invalid or expired authorization code', 400));
+  }
+
+  res.json(data);
 }
 
 export async function unlinkOAuth(req: AuthRequest, res: Response) {
