@@ -48,4 +48,7 @@ USER daemon
 
 EXPOSE 4822
 
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=10s \
+  CMD nc -z localhost 4822 || exit 1
+
 ENTRYPOINT ["/entrypoint.sh"]

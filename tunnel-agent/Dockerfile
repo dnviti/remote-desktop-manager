@@ -47,4 +47,7 @@ ENV NODE_ENV=production
 # TUNNEL_CLIENT_CERT  <PEM>
 # TUNNEL_CLIENT_KEY   <PEM>
 
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=5s \
+  CMD node -e "process.exit(0)" || exit 1
+
 CMD ["node", "dist/index.js"]
