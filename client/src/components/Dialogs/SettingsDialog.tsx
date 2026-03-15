@@ -38,6 +38,7 @@ import SyncProfileSection from '../Settings/SyncProfileSection';
 import TenantConnectionPolicySection from '../Settings/TenantConnectionPolicySection';
 import SamlConfigSection from '../Settings/SamlConfigSection';
 import OAuthProvidersAdminSection from '../Settings/OAuthProvidersAdminSection';
+import AccessPolicySection from '../Settings/AccessPolicySection';
 import { SlideUp } from '../common/SlideUp';
 import { isAdminOrAbove } from '../../utils/roles';
 
@@ -216,6 +217,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
             <Stack spacing={3}>
               <SelfSignupSection />
               <IpAllowlistSection />
+              <AccessPolicySection />
               <OAuthProvidersAdminSection />
               <EmailProviderSection />
               <LdapConfigSection />
