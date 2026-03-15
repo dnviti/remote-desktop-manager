@@ -17,6 +17,8 @@ RUN npm run build && npm prune --omit=dev
 # ── SSH gateway runtime ───────────────────────────────────────────────────────
 FROM alpine:3.21
 
+RUN apk update && apk upgrade --no-cache
+
 LABEL org.opencontainers.image.title="Arsenale SSH Gateway"
 LABEL org.opencontainers.image.description="Lightweight SSH tunnel for TCP port forwarding (no shell access)"
 LABEL org.opencontainers.image.source="https://github.com/dnviti/arsenale"
