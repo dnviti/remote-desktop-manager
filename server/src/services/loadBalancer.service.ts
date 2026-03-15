@@ -25,6 +25,12 @@ export async function selectInstance(
   gatewayId: string,
   strategy: LoadBalancingStrategy,
 ): Promise<RoutingDecision | null> {
+  // Fetch the parent gateway to check tunnel routing
+  const gateway = await prisma.gateway.findUnique({
+    where: { id: gatewayId },
+    select: { tunnelEnabled: true },
+  });
+
   const instances = await prisma.managedGatewayInstance.findMany({
     where: {
       gatewayId,
@@ -36,6 +42,8 @@ export async function selectInstance(
       host: true,
       port: true,
       containerName: true,
+      tunnelProxyHost: true,
+      tunnelProxyPort: true,
       _count: {
         select: {
           sessions: {
@@ -65,15 +73,21 @@ export async function selectInstance(
     selected = candidates[Math.floor(Math.random() * candidates.length)];
   }
 
+  // For tunneled managed gateways, use the tunnel proxy address when available
+  const useTunnel = gateway?.tunnelEnabled && selected.tunnelProxyHost != null && selected.tunnelProxyPort != null;
+  const resolvedHost = useTunnel && selected.tunnelProxyHost != null ? selected.tunnelProxyHost : selected.host;
+  const resolvedPort = useTunnel && selected.tunnelProxyPort != null ? selected.tunnelProxyPort : selected.port;
+
   log.debug(
-    `Selected instance ${selected.id} (${selected.host}:${selected.port}) ` +
-      `for gateway ${gatewayId} using ${strategy} (${selected._count.sessions} active sessions)`,
+    `Selected instance ${selected.id} (${resolvedHost}:${resolvedPort}) ` +
+      `for gateway ${gatewayId} using ${strategy} (${selected._count.sessions} active sessions)` +
+      (useTunnel ? ' [tunnel proxy]' : ''),
   );
 
   return {
     id: selected.id,
-    host: selected.host,
-    port: selected.port,
+    host: resolvedHost,
+    port: resolvedPort,
     containerName: selected.containerName,
     strategy,
     candidateCount: instances.length,

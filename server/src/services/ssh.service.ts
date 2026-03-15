@@ -1,4 +1,5 @@
 import { Client, ClientChannel, SFTPWrapper } from 'ssh2';
+import type { Duplex } from 'stream';
 
 const SSH_READY_TIMEOUT_MS = 10_000;
 const SSH_KEEPALIVE_INTERVAL_MS = 10_000;
@@ -10,6 +11,9 @@ export interface SshConnectionParams {
   password?: string;
   privateKey?: string;
   passphrase?: string;
+  /** Optional pre-established tunnel stream — when provided, SSH2 uses this
+   *  instead of opening a direct TCP connection to host:port. */
+  sock?: Duplex;
 }
 
 export interface SshSession {
@@ -30,6 +34,8 @@ export interface BastionConnectionParams {
   targetPassword?: string;
   targetPrivateKey?: string;
   targetPassphrase?: string;
+  /** Optional pre-established tunnel stream for the bastion leg. */
+  sock?: Duplex;
 }
 
 export function createSshConnection(
@@ -59,16 +65,29 @@ export function createSshConnection(
       reject(err);
     });
 
-    client.connect({
-      host: params.host,
-      port: params.port,
-      username: params.username,
-      ...(params.privateKey
-        ? { privateKey: params.privateKey, passphrase: params.passphrase }
-        : { password: params.password }),
-      readyTimeout: SSH_READY_TIMEOUT_MS,
-      keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
-    });
+    if (params.sock) {
+      // Route through pre-established tunnel stream — no direct TCP connection
+      client.connect({
+        sock: params.sock,
+        username: params.username,
+        ...(params.privateKey
+          ? { privateKey: params.privateKey, passphrase: params.passphrase }
+          : { password: params.password }),
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+      });
+    } else {
+      client.connect({
+        host: params.host,
+        port: params.port,
+        username: params.username,
+        ...(params.privateKey
+          ? { privateKey: params.privateKey, passphrase: params.passphrase }
+          : { password: params.password }),
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+      });
+    }
   });
 }
 
@@ -128,16 +147,29 @@ export function createSshConnectionViaBastion(
       reject(new Error(`Bastion connection failed: ${bastionErr.message}`));
     });
 
-    bastionClient.connect({
-      host: params.bastionHost,
-      port: params.bastionPort,
-      username: params.bastionUsername,
-      ...(params.bastionPrivateKey
-        ? { privateKey: params.bastionPrivateKey }
-        : { password: params.bastionPassword }),
-      readyTimeout: SSH_READY_TIMEOUT_MS,
-      keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
-    });
+    if (params.sock) {
+      // Route through pre-established tunnel stream — no direct TCP to bastion
+      bastionClient.connect({
+        sock: params.sock,
+        username: params.bastionUsername,
+        ...(params.bastionPrivateKey
+          ? { privateKey: params.bastionPrivateKey }
+          : { password: params.bastionPassword }),
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+      });
+    } else {
+      bastionClient.connect({
+        host: params.bastionHost,
+        port: params.bastionPort,
+        username: params.bastionUsername,
+        ...(params.bastionPrivateKey
+          ? { privateKey: params.bastionPrivateKey }
+          : { password: params.bastionPassword }),
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+      });
+    }
   });
 }
 

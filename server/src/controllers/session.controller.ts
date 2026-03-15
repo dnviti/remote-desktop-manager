@@ -15,6 +15,7 @@ import * as auditService from '../services/audit.service';
 import * as abacService from '../services/abac.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { getDefaultGateway } from '../services/gateway.service';
+import { isTunnelConnected, createTcpProxy } from '../services/tunnel.service';
 import { AppError } from '../middleware/error.middleware';
 import { forceDisconnectSession } from '../services/sessionCleanup.service';
 import { config } from '../config';
@@ -118,6 +119,19 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
           candidateCount: inst.candidateCount,
           selectedSessionCount: inst.selectedSessionCount,
         };
+      }
+
+      // Tunnel routing: when the gateway has a zero-trust tunnel connected,
+      // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
+      if (gateway.tunnelEnabled) {
+        if (!isTunnelConnected(gateway.id)) {
+          throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
+        }
+        const targetHost = guacdHost ?? gateway.host;
+        const targetPort = guacdPort ?? gateway.port;
+        const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, targetHost, targetPort);
+        guacdHost = '127.0.0.1';
+        guacdPort = localPort;
       }
     }
 
@@ -340,6 +354,19 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
           candidateCount: inst.candidateCount,
           selectedSessionCount: inst.selectedSessionCount,
         };
+      }
+
+      // Tunnel routing: when the gateway has a zero-trust tunnel connected,
+      // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
+      if (gateway.tunnelEnabled) {
+        if (!isTunnelConnected(gateway.id)) {
+          throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
+        }
+        const targetHost = guacdHost ?? gateway.host;
+        const targetPort = guacdPort ?? gateway.port;
+        const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, targetHost, targetPort);
+        guacdHost = '127.0.0.1';
+        guacdPort = localPort;
       }
     }
 
