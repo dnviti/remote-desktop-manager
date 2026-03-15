@@ -10,6 +10,8 @@ RUN npm run build
 
 FROM nginx:1.28-alpine
 
+RUN apk update && apk upgrade --no-cache
+
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY client/nginx.main.conf /etc/nginx/nginx.conf
 COPY client/nginx.conf /etc/nginx/conf.d/default.conf
