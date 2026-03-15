@@ -15,6 +15,7 @@ import {
   Publish as PushKeyIcon,
   KeyboardArrowDown as ExpandRowIcon,
   KeyboardArrowUp as CollapseRowIcon,
+  VpnLock as TunnelIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useGatewayStore } from '../../store/gatewayStore';
@@ -62,6 +63,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   const rotateSshKeyPairAction = useGatewayStore((s) => s.rotateSshKeyPair);
   const pushKeyToGatewayAction = useGatewayStore((s) => s.pushKeyToGateway);
   const applyHealthUpdate = useGatewayStore((s) => s.applyHealthUpdate);
+  const tunnelStatuses = useGatewayStore((s) => s.tunnelStatuses);
 
   const subTab = useUiPreferencesStore((s) => s.gatewayActiveSubTab);
   const setSubTab = useUiPreferencesStore((s) => s.set);
@@ -507,40 +509,66 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                             )}
                           </TableCell>
                           <TableCell>
-                            {gw.publishPorts && gw.isManaged ? (
-                              // For published-port managed gateways, derive status from instances
-                              gw.totalInstances === 0 ? (
-                                <Typography variant="caption" color="text.secondary">No instances</Typography>
-                              ) : gw.runningInstances === gw.totalInstances ? (
-                                <Chip label={`${gw.runningInstances}/${gw.totalInstances} healthy`} size="small" color="success" />
-                              ) : gw.runningInstances > 0 ? (
-                                <Chip label={`${gw.runningInstances}/${gw.totalInstances} healthy`} size="small" color="warning" />
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                              {gw.publishPorts && gw.isManaged ? (
+                                // For published-port managed gateways, derive status from instances
+                                gw.totalInstances === 0 ? (
+                                  <Typography variant="caption" color="text.secondary">No instances</Typography>
+                                ) : gw.runningInstances === gw.totalInstances ? (
+                                  <Chip label={`${gw.runningInstances}/${gw.totalInstances} healthy`} size="small" color="success" />
+                                ) : gw.runningInstances > 0 ? (
+                                  <Chip label={`${gw.runningInstances}/${gw.totalInstances} healthy`} size="small" color="warning" />
+                                ) : (
+                                  <Chip label={`0/${gw.totalInstances} healthy`} size="small" color="error" />
+                                )
+                              ) : test?.loading ? (
+                                <CircularProgress size={16} />
+                              ) : gw.lastHealthStatus === 'REACHABLE' ? (
+                                <Tooltip title={gw.lastCheckedAt ? `Last checked: ${new Date(gw.lastCheckedAt).toLocaleTimeString()}` : ''}>
+                                  <Chip
+                                    label={`Reachable${gw.lastLatencyMs != null ? ` (${gw.lastLatencyMs}ms)` : ''}`}
+                                    size="small"
+                                    color="success"
+                                  />
+                                </Tooltip>
+                              ) : gw.lastHealthStatus === 'UNREACHABLE' ? (
+                                <Tooltip title={gw.lastCheckedAt ? `Last checked: ${new Date(gw.lastCheckedAt).toLocaleTimeString()}` : ''}>
+                                  <Chip
+                                    label={gw.lastError || 'Unreachable'}
+                                    size="small"
+                                    color="error"
+                                  />
+                                </Tooltip>
                               ) : (
-                                <Chip label={`0/${gw.totalInstances} healthy`} size="small" color="error" />
-                              )
-                            ) : test?.loading ? (
-                              <CircularProgress size={16} />
-                            ) : gw.lastHealthStatus === 'REACHABLE' ? (
-                              <Tooltip title={gw.lastCheckedAt ? `Last checked: ${new Date(gw.lastCheckedAt).toLocaleTimeString()}` : ''}>
-                                <Chip
-                                  label={`Reachable${gw.lastLatencyMs != null ? ` (${gw.lastLatencyMs}ms)` : ''}`}
-                                  size="small"
-                                  color="success"
-                                />
-                              </Tooltip>
-                            ) : gw.lastHealthStatus === 'UNREACHABLE' ? (
-                              <Tooltip title={gw.lastCheckedAt ? `Last checked: ${new Date(gw.lastCheckedAt).toLocaleTimeString()}` : ''}>
-                                <Chip
-                                  label={gw.lastError || 'Unreachable'}
-                                  size="small"
-                                  color="error"
-                                />
-                              </Tooltip>
-                            ) : (
-                              <Typography variant="caption" color="text.secondary">
-                                {gw.monitoringEnabled ? 'Checking...' : 'Not monitored'}
-                              </Typography>
-                            )}
+                                <Typography variant="caption" color="text.secondary">
+                                  {gw.monitoringEnabled ? 'Checking...' : 'Not monitored'}
+                                </Typography>
+                              )}
+                              {/* Tunnel status badge */}
+                              {(() => {
+                                if (!gw.tunnelEnabled) return null;
+                                const ts = tunnelStatuses[gw.id];
+                                const connected = ts ? ts.connected : gw.tunnelConnected;
+                                const tooltipLines: string[] = [];
+                                if (ts) {
+                                  if (ts.connectedAt) tooltipLines.push(`Connected since: ${new Date(ts.connectedAt).toLocaleString()}`);
+                                  if (ts.rttMs != null) tooltipLines.push(`RTT: ${ts.rttMs}ms`);
+                                  if (ts.activeStreams != null) tooltipLines.push(`Active streams: ${ts.activeStreams}`);
+                                  if (ts.agentVersion) tooltipLines.push(`Agent: ${ts.agentVersion}`);
+                                } else if (gw.tunnelConnectedAt && connected) {
+                                  tooltipLines.push(`Connected since: ${new Date(gw.tunnelConnectedAt).toLocaleString()}`);
+                                }
+                                const tooltipTitle = tooltipLines.length > 0 ? tooltipLines.join(' · ') : (connected ? 'Tunnel connected' : 'Tunnel disconnected');
+                                return (
+                                  <Tooltip title={tooltipTitle}>
+                                    <TunnelIcon
+                                      fontSize="small"
+                                      sx={{ color: connected ? 'success.main' : 'error.main', ml: 0.5 }}
+                                    />
+                                  </Tooltip>
+                                );
+                              })()}
+                            </Box>
                           </TableCell>
                           <TableCell align="right">
                             <IconButton size="small" onClick={() => handleTest(gw)} title="Test connectivity">

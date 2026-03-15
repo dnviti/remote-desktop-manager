@@ -36,6 +36,10 @@ export interface GatewayData {
   templateId: string | null;
   totalInstances: number;
   runningInstances: number;
+  tunnelEnabled: boolean;
+  tunnelConnected: boolean;
+  tunnelConnectedAt: string | null;
+  tunnelClientCertExp: string | null;
 }
 
 export interface GatewayInput {
@@ -383,5 +387,23 @@ export async function deleteGatewayTemplate(id: string): Promise<{ deleted: bool
 
 export async function deployFromTemplate(templateId: string): Promise<GatewayData> {
   const { data } = await api.post(`/gateways/templates/${templateId}/deploy`);
+  return data;
+}
+
+// ---------- Zero-Trust Tunnel Token Management ----------
+
+export interface TunnelTokenResponse {
+  token: string;
+  tunnelEnabled: boolean;
+  tunnelConnected: boolean;
+}
+
+export async function generateTunnelToken(gatewayId: string): Promise<TunnelTokenResponse> {
+  const { data } = await api.post(`/gateways/${gatewayId}/tunnel-token`);
+  return data;
+}
+
+export async function revokeTunnelToken(gatewayId: string): Promise<{ revoked: boolean; tunnelEnabled: boolean }> {
+  const { data } = await api.delete(`/gateways/${gatewayId}/tunnel-token`);
   return data;
 }

@@ -6,7 +6,7 @@ import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
 import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
-import { generateTunnelToken, revokeTunnelToken } from './tunnel.service';
+import { generateTunnelToken, revokeTunnelToken, isTunnelConnected } from './tunnel.service';
 
 const log = logger.child('gateway');
 import { removeGatewayInstance } from './managedGateway.service';
@@ -79,6 +79,9 @@ const publicSelect = {
   scaleDownCooldownSeconds: true,
   lastScaleAction: true,
   templateId: true,
+  tunnelEnabled: true,
+  tunnelConnectedAt: true,
+  tunnelClientCertExp: true,
 } as const;
 
 export async function getDefaultGateway(tenantId: string, type: GatewayType) {
@@ -104,6 +107,7 @@ export async function listGateways(tenantId: string) {
         ...gw,
         hasSshKey: encryptedSshKey != null,
         totalInstances: _count.managedInstances,
+        tunnelConnected: gw.tunnelEnabled ? isTunnelConnected(gw.id) : false,
       };
       if (!gw.isManaged || _count.managedInstances === 0) {
         return { ...base, runningInstances: 0 };

@@ -120,6 +120,14 @@ The Gateway model includes tunnel fields: `tunnelEnabled`, encrypted token (ciph
 
 Audit actions `TUNNEL_CONNECT`, `TUNNEL_DISCONNECT`, `TUNNEL_TOKEN_GENERATE`, and `TUNNEL_TOKEN_ROTATE` are recorded for all tunnel lifecycle events.
 
+The `GatewayData` API type exposes `tunnelEnabled`, `tunnelConnected` (live registry check), `tunnelConnectedAt`, and `tunnelClientCertExp`. The client `gateway.api.ts` provides `generateTunnelToken` and `revokeTunnelToken` functions. The `gatewayStore` holds a `tunnelStatuses` map updated via `applyTunnelStatusUpdate` and `tunnel:metrics` Socket.IO events.
+
+### Tunnel UI
+
+`GatewayDialog.tsx` (edit mode only) includes a "Zero-Trust Tunnel" MUI Accordion section persisted via `tunnelSectionOpen` in `uiPreferencesStore`. When tunnel is disabled the admin sees an "Enable Zero-Trust Tunnel" button. Once enabled: managed gateways show a one-time plain token (copy before closing); non-managed gateways show a pre-built `docker run` command with a base64-encoded connection string (`{ serverUrl, tunnelToken, gatewayId }`). Token rotation and revocation are inline with inline confirmation. Certificate expiry is shown with days-until-renewal. Host/port fields become read-only when tunnel is active.
+
+`GatewaySection.tsx` shows a `VpnLock` icon badge (green = connected, red = disconnected) next to the health chip for any `tunnelEnabled` gateway. The Tooltip contains connected-since, RTT, active streams, and agent version from live `tunnelStatuses`.
+
 ## Tunnel Agent (`tunnel-agent/`)
 
 The `tunnel-agent` is a lightweight Node.js workspace (`tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.

@@ -44,6 +44,7 @@ interface UiPreferences {
   keychainFolderExpandState: Record<string, boolean>;
   toolbarDockedSide: 'left' | 'right';
   toolbarDockedY: number;
+  tunnelSectionOpen: boolean;
 }
 
 interface UiPreferencesState extends UiPreferences {
@@ -96,6 +97,7 @@ const defaults: UiPreferences = {
   keychainFolderExpandState: {},
   toolbarDockedSide: 'left',
   toolbarDockedY: 50,
+  tunnelSectionOpen: false,
 };
 
 export const useUiPreferencesStore = create<UiPreferencesState>()(
