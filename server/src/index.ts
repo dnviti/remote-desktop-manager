@@ -236,7 +236,7 @@ async function main() {
             key: getGuacamoleKey(),
           },
           log: {
-            level: config.logGuacamole ? toGuacamoleLogLevel(config.logLevel) : 'QUIET',
+            level: config.logGuacamole ? toGuacamoleLogLevel(config.logLevel) : 0,
           },
         }
       );

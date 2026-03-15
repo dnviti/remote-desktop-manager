@@ -39,15 +39,20 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
   const permanentErrorRef = useRef(false);
   const lastGuacErrorRef = useRef('');
   const innerCleanupRef = useRef<(() => void) | null>(null);
-  const cancelledRef = useRef(false);
+  const connectionGenRef = useRef(0);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  const connectedAtRef = useRef(0);
 
   const credentialsRef = useRef(credentials);
   useEffect(() => { credentialsRef.current = credentials; }, [credentials]);
 
+  const STABLE_THRESHOLD_MS = 5_000;
+
   const connectSession = useCallback(async () => {
     if (!displayRef.current) return;
+
+    const gen = ++connectionGenRef.current;
 
     // Clean up previous session
     if (heartbeatRef.current) {
@@ -84,10 +89,14 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
       }),
     });
     const { token, sessionId, dlpPolicy: resDlp } = res.data;
+
+    if (connectionGenRef.current !== gen) {
+      if (sessionId) api.post(`/sessions/vnc/${sessionId}/end`).catch(() => {});
+      return;
+    }
+
     sessionIdRef.current = sessionId ?? null;
     if (resDlp) { setDlpPolicy(resDlp); dlpPolicyRef.current = resDlp; }
-
-    if (cancelledRef.current) return;
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/?token=${encodeURIComponent(token)}`;
@@ -121,11 +130,12 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
     (client.getDisplay() as unknown as { onresize: (() => void) | null }).onresize = handleResize;
 
     client.onstatechange = (state: number) => {
-      if (cancelledRef.current) return;
+      if (connectionGenRef.current !== gen) return;
       switch (state) {
         case 3: // CONNECTED
           connected = true;
           wasConnectedRef.current = true;
+          connectedAtRef.current = Date.now();
           lastGuacErrorRef.current = '';
           setStatus('connected');
           resetReconnect();
@@ -164,18 +174,26 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
             heartbeatRef.current = null;
           }
           if (permanentErrorRef.current) return;
-          if (wasConnectedRef.current && !isGuacPermanentError(lastGuacErrorRef.current)) {
-            triggerReconnect();
-          } else {
-            setStatus('error');
-            setError(lastGuacErrorRef.current || 'Disconnected from VNC session');
+          {
+            const uptime = connectedAtRef.current ? Date.now() - connectedAtRef.current : 0;
+            connectedAtRef.current = 0;
+            if (
+              wasConnectedRef.current &&
+              uptime >= STABLE_THRESHOLD_MS &&
+              !isGuacPermanentError(lastGuacErrorRef.current)
+            ) {
+              triggerReconnect();
+            } else {
+              setStatus('error');
+              setError(lastGuacErrorRef.current || 'Disconnected from VNC session');
+            }
           }
           break;
       }
     };
 
     client.onerror = (err: { message?: string }) => {
-      if (cancelledRef.current) return;
+      if (connectionGenRef.current !== gen) return;
       const msg = err.message || 'VNC connection error';
       lastGuacErrorRef.current = msg;
       if (isGuacPermanentError(msg)) {
@@ -319,22 +337,23 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
   useEffect(() => {
     if (!displayRef.current) return;
 
-    cancelledRef.current = false;
     permanentErrorRef.current = false;
     wasConnectedRef.current = false;
     lastGuacErrorRef.current = '';
+    connectedAtRef.current = 0;
 
     // Capture ref value for cleanup — React refs may change by the time cleanup runs
     const displayEl = displayRef.current;
 
     connectSession().catch((err: unknown) => {
-      if (cancelledRef.current) return;
+      if (connectionGenRef.current !== mountGen) return;
       setStatus('error');
       setError(extractApiError(err, err instanceof Error ? err.message : 'Failed to start VNC session'));
     });
+    const mountGen = connectionGenRef.current;
 
     return () => {
-      cancelledRef.current = true;
+      ++connectionGenRef.current;
       cancelReconnect();
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
@@ -364,7 +383,7 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
         displayEl.innerHTML = '';
       }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- credentials intentionally excluded; connect once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- credentials excluded; connectionGenRef write in cleanup is intentional
   }, [connectionId]);
 
   return (

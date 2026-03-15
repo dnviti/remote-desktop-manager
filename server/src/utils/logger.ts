@@ -58,16 +58,20 @@ export const logger = createLogger();
 export type Logger = ReturnType<typeof createLogger>;
 
 /**
- * Maps LOG_LEVEL to guacamole-lite's log level string.
- * guacamole-lite levels: QUIET, ERRORS, NORMAL, VERBOSE, DEBUG
+ * Maps LOG_LEVEL to guacamole-lite's numeric log level.
+ * guacamole-lite levels: QUIET=0, ERRORS=10, NORMAL=20, VERBOSE=30, DEBUG=40
+ *
+ * Returns numeric values directly because guacamole-lite's string→number
+ * conversion has a bug: LOGLEVEL['QUIET'] is 0 (falsy), so the string
+ * 'QUIET' is never converted and log filtering breaks.
  */
-export function toGuacamoleLogLevel(level: LogLevel): string {
+export function toGuacamoleLogLevel(level: LogLevel): number {
   switch (level) {
-    case 'error': return 'ERRORS';
-    case 'warn':  return 'ERRORS';
-    case 'info':  return 'NORMAL';
-    case 'verbose': return 'VERBOSE';
-    case 'debug': return 'DEBUG';
-    default:      return 'NORMAL';
+    case 'error': return 10;
+    case 'warn':  return 10;
+    case 'info':  return 20;
+    case 'verbose': return 30;
+    case 'debug': return 40;
+    default:      return 20;
   }
 }

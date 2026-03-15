@@ -45,19 +45,32 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
   const lastGuacErrorRef = useRef('');
   // Cleanup function returned by the inner connect setup
   const innerCleanupRef = useRef<(() => void) | null>(null);
-  // Cancelled flag for async operations
-  const cancelledRef = useRef(false);
+  // Generation counter — each connectSession invocation gets a unique ID so stale
+  // invocations (e.g. from React Strict Mode double-mount) bail after async gaps.
+  const connectionGenRef = useRef(0);
   // Heartbeat interval ref (accessible for cleanup during reconnect)
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // ResizeObserver ref
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Timestamp when state 3 (CONNECTED) was reached — used to gate reconnection.
+  // Only connections stable for ≥ STABLE_THRESHOLD_MS qualify for auto-reconnect.
+  const connectedAtRef = useRef(0);
 
   const credentialsRef = useRef(credentials);
   useEffect(() => { credentialsRef.current = credentials; }, [credentials]);
 
+  // Minimum time (ms) a connection must be in state 3 (CONNECTED) before it is
+  // considered stable.  Only stable connections qualify for auto-reconnect on
+  // disconnect — brief connect/disconnect cycles during initial setup will show
+  // an error instead of spawning a reconnection loop.
+  const STABLE_THRESHOLD_MS = 5_000;
+
   // Reconnect connect function — creates a new Guacamole session
   const connectSession = useCallback(async () => {
     if (!displayRef.current) return;
+
+    // Bump generation so any in-flight stale invocation bails after its next await
+    const gen = ++connectionGenRef.current;
 
     // Clean up previous session
     if (heartbeatRef.current) {
@@ -102,10 +115,17 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
       ),
     });
     const { token, sessionId, dlpPolicy: resDlp } = res.data;
+
+    // Stale check — a newer connectSession has been launched (e.g. Strict Mode
+    // double-mount or rapid reconnect).  End the session we just created so it
+    // doesn't leave an orphaned recording on the server.
+    if (connectionGenRef.current !== gen) {
+      if (sessionId) api.post(`/sessions/rdp/${sessionId}/end`).catch(() => {});
+      return;
+    }
+
     sessionIdRef.current = sessionId ?? null;
     if (resDlp) { setDlpPolicy(resDlp); dlpPolicyRef.current = resDlp; }
-
-    if (cancelledRef.current) return;
 
     // Determine WebSocket URL for guacamole-lite (proxied through Vite/nginx)
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
@@ -144,11 +164,12 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
 
     // Handle state changes
     client.onstatechange = (state: number) => {
-      if (cancelledRef.current) return;
+      if (connectionGenRef.current !== gen) return; // stale connection
       switch (state) {
         case 3: // CONNECTED
           connected = true;
           wasConnectedRef.current = true;
+          connectedAtRef.current = Date.now();
           lastGuacErrorRef.current = '';
           setStatus('connected');
           resetReconnect();
@@ -193,19 +214,29 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
             // Already handled (admin termination, session expired, etc.)
             return;
           }
-          if (wasConnectedRef.current && !isGuacPermanentError(lastGuacErrorRef.current)) {
-            // Transient — attempt reconnection
-            triggerReconnect();
-          } else {
-            setStatus('error');
-            setError(lastGuacErrorRef.current || 'Disconnected from remote desktop');
+          {
+            const uptime = connectedAtRef.current ? Date.now() - connectedAtRef.current : 0;
+            connectedAtRef.current = 0;
+            if (
+              wasConnectedRef.current &&
+              uptime >= STABLE_THRESHOLD_MS &&
+              !isGuacPermanentError(lastGuacErrorRef.current)
+            ) {
+              // Stable connection lost — attempt reconnection
+              triggerReconnect();
+            } else {
+              // Never connected, or connection was too brief (initial setup
+              // churn), or permanent error — show error, don't reconnect.
+              setStatus('error');
+              setError(lastGuacErrorRef.current || 'Disconnected from remote desktop');
+            }
           }
           break;
       }
     };
 
     client.onerror = (err: { message?: string }) => {
-      if (cancelledRef.current) return;
+      if (connectionGenRef.current !== gen) return;
       const msg = err.message || 'RDP connection error';
       lastGuacErrorRef.current = msg;
       if (isGuacPermanentError(msg)) {
@@ -358,22 +389,30 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
   useEffect(() => {
     if (!displayRef.current) return;
 
-    cancelledRef.current = false;
     permanentErrorRef.current = false;
     wasConnectedRef.current = false;
     lastGuacErrorRef.current = '';
+    connectedAtRef.current = 0;
 
     // Capture ref value for cleanup — React refs may change by the time cleanup runs
     const displayEl = displayRef.current;
 
+    // connectSession bumps connectionGenRef synchronously on entry, so we
+    // can snapshot the generation immediately after the (sync) call start.
     connectSession().catch((err: unknown) => {
-      if (cancelledRef.current) return;
+      // If the generation was bumped by cleanup or a newer invocation,
+      // this error is stale — the new invocation's state updates take over.
+      if (connectionGenRef.current !== mountGen) return;
       setStatus('error');
       setError(extractApiError(err, err instanceof Error ? err.message : 'Failed to start RDP session'));
     });
+    // connectSession increments the ref synchronously before its first await,
+    // so this captures the generation for THIS mount's connection.
+    const mountGen = connectionGenRef.current;
 
     return () => {
-      cancelledRef.current = true;
+      // Bump generation to invalidate any in-flight connectSession from this mount
+      ++connectionGenRef.current;
       cancelReconnect();
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);
