@@ -30,10 +30,8 @@ LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
 USER root
 
-# Install Node.js runtime (Debian-based guacd image, so use apt)
-RUN apt-get update -qq \
-    && apt-get install -y --no-install-recommends nodejs \
-    && rm -rf /var/lib/apt/lists/*
+# Install Node.js runtime (Alpine-based guacd image, so use apk)
+RUN apk add --no-cache nodejs
 
 # Embed pre-built tunnel agent
 COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist

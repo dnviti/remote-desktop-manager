@@ -18,7 +18,7 @@
     },
     {
       "version": "1.5.0",
-      "status": "planned",
+      "status": "released",
       "target_date": null,
       "theme": "Zero-Trust Tunneling",
       "tasks": [
@@ -33,7 +33,7 @@
         "ZT-208"
       ],
       "created_at": "2026-03-13",
-      "released_at": null
+      "released_at": "2026-03-15"
     },
     {
       "version": "1.6.0",
