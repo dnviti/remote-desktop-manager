@@ -117,6 +117,12 @@ export async function getTenant(tenantId: string) {
     dlpDisableDownload: tenant.dlpDisableDownload,
     dlpDisableUpload: tenant.dlpDisableUpload,
     enforcedConnectionSettings: tenant.enforcedConnectionSettings,
+    tunnelDefaultEnabled: tenant.tunnelDefaultEnabled,
+    tunnelAutoTokenRotation: tenant.tunnelAutoTokenRotation,
+    tunnelTokenRotationDays: tenant.tunnelTokenRotationDays,
+    tunnelRequireForRemote: tenant.tunnelRequireForRemote,
+    tunnelTokenMaxLifetimeDays: tenant.tunnelTokenMaxLifetimeDays,
+    tunnelAgentAllowedCidrs: tenant.tunnelAgentAllowedCidrs,
     userCount: tenant._count.members,
     teamCount: tenant._count.teams,
     createdAt: tenant.createdAt,
@@ -136,6 +142,12 @@ export async function updateTenant(tenantId: string, data: {
   dlpDisableDownload?: boolean;
   dlpDisableUpload?: boolean;
   enforcedConnectionSettings?: Prisma.InputJsonValue | null;
+  tunnelDefaultEnabled?: boolean;
+  tunnelAutoTokenRotation?: boolean;
+  tunnelTokenRotationDays?: number;
+  tunnelRequireForRemote?: boolean;
+  tunnelTokenMaxLifetimeDays?: number | null;
+  tunnelAgentAllowedCidrs?: string[];
 }) {
   const updateData: Record<string, unknown> = {};
 
@@ -175,6 +187,24 @@ export async function updateTenant(tenantId: string, data: {
       ? Prisma.JsonNull
       : data.enforcedConnectionSettings;
   }
+  if (data.tunnelDefaultEnabled !== undefined) {
+    updateData.tunnelDefaultEnabled = data.tunnelDefaultEnabled;
+  }
+  if (data.tunnelAutoTokenRotation !== undefined) {
+    updateData.tunnelAutoTokenRotation = data.tunnelAutoTokenRotation;
+  }
+  if (data.tunnelTokenRotationDays !== undefined) {
+    updateData.tunnelTokenRotationDays = data.tunnelTokenRotationDays;
+  }
+  if (data.tunnelRequireForRemote !== undefined) {
+    updateData.tunnelRequireForRemote = data.tunnelRequireForRemote;
+  }
+  if (data.tunnelTokenMaxLifetimeDays !== undefined) {
+    updateData.tunnelTokenMaxLifetimeDays = data.tunnelTokenMaxLifetimeDays;
+  }
+  if (data.tunnelAgentAllowedCidrs !== undefined) {
+    updateData.tunnelAgentAllowedCidrs = data.tunnelAgentAllowedCidrs;
+  }
 
   if (Object.keys(updateData).length === 0) {
     throw new AppError('No fields to update', 400);
@@ -199,6 +229,12 @@ export async function updateTenant(tenantId: string, data: {
     dlpDisableDownload: tenant.dlpDisableDownload,
     dlpDisableUpload: tenant.dlpDisableUpload,
     enforcedConnectionSettings: tenant.enforcedConnectionSettings,
+    tunnelDefaultEnabled: tenant.tunnelDefaultEnabled,
+    tunnelAutoTokenRotation: tenant.tunnelAutoTokenRotation,
+    tunnelTokenRotationDays: tenant.tunnelTokenRotationDays,
+    tunnelRequireForRemote: tenant.tunnelRequireForRemote,
+    tunnelTokenMaxLifetimeDays: tenant.tunnelTokenMaxLifetimeDays,
+    tunnelAgentAllowedCidrs: tenant.tunnelAgentAllowedCidrs,
     updatedAt: tenant.updatedAt,
   };
 }

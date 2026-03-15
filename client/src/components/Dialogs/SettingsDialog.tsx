@@ -13,6 +13,7 @@ import {
   Router as RouterIcon,
   Sync as SyncIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
+  VpnLock as TunnelIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { getProfile } from '../../api/user.api';
@@ -36,6 +37,7 @@ import TenantAuditLogSection from '../Settings/TenantAuditLogSection';
 import LdapConfigSection from '../Settings/LdapConfigSection';
 import SyncProfileSection from '../Settings/SyncProfileSection';
 import TenantConnectionPolicySection from '../Settings/TenantConnectionPolicySection';
+import TunnelConfigSection from '../Settings/TunnelConfigSection';
 import SamlConfigSection from '../Settings/SamlConfigSection';
 import OAuthProvidersAdminSection from '../Settings/OAuthProvidersAdminSection';
 import { SlideUp } from '../common/SlideUp';
@@ -60,6 +62,10 @@ const TENANT_TABS: TabDef[] = [
   { id: 'integrations', label: 'Integrations', icon: <SyncIcon /> },
 ];
 
+const TUNNEL_TAB: TabDef = {
+  id: 'tunnel', label: 'Zero-Trust Tunnel', icon: <TunnelIcon />,
+};
+
 const ADMIN_TAB: TabDef = {
   id: 'administration', label: 'Administration', icon: <AdminPanelSettingsIcon />,
 };
@@ -83,7 +89,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
   const tabs = useMemo(() => {
     const t = [...BASE_TABS];
     if (hasTenant) t.push(...TENANT_TABS);
-    if (isAdmin) t.push(ADMIN_TAB);
+    if (isAdmin) t.push(TUNNEL_TAB, ADMIN_TAB);
     return t;
   }, [hasTenant, isAdmin]);
 
@@ -212,6 +218,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
             <GatewaySection onNavigateToTab={setActiveTab} />
           )}
           {resolvedTab === 'integrations' && <SyncProfileSection />}
+          {resolvedTab === 'tunnel' && <TunnelConfigSection />}
           {resolvedTab === 'administration' && (
             <Stack spacing={3}>
               <SelfSignupSection />

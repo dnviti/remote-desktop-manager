@@ -25,6 +25,9 @@ router.post('/ssh-keypair/rotate', requireTenantRole('OPERATOR'), asyncHandler(g
 router.patch('/ssh-keypair/rotation', requireTenantRole('OPERATOR'), validate(rotationPolicySchema), asyncHandler(gatewayController.updateRotationPolicy));
 router.get('/ssh-keypair/rotation', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.getRotationStatus));
 
+// Tunnel fleet overview (must be before /:id routes)
+router.get('/tunnel-overview', requireTenantRole('ADMIN'), asyncHandler(gatewayController.tunnelOverview));
+
 // Gateway templates (must be before /:id routes)
 router.get('/templates', requireTenantRole('OPERATOR'), asyncHandler(gatewayController.listTemplates));
 router.post('/templates', requireTenantRole('OPERATOR'), validate(createTemplateSchema), asyncHandler(gatewayController.createTemplate));
