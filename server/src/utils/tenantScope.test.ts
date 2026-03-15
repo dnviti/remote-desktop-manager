@@ -10,6 +10,14 @@ vi.mock('../lib/prisma', () => ({
   },
 }));
 
+vi.mock('../config', () => ({
+  config: {
+    get allowExternalSharing() {
+      return process.env.ALLOW_EXTERNAL_SHARING === 'true';
+    },
+  },
+}));
+
 import {
   assertSameTenant,
   tenantScopedTeamFilter,
@@ -82,21 +90,45 @@ describe('assertShareableTenantBoundary', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('throws 400 when users have no common tenant', async () => {
+  it('throws 403 when users have no common tenant', async () => {
     mockFindMany
       .mockResolvedValueOnce([{ tenantId: 'tenant-1' }])
       .mockResolvedValueOnce([{ tenantId: 'tenant-2' }]);
     await expect(
       assertShareableTenantBoundary('user-1', 'user-2'),
     ).rejects.toThrow(AppError);
-    // Verify status code
+    // Verify status code and message
     mockFindMany
       .mockResolvedValueOnce([{ tenantId: 'tenant-1' }])
       .mockResolvedValueOnce([{ tenantId: 'tenant-2' }]);
     try {
       await assertShareableTenantBoundary('user-1', 'user-2');
     } catch (err) {
-      expect((err as AppError).statusCode).toBe(400);
+      expect((err as AppError).statusCode).toBe(403);
+      expect((err as AppError).message).toBe(
+        'Cannot share connections with users outside your tenant',
+      );
+    }
+  });
+
+  it('skips check when ALLOW_EXTERNAL_SHARING is true', async () => {
+    const origVal = process.env.ALLOW_EXTERNAL_SHARING;
+    process.env.ALLOW_EXTERNAL_SHARING = 'true';
+    try {
+      mockFindMany
+        .mockResolvedValueOnce([{ tenantId: 'tenant-1' }])
+        .mockResolvedValueOnce([{ tenantId: 'tenant-2' }]);
+      await expect(
+        assertShareableTenantBoundary('user-1', 'user-2'),
+      ).resolves.toBeUndefined();
+      // Should not have queried DB at all
+      expect(mockFindMany).not.toHaveBeenCalled();
+    } finally {
+      if (origVal === undefined) {
+        delete process.env.ALLOW_EXTERNAL_SHARING;
+      } else {
+        process.env.ALLOW_EXTERNAL_SHARING = origVal;
+      }
     }
   });
 });

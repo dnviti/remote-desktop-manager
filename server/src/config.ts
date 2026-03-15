@@ -232,6 +232,8 @@ export const config = {
     autoProvision: process.env.LDAP_AUTO_PROVISION !== 'false',
     defaultTenantId: process.env.LDAP_DEFAULT_TENANT_ID || '',
   },
+  // Multi-tenancy — allow sharing connections with users outside the sharer's tenant
+  allowExternalSharing: process.env.ALLOW_EXTERNAL_SHARING === 'true',
   webauthn: {
     rpId: process.env.WEBAUTHN_RP_ID || 'localhost',
     rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',

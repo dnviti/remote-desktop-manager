@@ -205,6 +205,8 @@ export async function batchShareConnections(
     throw new AppError('Cannot share with yourself', 400);
   }
 
+  await assertShareableTenantBoundary(actingUserId, targetUser.id);
+
   const results = await Promise.allSettled(
     connectionIds.map((connectionId) =>
       shareConnection(actingUserId, connectionId, { userId: targetUser.id }, permission, tenantId)
