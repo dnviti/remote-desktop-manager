@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-03-15
+
+### Added
+- LDAP/FreeIPA authentication provider with user/group sync (LDAP-101)
+- Impossible travel detection with admin alerts (SEC-108)
+- Token binding to IP/User-Agent to prevent session hijacking (SEC-111)
+- Password breach detection via HIBP and client-side strength meter (SEC-115)
+- Concurrent session limits and absolute session timeouts (SEC-117)
+- Tenant-level IP allowlist with audit flagging (GUARD-109)
+- DLP browser hardening — block DevTools, View Source & exfiltration shortcuts (SEC-301)
+- Data Loss Prevention on clipboard and drive mapping (SEC-116)
+- External credential provider HashiCorp Vault (VAULT-101)
+- Mandatory recovery key confirmation on password change/reset (VAULT-209)
+- NetBox connection synchronizer with provider-agnostic architecture (SYNC-102)
+- Global cross-tenant administration CLI commands (CLI-173)
+- Org-wide connection policy enforcement (PAM-176)
+- Extended tenant roles: AUDITOR, CONSULTANT, GUEST, OPERATOR (ROLE-110)
+- Time-limited membership with automatic expiration (ROLE-111)
+- Custom context menu for connection sessions (CTX-301)
+- Keyboard input capture & passthrough for connection sessions (UX-301)
+- Auto-reconnect & resiliency UI for connection sessions (UX-073)
+- Docked edge toolbar replacing floating toolbar for sessions
+- Admin UI sections for full WebUI-API parity (WEBUI-0001)
+- Unit tests for utility functions and middleware
+
+### Fixed
+- Unresponsive password input in vault lock overlay (VAULT-213)
+- VPN false-positive notification dismiss handling
+- Impossible travel notification type handler
+- DockedToolbar and useGuacToolbarActions review feedback
+- DLP shortcut matching now uses key codes for layout independence
+
+### Security
+- Mandatory verify and security gates in Docker build pipelines
+- Bump hono to 4.12.7 to fix prototype pollution vulnerability
+
 ## [1.3.2] - 2026-03-12
 
 ### Added
@@ -156,7 +192,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Email verification preventing unverified account login
 - ESLint security plugin enforced in CI
 
-[Unreleased]: https://github.com/dnviti/arsenale/compare/v1.3.2...HEAD
+[Unreleased]: https://github.com/dnviti/arsenale/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/dnviti/arsenale/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/dnviti/arsenale/compare/v1.3.1...v1.3.2
 [1.3.1]: https://github.com/dnviti/arsenale/compare/v1.3.0...v1.3.1
 [1.3.0]: https://github.com/dnviti/arsenale/compare/v1.2.0...v1.3.0
