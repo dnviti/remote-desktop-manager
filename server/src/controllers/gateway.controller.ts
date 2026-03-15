@@ -1,6 +1,7 @@
 import { Response } from 'express';
 import { AuthRequest, assertTenantAuthenticated } from '../types';
 import * as gatewayService from '../services/gateway.service';
+import { isTunnelConnected } from '../services/tunnel.service';
 import * as sshKeyService from '../services/sshkey.service';
 import * as managedGatewayService from '../services/managedGateway.service';
 import * as autoscalerService from '../services/autoscaler.service';
@@ -532,4 +533,50 @@ export async function deployFromTemplate(req: AuthRequest, res: Response) {
     ipAddress: getClientIp(req),
   });
   res.status(201).json(result);
+}
+
+// ---------------------------------------------------------------------------
+// Zero-trust tunnel token management
+// ---------------------------------------------------------------------------
+
+export async function generateTunnelToken(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const gatewayId = req.params.id as string;
+  const result = await gatewayService.generateGatewayTunnelToken(
+    req.user.tenantId,
+    gatewayId,
+    req.user.userId,
+  );
+  auditService.log({
+    userId: req.user.userId,
+    action: 'TUNNEL_TOKEN_GENERATE',
+    targetType: 'Gateway',
+    targetId: gatewayId,
+    ipAddress: getClientIp(req),
+  });
+  // Return the plain token only once — the caller must store it
+  res.status(201).json({
+    token: result.token,
+    tunnelEnabled: result.tunnelEnabled,
+    tunnelConnected: isTunnelConnected(gatewayId),
+  });
+}
+
+export async function revokeTunnelToken(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const gatewayId = req.params.id as string;
+  await gatewayService.revokeGatewayTunnelToken(
+    req.user.tenantId,
+    gatewayId,
+    req.user.userId,
+  );
+  auditService.log({
+    userId: req.user.userId,
+    action: 'TUNNEL_TOKEN_ROTATE',
+    targetType: 'Gateway',
+    targetId: gatewayId,
+    details: { revoked: true },
+    ipAddress: getClientIp(req),
+  });
+  res.json({ revoked: true, tunnelEnabled: false });
 }

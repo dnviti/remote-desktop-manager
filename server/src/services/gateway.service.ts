@@ -6,6 +6,7 @@ import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
 import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
+import { generateTunnelToken, revokeTunnelToken } from './tunnel.service';
 
 const log = logger.child('gateway');
 import { removeGatewayInstance } from './managedGateway.service';
@@ -552,4 +553,36 @@ export async function pushKeyToGateway(
   }
 
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Tunnel token management (delegates to tunnel.service)
+// ---------------------------------------------------------------------------
+
+export async function generateGatewayTunnelToken(
+  tenantId: string,
+  gatewayId: string,
+  operatorUserId: string,
+): Promise<{ token: string; tunnelEnabled: boolean }> {
+  const existing = await prisma.gateway.findFirst({
+    where: { id: gatewayId, tenantId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError('Gateway not found', 404);
+
+  return generateTunnelToken(gatewayId, operatorUserId);
+}
+
+export async function revokeGatewayTunnelToken(
+  tenantId: string,
+  gatewayId: string,
+  operatorUserId: string,
+): Promise<void> {
+  const existing = await prisma.gateway.findFirst({
+    where: { id: gatewayId, tenantId },
+    select: { id: true },
+  });
+  if (!existing) throw new AppError('Gateway not found', 404);
+
+  return revokeTunnelToken(gatewayId, operatorUserId);
 }

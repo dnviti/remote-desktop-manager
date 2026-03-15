@@ -22,6 +22,7 @@ import * as managedGatewayService from './services/managedGateway.service';
 import * as autoscalerService from './services/autoscaler.service';
 import { completeGuacRecording, cleanupExpiredRecordings } from './services/recording.service';
 import { initGeoIp } from './services/geoip.service';
+import { setupTunnelHandler } from './socket/tunnel.handler';
 
 function freePort(port: number): void {
   try {
@@ -93,6 +94,9 @@ async function main() {
 
   // Setup Socket.io for SSH
   const io = setupSocketIO(server);
+
+  // Setup zero-trust tunnel WebSocket endpoint
+  setupTunnelHandler(server);
 
   // Initialize session cleanup with Socket.IO reference
   initSessionCleanup(io);

@@ -49,4 +49,8 @@ router.get('/:id/instances/:instanceId/logs', requireTenantRole('OPERATOR'), val
 router.get('/:id/scaling', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.getScalingStatus));
 router.put('/:id/scaling', requireTenantRole('OPERATOR'), validateUuidParam(), validate(scalingConfigSchema), asyncHandler(gatewayController.updateScalingConfig));
 
+// Zero-trust tunnel token management
+router.post('/:id/tunnel-token', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.generateTunnelToken));
+router.delete('/:id/tunnel-token', requireTenantRole('OPERATOR'), validateUuidParam(), asyncHandler(gatewayController.revokeTunnelToken));
+
 export default router;

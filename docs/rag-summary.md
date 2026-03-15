@@ -106,6 +106,18 @@ Gateway health monitoring continuously checks gateway availability with configur
 
 Gateway templates provide reusable configurations for quick deployment of new gateways with pre-configured auto-scaling, monitoring, and load balancing settings.
 
+## Zero-Trust Tunnel (TunnelBroker)
+
+The TunnelBroker enables zero-trust environments where gateway agents cannot expose inbound ports (similar to Cloudflare Tunnel, but self-hosted). Gateway agents establish outbound-only WSS connections to the Arsenale server at `/api/tunnel/connect`, and the server proxies TCP streams back through those connections.
+
+The tunnel system uses a binary multiplexing protocol with 4-byte frames (type, flags, streamId uint16) and message types OPEN/DATA/CLOSE/PING/PONG. The `openStream(gatewayId, host, port)` API returns a `net.Duplex`-compatible stream for transparent integration with SSH2 and guacamole-lite.
+
+Authentication uses a 256-bit token (stored encrypted with AES-256-GCM + SHA-256 hash for constant-time comparison) presented via the `Authorization: Bearer` header. Each gateway has a unique token bound to its ID. Token generation/revocation is available via `POST /gateways/:id/tunnel-token` and `DELETE /gateways/:id/tunnel-token` (OPERATOR role required).
+
+The Gateway model includes tunnel fields: `tunnelEnabled`, encrypted token (ciphertext/IV/tag), `tunnelTokenHash` (unique), connection timestamps, client IP/version, and optional mTLS certificate material (`tunnelCaCert`, `tunnelCaKey`, `tunnelClientCert`, `tunnelClientCertExp`). `ManagedGatewayInstance` includes `tunnelProxyHost`/`tunnelProxyPort` for GUACD tunnel proxying.
+
+Audit actions `TUNNEL_CONNECT`, `TUNNEL_DISCONNECT`, `TUNNEL_TOKEN_GENERATE`, and `TUNNEL_TOKEN_ROTATE` are recorded for all tunnel lifecycle events.
+
 ## External Sync
 
 Sync profiles allow organizations to automatically import and synchronize connections from external data sources such as NetBox. Profiles are configured with a provider type, credentials, and mapping rules, then can be run on-demand or on a scheduled basis. Each sync run produces a log with created, updated, and deleted connection counts.

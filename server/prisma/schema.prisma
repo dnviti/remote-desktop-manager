@@ -352,6 +352,23 @@ model Gateway {
   lastLatencyMs       Int?
   lastError           String?
 
+  // Zero-trust tunnel fields
+  tunnelEnabled          Boolean   @default(false)
+  encryptedTunnelToken   String?
+  tunnelTokenIV          String?
+  tunnelTokenTag         String?
+  tunnelTokenHash        String?   @unique
+  tunnelConnectedAt      DateTime?
+  tunnelLastHeartbeat    DateTime?
+  tunnelClientVersion    String?
+  tunnelClientIp         String?
+  tunnelCaCert           String?
+  tunnelCaKey            String?
+  tunnelCaKeyIV          String?
+  tunnelCaKeyTag         String?
+  tunnelClientCert       String?
+  tunnelClientCertExp    DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -617,6 +634,10 @@ enum AuditAction {
   VAULT_PROVIDER_UPDATE
   VAULT_PROVIDER_DELETE
   VAULT_PROVIDER_TEST
+  TUNNEL_CONNECT
+  TUNNEL_DISCONNECT
+  TUNNEL_TOKEN_GENERATE
+  TUNNEL_TOKEN_ROTATE
 }
 
 model AuditLog {
@@ -908,6 +929,8 @@ model ManagedGatewayInstance {
   lastHealthCheck  DateTime?
   errorMessage         String?
   consecutiveFailures  Int               @default(0)
+  tunnelProxyHost      String?
+  tunnelProxyPort      Int?
   createdAt            DateTime          @default(now())
   updatedAt            DateTime          @updatedAt
 
