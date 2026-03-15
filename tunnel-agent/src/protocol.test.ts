@@ -17,7 +17,7 @@ describe('protocol', () => {
       expect(frame.length).toBe(HEADER_SIZE + payload.length);
       expect(frame[0]).toBe(MsgType.DATA);
       expect(frame.readUInt16BE(2)).toBe(42);
-      expect(frame.slice(HEADER_SIZE).toString()).toBe('hello');
+      expect(frame.subarray(HEADER_SIZE).toString()).toBe('hello');
     });
 
     it('builds an OPEN frame with host:port payload', () => {
@@ -25,7 +25,7 @@ describe('protocol', () => {
       const frame = buildFrame(MsgType.OPEN, 1, payload);
       expect(frame[0]).toBe(MsgType.OPEN);
       expect(frame.readUInt16BE(2)).toBe(1);
-      expect(frame.slice(HEADER_SIZE).toString('utf8')).toBe('localhost:4822');
+      expect(frame.subarray(HEADER_SIZE).toString('utf8')).toBe('localhost:4822');
     });
 
     it('uses big-endian encoding for streamId', () => {

@@ -289,7 +289,7 @@ function attachFrameHandler(conn: TunnelConnection): void {
 
     const type = buf[0] as MsgTypeValue;
     const streamId = buf.readUInt16BE(2);
-    const payload = buf.slice(HEADER_SIZE);
+    const payload = buf.subarray(HEADER_SIZE);
 
     switch (type) {
       case MsgType.OPEN:

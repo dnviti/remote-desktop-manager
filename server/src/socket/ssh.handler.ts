@@ -10,6 +10,7 @@ import { getConnectionCredentials, getConnection } from '../services/connection.
 import { resolveDomainCredentials } from '../services/domain.service';
 import { getGatewayCredentials, getDefaultGateway } from '../services/gateway.service';
 import { selectInstance } from '../services/loadBalancer.service';
+import { isTunnelConnected, openStream } from '../services/tunnel.service';
 import { getPrivateKey as getTenantPrivateKey } from '../services/sshkey.service';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
@@ -270,19 +271,45 @@ export function setupSshHandler(io: Server) {
             }
           }
 
-          session = await createSshConnectionViaBastion({
-            bastionHost,
-            bastionPort,
-            bastionUsername,
-            bastionPassword,
-            bastionPrivateKey,
-            targetHost: conn.host,
-            targetPort: conn.port,
-            targetUsername: username,
-            targetPassword: password,
-            targetPrivateKey: privateKey,
-            targetPassphrase: passphrase,
-          });
+          // Tunnel routing: when the gateway has a zero-trust tunnel connected,
+          // open a multiplexed stream to the bastion host instead of a direct TCP connection.
+          if (gateway.tunnelEnabled) {
+            if (!isTunnelConnected(gateway.id)) {
+              const msg = 'Gateway tunnel is disconnected — the gateway may be unreachable';
+              logSessionError(msg, conn.host, conn.port, gateway.id);
+              socket.emit('session:error', { message: msg });
+              return;
+            }
+            const tunnelSock = await openStream(gateway.id, bastionHost, bastionPort);
+            session = await createSshConnectionViaBastion({
+              bastionHost,
+              bastionPort,
+              bastionUsername,
+              bastionPassword,
+              bastionPrivateKey,
+              targetHost: conn.host,
+              targetPort: conn.port,
+              targetUsername: username,
+              targetPassword: password,
+              targetPrivateKey: privateKey,
+              targetPassphrase: passphrase,
+              sock: tunnelSock,
+            });
+          } else {
+            session = await createSshConnectionViaBastion({
+              bastionHost,
+              bastionPort,
+              bastionUsername,
+              bastionPassword,
+              bastionPrivateKey,
+              targetHost: conn.host,
+              targetPort: conn.port,
+              targetUsername: username,
+              targetPassword: password,
+              targetPrivateKey: privateKey,
+              targetPassphrase: passphrase,
+            });
+          }
         } else {
           session = await createSshConnection({
             host: conn.host,

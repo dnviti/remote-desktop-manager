@@ -37,6 +37,6 @@ export function parseFrame(buf: Buffer): { type: MsgTypeValue; streamId: number;
   if (buf.length < HEADER_SIZE) return null;
   const type = buf[0] as MsgTypeValue;
   const streamId = buf.readUInt16BE(2);
-  const payload = buf.slice(HEADER_SIZE);
+  const payload = buf.subarray(HEADER_SIZE);
   return { type, streamId, payload };
 }
