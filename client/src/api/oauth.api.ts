@@ -1,5 +1,4 @@
 import api from './client';
-import { useAuthStore } from '../store/authStore';
 
 export interface OAuthProviders {
   google: boolean;
@@ -42,16 +41,25 @@ export function initiateOAuthLogin(provider: string): void {
   window.location.href = `/api/auth/oauth/${provider.toLowerCase()}`;
 }
 
-export function initiateOAuthLink(provider: string): void {
-  const token = useAuthStore.getState().accessToken;
-  window.location.href = `/api/auth/oauth/link/${provider.toLowerCase()}?token=${encodeURIComponent(token || '')}`;
+/**
+ * Obtain a short-lived one-time link code from the server (via Axios with
+ * Authorization header), then return the code for use in a redirect URL.
+ */
+async function obtainLinkCode(): Promise<string> {
+  const { data } = await api.post<{ code: string }>('/auth/oauth/link-code');
+  return data.code;
+}
+
+export async function initiateOAuthLink(provider: string): Promise<void> {
+  const code = await obtainLinkCode();
+  window.location.href = `/api/auth/oauth/link/${provider.toLowerCase()}?code=${encodeURIComponent(code)}`;
 }
 
 export function initiateSamlLogin(): void {
   window.location.href = '/api/auth/saml';
 }
 
-export function initiateSamlLink(): void {
-  const token = useAuthStore.getState().accessToken;
-  window.location.href = `/api/auth/saml/link?token=${encodeURIComponent(token || '')}`;
+export async function initiateSamlLink(): Promise<void> {
+  const code = await obtainLinkCode();
+  window.location.href = `/api/auth/saml/link?code=${encodeURIComponent(code)}`;
 }

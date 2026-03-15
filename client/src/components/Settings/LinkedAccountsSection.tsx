@@ -98,6 +98,19 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
     }
   };
 
+  const handleLink = async (provider: string) => {
+    setError('');
+    try {
+      if (provider === 'SAML') {
+        await initiateSamlLink();
+      } else {
+        await initiateOAuthLink(provider.toLowerCase());
+      }
+    } catch (err: unknown) {
+      setError(extractApiError(err, 'Failed to initiate account linking'));
+    }
+  };
+
   if (loading) return null;
   if (!providers) return null;
 
@@ -154,7 +167,7 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
                 key={provider}
                 variant="outlined"
                 startIcon={providerIcons[provider]}
-                onClick={() => provider === 'SAML' ? initiateSamlLink() : initiateOAuthLink(provider.toLowerCase())}
+                onClick={() => handleLink(provider)}
               >
                 Link {labels[provider]}
               </Button>

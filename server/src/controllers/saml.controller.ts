@@ -14,6 +14,8 @@ import { setRefreshTokenCookie, setCsrfCookie } from '../utils/cookie';
 import { getClientIp } from '../utils/ip';
 import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
+import { generateAuthCode } from '../utils/authCodeStore';
+import { consumeLinkCode } from '../utils/linkCodeStore';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.saml.enabled) {
@@ -24,14 +26,27 @@ export function initiateSaml(req: Request, res: Response, next: NextFunction) {
 }
 
 export function initiateSamlLink(req: Request, res: Response, next: NextFunction) {
-  const token = req.query.token as string;
-  if (!token) return next(new AppError('Missing token', 401));
+  // Accept a one-time link code (preferred) to avoid JWTs in URL params.
+  // Falls back to Authorization header, then query param token for backward compat.
+  let userId: string | undefined;
 
-  let payload: AuthPayload;
-  try {
-    payload = verifyJwt<AuthPayload>(token);
-  } catch {
-    return next(new AppError('Invalid token', 401));
+  const linkCode = req.query.code as string | undefined;
+  if (linkCode) {
+    const resolved = consumeLinkCode(linkCode);
+    if (!resolved) return next(new AppError('Invalid or expired link code', 401));
+    userId = resolved;
+  } else {
+    const authHeader = req.headers.authorization;
+    const token = (authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined)
+      || req.query.token as string;
+    if (!token) return next(new AppError('Missing authentication', 401));
+
+    try {
+      const payload = verifyJwt<AuthPayload>(token);
+      userId = payload.userId;
+    } catch {
+      return next(new AppError('Invalid token', 401));
+    }
   }
 
   if (!config.oauth.saml.enabled) {
@@ -40,7 +55,7 @@ export function initiateSamlLink(req: Request, res: Response, next: NextFunction
 
   const relayState = Buffer.from(JSON.stringify({
     action: 'link',
-    userId: payload.userId,
+    userId,
   })).toString('base64url');
 
   passport.authenticate('saml', {
@@ -113,10 +128,11 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       setRefreshTokenCookie(res, tokens.refreshToken);
       const csrfToken = setCsrfCookie(res);
 
-      const params = new URLSearchParams({
+      // Use a short-lived one-time code instead of putting tokens in the URL
+      const code = generateAuthCode({
         accessToken: tokens.accessToken,
         csrfToken,
-        needsVaultSetup: String(!result.user.vaultSetupComplete),
+        needsVaultSetup: !result.user.vaultSetupComplete,
         userId: result.user.id,
         email: result.user.email,
         username: result.user.username || '',
@@ -125,7 +141,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
         tenantRole: tokens.user.tenantRole || '',
       });
 
-      res.redirect(`${config.clientUrl}/oauth/callback?${params.toString()}`);
+      res.redirect(`${config.clientUrl}/oauth/callback?code=${code}`);
     } catch (error) {
       logger.error('SAML callback error:', error);
       let errorCode = 'authentication_failed';

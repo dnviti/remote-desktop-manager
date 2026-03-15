@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import axios from 'axios';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
 
@@ -12,6 +13,20 @@ export default function OAuthCallbackPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const errorParam = searchParams.get('error');
+    if (errorParam) {
+      setError(decodeURIComponent(errorParam));
+      return;
+    }
+
+    // New flow: exchange one-time code for token data
+    const code = searchParams.get('code');
+    if (code) {
+      exchangeCode(code);
+      return;
+    }
+
+    // Backward compat: accept tokens directly from URL params (transition period)
     const accessToken = searchParams.get('accessToken');
     const csrfToken = searchParams.get('csrfToken');
     const needsVaultSetup = searchParams.get('needsVaultSetup') === 'true';
@@ -19,39 +34,65 @@ export default function OAuthCallbackPage() {
     const email = searchParams.get('email');
     const username = searchParams.get('username') || null;
     const avatarData = searchParams.get('avatarData') || null;
-    const errorParam = searchParams.get('error');
-
-    if (errorParam) {
-      setError(decodeURIComponent(errorParam));
-      return;
-    }
 
     if (!accessToken || !csrfToken || !userId || !email) {
       setError('Invalid OAuth callback parameters');
       return;
     }
 
-    const user = {
-      id: userId,
-      email,
-      username,
-      avatarData,
-      vaultSetupComplete: !needsVaultSetup,
-    };
-    setAuth(accessToken, csrfToken, user);
+    completeAuth({
+      accessToken, csrfToken, needsVaultSetup,
+      userId, email, username, avatarData,
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time OAuth callback processing on mount
+  }, []);
 
-    // Remove tokens from URL
+  async function exchangeCode(code: string) {
+    try {
+      const { data } = await axios.post('/api/auth/oauth/exchange-code', { code });
+      completeAuth({
+        accessToken: data.accessToken,
+        csrfToken: data.csrfToken,
+        needsVaultSetup: data.needsVaultSetup,
+        userId: data.userId,
+        email: data.email,
+        username: data.username || null,
+        avatarData: data.avatarData || null,
+      });
+    } catch {
+      setError('Failed to complete authentication. The authorization code may have expired.');
+    }
+  }
+
+  function completeAuth(params: {
+    accessToken: string;
+    csrfToken: string;
+    needsVaultSetup: boolean;
+    userId: string;
+    email: string;
+    username: string | null;
+    avatarData: string | null;
+  }) {
+    const user = {
+      id: params.userId,
+      email: params.email,
+      username: params.username,
+      avatarData: params.avatarData,
+      vaultSetupComplete: !params.needsVaultSetup,
+    };
+    setAuth(params.accessToken, params.csrfToken, user);
+
+    // Remove tokens/code from URL
     window.history.replaceState({}, '', '/oauth/callback');
 
-    if (needsVaultSetup) {
+    if (params.needsVaultSetup) {
       navigate('/oauth/vault-setup', { replace: true });
     } else {
       // Vault is NOT auto-unlocked for OAuth users — they must enter vault password
       setVaultUnlocked(false);
       navigate('/', { replace: true });
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- one-time OAuth callback processing on mount
-  }, []);
+  }
 
   if (error) {
     return (
