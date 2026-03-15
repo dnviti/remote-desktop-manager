@@ -19,7 +19,7 @@ import net from 'net';
 import { Duplex } from 'stream';
 import type WebSocket from 'ws';
 import prisma from '../lib/prisma';
-import { encryptWithServerKey, decryptWithServerKey, hashToken } from './crypto.service';
+import { encryptWithServerKey, hashToken } from './crypto.service';
 import { logger } from '../utils/logger';
 import * as auditService from './audit.service';
 
@@ -41,6 +41,8 @@ export type MsgTypeValue = typeof MsgType[keyof typeof MsgType];
 
 const HEADER_SIZE = 4;
 const MAX_STREAM_ID = 0xffff;
+const MAX_FRAME_SIZE = 1_048_576; // 1 MB
+const HEARTBEAT_DB_INTERVAL_MS = 30_000; // Throttle heartbeat DB writes to once per 30s
 
 // ---------------------------------------------------------------------------
 // Types
@@ -64,6 +66,8 @@ export interface TunnelConnection {
   /** Pending openStream() calls waiting for the remote OPEN acknowledgement */
   pendingOpens: Map<number, PendingOpen>;
   nextStreamId: number;
+  /** Timestamp of last heartbeat persisted to DB (for throttling) */
+  lastHeartbeatDbWrite: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -115,6 +119,7 @@ export function registerTunnel(
     streams: new Map(),
     pendingOpens: new Map(),
     nextStreamId: 1,
+    lastHeartbeatDbWrite: 0,
   };
 
   registry.set(gatewayId, conn);
@@ -200,6 +205,16 @@ export function openStream(
   port: number,
   timeoutMs = 10_000,
 ): Promise<Duplex> {
+  // Validate host to prevent SSRF
+  const BLOCKED_HOSTS = ['169.254.169.254', '0.0.0.0'];
+  if (!host || BLOCKED_HOSTS.includes(host)) {
+    return Promise.reject(new Error(`Blocked host: ${host}`));
+  }
+  // Validate port is a valid integer in TCP range
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    return Promise.reject(new Error(`Invalid port: ${port}`));
+  }
+
   const conn = registry.get(gatewayId);
   if (!conn || conn.ws.readyState !== 1 /* OPEN */) {
     return Promise.reject(new Error(`No active tunnel for gateway ${gatewayId}`));
@@ -263,6 +278,12 @@ function attachFrameHandler(conn: TunnelConnection): void {
 
     if (buf.length < HEADER_SIZE) {
       log.warn(`[tunnel] ${conn.gatewayId}: frame too short (${buf.length} bytes)`);
+      return;
+    }
+
+    if (buf.length > MAX_FRAME_SIZE) {
+      log.warn(`[tunnel] ${conn.gatewayId}: frame exceeds max size (${buf.length} bytes > ${MAX_FRAME_SIZE}), closing connection`);
+      conn.ws.close(1009, 'frame too large');
       return;
     }
 
@@ -344,11 +365,14 @@ function handlePing(conn: TunnelConnection, streamId: number): void {
 }
 
 function handlePong(conn: TunnelConnection): void {
-  // Update heartbeat timestamp
-  const now = new Date();
+  // Throttle heartbeat DB writes to avoid excessive queries
+  const now = Date.now();
+  if (now - conn.lastHeartbeatDbWrite < HEARTBEAT_DB_INTERVAL_MS) return;
+  conn.lastHeartbeatDbWrite = now;
+
   prisma.gateway.update({
     where: { id: conn.gatewayId },
-    data: { tunnelLastHeartbeat: now },
+    data: { tunnelLastHeartbeat: new Date(now) },
   }).catch(() => { /* best-effort */ });
 }
 
@@ -466,6 +490,7 @@ export async function authenticateTunnelRequest(
   bearerToken: string,
 ): Promise<{ id: string; tenantId: string } | null> {
   if (!gatewayId || !bearerToken) return null;
+  if (bearerToken.length > 128) return null; // Reject obviously oversized tokens early
 
   const gateway = await prisma.gateway.findUnique({
     where: { id: gatewayId },
@@ -493,27 +518,6 @@ export async function authenticateTunnelRequest(
     !crypto.timingSafeEqual(storedHashBuf, incomingHashBuf)
   ) {
     return null;
-  }
-
-  // Also verify against the encrypted token (double-check, defence in depth)
-  if (gateway.encryptedTunnelToken && gateway.tunnelTokenIV && gateway.tunnelTokenTag) {
-    try {
-      const plain = decryptWithServerKey({
-        ciphertext: gateway.encryptedTunnelToken,
-        iv: gateway.tunnelTokenIV,
-        tag: gateway.tunnelTokenTag,
-      });
-      const plainBuf = Buffer.from(plain, 'utf8');
-      const bearerBuf = Buffer.from(bearerToken, 'utf8');
-      if (
-        plainBuf.length !== bearerBuf.length ||
-        !crypto.timingSafeEqual(plainBuf, bearerBuf)
-      ) {
-        return null;
-      }
-    } catch {
-      return null;
-    }
   }
 
   return { id: gateway.id, tenantId: gateway.tenantId };

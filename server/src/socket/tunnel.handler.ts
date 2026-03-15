@@ -20,7 +20,6 @@ import type { WebSocket } from 'ws';
 import {
   authenticateTunnelRequest,
   registerTunnel,
-  deregisterTunnel,
 } from '../services/tunnel.service';
 import { logger } from '../utils/logger';
 
@@ -32,8 +31,7 @@ export function setupTunnelHandler(server: http.Server): WebSocketServer {
   // Handle the HTTP upgrade
   server.on('upgrade', (req: http.IncomingMessage, socket: import('net').Socket, head: Buffer) => {
     if (req.url !== '/api/tunnel/connect') {
-      socket.destroy();
-      return;
+      return; // Let other upgrade handlers (e.g. Socket.IO) process this request
     }
 
     // Extract auth headers
@@ -78,15 +76,7 @@ export function setupTunnelHandler(server: http.Server): WebSocketServer {
   wss.on('connection', (ws: WebSocket, _req: http.IncomingMessage, gatewayId: string, agentVersion?: string) => {
     const clientIp = extractRemoteIp(_req);
     registerTunnel(gatewayId, ws, agentVersion, clientIp);
-
-    ws.on('close', () => {
-      deregisterTunnel(gatewayId);
-    });
-
-    ws.on('error', (err: Error) => {
-      log.error(`[tunnel] WebSocket error for gateway ${gatewayId}: ${err.message}`);
-      deregisterTunnel(gatewayId);
-    });
+    // close/error handlers are attached in attachFrameHandler (tunnel.service.ts)
   });
 
   log.info('[tunnel] WebSocket handler attached at /api/tunnel/connect');
@@ -94,10 +84,14 @@ export function setupTunnelHandler(server: http.Server): WebSocketServer {
 }
 
 function extractRemoteIp(req: http.IncomingMessage): string | undefined {
+  const socketAddr = req.socket.remoteAddress ?? undefined;
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) {
     const first = Array.isArray(forwarded) ? forwarded[0] : forwarded.split(',')[0];
-    return first?.trim();
+    const forwardedIp = first?.trim();
+    if (forwardedIp && forwardedIp !== socketAddr) {
+      log.info(`[tunnel] Remote IP ${socketAddr ?? 'unknown'}, X-Forwarded-For: ${forwardedIp}`);
+    }
   }
-  return (req.socket as import('net').Socket).remoteAddress ?? undefined;
+  return socketAddr;
 }
