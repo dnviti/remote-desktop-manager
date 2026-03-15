@@ -1,6 +1,6 @@
 # Environment Variables
 
-> Auto-generated on 2026-03-14 by `/docs create environment`.
+> Auto-generated on 2026-03-15 by `/docs create environment`.
 > Source of truth is the codebase. Run `/docs update environment` after code changes.
 
 ## Overview
@@ -23,6 +23,7 @@ In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 | `GUACAMOLE_WS_PORT` | number | `3002` | No | Both | Guacamole WebSocket port |
 | `NODE_ENV` | string | `development` | No | Both | Environment mode |
 | `CLIENT_URL` | string | `http://localhost:3000` | No | Both | Client URL (CORS, OAuth redirects, emails) |
+| `CLI_ENABLED` | boolean | `false` | No | Both | Enable the `arsenale` CLI inside the container |
 
 ### Authentication
 
@@ -155,6 +156,35 @@ Leave `CLIENT_ID` empty to disable a provider.
 | `SAML_METADATA_URL` | — | IdP metadata URL (for auto-config) |
 | `SAML_WANT_AUTHN_RESPONSE_SIGNED` | `true` | Require signed SAML responses |
 
+### LDAP Authentication
+
+Leave `LDAP_ENABLED=false` to disable. Compatible with FreeIPA, OpenLDAP, 389 Directory Server, LLDAP.
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `LDAP_ENABLED` | boolean | `false` | Enable LDAP authentication |
+| `LDAP_PROVIDER_NAME` | string | `LDAP` | Display name for the LDAP provider |
+| `LDAP_SERVER_URL` | string | — | LDAP server URL (e.g., `ldap://ldap.example.com:389`) |
+| `LDAP_BASE_DN` | string | — | Base distinguished name (e.g., `dc=example,dc=com`) |
+| `LDAP_BIND_DN` | string | — | Bind DN for service account |
+| `LDAP_BIND_PASSWORD` | string | — | Bind password for service account |
+| `LDAP_USER_SEARCH_FILTER` | string | `(uid={{username}})` | User search filter template |
+| `LDAP_USER_SEARCH_BASE` | string | — | User search base (defaults to `LDAP_BASE_DN`) |
+| `LDAP_DISPLAY_NAME_ATTR` | string | `displayName` | LDAP attribute for display name |
+| `LDAP_EMAIL_ATTR` | string | `mail` | LDAP attribute for email address |
+| `LDAP_UID_ATTR` | string | `uid` | LDAP attribute for unique identifier |
+| `LDAP_GROUP_BASE_DN` | string | — | Group search base DN (optional) |
+| `LDAP_GROUP_SEARCH_FILTER` | string | `(objectClass=groupOfNames)` | Group search filter |
+| `LDAP_GROUP_MEMBER_ATTR` | string | `member` | Group membership attribute |
+| `LDAP_GROUP_NAME_ATTR` | string | `cn` | Group name attribute |
+| `LDAP_ALLOWED_GROUPS` | string | — | Comma-separated list of allowed groups (empty = all) |
+| `LDAP_STARTTLS` | boolean | `false` | Use STARTTLS for LDAP connection |
+| `LDAP_TLS_REJECT_UNAUTHORIZED` | boolean | `true` | Reject unauthorized TLS certificates |
+| `LDAP_SYNC_ENABLED` | boolean | `false` | Enable periodic LDAP user/group sync |
+| `LDAP_SYNC_CRON` | string | `0 */6 * * *` | Cron expression for LDAP sync (every 6 hours) |
+| `LDAP_AUTO_PROVISION` | boolean | `true` | Auto-create Arsenale user on first LDAP login |
+| `LDAP_DEFAULT_TENANT_ID` | string | — | Default tenant ID for auto-provisioned LDAP users |
+
 ### WebAuthn / Passkeys
 
 | Variable | Default | Description |
@@ -186,6 +216,17 @@ Leave `CLIENT_ID` empty to disable a provider.
 | `LOGIN_RATE_LIMIT_MAX_ATTEMPTS` | number | `5` | Max attempts per IP per window |
 | `ACCOUNT_LOCKOUT_THRESHOLD` | number | `10` | Failed logins before lockout |
 | `ACCOUNT_LOCKOUT_DURATION_MS` | number | `1800000` (30 min) | Lockout duration |
+| `VAULT_RATE_LIMIT_WINDOW_MS` | number | `60000` (1 min) | Vault unlock rate limit window |
+| `VAULT_RATE_LIMIT_MAX_ATTEMPTS` | number | `5` | Max vault unlock attempts per user per window |
+| `VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS` | number | `10` | Max vault MFA unlock attempts per user per window |
+| `SESSION_RATE_LIMIT_WINDOW_MS` | number | `60000` (1 min) | Session endpoint rate limit window |
+| `SESSION_RATE_LIMIT_MAX_ATTEMPTS` | number | `20` | Max session requests per user per window |
+| `OAUTH_FLOW_RATE_LIMIT_WINDOW_MS` | number | `900000` (15 min) | OAuth flow initiation rate limit window |
+| `OAUTH_FLOW_RATE_LIMIT_MAX_ATTEMPTS` | number | `20` | Max OAuth flow requests per IP per window |
+| `OAUTH_ACCOUNT_RATE_LIMIT_WINDOW_MS` | number | `60000` (1 min) | OAuth account management rate limit window |
+| `OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS` | number | `15` | Max OAuth account requests per user per window |
+| `OAUTH_LINK_RATE_LIMIT_WINDOW_MS` | number | `900000` (15 min) | OAuth account linking rate limit window |
+| `OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS` | number | `10` | Max account linking attempts per IP per window |
 
 ### Session Management
 
@@ -195,6 +236,8 @@ Leave `CLIENT_ID` empty to disable a provider.
 | `SESSION_IDLE_THRESHOLD_MINUTES` | number | `5` | Minutes before marking session idle |
 | `SESSION_CLEANUP_RETENTION_DAYS` | number | `30` | Days to keep closed sessions |
 | `SESSION_INACTIVITY_TIMEOUT_SECONDS` | number | `3600` (1h) | Session inactivity timeout |
+| `MAX_CONCURRENT_SESSIONS` | number | `0` (unlimited) | Max concurrent login sessions per user (0 = unlimited) |
+| `ABSOLUTE_SESSION_TIMEOUT_SECONDS` | number | `43200` (12h) | Absolute session timeout — forces re-login regardless of activity (0 = disabled) |
 
 ### Container Orchestrator
 
@@ -225,11 +268,12 @@ Leave `CLIENT_ID` empty to disable a provider.
 | `GUACENC_TIMEOUT_MS` | number | `120000` | Conversion timeout |
 | `GUACENC_RECORDING_PATH` | string | `/recordings` | Container-side recording mount |
 
-### GeoIP
+### GeoIP & Impossible Travel
 
 | Variable | Type | Default | Description |
 |----------|------|---------|-------------|
 | `GEOIP_DB_PATH` | string | — | Path to MaxMind GeoLite2-City.mmdb (optional) |
+| `IMPOSSIBLE_TRAVEL_SPEED_KMH` | number | `900` | Max plausible travel speed in km/h. Consecutive logins requiring faster travel are flagged. Set `0` to disable. |
 
 ### Docker-Specific Variables (compose only)
 

@@ -1,6 +1,6 @@
 # Deployment
 
-> Auto-generated on 2026-03-14 by `/docs create deployment`.
+> Auto-generated on 2026-03-15 by `/docs create deployment`.
 > Source of truth is the codebase. Run `/docs update deployment` after code changes.
 
 ## Prerequisites
@@ -9,7 +9,7 @@
 |-------------|---------|
 | Node.js | 22+ (Alpine image used in Docker) |
 | npm | 9+ (ships with Node 22) |
-| Docker or Podman | Recent version with Compose V2 |
+| Docker or Podman | Recent version with Compose V2 (auto-detected via `scripts/container-runtime.sh`) |
 | PostgreSQL | 16 (provided via Docker) |
 
 <!-- manual-start -->
@@ -40,12 +40,13 @@ The `.env` file lives at the **monorepo root** (not inside `server/`). All servi
 npm run docker:dev
 # Starts: PostgreSQL (port 5432) + guacenc sidecar (port 3003)
 # guacd must be installed locally or uncommented in compose.dev.yml
+# Note: `npm run predev` only starts postgres and generates Prisma client
 ```
 
 ### Step 4: Start development server
 
 ```bash
-npm run predev   # Generates Prisma client + starts Docker containers
+npm run predev   # Starts PostgreSQL container + generates Prisma client
 npm run dev      # Runs server (port 3001) + client (port 3000) concurrently
 ```
 
@@ -75,7 +76,9 @@ Vite proxies `/api` to `:3001`, `/socket.io` to `:3001`, and `/guacamole` to `:3
 ### Environment Configuration
 
 ```bash
-cp .env.production.example .env.prod
+cp .env.production.example .env.production
+# The `npm run docker:prod` script uses .env.production.
+# The compose.yml references .env.prod — use a symlink or rename as needed.
 # Fill in production secrets:
 #   POSTGRES_PASSWORD — strong random password
 #   JWT_SECRET — openssl rand -base64 32
@@ -103,19 +106,25 @@ The production stack (`compose.yml`) runs 5-6 containers on the `arsenale_net` n
 client → server (healthy) → postgres (healthy) + guacd (healthy)
 ```
 
-Health checks are configured for all services with proper `start_period` values.
+Health checks are configured for all services with proper `start_period` values. The server container runs with security hardening: `cap_drop: ALL`, `cap_add: NET_BIND_SERVICE`, and `no-new-privileges:true`.
 
 ### Starting Production
 
 ```bash
-# Build and start all containers
-docker compose -f compose.yml --env-file .env.prod up -d --build
+# Build and start all containers (auto-detects Docker or Podman)
+npm run docker:prod
 
-# Or with Podman
-podman-compose -f compose.yml --env-file .env.prod up -d --build
+# Or manually:
+docker compose --env-file .env.production up -d --build
+# With Podman:
+podman compose --env-file .env.production up -d --build
 ```
 
 Only port **3000** (mapped from client's 8080) is exposed to the host. All inter-service communication happens over the Docker network.
+
+### Demo Deployment
+
+A separate `compose.demo.yml` is available for demo/showcase purposes. It uses pre-built images from `ghcr.io/dnviti/arsenale/*`, includes a `demo-seed` one-shot container that runs `arsenale demo setup` via the CLI, and adds an `ollama-backend` container for AI features. It uses a three-network topology (`proxy-net`, `arsenale-front-net`, `arsenale-back-net`) for isolation. The client is exposed on port **8081** and a separate `website` container on port **8080**.
 
 ### Volume Management
 
@@ -153,10 +162,11 @@ All proxy locations set `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto` 
 2. Generates Prisma client from schema
 3. Compiles TypeScript to JavaScript (`npx tsc`)
 4. Prunes dev dependencies
-5. Creates a non-root user (`appuser`)
-6. Creates `/guacd-drive` and `/recordings` directories
-7. Exposes ports 3001 (HTTP) and 3002 (Guacamole WS)
-8. Runs as `appuser` with `node dist/index.js`
+5. Creates `/usr/local/bin/arsenale` CLI wrapper script (invokes `node /app/dist/cli.js`)
+6. Creates a non-root user (`appuser`)
+7. Creates `/guacd-drive` and `/recordings` directories (mode 1777)
+8. Exposes ports 3001 (HTTP) and 3002 (Guacamole WS)
+9. Runs as `appuser` with `node dist/index.js`
 
 The production compose overrides the user to `0:0` for rootless Podman compatibility (UID 0 maps to the host user).
 
@@ -180,14 +190,14 @@ All scripts are run from the monorepo root.
 
 | Script | Command | Description |
 |--------|---------|-------------|
-| `npm run dev` | `concurrently dev:server dev:client` | Run both server and client |
+| `npm run dev` | `concurrently dev:server dev:client:wait` | Run both server and client (client waits for server health) |
 | `npm run dev:server` | `tsx watch server/src/index.ts` | Server with hot reload |
 | `npm run dev:client` | `vite` (in client/) | Vite dev server |
-| `npm run predev` | Generates Prisma + starts Docker | Pre-dev setup |
+| `npm run predev` | Starts PostgreSQL + generates Prisma | Pre-dev setup |
 | `npm run build` | Build both workspaces | Production build |
 | `npm run build -w server` | `tsc` (in server/) | Build server only |
 | `npm run build -w client` | `vite build` (in client/) | Build client only |
-| `npm run verify` | typecheck + lint + audit + build | Full verification pipeline |
+| `npm run verify` | typecheck + lint + audit + test + build | Full verification pipeline |
 | `npm run typecheck` | `tsc --noEmit` in both workspaces | Type checking |
 | `npm run lint` | ESLint across both workspaces | Lint check |
 | `npm run lint:fix` | ESLint with `--fix` | Auto-fix linting |
@@ -195,9 +205,17 @@ All scripts are run from the monorepo root.
 | `npm run db:generate` | `prisma generate` | Generate Prisma client types |
 | `npm run db:push` | `prisma db push` | Sync schema to DB (no migration) |
 | `npm run db:migrate` | `prisma migrate deploy` | Run pending migrations |
-| `npm run docker:dev` | `docker compose -f compose.dev.yml up -d` | Start dev containers |
-| `npm run docker:dev:down` | `docker compose -f compose.dev.yml down` | Stop dev containers |
-| `npm run docker:prod` | `docker compose -f compose.yml up -d` | Start production stack |
+| `npm run docker:dev` | `compose -f compose.dev.yml up -d` (auto-detects runtime) | Start dev containers |
+| `npm run docker:dev:down` | `compose -f compose.dev.yml down` (auto-detects runtime) | Stop dev containers |
+| `npm run docker:prod` | `compose --env-file .env.production up -d --build` (auto-detects runtime) | Start production stack |
+| `npm run dev:docker` | `docker compose -f compose.dev.yml up --build` | Full dev stack in Docker |
+| `npm run dev:docker:detach` | `docker compose -f compose.dev.yml up --build -d` | Dev stack in background |
+| `npm run test:watch` | `vitest` in both workspaces | Run tests in watch mode |
+| `npm run security` | `./scripts/security-scan.sh` | Full security scan |
+| `npm run security:quick` | `./scripts/security-scan.sh --quick` | Quick security scan |
+| `npm run security:docker` | `./scripts/security-scan.sh --docker` | Docker image security scan |
+| `npm run cli` | CLI tool (server workspace) | Arsenale CLI (production) |
+| `npm run cli:dev` | CLI tool dev mode (server workspace) | Arsenale CLI (development) |
 
 <!-- manual-start -->
 <!-- manual-end -->

@@ -1,6 +1,6 @@
 # Architecture
 
-> Auto-generated on 2026-03-14 by `/docs create architecture`.
+> Auto-generated on 2026-03-15 by `/docs create architecture`.
 > Source of truth is the codebase. Run `/docs update architecture` after code changes.
 
 ## System Overview
@@ -39,11 +39,15 @@ The root `package.json` defines both workspaces and orchestration scripts (`dev`
 7. Creates the HTTP server and attaches Socket.IO (SSH, notifications, gateway monitor)
 8. Starts scheduled background jobs:
    - SSH key rotation (cron-based)
+   - LDAP sync (cron-based)
+   - Membership expiry check (cron-based)
+   - External sync profile jobs (cron-based, e.g. NetBox)
    - Gateway health monitoring
    - Managed gateway health check (30s) and reconciliation (5m)
    - Auto-scaling evaluation (30s)
    - Expired external share cleanup (hourly)
    - Expired refresh token cleanup (hourly)
+   - Absolute-timeout token family cleanup (every 5m)
    - Secret expiry check (every 6 hours)
    - Idle session marking (every minute)
    - Inactive session closure (every minute)
@@ -62,9 +66,13 @@ Routes → Controllers → Services → Prisma ORM
 |-------|----------|---------------|
 | **Routes** | `server/src/routes/*.routes.ts` | URL path definitions, middleware chaining, rate limiters |
 | **Controllers** | `server/src/controllers/*.controller.ts` | Request parsing, Zod validation, response formatting |
+| **Schemas** | `server/src/schemas/*.schemas.ts` | Zod validation schemas shared by controllers and services |
 | **Services** | `server/src/services/*.service.ts` | Business logic, database queries, encryption, external integrations |
 | **ORM** | `server/src/lib/prisma.ts` + `server/prisma/schema.prisma` | Prisma Client for PostgreSQL |
 | **Middleware** | `server/src/middleware/*.middleware.ts` | JWT auth, tenant/team RBAC, CSRF, rate limiting, error handling |
+| **Orchestrator** | `server/src/orchestrator/*.ts` | Container orchestration providers (Docker, Podman, Kubernetes, none) |
+| **Sync Engine** | `server/src/sync/*.ts` | External data-source sync (engine + providers, e.g. NetBox) |
+| **CLI** | `server/src/cli/` | Admin CLI with 12 command groups (user, tenant, gateway, secret, session, etc.) |
 
 ### Middleware Pipeline
 
@@ -77,7 +85,7 @@ The Express app (`server/src/app.ts`) applies middleware in this order:
 5. **Cookie parser** — for refresh token cookies
 6. **Passport** — initialized for OAuth/SAML strategies
 7. **Request logger** — optional HTTP request logging
-8. **Route handlers** — 28 route groups mounted under `/api/*`
+8. **Route handlers** — 30 route groups mounted under `/api/*`
 9. **Error handler** — centralized error response formatting
 
 ### Socket.IO Namespaces
@@ -124,18 +132,22 @@ App
 │       │   ├── SshTerminal + SftpBrowser + SftpTransferQueue
 │       │   ├── RdpViewer + FileBrowser
 │       │   └── VncViewer
-│       ├── FloatingToolbar (over active RDP/VNC)
+│       ├── DockedToolbar (over active RDP/VNC)
+│       ├── ReconnectOverlay
 │       ├── VaultLockedOverlay
 │       ├── NotificationBell
 │       └── Full-Screen Dialogs (rendered at root)
-│           ├── SettingsDialog (16 settings sections)
-│           ├── AuditLogDialog
+│           ├── SettingsDialog (23 settings sections)
+│           ├── AuditLogDialog / ConnectionAuditLogDialog
 │           ├── KeychainDialog (secrets manager)
 │           ├── RecordingsDialog
 │           ├── ConnectionDialog / FolderDialog
 │           ├── ShareDialog / ShareFolderDialog
 │           ├── ImportDialog / ExportDialog
-│           └── ConnectAsDialog / UserProfileDialog
+│           ├── ConnectAsDialog / UserProfileDialog
+│           ├── CreateUserDialog / InviteDialog
+│           ├── TeamDialog
+│           └── GatewayDialog / GatewayTemplateDialog
 ├── ConnectionViewerPage (standalone popup)
 └── RecordingPlayerPage (standalone popup)
 ```
@@ -163,7 +175,7 @@ App
 
 ### API Layer
 
-29 API modules in `client/src/api/` provide typed Axios wrappers for every server endpoint. The central `client.ts` configures:
+29 API modules in `client/src/api/` (28 endpoint modules + `client.ts`) provide typed Axios wrappers for every server endpoint. The central `client.ts` configures:
 
 - Automatic `Authorization: Bearer <jwt>` header injection
 - CSRF token injection for auth-sensitive endpoints (refresh, logout, tenant-switch)
