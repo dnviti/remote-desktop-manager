@@ -10,6 +10,7 @@ import { AppError } from '../middleware/error.middleware';
 import * as auditService from './audit.service';
 import { logger } from '../utils/logger';
 import { findFreePort } from '../utils/freePort';
+import { decryptWithServerKey } from './crypto.service';
 import {
   emitInstancesForGateway,
   emitScalingForGateway,
@@ -35,18 +36,43 @@ function requireOrchestrator() {
   return orch;
 }
 
+interface TunnelEnvOptions {
+  serverUrl: string;
+  token: string;
+  gatewayId: string;
+  caCert?: string;
+  clientCert?: string;
+}
+
 function buildContainerConfig(
   gateway: { id: string; name: string; type: string; port: number; tenantId: string },
   instanceIndex: number,
   publicKey?: string,
   hostPort?: number,
   apiHostPort?: number,
+  tunnelEnv?: TunnelEnvOptions,
 ): ContainerConfig {
   const suffix = `${gateway.id.slice(0, 8)}-${instanceIndex}`;
   const tenantSlug = gateway.tenantId.slice(0, 8);
   const slug = gateway.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
   const baseName = `arsenale-gw-${tenantSlug}-${slug}-${suffix}`;
   const k8sNamespace = `arsenale-${gateway.tenantId}`;
+
+  // When tunnel is enabled, suppress host-port publishing (traffic flows via tunnel)
+  const publishHostPort = tunnelEnv ? undefined : hostPort;
+  const publishApiHostPort = tunnelEnv ? undefined : apiHostPort;
+
+  /** Build tunnel environment variable block (injected into both SSH and GUACD containers). */
+  const tunnelEnvVars: Record<string, string> = tunnelEnv
+    ? {
+        TUNNEL_SERVER_URL:  tunnelEnv.serverUrl,
+        TUNNEL_TOKEN:       tunnelEnv.token,
+        TUNNEL_GATEWAY_ID:  tunnelEnv.gatewayId,
+        TUNNEL_LOCAL_PORT:  gateway.type === 'MANAGED_SSH' ? '2222' : '4822',
+        ...(tunnelEnv.caCert      ? { TUNNEL_CA_CERT:     tunnelEnv.caCert }      : {}),
+        ...(tunnelEnv.clientCert  ? { TUNNEL_CLIENT_CERT: tunnelEnv.clientCert }  : {}),
+      }
+    : {};
 
   if (gateway.type === 'MANAGED_SSH') {
     return {
@@ -56,10 +82,11 @@ function buildContainerConfig(
       env: {
         ...(publicKey ? { SSH_AUTHORIZED_KEYS: publicKey } : {}),
         ...(config.gatewayApiToken ? { GATEWAY_API_TOKEN: config.gatewayApiToken } : {}),
+        ...tunnelEnvVars,
       },
       ports: [
-        { container: 2222, ...(hostPort != null ? { host: hostPort } : {}) },
-        ...(apiHostPort != null ? [{ container: 8022, host: apiHostPort }] : []),
+        { container: 2222, ...(publishHostPort != null ? { host: publishHostPort } : {}) },
+        ...(publishApiHostPort != null ? [{ container: 8022, host: publishApiHostPort }] : []),
       ],
       labels: {
         'arsenale.managed': 'true',
@@ -77,8 +104,10 @@ function buildContainerConfig(
     image: config.orchestratorGuacdImage,
     name: baseName,
     namespace: k8sNamespace,
-    env: {},
-    ports: [{ container: 4822, ...(hostPort != null ? { host: hostPort } : {}) }],
+    env: {
+      ...tunnelEnvVars,
+    },
+    ports: [{ container: 4822, ...(publishHostPort != null ? { host: publishHostPort } : {}) }],
     labels: {
       'arsenale.managed': 'true',
       'arsenale.gateway-id': gateway.id,
@@ -145,7 +174,8 @@ export async function deployGatewayInstance(
 
   let hostPort: number | undefined;
   let apiHostPort: number | undefined;
-  if (gateway.publishPorts) {
+  // When tunnel is enabled, ports are NOT published to the host (traffic flows via tunnel)
+  if (gateway.publishPorts && !gateway.tunnelEnabled) {
     hostPort = await findFreePort();
     if (gateway.type === 'MANAGED_SSH') {
       apiHostPort = await findFreePort();
@@ -153,7 +183,40 @@ export async function deployGatewayInstance(
     log.info(`publishPorts enabled — assigned free host port ${hostPort}${apiHostPort ? `, api port ${apiHostPort}` : ''} for gateway ${gatewayId}`);
   }
 
-  const containerConfig = buildContainerConfig(gateway, existingCount, publicKey, hostPort, apiHostPort);
+  // Build tunnel env options if tunnel is enabled for this gateway
+  let tunnelEnvOptions: TunnelEnvOptions | undefined;
+  if (gateway.tunnelEnabled && gateway.encryptedTunnelToken && gateway.tunnelTokenIV && gateway.tunnelTokenTag) {
+    try {
+      const plainToken = decryptWithServerKey({
+        ciphertext: gateway.encryptedTunnelToken,
+        iv: gateway.tunnelTokenIV,
+        tag: gateway.tunnelTokenTag,
+      });
+
+      // Build the server tunnel URL from the server's own address
+      const tunnelServerUrl = process.env.TUNNEL_SERVER_URL;
+      if (!tunnelServerUrl) {
+        throw new AppError(
+          'TUNNEL_SERVER_URL environment variable is required when tunnel is enabled for a gateway',
+          500,
+        );
+      }
+
+      tunnelEnvOptions = {
+        serverUrl: tunnelServerUrl,
+        token: plainToken,
+        gatewayId: gateway.id,
+        ...(gateway.tunnelCaCert ? { caCert: gateway.tunnelCaCert } : {}),
+        ...(gateway.tunnelClientCert ? { clientCert: gateway.tunnelClientCert } : {}),
+      };
+
+      log.info(`Tunnel enabled for gateway ${gatewayId} — injecting tunnel env vars, suppressing port mapping`);
+    } catch (decryptErr) {
+      log.warn(`Failed to decrypt tunnel token for gateway ${gatewayId}: ${(decryptErr as Error).message} — deploying without tunnel`);
+    }
+  }
+
+  const containerConfig = buildContainerConfig(gateway, existingCount, publicKey, hostPort, apiHostPort, tunnelEnvOptions);
   log.debug(`Container config for gateway ${gatewayId}: image=${containerConfig.image}, name=${containerConfig.name}`);
 
   let containerInfo;

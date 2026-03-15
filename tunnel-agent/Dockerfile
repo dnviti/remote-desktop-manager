@@ -1,0 +1,48 @@
+# ── Build stage ──────────────────────────────────────────────────────────────
+FROM node:22-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install --ignore-scripts
+
+COPY tsconfig.json ./
+COPY src/ ./src/
+
+RUN npm run build
+
+# ── Runtime stage ─────────────────────────────────────────────────────────────
+FROM node:22-alpine
+
+LABEL org.opencontainers.image.title="Arsenale Tunnel Agent"
+LABEL org.opencontainers.image.description="Zero-trust tunnel agent for non-managed gateways"
+LABEL org.opencontainers.image.source="https://github.com/dnviti/arsenale"
+LABEL org.opencontainers.image.licenses="BUSL-1.1"
+
+WORKDIR /app
+
+# Install only production dependencies
+COPY package.json ./
+RUN npm install --omit=dev --ignore-scripts
+
+COPY --from=builder /app/dist ./dist
+
+# Non-root user
+RUN adduser -D -s /sbin/nologin agent
+USER agent
+
+ENV NODE_ENV=production
+
+# Required env vars (no defaults — absent = dormant mode):
+# TUNNEL_SERVER_URL   wss://your-server/tunnel
+# TUNNEL_TOKEN        <hex token>
+# TUNNEL_GATEWAY_ID   <uuid>
+# TUNNEL_LOCAL_PORT   4822  (guacd) or 2222 (sshd)
+#
+# Optional:
+# TUNNEL_LOCAL_HOST   localhost
+# TUNNEL_CA_CERT      <PEM>
+# TUNNEL_CLIENT_CERT  <PEM>
+# TUNNEL_CLIENT_KEY   <PEM>
+
+CMD ["node", "dist/index.js"]

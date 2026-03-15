@@ -120,6 +120,18 @@ The Gateway model includes tunnel fields: `tunnelEnabled`, encrypted token (ciph
 
 Audit actions `TUNNEL_CONNECT`, `TUNNEL_DISCONNECT`, `TUNNEL_TOKEN_GENERATE`, and `TUNNEL_TOKEN_ROTATE` are recorded for all tunnel lifecycle events.
 
+## Tunnel Agent (`tunnel-agent/`)
+
+The `tunnel-agent` is a lightweight Node.js workspace (`tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
+
+When tunnel env vars are present, the agent auto-activates and establishes an outbound WSS connection to the TunnelBroker using the same binary multiplexing protocol (OPEN/DATA/CLOSE/PING/PONG, 4-byte header). On receiving an OPEN frame with a `host:port` payload, it opens a local TCP connection and bridges data bidirectionally through DATA frames. The agent sends 15-second PING heartbeats with JSON health metadata (`{ healthy, latencyMs, activeStreams }`) obtained by probing the local service.
+
+Auto-reconnect uses exponential backoff (1 s → 2 s → … → 60 s). Optional mTLS is supported via `TUNNEL_CA_CERT`, `TUNNEL_CLIENT_CERT`, and `TUNNEL_CLIENT_KEY` env vars.
+
+A standalone `tunnel-agent/Dockerfile` is provided for deploying the agent alongside non-managed (external) gateways. For managed gateways, the `ssh-gateway/Dockerfile` and `docker/guacd/Dockerfile` both embed the agent via a multi-stage build (monorepo root context required) and launch it from their entrypoints as a background process.
+
+When `tunnelEnabled=true` on a managed gateway, `managedGateway.service.ts` automatically injects `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`, and `TUNNEL_LOCAL_PORT` into the container environment, and suppresses host-port publishing (`publishPorts=false` behavior) so traffic flows exclusively through the tunnel.
+
 ## External Sync
 
 Sync profiles allow organizations to automatically import and synchronize connections from external data sources such as NetBox. Profiles are configured with a provider type, credentials, and mapping rules, then can be run on-demand or on a scheduled basis. Each sync run produces a log with created, updated, and deleted connection counts.

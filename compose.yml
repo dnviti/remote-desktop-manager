@@ -120,8 +120,8 @@ services:
   #   ssh-gateway-lan:  ports: ["2223:2222"]
   ssh-gateway:
     build:
-      context: ssh-gateway
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ssh-gateway/Dockerfile
     security_opt:
       - label:disable
     healthcheck:

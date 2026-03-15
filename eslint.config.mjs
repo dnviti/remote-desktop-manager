@@ -14,10 +14,10 @@ export default tseslint.config(
     ],
   },
 
-  // ── Base TypeScript rules (both workspaces) ────────────────────
+  // ── Base TypeScript rules (all workspaces) ────────────────────
   ...tseslint.configs.strict,
   {
-    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}"],
+    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}", "tunnel-agent/src/**/*.ts"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -34,9 +34,9 @@ export default tseslint.config(
     },
   },
 
-  // ── Security rules (both workspaces) ───────────────────────────
+  // ── Security rules (all workspaces) ───────────────────────────
   {
-    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}"],
+    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}", "tunnel-agent/src/**/*.ts"],
     plugins: { security },
     rules: {
       ...security.configs.recommended.rules,

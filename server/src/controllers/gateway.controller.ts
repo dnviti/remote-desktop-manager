@@ -547,13 +547,7 @@ export async function generateTunnelToken(req: AuthRequest, res: Response) {
     gatewayId,
     req.user.userId,
   );
-  auditService.log({
-    userId: req.user.userId,
-    action: 'TUNNEL_TOKEN_GENERATE',
-    targetType: 'Gateway',
-    targetId: gatewayId,
-    ipAddress: getClientIp(req),
-  });
+  // Audit logging is handled by tunnel.service — no duplicate here
   // Return the plain token only once — the caller must store it
   res.status(201).json({
     token: result.token,
@@ -570,13 +564,6 @@ export async function revokeTunnelToken(req: AuthRequest, res: Response) {
     gatewayId,
     req.user.userId,
   );
-  auditService.log({
-    userId: req.user.userId,
-    action: 'TUNNEL_TOKEN_ROTATE',
-    targetType: 'Gateway',
-    targetId: gatewayId,
-    details: { revoked: true },
-    ipAddress: getClientIp(req),
-  });
+  // Audit logging is handled by tunnel.service — no duplicate here
   res.json({ revoked: true, tunnelEnabled: false });
 }

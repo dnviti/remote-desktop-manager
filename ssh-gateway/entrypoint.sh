@@ -33,5 +33,11 @@ else
   echo "WARNING: GATEWAY_API_TOKEN not set — key management API disabled"
 fi
 
+# Start zero-trust tunnel agent if configured (auto-activating, dormant if env vars absent)
+if [ -f /opt/tunnel-agent/dist/index.js ]; then
+  echo "Starting tunnel agent (dormant if TUNNEL_SERVER_URL not set)..."
+  node /opt/tunnel-agent/dist/index.js &
+fi
+
 echo "Starting SSH gateway on port ${SSH_PORT:-2222}..."
 exec /usr/sbin/sshd -D -e -p "${SSH_PORT:-2222}"

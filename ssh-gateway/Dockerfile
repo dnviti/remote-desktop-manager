@@ -1,3 +1,20 @@
+# Build context: monorepo root (see compose.yml — context: .)
+# This allows copying tunnel-agent sources alongside the ssh-gateway files.
+
+# ── Tunnel agent build stage ─────────────────────────────────────────────────
+FROM node:22-alpine AS tunnel-builder
+
+WORKDIR /tunnel-agent
+
+COPY tunnel-agent/package.json ./
+RUN npm install --ignore-scripts
+
+COPY tunnel-agent/tsconfig.json ./
+COPY tunnel-agent/src/ ./src/
+
+RUN npm run build && npm prune --omit=dev
+
+# ── SSH gateway runtime ───────────────────────────────────────────────────────
 FROM alpine:3.21
 
 LABEL org.opencontainers.image.title="Arsenale SSH Gateway"
@@ -5,7 +22,7 @@ LABEL org.opencontainers.image.description="Lightweight SSH tunnel for TCP port 
 LABEL org.opencontainers.image.source="https://github.com/dnviti/arsenale"
 LABEL org.opencontainers.image.licenses="MIT"
 
-RUN apk add --no-cache openssh-server netcat-openbsd busybox-extras \
+RUN apk add --no-cache openssh-server netcat-openbsd busybox-extras nodejs \
     && adduser -D -s /sbin/nologin tunnel \
     && sed -i 's/^tunnel:!/tunnel:*/' /etc/shadow \
     && mkdir -p /home/tunnel/.ssh \
@@ -13,7 +30,7 @@ RUN apk add --no-cache openssh-server netcat-openbsd busybox-extras \
     && chmod 700 /home/tunnel/.ssh \
     && mkdir -p /config
 
-COPY sshd_config /etc/ssh/sshd_config
+COPY ssh-gateway/sshd_config /etc/ssh/sshd_config
 RUN sed -i 's/\r$//' /etc/ssh/sshd_config
 
 # Generate host keys at build time and make them readable by tunnel user
@@ -22,12 +39,17 @@ RUN ssh-keygen -A \
     && chmod 600 /etc/ssh/ssh_host_*_key \
     && chmod 644 /etc/ssh/ssh_host_*_key.pub
 
-COPY entrypoint.sh /entrypoint.sh
+COPY ssh-gateway/entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 RUN mkdir -p /var/www/cgi-bin
-COPY key-api.sh /var/www/cgi-bin/authorized-keys
+COPY ssh-gateway/key-api.sh /var/www/cgi-bin/authorized-keys
 RUN sed -i 's/\r$//' /var/www/cgi-bin/authorized-keys && chmod +x /var/www/cgi-bin/authorized-keys
+
+# Embed pre-built tunnel agent
+COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist
+COPY --from=tunnel-builder /tunnel-agent/node_modules /opt/tunnel-agent/node_modules
+COPY --from=tunnel-builder /tunnel-agent/package.json /opt/tunnel-agent/package.json
 
 USER tunnel
 
