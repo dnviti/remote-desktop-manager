@@ -156,7 +156,17 @@ export async function getExternalShareInfo(token: string): Promise<ExternalShare
   });
 
   if (!share) {
-    throw new AppError('Share not found', 404);
+    // Return a consistent fake response to prevent token enumeration
+    return {
+      id: crypto.randomUUID(),
+      secretName: 'Shared Secret',
+      secretType: 'credential',
+      hasPin: true,
+      expiresAt: new Date(0).toISOString(),
+      isExpired: true,
+      isExhausted: false,
+      isRevoked: false,
+    };
   }
 
   const now = new Date();
