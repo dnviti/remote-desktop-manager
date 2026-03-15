@@ -13,7 +13,9 @@ api.interceptors.request.use((config) => {
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`;
   }
-  if (csrfToken && (config.url?.includes('/auth/refresh') || config.url?.includes('/auth/logout') || config.url?.includes('/auth/switch-tenant'))) {
+  // Send CSRF token on all state-changing requests (POST, PUT, PATCH, DELETE)
+  const method = config.method?.toUpperCase();
+  if (csrfToken && method && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
     config.headers['X-CSRF-Token'] = csrfToken;
   }
   return config;

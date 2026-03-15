@@ -5,7 +5,6 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { smsLoginRateLimiter } from '../middleware/smsRateLimit.middleware';
 import { loginRateLimiter } from '../middleware/loginRateLimit.middleware';
 import { forgotPasswordLimiter, resetPasswordLimiter, resetSmsLimiter } from '../middleware/resetRateLimit.middleware';
-import { validateCsrf } from '../middleware/csrf.middleware';
 import { authenticate } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
 import {
@@ -41,8 +40,8 @@ router.post('/forgot-password', forgotPasswordLimiter, validate(forgotPasswordSc
 router.post('/reset-password/validate', resetPasswordLimiter, validate(resetTokenSchema, 'body', 'Invalid token format'), asyncHandler(authController.validateResetToken));
 router.post('/reset-password/request-sms', resetSmsLimiter, validate(resetTokenSchema, 'body', 'Invalid request'), asyncHandler(authController.requestResetSmsCode));
 router.post('/reset-password/complete', resetPasswordLimiter, validate(completeResetSchema), asyncHandler(authController.completePasswordReset));
-router.post('/refresh', validateCsrf, asyncHandler(authController.refresh));
-router.post('/logout', validateCsrf, asyncHandler(authController.logout));
-router.post('/switch-tenant', authenticate, validateCsrf, validate(switchTenantSchema), asyncHandler(authController.switchTenant));
+router.post('/refresh', asyncHandler(authController.refresh));
+router.post('/logout', asyncHandler(authController.logout));
+router.post('/switch-tenant', authenticate, validate(switchTenantSchema), asyncHandler(authController.switchTenant));
 
 export default router;
