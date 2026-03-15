@@ -21,6 +21,8 @@ RUN autoreconf -fi \
 # ── Runtime stage ─────────────────────────────────────────────────────
 FROM alpine:3.18
 
+RUN apk update && apk upgrade --no-cache
+
 RUN apk add --no-cache python3 ffmpeg-libs libpng cairo libjpeg-turbo libuuid
 
 COPY --from=builder /usr/local/bin/guacenc /usr/local/bin/guacenc

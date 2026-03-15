@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-03-15
+
+### Fixed
+- Add HEALTHCHECK to guacd and tunnel-agent Dockerfiles (SEC-305)
+- Update base image packages to patch zlib vulnerabilities (SEC-301, SEC-304)
+
+### Security
+- Update hono override to 4.12.8 to patch prototype pollution vulnerability (SEC-303)
+- Override tar-fs/tar-stream to patch symlink traversal vulnerability (SEC-302)
+- Update Docker base image packages to patch critical zlib buffer overflow (SEC-301)
+- Update Docker base image packages to patch zlib CRC32 DoS (SEC-304)
+
 ## [1.4.1] - 2026-03-15
 
 ### Changed
@@ -213,7 +225,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Email verification preventing unverified account login
 - ESLint security plugin enforced in CI
 
-[Unreleased]: https://github.com/dnviti/arsenale/compare/v1.4.1...HEAD
+[Unreleased]: https://github.com/dnviti/arsenale/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/dnviti/arsenale/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/dnviti/arsenale/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/dnviti/arsenale/compare/v1.4.0...v1.4.1
 [1.4.0]: https://github.com/dnviti/arsenale/compare/v1.3.2...v1.4.0
 [1.3.2]: https://github.com/dnviti/arsenale/compare/v1.3.1...v1.3.2
