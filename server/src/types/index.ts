@@ -2,12 +2,17 @@ import { Request } from 'express';
 
 export type TenantRoleType = 'OWNER' | 'ADMIN' | 'OPERATOR' | 'MEMBER' | 'CONSULTANT' | 'AUDITOR' | 'GUEST';
 
+/** MFA method used to complete login for this session. Used by ABAC policy evaluation. */
+export type MfaMethod = 'totp' | 'webauthn' | 'sms';
+
 export interface AuthPayload {
   userId: string;
   email: string;
   tenantId?: string;
   tenantRole?: TenantRoleType;
   ipUaHash?: string;
+  /** Set when the user completed an MFA challenge during login (TOTP, WebAuthn, or SMS). */
+  mfaMethod?: MfaMethod;
 }
 
 // Merge AuthPayload into Express.User so passport's global

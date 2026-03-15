@@ -638,6 +638,7 @@ enum AuditAction {
   TUNNEL_DISCONNECT
   TUNNEL_TOKEN_GENERATE
   TUNNEL_TOKEN_ROTATE
+  SESSION_DENIED_ABAC
 }
 
 model AuditLog {
@@ -1059,4 +1060,34 @@ model AppConfig {
   key       String   @id
   value     String
   updatedAt DateTime @updatedAt
+}
+
+enum AccessPolicyTargetType {
+  TENANT
+  TEAM
+  FOLDER
+}
+
+/// Attribute-Based Access Control (ABAC) policy.
+/// Evaluated when a user attempts to start a session against a connection
+/// that belongs to a target (Folder, Team, or Tenant).
+model AccessPolicy {
+  id                  String                 @id @default(uuid())
+  targetType          AccessPolicyTargetType
+  /// ID of the Folder, Team, or Tenant this policy governs
+  targetId            String
+  /// Comma-separated time windows in "HH:MM-HH:MM" format (local UTC).
+  /// Example: "09:00-18:00" means sessions are only allowed between 09:00 and 18:00 UTC.
+  /// Leave null to allow any time.
+  allowedTimeWindows  String?
+  /// When true, the user must have authenticated with a WebAuthn credential
+  /// during the current login (trusted device check).
+  requireTrustedDevice Boolean @default(false)
+  /// When true, the user must have performed MFA step-up (TOTP or WebAuthn)
+  /// in this login session.
+  requireMfaStepUp    Boolean @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@index([targetType, targetId])
 }

@@ -180,7 +180,7 @@ export async function issueTokens(user: {
   email: string;
   username: string | null;
   avatarData: string | null;
-}, tokenFamily?: string, binding?: { ip: string; userAgent: string }) {
+}, tokenFamily?: string, binding?: { ip: string; userAgent: string }, mfaMethod?: import('../types').MfaMethod) {
   // Fetch all tenant memberships for the user
   const allMemberships = await prisma.tenantMember.findMany({
     where: { userId: user.id },
@@ -214,6 +214,7 @@ export async function issueTokens(user: {
     ...(activeMembership && { tenantId: activeMembership.tenantId }),
     ...(activeMembership && { tenantRole: activeMembership.role as AuthPayload['tenantRole'] }),
     ...(ipUaHash && { ipUaHash }),
+    ...(mfaMethod && { mfaMethod }),
   };
   const accessToken = jwt.sign(payload, config.jwtSecret, {
     expiresIn: config.jwtExpiresIn as string,
@@ -655,7 +656,7 @@ export async function verifyTotp(tempToken: string, code: string, binding?: { ip
   }
 
   // Issue real tokens (vault was already unlocked during password step)
-  return issueTokens(user, undefined, binding);
+  return issueTokens(user, undefined, binding, 'totp');
 }
 
 export async function requestLoginSmsCode(tempToken: string) {
@@ -728,7 +729,7 @@ export async function verifyWebAuthn(tempToken: string, credential: Record<strin
   // credential is AuthenticationResponseJSON from the browser — validated by simplewebauthn
   await verifyAuthentication(user.id, credential as unknown as Parameters<typeof verifyAuthentication>[1]);
 
-  return issueTokens(user, undefined, binding);
+  return issueTokens(user, undefined, binding, 'webauthn');
 }
 
 export async function verifySmsCode(tempToken: string, code: string, binding?: { ip: string; userAgent: string }) {
@@ -754,7 +755,7 @@ export async function verifySmsCode(tempToken: string, code: string, binding?: {
     throw new Error('Invalid or expired SMS code');
   }
 
-  return issueTokens(user, undefined, binding);
+  return issueTokens(user, undefined, binding, 'sms');
 }
 
 const ROTATION_GRACE_PERIOD_MS = 10_000; // 10 seconds for concurrent-tab tolerance
@@ -1054,7 +1055,7 @@ export async function verifyMfaSetupDuringLogin(tempToken: string, code: string,
   });
   if (!user) throw new Error('User not found');
 
-  return issueTokens(user, undefined, binding);
+  return issueTokens(user, undefined, binding, 'totp');
 }
 
 export async function cleanupExpiredTokens() {

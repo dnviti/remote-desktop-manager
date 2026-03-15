@@ -2,7 +2,7 @@ import { Response, NextFunction } from 'express';
 import path from 'path';
 import { mkdir, chmod } from 'fs/promises';
 import prisma from '../lib/prisma';
-import { AuthRequest, RdpSettings, assertAuthenticated, assertTenantAuthenticated } from '../types';
+import { AuthRequest, AuthenticatedRequest, RdpSettings, assertAuthenticated, assertTenantAuthenticated } from '../types';
 import type { DlpPolicy, VncSettings } from '../types';
 import { getConnection, getConnectionCredentials } from '../services/connection.service';
 import { resolveDomainCredentials } from '../services/domain.service';
@@ -12,6 +12,7 @@ import { resolveDlpPolicy } from '../utils/dlp';
 import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
+import * as abacService from '../services/abac.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { getDefaultGateway } from '../services/gateway.service';
 import { AppError } from '../middleware/error.middleware';
@@ -24,6 +25,36 @@ import type { SessionInput } from '../schemas/session.schemas';
 
 const DEFAULT_RDP_WIDTH = 1024;
 const DEFAULT_RDP_HEIGHT = 768;
+
+// ---- ABAC enforcement helper ----
+
+interface AbacConnectionContext {
+  folderId?: string | null;
+  teamId?: string | null;
+}
+
+/**
+ * Evaluate ABAC policies for a connection access attempt.
+ * Logs the denial to the audit log and throws a generic 403 if denied.
+ * The specific denial reason is kept in the audit log only — never leaked to the client.
+ */
+async function enforceAbacPolicy(req: AuthenticatedRequest, connection: AbacConnectionContext, connectionId: string): Promise<void> {
+  const ctx: abacService.AbacContext = {
+    userId: req.user.userId,
+    folderId: connection.folderId,
+    teamId: connection.teamId,
+    tenantId: req.user.tenantId,
+    usedWebAuthnInLogin: req.user.mfaMethod === 'webauthn',
+    completedMfaStepUp: req.user.mfaMethod != null,
+    ipAddress: getClientIp(req),
+    connectionId,
+  };
+  const result = await abacService.evaluate(ctx);
+  if (!result.allowed) {
+    await abacService.logAbacDenial(ctx, result);
+    throw new AppError('Access denied by security policy', 403);
+  }
+}
 
 // ---- RDP session creation (migrated from rdp.handler.ts) ----
 
@@ -48,6 +79,9 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     if (conn.type !== 'RDP') {
       throw new AppError('Not an RDP connection', 400);
     }
+
+    // ABAC policy evaluation
+    await enforceAbacPolicy(req, conn, connectionId);
 
     // Resolve gateway: explicit > tenant default > none
     const gateway = conn.gateway
@@ -268,6 +302,9 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       throw new AppError('Not a VNC connection', 400);
     }
 
+    // ABAC policy evaluation
+    await enforceAbacPolicy(req, conn, connectionId);
+
     // Resolve gateway: explicit > tenant default > none
     const gateway = conn.gateway
       ?? (req.user.tenantId ? await getDefaultGateway(req.user.tenantId, 'GUACD') : null);
@@ -430,6 +467,9 @@ export async function validateSshAccess(req: AuthRequest, res: Response) {
   if (conn.type !== 'SSH') {
     throw new AppError('Not an SSH connection', 400);
   }
+
+  // ABAC policy evaluation
+  await enforceAbacPolicy(req, conn, connectionId);
 
   // SSH sessions are handled via Socket.io, we just validate access here
   res.json({ connectionId, type: 'SSH' });
