@@ -25,7 +25,7 @@ on:
   workflow_call:
 
 concurrency:
-  group: verify-client-${{ github.ref }}
+  group: verify-client-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 jobs:

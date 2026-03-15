@@ -21,7 +21,7 @@ on:
   workflow_call:
 
 concurrency:
-  group: security-client-${{ github.ref }}
+  group: security-client-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 permissions:
