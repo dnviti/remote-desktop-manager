@@ -11,6 +11,7 @@ import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import VaultSetupPage from './pages/VaultSetupPage';
 import PublicSharePage from './pages/PublicSharePage';
 import VaultLockedOverlay from './components/Overlays/VaultLockedOverlay';
+import PwaUpdateNotification from './components/common/PwaUpdateNotification';
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/authStore';
 import { useVaultStore } from './store/vaultStore';
@@ -51,45 +52,48 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <Routes>
-      <Route path="/login" element={<LoginPage />} />
-      <Route path="/register" element={<RegisterPage />} />
-      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-      <Route path="/reset-password" element={<ResetPasswordPage />} />
-      <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
-      <Route
-        path="/oauth/vault-setup"
-        element={
-          <AuthRoute>
-            <VaultSetupPage />
-          </AuthRoute>
-        }
-      />
-      <Route
-        path="/connection/:id"
-        element={
-          <ProtectedRoute>
-            <ConnectionViewerPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route
-        path="/recording/:id"
-        element={
-          <ProtectedRoute>
-            <RecordingPlayerPage />
-          </ProtectedRoute>
-        }
-      />
-      <Route path="/share/:token" element={<PublicSharePage />} />
-      <Route
-        path="/*"
-        element={
-          <ProtectedRoute>
-            <DashboardPage />
-          </ProtectedRoute>
-        }
-      />
-    </Routes>
+    <>
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
+        <Route path="/oauth/callback" element={<OAuthCallbackPage />} />
+        <Route
+          path="/oauth/vault-setup"
+          element={
+            <AuthRoute>
+              <VaultSetupPage />
+            </AuthRoute>
+          }
+        />
+        <Route
+          path="/connection/:id"
+          element={
+            <ProtectedRoute>
+              <ConnectionViewerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/recording/:id"
+          element={
+            <ProtectedRoute>
+              <RecordingPlayerPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route path="/share/:token" element={<PublicSharePage />} />
+        <Route
+          path="/*"
+          element={
+            <ProtectedRoute>
+              <DashboardPage />
+            </ProtectedRoute>
+          }
+        />
+      </Routes>
+      <PwaUpdateNotification />
+    </>
   );
 }
