@@ -51,6 +51,23 @@ Copy `.env.example` to `.env`. PostgreSQL is used in both development and produc
 
 **Important:** The `.env` file lives at the **monorepo root**, not inside `server/`. Prisma CLI commands (`db:push`, `db:migrate`) run from the `server/` workspace directory, so `server/prisma.config.ts` explicitly resolves the `.env` path to `../.env`. Never add a separate `server/.env` — all env vars are loaded from the root `.env`.
 
+## Version Bumping
+
+When bumping the app version, update all four `package.json` files and regenerate `package-lock.json`:
+
+| File | Field |
+|------|-------|
+| `package.json` (root) | `"version"` |
+| `client/package.json` | `"version"` |
+| `server/package.json` | `"version"` |
+| `gateways/tunnel-agent/package.json` | `"version"` |
+| `extra-clients/browser-extensions/package.json` | `"version"` |
+| `extra-clients/browser-extensions/manifest.json` | `"version"` |
+| `server/src/cli.ts` | `.version('X.Y.Z')` |
+| `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
+
+After editing the package.json files, run `npm install --package-lock-only` to update `package-lock.json`. All versions must always be kept in sync.
+
 ## Documentation Maintenance
 
 `docs/rag-summary.md` must be kept in sync whenever documentation or features change. If any feature is added, modified, or removed, update this file to reflect the current state.
