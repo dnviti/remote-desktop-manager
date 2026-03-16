@@ -9,7 +9,7 @@ body::after {
   content: '';
   position: fixed;
   inset: 0;
-  z-index: 9999;
+  z-index: 2000;
   pointer-events: none;
   opacity: 0.028;
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.7' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
@@ -19,85 +19,6 @@ body::after {
 ::selection {
   background-color: #00e5a0;
   color: #08080a;
-}
-
-/* ─── Scroll-Triggered Animations ─── */
-
-[data-animate] {
-  opacity: 0;
-  transform: translateY(20px);
-  transition:
-    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
-    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-[data-animate].is-visible {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-[data-animate][data-delay="1"] { transition-delay: 0.1s; }
-[data-animate][data-delay="2"] { transition-delay: 0.2s; }
-[data-animate][data-delay="3"] { transition-delay: 0.3s; }
-[data-animate][data-delay="4"] { transition-delay: 0.4s; }
-[data-animate][data-delay="5"] { transition-delay: 0.5s; }
-[data-animate][data-delay="6"] { transition-delay: 0.6s; }
-
-/* ─── Accent Underline Link ─── */
-
-.accent-link {
-  position: relative;
-  text-decoration: none;
-}
-
-.accent-link::after {
-  content: '';
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 0;
-  height: 1px;
-  background: #00e5a0;
-  transition: width 0.3s ease;
-}
-
-.accent-link:hover::after {
-  width: 100%;
-}
-
-/* ─── Section Dot Divider ─── */
-
-.section-dot-divider {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding: 0 2rem;
-}
-
-.section-dot-divider::before,
-.section-dot-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: #232328;
-}
-
-/* ─── Background float animation ─── */
-
-@keyframes float {
-  0%, 100% { transform: translate(0, 0) scale(1); }
-  33% { transform: translate(30px, -25px) scale(1.02); }
-  66% { transform: translate(-20px, 15px) scale(0.98); }
-}
-
-/* ─── Monospace utility ─── */
-
-.font-mono {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
-
-.font-serif {
-  font-family: 'Instrument Serif', Georgia, serif;
 }
 
 /* ─── Scrollbar styling (dark theme) ─── */

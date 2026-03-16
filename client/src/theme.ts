@@ -209,6 +209,3 @@ export const lightTheme: Theme = createTheme({
 });
 
 export const themes: Record<ThemeMode, Theme> = { light: lightTheme, dark: darkTheme };
-
-/* Re-export tokens for direct use in components */
-export { editorial, fonts };
