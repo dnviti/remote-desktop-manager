@@ -34,7 +34,7 @@ export interface StorageSchema {
   activeAccountId: string | null;
 }
 
-/** Messages sent from popup/options to the service worker. */
+/** Messages sent from popup/options/content to the service worker. */
 export type BackgroundMessage =
   | { type: 'API_REQUEST'; accountId: string; method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE'; path: string; body?: unknown }
   | { type: 'HEALTH_CHECK'; serverUrl: string }
@@ -50,7 +50,16 @@ export type BackgroundMessage =
   | { type: 'GET_ACCOUNTS' }
   | { type: 'SET_ACTIVE_ACCOUNT'; accountId: string }
   | { type: 'REMOVE_ACCOUNT'; accountId: string }
-  | { type: 'UPDATE_ACCOUNT'; account: Partial<Account> & { id: string } };
+  | { type: 'UPDATE_ACCOUNT'; account: Partial<Account> & { id: string } }
+  | { type: 'AUTOFILL_GET_STATUS'; url: string }
+  | { type: 'AUTOFILL_GET_MATCHES'; url: string }
+  | { type: 'AUTOFILL_GET_CREDENTIAL'; secretId: string; accountId: string }
+  | { type: 'AUTOFILL_OPEN_POPUP' }
+  | { type: 'AUTOFILL_IS_DISABLED'; domain: string }
+  | { type: 'AUTOFILL_SET_DISABLED_SITES'; sites: string[] }
+  | { type: 'AUTOFILL_GET_DISABLED_SITES' }
+  | { type: 'AUTOFILL_SET_GLOBAL_ENABLED'; enabled: boolean }
+  | { type: 'AUTOFILL_GET_GLOBAL_ENABLED' };
 
 /** Standardized response from the service worker. */
 export interface BackgroundResponse<T = unknown> {
@@ -231,4 +240,14 @@ export interface VaultFoldersResponse {
   personal: VaultFolderData[];
   team: VaultFolderData[];
   tenant: VaultFolderData[];
+}
+
+// ── Autofill preferences ──────────────────────────────────────────────
+
+/** Autofill preferences stored in chrome.storage.local. */
+export interface AutofillPreferences {
+  /** Whether autofill is enabled globally. Defaults to true. */
+  globalEnabled: boolean;
+  /** Domains where autofill is disabled (e.g. ["example.com", "internal.corp"]). */
+  disabledSites: string[];
 }

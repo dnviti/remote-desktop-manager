@@ -7,6 +7,7 @@
     "storage",
     "alarms",
     "activeTab",
+    "tabs",
     "clipboardWrite"
   ],
   "host_permissions": [

@@ -1,9 +1,15 @@
 /**
- * Content script — placeholder for future credential autofill functionality.
+ * Content script entry point — runs on all pages at document_idle.
  *
- * This script runs on all pages at document_idle. It will be expanded in
- * a future task to detect login forms and offer autofill from the Arsenale keychain.
+ * Initializes the credential autofill system which detects login forms
+ * on web pages and offers to fill them with credentials from the
+ * Arsenale keychain.
  */
 
-// Intentionally empty for now — BEXT-103 / BEXT-104 will implement autofill logic.
-export {};
+import { initAutofill } from './autofill';
+
+// Initialize autofill system
+initAutofill().catch(() => {
+  // Silently fail — autofill is a best-effort feature and should never
+  // interfere with the host page's functionality.
+});

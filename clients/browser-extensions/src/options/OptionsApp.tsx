@@ -3,6 +3,7 @@ import type { Account } from '../types';
 import { sendMessage, healthCheck, login } from '../lib/apiClient';
 import { AccountList } from './AccountList';
 import { AddAccountForm } from './AddAccountForm';
+import { AutofillSettings } from './AutofillSettings';
 import './options.css';
 
 async function fetchAccounts(): Promise<{ accounts: Account[]; activeId: string | null }> {
@@ -113,6 +114,13 @@ export function OptionsApp(): React.ReactElement {
               onUpdateLabel={handleUpdateLabel}
             />
           )}
+        </section>
+
+        <section className="options-section">
+          <div className="options-section-header">
+            <h2>Autofill</h2>
+          </div>
+          <AutofillSettings />
         </section>
       </main>
     </div>

@@ -1,6 +1,6 @@
 /**
  * Background service worker — handles ALL API calls to Arsenale servers,
- * bypassing CORS entirely. Popup/options pages communicate via chrome.runtime.sendMessage.
+ * bypassing CORS entirely. Popup/options/content pages communicate via chrome.runtime.sendMessage.
  */
 
 import {
@@ -12,13 +12,20 @@ import {
   removeAccount,
   touchAccount,
 } from './lib/accountStore';
+import { findMatchingCredentials, extractDomain } from './lib/urlMatcher';
+import type { CredentialIndexEntry } from './lib/urlMatcher';
 import type {
+  AutofillPreferences,
   BackgroundMessage,
   BackgroundResponse,
   HealthCheckResult,
+  LoginData,
   LoginResponse,
   LoginResult,
   PendingAccount,
+  SecretDetail,
+  SecretListItem,
+  VaultStatusResponse,
 } from './types';
 
 // ── Clipboard auto-clear alarm ────────────────────────────────────────
@@ -30,7 +37,147 @@ const REFRESH_INTERVAL_MINUTES = 10;
 
 chrome.alarms.create(REFRESH_ALARM, { periodInMinutes: REFRESH_INTERVAL_MINUTES });
 
+// ── Credential index for autofill ───────────────────────────────────
+// Lightweight in-memory index of LOGIN-type secrets keyed by accountId.
+// Refreshed periodically and on popup open / vault unlock.
+const credentialIndex: Map<string, CredentialIndexEntry[]> = new Map();
+const CREDENTIAL_INDEX_REFRESH_ALARM = 'credential-index-refresh';
+const CREDENTIAL_INDEX_REFRESH_MINUTES = 5;
+const AUTOFILL_PREFS_KEY = 'autofillPreferences';
+
+chrome.alarms.create(CREDENTIAL_INDEX_REFRESH_ALARM, {
+  periodInMinutes: CREDENTIAL_INDEX_REFRESH_MINUTES,
+});
+
+/** Default autofill preferences. */
+const defaultAutofillPrefs: AutofillPreferences = {
+  globalEnabled: true,
+  disabledSites: [],
+};
+
+/** Load autofill preferences from chrome.storage.local. */
+async function getAutofillPrefs(): Promise<AutofillPreferences> {
+  const result = await chrome.storage.local.get(AUTOFILL_PREFS_KEY);
+  return (result[AUTOFILL_PREFS_KEY] as AutofillPreferences | undefined) ?? defaultAutofillPrefs;
+}
+
+/** Save autofill preferences to chrome.storage.local. */
+async function setAutofillPrefs(prefs: AutofillPreferences): Promise<void> {
+  await chrome.storage.local.set({ [AUTOFILL_PREFS_KEY]: prefs });
+}
+
+/** Build or refresh the credential index for a given account. */
+async function refreshCredentialIndex(accountId: string): Promise<void> {
+  try {
+    const accounts = await getAccounts();
+    const account = accounts.find((a) => a.id === accountId);
+    if (!account || account.sessionExpired) return;
+
+    // Fetch LOGIN-type secrets (list only, no decrypted data)
+    const url = `${account.serverUrl}/api/secrets?type=LOGIN`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${account.accessToken}`,
+      },
+    });
+
+    if (res.status === 403 || res.status === 401) {
+      // Vault locked or session expired — clear index
+      credentialIndex.delete(accountId);
+      return;
+    }
+
+    if (!res.ok) return;
+
+    const secrets = (await res.json()) as SecretListItem[];
+    const entries: CredentialIndexEntry[] = secrets.map((s) => ({
+      secretId: s.id,
+      name: s.name,
+      url: (s.metadata?.['url'] as string | undefined) ?? undefined,
+      domain: (s.metadata?.['domain'] as string | undefined) ?? undefined,
+      accountId,
+    }));
+
+    credentialIndex.set(accountId, entries);
+  } catch {
+    // Best-effort: index refresh failure should not disrupt other operations
+  }
+}
+
+/** Refresh the credential index for all active (non-expired) accounts. */
+async function refreshAllCredentialIndexes(): Promise<void> {
+  const accounts = await getAccounts();
+  for (const account of accounts) {
+    if (!account.sessionExpired) {
+      await refreshCredentialIndex(account.id);
+    }
+  }
+}
+
+/** Update the extension badge with matching credential count for the active tab. */
+async function updateBadgeForTab(tabId: number, pageUrl: string): Promise<void> {
+  // Don't override error badges
+  const accounts = await getAccounts();
+  if (accounts.some((a) => a.sessionExpired)) return;
+
+  const prefs = await getAutofillPrefs();
+  if (!prefs.globalEnabled) {
+    chrome.action.setBadgeText({ text: '', tabId });
+    return;
+  }
+
+  // Check if this domain is disabled
+  try {
+    const hostname = new URL(pageUrl).hostname;
+    const domain = extractDomain(hostname);
+    if (prefs.disabledSites.some((s) => domain === extractDomain(s) || hostname === s)) {
+      chrome.action.setBadgeText({ text: '', tabId });
+      return;
+    }
+  } catch {
+    chrome.action.setBadgeText({ text: '', tabId });
+    return;
+  }
+
+  // Aggregate matches across all accounts
+  const allEntries = Array.from(credentialIndex.values()).flat();
+  const matches = findMatchingCredentials(allEntries, pageUrl);
+
+  if (matches.length > 0) {
+    chrome.action.setBadgeText({ text: String(matches.length), tabId });
+    chrome.action.setBadgeBackgroundColor({ color: '#00e5a0', tabId });
+  } else {
+    chrome.action.setBadgeText({ text: '', tabId });
+  }
+}
+
+// Update badge when tabs change
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url) {
+    updateBadgeForTab(tabId, tab.url);
+  }
+});
+
+chrome.tabs.onActivated.addListener(async (activeInfo) => {
+  try {
+    const tab = await chrome.tabs.get(activeInfo.tabId);
+    if (tab.url) {
+      updateBadgeForTab(activeInfo.tabId, tab.url);
+    }
+  } catch {
+    // Tab may have been closed
+  }
+});
+
 chrome.alarms.onAlarm.addListener(async (alarm) => {
+  // Credential index periodic refresh
+  if (alarm.name === CREDENTIAL_INDEX_REFRESH_ALARM) {
+    await refreshAllCredentialIndexes();
+    return;
+  }
+
   // Clipboard auto-clear: write empty string to clipboard
   if (alarm.name === CLIPBOARD_CLEAR_ALARM) {
     try {
@@ -111,6 +258,25 @@ async function handleMessage(message: BackgroundMessage): Promise<BackgroundResp
       return handleRemoveAccount(message.accountId);
     case 'UPDATE_ACCOUNT':
       return handleUpdateAccount(message.account);
+    // ── Autofill handlers ──────────────────────────────────────────
+    case 'AUTOFILL_GET_STATUS':
+      return handleAutofillGetStatus(message.url);
+    case 'AUTOFILL_GET_MATCHES':
+      return handleAutofillGetMatches(message.url);
+    case 'AUTOFILL_GET_CREDENTIAL':
+      return handleAutofillGetCredential(message.secretId, message.accountId);
+    case 'AUTOFILL_OPEN_POPUP':
+      return handleAutofillOpenPopup();
+    case 'AUTOFILL_IS_DISABLED':
+      return handleAutofillIsDisabled(message.domain);
+    case 'AUTOFILL_SET_DISABLED_SITES':
+      return handleAutofillSetDisabledSites(message.sites);
+    case 'AUTOFILL_GET_DISABLED_SITES':
+      return handleAutofillGetDisabledSites();
+    case 'AUTOFILL_SET_GLOBAL_ENABLED':
+      return handleAutofillSetGlobalEnabled(message.enabled);
+    case 'AUTOFILL_GET_GLOBAL_ENABLED':
+      return handleAutofillGetGlobalEnabled();
     default:
       return { success: false, error: 'Unknown message type' };
   }
@@ -503,6 +669,178 @@ async function handleUpdateAccount(
 ): Promise<BackgroundResponse> {
   const result = await updateAccount(partial as Parameters<typeof updateAccount>[0]);
   return result ? { success: true, data: result } : { success: false, error: 'Account not found' };
+}
+
+// ── Autofill handlers ───────────────────────────────────────────────────
+
+/** Check autofill status for the content script. */
+async function handleAutofillGetStatus(
+  _url: string,
+): Promise<BackgroundResponse<{ hasAccount: boolean; vaultLocked: boolean; autofillDisabledGlobally: boolean }>> {
+  try {
+    const prefs = await getAutofillPrefs();
+    const account = await getActiveAccount();
+    if (!account) {
+      return { success: true, data: { hasAccount: false, vaultLocked: true, autofillDisabledGlobally: !prefs.globalEnabled } };
+    }
+
+    // Check vault status
+    const vaultRes = await fetch(`${account.serverUrl}/api/vault/status`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${account.accessToken}`,
+      },
+    });
+
+    let vaultLocked = true;
+    if (vaultRes.ok) {
+      const vaultData = (await vaultRes.json()) as VaultStatusResponse;
+      vaultLocked = !vaultData.unlocked;
+    }
+
+    return {
+      success: true,
+      data: {
+        hasAccount: true,
+        vaultLocked,
+        autofillDisabledGlobally: !prefs.globalEnabled,
+      },
+    };
+  } catch (err) {
+    return { success: false, error: formatError(err) };
+  }
+}
+
+/** Find matching credentials for a URL. */
+async function handleAutofillGetMatches(
+  pageUrl: string,
+): Promise<BackgroundResponse<CredentialIndexEntry[]>> {
+  try {
+    const account = await getActiveAccount();
+    if (!account) return { success: true, data: [] };
+
+    // Ensure index is populated
+    if (!credentialIndex.has(account.id)) {
+      await refreshCredentialIndex(account.id);
+    }
+
+    const entries = credentialIndex.get(account.id) ?? [];
+    const matches = findMatchingCredentials(entries, pageUrl);
+    return { success: true, data: matches };
+  } catch (err) {
+    return { success: false, error: formatError(err) };
+  }
+}
+
+/** Fetch full decrypted credential data for autofill. */
+async function handleAutofillGetCredential(
+  secretId: string,
+  accountId: string,
+): Promise<BackgroundResponse<{ username: string; password: string }>> {
+  try {
+    const accounts = await getAccounts();
+    const account = accounts.find((a) => a.id === accountId);
+    if (!account) return { success: false, error: 'Account not found' };
+
+    const url = `${account.serverUrl}/api/secrets/${secretId}`;
+    const res = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${account.accessToken}`,
+      },
+    });
+
+    if (res.status === 403) {
+      return { success: false, error: 'vault_locked' };
+    }
+
+    if (!res.ok) {
+      return { success: false, error: `Failed to fetch credential (${String(res.status)})` };
+    }
+
+    const secret = (await res.json()) as SecretDetail;
+    if (secret.data.type !== 'LOGIN') {
+      return { success: false, error: 'Not a LOGIN secret' };
+    }
+
+    const loginData = secret.data as LoginData;
+    return {
+      success: true,
+      data: {
+        username: loginData.username,
+        password: loginData.password,
+      },
+    };
+  } catch (err) {
+    return { success: false, error: formatError(err) };
+  }
+}
+
+/** Open the extension popup (best-effort). */
+async function handleAutofillOpenPopup(): Promise<BackgroundResponse> {
+  try {
+    // chrome.action.openPopup() is available in Chrome 99+
+    if (chrome.action.openPopup) {
+      await chrome.action.openPopup();
+    }
+    return { success: true };
+  } catch {
+    // openPopup may fail if no active window; this is fine
+    return { success: true };
+  }
+}
+
+/** Check if autofill is disabled for a specific domain. */
+async function handleAutofillIsDisabled(
+  domain: string,
+): Promise<BackgroundResponse<{ disabled: boolean }>> {
+  try {
+    const prefs = await getAutofillPrefs();
+    if (!prefs.globalEnabled) {
+      return { success: true, data: { disabled: true } };
+    }
+    const normalized = extractDomain(domain);
+    const isDisabled = prefs.disabledSites.some(
+      (s) => extractDomain(s) === normalized || s === domain,
+    );
+    return { success: true, data: { disabled: isDisabled } };
+  } catch (err) {
+    return { success: false, error: formatError(err) };
+  }
+}
+
+/** Set the list of disabled sites. */
+async function handleAutofillSetDisabledSites(
+  sites: string[],
+): Promise<BackgroundResponse> {
+  const prefs = await getAutofillPrefs();
+  prefs.disabledSites = sites;
+  await setAutofillPrefs(prefs);
+  return { success: true };
+}
+
+/** Get the list of disabled sites. */
+async function handleAutofillGetDisabledSites(): Promise<BackgroundResponse<{ sites: string[] }>> {
+  const prefs = await getAutofillPrefs();
+  return { success: true, data: { sites: prefs.disabledSites } };
+}
+
+/** Set global autofill enabled/disabled. */
+async function handleAutofillSetGlobalEnabled(
+  enabled: boolean,
+): Promise<BackgroundResponse> {
+  const prefs = await getAutofillPrefs();
+  prefs.globalEnabled = enabled;
+  await setAutofillPrefs(prefs);
+  return { success: true };
+}
+
+/** Get global autofill enabled state. */
+async function handleAutofillGetGlobalEnabled(): Promise<BackgroundResponse<{ enabled: boolean }>> {
+  const prefs = await getAutofillPrefs();
+  return { success: true, data: { enabled: prefs.globalEnabled } };
 }
 
 // ── Shared helpers ─────────────────────────────────────────────────────
