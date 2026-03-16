@@ -21,17 +21,18 @@ RUN autoreconf -fi \
 # ── agg (asciicast-to-GIF renderer) build stage ──────────────────────
 FROM --platform=$BUILDPLATFORM alpine:3.18 AS agg-builder
 
-ARG AGG_VERSION=1.5.0
+ARG AGG_VERSION=1.7.0
 ARG TARGETARCH
 
-RUN apk add --no-cache curl tar && \
+RUN apk add --no-cache curl && \
     case "${TARGETARCH}" in \
       amd64) AGG_ARCH="x86_64-unknown-linux-musl" ;; \
-      arm64) AGG_ARCH="aarch64-unknown-linux-musl" ;; \
+      arm64) AGG_ARCH="aarch64-unknown-linux-gnu" ;; \
       *) echo "Unsupported arch: ${TARGETARCH}" && exit 1 ;; \
     esac && \
-    curl -fsSL "https://github.com/asciinema/agg/releases/download/v${AGG_VERSION}/agg-${AGG_ARCH}.tar.gz" \
-    | tar xz -C /usr/local/bin
+    curl -fsSL -o /usr/local/bin/agg \
+      "https://github.com/asciinema/agg/releases/download/v${AGG_VERSION}/agg-${AGG_ARCH}" && \
+    chmod +x /usr/local/bin/agg
 
 # ── Runtime stage ─────────────────────────────────────────────────────
 FROM alpine:3.18
