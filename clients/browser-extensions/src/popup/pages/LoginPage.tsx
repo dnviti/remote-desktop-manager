@@ -1,6 +1,48 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { sendMessage } from '../../lib/apiClient';
 import type { BackgroundResponse, LoginResponse } from '../../types';
+
+// ── Rate-limiting constants ──────────────────────────────────────────
+const MAX_ATTEMPTS_BEFORE_LOCKOUT = 3;
+const LOCKOUT_DURATION_SECONDS = 30;
+const STORAGE_KEY = 'arsenale_login_attempts';
+
+/** Persisted rate-limit state (survives popup close/reopen). */
+interface RateLimitState {
+  /** Number of consecutive failed login attempts. */
+  failedAttempts: number;
+  /** ISO-8601 timestamp when the lockout expires (null if not locked). */
+  lockoutUntil: string | null;
+}
+
+function loadRateLimitState(): RateLimitState {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw) as RateLimitState;
+      return parsed;
+    }
+  } catch {
+    // Ignore parse errors — fall through to default
+  }
+  return { failedAttempts: 0, lockoutUntil: null };
+}
+
+function saveRateLimitState(state: RateLimitState): void {
+  try {
+    sessionStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  } catch {
+    // Silently ignore storage errors
+  }
+}
+
+function clearRateLimitState(): void {
+  try {
+    sessionStorage.removeItem(STORAGE_KEY);
+  } catch {
+    // Silently ignore
+  }
+}
 
 interface LoginPageProps {
   /** Called when login needs MFA verification. */
@@ -30,6 +72,79 @@ export function LoginPage({
   const [step, setStep] = useState<'server' | 'credentials'>('server');
   const [serverValid, setServerValid] = useState(false);
 
+  // ── Rate-limiting state ──────────────────────────────────────────
+  const [_failedAttempts, setFailedAttempts] = useState<number>(() => loadRateLimitState().failedAttempts);
+  const [lockoutRemaining, setLockoutRemaining] = useState<number>(0);
+  const lockoutTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const isLockedOut = lockoutRemaining > 0;
+
+  /** Start or resume the countdown timer. */
+  const startLockoutTimer = useCallback((seconds: number) => {
+    // Clear any existing timer
+    if (lockoutTimerRef.current) {
+      clearInterval(lockoutTimerRef.current);
+    }
+    setLockoutRemaining(seconds);
+    lockoutTimerRef.current = setInterval(() => {
+      setLockoutRemaining((prev) => {
+        if (prev <= 1) {
+          if (lockoutTimerRef.current) {
+            clearInterval(lockoutTimerRef.current);
+            lockoutTimerRef.current = null;
+          }
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  /** Record a failed attempt and trigger lockout when threshold is reached. */
+  const recordFailedAttempt = useCallback(() => {
+    setFailedAttempts((prev) => {
+      const next = prev + 1;
+      if (next >= MAX_ATTEMPTS_BEFORE_LOCKOUT) {
+        const lockoutUntil = new Date(Date.now() + LOCKOUT_DURATION_SECONDS * 1000).toISOString();
+        saveRateLimitState({ failedAttempts: next, lockoutUntil });
+        startLockoutTimer(LOCKOUT_DURATION_SECONDS);
+      } else {
+        saveRateLimitState({ failedAttempts: next, lockoutUntil: null });
+      }
+      return next;
+    });
+  }, [startLockoutTimer]);
+
+  /** Reset rate-limit state on successful login. */
+  const resetRateLimit = useCallback(() => {
+    setFailedAttempts(0); // Reset attempt counter
+    setLockoutRemaining(0);
+    if (lockoutTimerRef.current) {
+      clearInterval(lockoutTimerRef.current);
+      lockoutTimerRef.current = null;
+    }
+    clearRateLimitState();
+  }, []);
+
+  // On mount: restore lockout timer if a lockout is still active
+  useEffect(() => {
+    const state = loadRateLimitState();
+    if (state.lockoutUntil) {
+      const remaining = Math.ceil((new Date(state.lockoutUntil).getTime() - Date.now()) / 1000);
+      if (remaining > 0) {
+        startLockoutTimer(remaining);
+      } else {
+        // Lockout expired while popup was closed — keep attempt count but clear lockout
+        saveRateLimitState({ failedAttempts: state.failedAttempts, lockoutUntil: null });
+      }
+    }
+    return () => {
+      if (lockoutTimerRef.current) {
+        clearInterval(lockoutTimerRef.current);
+      }
+    };
+  }, [startLockoutTimer]);
+
   const handleCheckServer = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!serverUrl.trim()) return;
@@ -52,7 +167,7 @@ export function LoginPage({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password) return;
+    if (!email.trim() || !password || isLockedOut) return;
     setLoading(true);
     setError(null);
 
@@ -65,24 +180,28 @@ export function LoginPage({
       });
 
       if (!result.success) {
+        recordFailedAttempt();
         setError(result.error ?? 'Login failed');
         return;
       }
 
       const data = result.data;
       if (!data) {
+        recordFailedAttempt();
         setError('Unexpected empty response');
         return;
       }
 
       // MFA setup required — open the web UI for setup
       if ('mfaSetupRequired' in data && data.mfaSetupRequired) {
+        resetRateLimit();
         onMfaSetupRequired(serverUrl.trim());
         return;
       }
 
       // MFA verification required — navigate to MFA page
       if ('requiresMFA' in data && data.requiresMFA) {
+        resetRateLimit();
         onMfaRequired(
           serverUrl.trim(),
           email.trim(),
@@ -94,6 +213,7 @@ export function LoginPage({
       }
 
       // Full success
+      resetRateLimit();
       onSuccess();
     } finally {
       setLoading(false);
@@ -180,12 +300,21 @@ export function LoginPage({
             />
           </div>
           {error && <p className="form-error">{error}</p>}
+          {isLockedOut && (
+            <p className="form-error">
+              Too many failed attempts. Try again in {lockoutRemaining}s.
+            </p>
+          )}
           <button
             type="submit"
             className="btn btn-primary btn-full"
-            disabled={loading || !email.trim() || !password}
+            disabled={loading || !email.trim() || !password || isLockedOut}
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {isLockedOut
+              ? `Locked (${lockoutRemaining}s)`
+              : loading
+                ? 'Signing in...'
+                : 'Sign In'}
           </button>
         </form>
       )}
