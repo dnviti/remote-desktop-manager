@@ -39,7 +39,7 @@ services:
 
   guacenc:
     build:
-      context: docker/guacenc
+      context: gateways/guacenc
       dockerfile: Dockerfile
     security_opt:
       - label:disable
@@ -121,7 +121,7 @@ services:
   ssh-gateway:
     build:
       context: .
-      dockerfile: ssh-gateway/Dockerfile
+      dockerfile: gateways/ssh-gateway/Dockerfile
     security_opt:
       - label:disable
     healthcheck:

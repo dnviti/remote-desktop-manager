@@ -1,252 +1,269 @@
+---
+title: Deployment
+description: Docker containers, CI/CD pipelines, production setup, and infrastructure
+generated-by: ctdf-docs
+generated-at: 2026-03-16T19:30:00Z
+source-files:
+  - compose.yml
+  - compose.dev.yml
+  - server/Dockerfile
+  - client/Dockerfile
+  - ssh-gateway/Dockerfile
+  - tunnel-agent/Dockerfile
+  - docker/guacd/Dockerfile
+  - .github/workflows/verify-server.yml
+  - .github/workflows/verify-client.yml
+  - .github/workflows/security-server.yml
+  - .github/workflows/security-client.yml
+  - .github/workflows/docker-server.yml
+  - .github/workflows/docker-client.yml
+  - .github/workflows/ssh-gateway-build.yml
+  - .github/workflows/guacd-build.yml
+  - .github/workflows/release.yml
+---
+
 # Deployment
 
-> Auto-generated on 2026-03-15 by `/docs create deployment`.
-> Source of truth is the codebase. Run `/docs update deployment` after code changes.
+## Container Architecture
 
-## Prerequisites
+```mermaid
+flowchart TD
+    subgraph Production Stack
+        Client["Client (Nginx)<br/>:8080"]
+        Server["Server (Express)<br/>:3001 + :3002"]
+        PostgreSQL[(PostgreSQL 16<br/>:5432)]
+        Guacd["guacd<br/>:4822"]
+        Guacenc["guacenc<br/>:3003"]
+        SSHGateway["SSH Gateway<br/>:2222"]
+    end
 
-| Requirement | Version |
-|-------------|---------|
-| Node.js | 22+ (Alpine image used in Docker) |
-| npm | 9+ (ships with Node 22) |
-| Docker or Podman | Recent version with Compose V2 (auto-detected via `scripts/container-runtime.sh`) |
-| PostgreSQL | 16 (provided via Docker) |
+    Client -->|proxy| Server
+    Server --> PostgreSQL
+    Server --> Guacd
+    Server --> Guacenc
+    Server -.->|optional| SSHGateway
+    Guacd --> RDP/VNC[RDP/VNC Targets]
+    SSHGateway --> SSH[SSH Targets]
+```
 
-<!-- manual-start -->
-<!-- manual-end -->
+## Docker Images
 
-## Development Setup
+### Server (`server/Dockerfile`)
 
-### Step 1: Clone and install
+Multi-stage Alpine-based build (Node 22-Alpine):
+1. **Build stage**: Install dependencies, generate Prisma client, compile TypeScript
+2. **Production stage**: Copy compiled code + pruned node_modules, run as non-root `appuser`
+
+- **Ports**: 3001 (API), 3002 (Guacamole WebSocket)
+- **Healthcheck**: `wget -qO- http://localhost:3001/api/health`
+- **Security**: Non-root user, minimal Alpine image
+
+### Client (`client/Dockerfile`)
+
+Multi-stage build (Node build + Nginx runtime):
+1. **Build stage**: Compile React/Vite application
+2. **Runtime stage**: Nginx 1.28-Alpine serving static files with reverse proxy
+
+- **Port**: 8080
+- **Healthcheck**: `wget -qO- http://127.0.0.1:8080/health`
+- **Security**: Non-root Nginx user
+
+### SSH Gateway (`ssh-gateway/Dockerfile`)
+
+Alpine-based with OpenSSH and embedded tunnel agent:
+- **Ports**: 2222 (SSH), 8022 (API)
+- **Features**: Multi-stage build, tunnel agent dormant unless configured
+- **Healthcheck**: `nc -z localhost 2222`
+
+### guacd (`docker/guacd/Dockerfile`)
+
+Custom Guacamole daemon based on `guacamole/guacd:1.6.0`:
+- Adds Node.js + embedded tunnel agent (dormant by default)
+- **Port**: 4822
+- **Healthcheck**: `nc -z localhost 4822`
+
+### Tunnel Agent (`tunnel-agent/Dockerfile`)
+
+Lightweight zero-trust agent (Node 22-Alpine):
+- Activated by environment variables: `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`
+- Dormant mode when env vars absent
+
+## Docker Compose
+
+### Development Stack (`compose.dev.yml`)
 
 ```bash
-git clone <repository-url>
-cd arsenale
-npm install
+npm run docker:dev       # Start
+npm run docker:dev:down  # Stop
 ```
 
-### Step 2: Configure environment
+Services:
+- **PostgreSQL 16**: Port 5432, credentials `arsenale/arsenale`, volume `pgdata_dev`
+- **guacenc**: Port 3003, recording conversion service
+
+Server and client run locally via `npm run dev` (not containerized in dev).
+
+### Production Stack (`compose.yml`)
 
 ```bash
-cp .env.example .env
-# Edit .env as needed (defaults work for local development)
+npm run docker:prod      # Start (requires .env.production)
 ```
 
-The `.env` file lives at the **monorepo root** (not inside `server/`). All services read from this single file.
+| Service | Image | Port | Notes |
+|---------|-------|------|-------|
+| PostgreSQL | `postgres:16` | 5432 | Persistent volume `pgdata` |
+| guacd | `guacamole/guacd:1.6.0` | 4822 | Override via `ORCHESTRATOR_GUACD_IMAGE` |
+| guacenc | Custom build | 3003 | Recording conversion |
+| Server | `server/Dockerfile` | 3001, 3002 | Auto-migrates DB on start |
+| Client | `client/Dockerfile` | 8080 | Nginx reverse proxy |
+| SSH Gateway | `ssh-gateway/Dockerfile` | 2222 | Optional |
 
-### Step 3: Start Docker containers
+**Security hardening** in production:
+- `security_opt: [label:disable, no-new-privileges:true]`
+- `cap_drop: [ALL]`, `cap_add: [NET_BIND_SERVICE]` (server only)
+- Docker socket mounted read-only for orchestration
+- Named volumes for persistent data (drive, recordings, database)
+- Internal network `arsenale_net`
+
+### Production Setup Steps
+
+1. Copy environment files:
+   ```bash
+   cp .env.production.example .env.production
+   ```
+
+2. Set production secrets:
+   ```bash
+   # Required secrets (generate strong random values)
+   JWT_SECRET=...
+   GUACAMOLE_SECRET=...
+   SERVER_ENCRYPTION_KEY=...    # 32-byte hex
+   POSTGRES_PASSWORD=...
+   ```
+
+3. Configure external access:
+   ```bash
+   CLIENT_URL=https://arsenale.example.com
+   TRUST_PROXY=true              # If behind reverse proxy
+   ```
+
+4. Start the stack:
+   ```bash
+   npm run docker:prod
+   ```
+
+5. Database migrations run automatically on server start.
+
+## CI/CD Pipeline
+
+### GitHub Actions Workflow Overview
+
+```mermaid
+flowchart TD
+    PR[Pull Request] --> VerifyServer[verify-server]
+    PR --> VerifyClient[verify-client]
+    PR --> SecurityServer[security-server]
+    PR --> SecurityClient[security-client]
+
+    Tag[Tag Push v*] --> VerifyServer
+    Tag --> VerifyClient
+    Tag --> SecurityServer
+    Tag --> SecurityClient
+
+    VerifyServer --> DockerServer[docker-server]
+    SecurityServer --> DockerServer
+    VerifyClient --> DockerClient[docker-client]
+    SecurityClient --> DockerClient
+
+    DockerServer -->|v* tag| Push1[Push to ghcr.io]
+    DockerClient -->|v* tag| Push2[Push to ghcr.io]
+
+    Tag --> Release[release.yml<br/>Create GitHub Release]
+
+    SSHChange[ssh-gateway/ change] --> SSHBuild[ssh-gateway-build]
+    GuacdChange[docker/guacd/ change] --> GuacdBuild[guacd-build]
+```
+
+### Verification Workflows
+
+**`verify-server.yml`** — Triggered on server/ changes (main/PR):
+1. Checkout → Setup Node 22 → `npm ci`
+2. `db:generate` → typecheck → lint → audit → build
+3. Concurrency: cancels duplicate runs
+
+**`verify-client.yml`** — Triggered on client/ changes (main/PR):
+1. Checkout → Setup Node 22 → `npm ci`
+2. typecheck → lint → audit → build
+
+### Security Workflows
+
+**`security-server.yml`** / **`security-client.yml`**:
+1. **CodeQL Analysis**: JavaScript/TypeScript with security-extended queries
+2. **Trivy Filesystem Scan**: Vulnerabilities, misconfigurations, secrets
+3. Results uploaded as SARIF to GitHub Security tab
+
+### Docker Build & Push
+
+**`docker-server.yml`** / **`docker-client.yml`**:
+- **Depends on**: verify + security workflows passing
+- **Registry**: `ghcr.io/dnviti/arsenale/server` / `ghcr.io/dnviti/arsenale/client`
+- **Tags**: branch name, PR number, semver, `latest`
+- **Trivy image scan**: Critical/High severity check
+- **Push**: Only on version tags (v*)
+
+### Infrastructure Builds
+
+| Workflow | Trigger | Image | Platforms |
+|----------|---------|-------|-----------|
+| `ssh-gateway-build.yml` | ssh-gateway/ or tunnel-agent/ changes | `ghcr.io/dnviti/arsenale/ssh-gateway` | amd64, arm64 |
+| `guacd-build.yml` | docker/guacd/ or tunnel-agent/ changes | `ghcr.io/dnviti/arsenale/guacd` | amd64, arm64 |
+| `guacenc-build.yml` | docker/guacenc/ changes | `ghcr.io/dnviti/arsenale/guacenc` | amd64 |
+
+### Release Workflow
+
+**`release.yml`** — Triggered on tag push (v*):
+- Creates GitHub Release with auto-generated release notes
+- Draft by default (manual publish)
+- Prerelease flag for `-beta` tags
+
+## Security Scanning
+
+| Tool | Scope | Trigger |
+|------|-------|---------|
+| **CodeQL** | Source code analysis (JS/TS, security-extended) | PR, main push |
+| **Trivy** | Filesystem + Docker image scan (vuln, misconfig, secret) | PR, main push |
+| **npm audit** | Dependency vulnerabilities (critical level) | Every verify run |
+| **ESLint security plugin** | OWASP vulnerability detection | Every lint run |
+
+### Local Security Scan
 
 ```bash
-npm run docker:dev
-# Starts: PostgreSQL (port 5432) + guacenc sidecar (port 3003)
-# guacd must be installed locally or uncommented in compose.dev.yml
-# Note: `npm run predev` only starts postgres and generates Prisma client
+npm run security          # Full scan (npm audit + ESLint + Trivy FS)
+npm run security --quick  # Quick scan (npm audit + ESLint only)
+npm run security --docker # Full scan + Docker image builds/scans
 ```
 
-### Step 4: Start development server
+## Container Registry
 
-```bash
-npm run predev   # Starts PostgreSQL container + generates Prisma client
-npm run dev      # Runs server (port 3001) + client (port 3000) concurrently
-```
+All images published to GitHub Container Registry (ghcr.io):
 
-Or use the combined command:
+| Image | Purpose |
+|-------|---------|
+| `ghcr.io/dnviti/arsenale/server` | Express API server |
+| `ghcr.io/dnviti/arsenale/client` | Nginx + React SPA |
+| `ghcr.io/dnviti/arsenale/ssh-gateway` | SSH bastion gateway |
+| `ghcr.io/dnviti/arsenale/guacd` | Custom guacd with tunnel agent |
+| `ghcr.io/dnviti/arsenale/guacenc` | Recording conversion sidecar |
 
-```bash
-npm run predev && npm run dev
-```
+## Ports Reference
 
-Database migrations run automatically when the server starts — no manual migrate command needed.
-
-### Development URLs
-
-| Service | URL |
-|---------|-----|
-| Client (Vite) | http://localhost:3000 |
-| Server (Express) | http://localhost:3001 |
-| Guacamole WS | ws://localhost:3002 |
-
-Vite proxies `/api` to `:3001`, `/socket.io` to `:3001`, and `/guacamole` to `:3002`.
-
-<!-- manual-start -->
-<!-- manual-end -->
-
-## Production Deployment
-
-### Environment Configuration
-
-```bash
-cp .env.production.example .env.production
-# The `npm run docker:prod` script uses .env.production.
-# The compose.yml references .env.prod — use a symlink or rename as needed.
-# Fill in production secrets:
-#   POSTGRES_PASSWORD — strong random password
-#   JWT_SECRET — openssl rand -base64 32
-#   GUACAMOLE_SECRET — openssl rand -base64 32
-#   SERVER_ENCRYPTION_KEY — openssl rand -hex 32
-#   VAULT_TTL_MINUTES — vault session timeout
-```
-
-### Docker Compose Topology
-
-The production stack (`compose.yml`) runs 5-6 containers on the `arsenale_net` network:
-
-| Container | Image | Ports (internal) | Purpose |
-|-----------|-------|------------------|---------|
-| `postgres` | `postgres:16` | 5432 | PostgreSQL database |
-| `guacd` | `guacamole/guacd:1.6.0` | 4822 | Guacamole daemon (RDP/VNC proxy) |
-| `guacenc` | Custom build (`docker/guacenc`) | 3003 | Recording-to-video conversion sidecar |
-| `server` | Custom build (`server/Dockerfile`) | 3001, 3002 | Express API + guacamole-lite WS |
-| `client` | Custom build (`client/Dockerfile`) | 8080 | Nginx serving React SPA + reverse proxy |
-| `ssh-gateway` | Custom build (`ssh-gateway/Dockerfile`) | 2222 | Optional SSH gateway |
-
-### Service Dependencies
-
-```
-client → server (healthy) → postgres (healthy) + guacd (healthy)
-```
-
-Health checks are configured for all services with proper `start_period` values. The server container runs with security hardening: `cap_drop: ALL`, `cap_add: NET_BIND_SERVICE`, and `no-new-privileges:true`.
-
-### Starting Production
-
-```bash
-# Build and start all containers (auto-detects Docker or Podman)
-npm run docker:prod
-
-# Or manually:
-docker compose --env-file .env.production up -d --build
-# With Podman:
-podman compose --env-file .env.production up -d --build
-```
-
-Only port **3000** (mapped from client's 8080) is exposed to the host. All inter-service communication happens over the Docker network.
-
-### Demo Deployment
-
-A separate `compose.demo.yml` is available for demo/showcase purposes. It uses pre-built images from `ghcr.io/dnviti/arsenale/*`, includes a `demo-seed` one-shot container that runs `arsenale demo setup` via the CLI, and adds an `ollama-backend` container for AI features. It uses a three-network topology (`proxy-net`, `arsenale-front-net`, `arsenale-back-net`) for isolation. The client is exposed on port **8081** and a separate `website` container on port **8080**.
-
-### Volume Management
-
-| Volume | Purpose | Persistence |
-|--------|---------|-------------|
-| `pgdata` | PostgreSQL data | Persisted across restarts |
-| `arsenale_drive` | RDP drive redirection files | Shared between server and guacd |
-| `arsenale_recordings` | Session recordings | Shared between server, guacd, and guacenc |
-
-<!-- manual-start -->
-<!-- manual-end -->
-
-## Nginx Configuration
-
-The client container runs Nginx as a reverse proxy. Configuration: `client/nginx.conf`.
-
-| Location | Upstream | Notes |
-|----------|----------|-------|
-| `/api` | `http://server:3001` | API requests, WebSocket upgrade for Socket.IO |
-| `/socket.io` | `http://server:3001` | Socket.IO WebSocket + polling |
-| `/guacamole` | `http://server:3002` | Guacamole WebSocket with 24h timeout |
-| `/health` | Local | Returns `{"status":"ok"}` (no proxy) |
-| `/` | Local files | SPA fallback to `index.html` |
-
-All proxy locations set `X-Real-IP`, `X-Forwarded-For`, and `X-Forwarded-Proto` headers and enable WebSocket upgrades.
-
-<!-- manual-start -->
-<!-- manual-end -->
-
-## Server Dockerfile
-
-`server/Dockerfile`:
-
-1. Installs dependencies (including dev deps for Prisma generate and TypeScript compilation)
-2. Generates Prisma client from schema
-3. Compiles TypeScript to JavaScript (`npx tsc`)
-4. Prunes dev dependencies
-5. Creates `/usr/local/bin/arsenale` CLI wrapper script (invokes `node /app/dist/cli.js`)
-6. Creates a non-root user (`appuser`)
-7. Creates `/guacd-drive` and `/recordings` directories (mode 1777)
-8. Exposes ports 3001 (HTTP) and 3002 (Guacamole WS)
-9. Runs as `appuser` with `node dist/index.js`
-
-The production compose overrides the user to `0:0` for rootless Podman compatibility (UID 0 maps to the host user).
-
-## Client Dockerfile
-
-`client/Dockerfile`:
-
-1. **Build stage**: Installs deps, runs `npm run build` (Vite production build)
-2. **Runtime stage**: Alpine 3.21 with Nginx
-3. Copies built assets to Nginx html directory
-4. Copies `nginx.main.conf` and `nginx.conf` for server configuration
-5. Runs as `nginx` user (non-root)
-6. Exposes port 8080
-
-<!-- manual-start -->
-<!-- manual-end -->
-
-## Available Scripts
-
-All scripts are run from the monorepo root.
-
-| Script | Command | Description |
-|--------|---------|-------------|
-| `npm run dev` | `concurrently dev:server dev:client:wait` | Run both server and client (client waits for server health) |
-| `npm run dev:server` | `tsx watch server/src/index.ts` | Server with hot reload |
-| `npm run dev:client` | `vite` (in client/) | Vite dev server |
-| `npm run predev` | Starts PostgreSQL + generates Prisma | Pre-dev setup |
-| `npm run build` | Build both workspaces | Production build |
-| `npm run build -w server` | `tsc` (in server/) | Build server only |
-| `npm run build -w client` | `vite build` (in client/) | Build client only |
-| `npm run verify` | typecheck + lint + audit + test + build | Full verification pipeline |
-| `npm run typecheck` | `tsc --noEmit` in both workspaces | Type checking |
-| `npm run lint` | ESLint across both workspaces | Lint check |
-| `npm run lint:fix` | ESLint with `--fix` | Auto-fix linting |
-| `npm run sast` | `npm audit` | Dependency vulnerability scan |
-| `npm run db:generate` | `prisma generate` | Generate Prisma client types |
-| `npm run db:push` | `prisma db push` | Sync schema to DB (no migration) |
-| `npm run db:migrate` | `prisma migrate deploy` | Run pending migrations |
-| `npm run docker:dev` | `compose -f compose.dev.yml up -d` (auto-detects runtime) | Start dev containers |
-| `npm run docker:dev:down` | `compose -f compose.dev.yml down` (auto-detects runtime) | Stop dev containers |
-| `npm run docker:prod` | `compose --env-file .env.production up -d --build` (auto-detects runtime) | Start production stack |
-| `npm run dev:docker` | `docker compose -f compose.dev.yml up --build` | Full dev stack in Docker |
-| `npm run dev:docker:detach` | `docker compose -f compose.dev.yml up --build -d` | Dev stack in background |
-| `npm run test:watch` | `vitest` in both workspaces | Run tests in watch mode |
-| `npm run security` | `./scripts/security-scan.sh` | Full security scan |
-| `npm run security:quick` | `./scripts/security-scan.sh --quick` | Quick security scan |
-| `npm run security:docker` | `./scripts/security-scan.sh --docker` | Docker image security scan |
-| `npm run cli` | CLI tool (server workspace) | Arsenale CLI (production) |
-| `npm run cli:dev` | CLI tool dev mode (server workspace) | Arsenale CLI (development) |
-
-<!-- manual-start -->
-<!-- manual-end -->
-
-## Troubleshooting
-
-### Common Issues
-
-**PostgreSQL connection refused on localhost (Windows/WSL)**
-
-If using Docker with IPv6, PostgreSQL may bind to `::1` instead of `127.0.0.1`. The dev compose explicitly binds to `127.0.0.1:5432:5432`. If issues persist, use the Docker container's internal DNS name instead.
-
-**Docker networking: containers can't reach each other**
-
-Ensure all services are on the same Docker network. In development, the `arsenale-dev` network is used. In production, `arsenale_net`. Managed gateway containers must also join this network (configured via `DOCKER_NETWORK`).
-
-**guacd not available — RDP connections fail**
-
-In development, guacd must be running locally or uncommented in `compose.dev.yml`. The server logs a warning if guacamole-lite cannot initialize.
-
-**SERVER_ENCRYPTION_KEY not persisted in development**
-
-The key is auto-generated on each server restart in development. SSH key pairs for managed gateways will be regenerated. Set `SERVER_ENCRYPTION_KEY` in `.env` to persist across restarts.
-
-**Prisma migration errors**
-
-If the database schema is out of sync, try `npm run db:push` for development (destructive) or `npm run db:migrate` for production.
-
-**Port already in use**
-
-The server automatically kills stale processes on ports 3001 and 3002 using `fuser`. If this fails, manually kill the processes.
-
-<!-- manual-start -->
-<!-- manual-end -->
+| Port | Service | Dev | Prod |
+|------|---------|-----|------|
+| 3000 | Client (Vite) | Yes | No |
+| 8080 | Client (Nginx) | No | Yes |
+| 3001 | Server API | Yes | Yes |
+| 3002 | Guacamole WebSocket | Yes | Yes |
+| 3003 | guacenc (recordings) | Yes | Yes |
+| 4822 | guacd daemon | Yes | Yes |
+| 2222 | SSH Gateway | Optional | Optional |
+| 5432 | PostgreSQL | Yes | Yes |

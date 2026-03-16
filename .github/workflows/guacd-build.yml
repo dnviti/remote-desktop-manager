@@ -5,13 +5,13 @@ on:
     tags: ['v*']
     branches: [main]
     paths:
-      - 'docker/guacd/**'
-      - 'tunnel-agent/**'
+      - 'gateways/guacd/**'
+      - 'gateways/tunnel-agent/**'
   pull_request:
     branches: [main]
     paths:
-      - 'docker/guacd/**'
-      - 'tunnel-agent/**'
+      - 'gateways/guacd/**'
+      - 'gateways/tunnel-agent/**'
   workflow_dispatch:
 
 concurrency:
@@ -57,12 +57,12 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=raw,value=latest,enable={{is_default_branch}}
 
-      # Build context is monorepo root because Dockerfile copies from tunnel-agent/
+      # Build context is monorepo root because Dockerfile copies from gateways/tunnel-agent/
       - name: Build image for scanning
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./docker/guacd/Dockerfile
+          file: ./gateways/guacd/Dockerfile
           push: false
           load: true
           tags: guacd:scan
@@ -89,7 +89,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./docker/guacd/Dockerfile
+          file: ./gateways/guacd/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

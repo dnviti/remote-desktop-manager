@@ -35,7 +35,7 @@ services:
 
   guacenc:
     build:
-      context: docker/guacenc
+      context: gateways/guacenc
       dockerfile: Dockerfile
     container_name: guacenc
     restart: always

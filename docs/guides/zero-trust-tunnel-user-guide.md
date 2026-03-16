@@ -155,7 +155,7 @@ services:
   guacd:
     build:
       context: .
-      dockerfile: docker/guacd/Dockerfile
+      dockerfile: gateways/guacd/Dockerfile
     restart: always
     environment:
       TUNNEL_SERVER_URL: "https://arsenale.example.com"
@@ -164,7 +164,7 @@ services:
       # TUNNEL_LOCAL_PORT defaults to 4822 via the entrypoint
 ```
 
-The embedded guacd image (`docker/guacd/Dockerfile`) and SSH gateway image (`ssh-gateway/Dockerfile`) both include a pre-built copy of the tunnel agent. The entrypoint launches the agent as a background process before starting the main service. If the `TUNNEL_SERVER_URL` variable is not set, the agent remains dormant and the container operates normally.
+The embedded guacd image (`gateways/guacd/Dockerfile`) and SSH gateway image (`gateways/ssh-gateway/Dockerfile`) both include a pre-built copy of the tunnel agent. The entrypoint launches the agent as a background process before starting the main service. If the `TUNNEL_SERVER_URL` variable is not set, the agent remains dormant and the container operates normally.
 
 ### Systemd Service (Bare-Metal)
 

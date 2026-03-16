@@ -132,8 +132,11 @@ arsenale/
 │   │   └── hooks/                # Custom React hooks
 │   └── nginx.conf                # Production reverse proxy config
 │
-├── ssh-gateway/                   # Optional SSH gateway container
-├── docker/guacenc/                # Recording-to-video conversion sidecar
+├── gateways/                      # Gateway containers and tunnel agent
+│   ├── ssh-gateway/              # Optional SSH gateway container
+│   ├── tunnel-agent/             # Zero-trust tunnel agent (workspace)
+│   ├── guacd/                    # Custom guacd with embedded tunnel agent
+│   └── guacenc/                  # Recording-to-video conversion sidecar
 ├── compose.yml                    # Production Docker Compose stack
 ├── compose.dev.yml                # Dev containers (PostgreSQL + guacenc)
 └── .env.example                   # Environment template (121 variables)

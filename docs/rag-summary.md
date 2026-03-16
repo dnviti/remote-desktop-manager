@@ -132,19 +132,19 @@ Additional tunnel UI panels (all collapsible, persisted via `uiPreferencesStore`
 
 `GatewaySection.tsx` shows a `VpnLock` icon badge (green = connected, red = disconnected) next to the health chip for any `tunnelEnabled` gateway. The Tooltip contains connected-since, RTT, active streams, and agent version from live `tunnelStatuses`.
 
-## Tunnel Agent (`tunnel-agent/`)
+## Tunnel Agent (`gateways/tunnel-agent/`)
 
-The `tunnel-agent` is a lightweight Node.js workspace (`tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
+The `tunnel-agent` is a lightweight Node.js workspace (`gateways/tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
 
 When tunnel env vars are present, the agent auto-activates and establishes an outbound WSS connection to the TunnelBroker using the same binary multiplexing protocol (OPEN/DATA/CLOSE/PING/PONG, 4-byte header). On receiving an OPEN frame with a `host:port` payload, it opens a local TCP connection and bridges data bidirectionally through DATA frames. The agent sends 15-second PING heartbeats with JSON health metadata (`{ healthy, latencyMs, activeStreams }`) obtained by probing the local service.
 
 Auto-reconnect uses exponential backoff (1 s → 2 s → … → 60 s). Optional mTLS is supported via `TUNNEL_CA_CERT`, `TUNNEL_CLIENT_CERT`, and `TUNNEL_CLIENT_KEY` env vars.
 
-A standalone `tunnel-agent/Dockerfile` is provided for deploying the agent alongside non-managed (external) gateways. For managed gateways, the `ssh-gateway/Dockerfile` and `docker/guacd/Dockerfile` both embed the agent via a multi-stage build (monorepo root context required) and launch it from their entrypoints as a background process.
+A standalone `gateways/tunnel-agent/Dockerfile` is provided for deploying the agent alongside non-managed (external) gateways. For managed gateways, the `gateways/ssh-gateway/Dockerfile` and `gateways/guacd/Dockerfile` both embed the agent via a multi-stage build (monorepo root context required) and launch it from their entrypoints as a background process.
 
 When `tunnelEnabled=true` on a managed gateway, `managedGateway.service.ts` automatically injects `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`, and `TUNNEL_LOCAL_PORT` into the container environment, and suppresses host-port publishing (`publishPorts=false` behavior) so traffic flows exclusively through the tunnel.
 
-## Browser Extension (`clients/browser-extensions/`)
+## Browser Extension (`extra-clients/browser-extensions/`)
 
 The Arsenale browser extension is a Chrome Manifest V3 extension (with Firefox compatibility via webextension-polyfill) that provides multi-account management for connecting to multiple Arsenale server instances. The extension includes a service worker that handles all API calls to Arsenale servers (bypassing CORS), a React popup with account switcher, vault status indicator, and tabbed sections for Keychain and Connections (placeholder for future implementation), and a React options/settings page for managing server accounts. Multi-account storage uses chrome.storage.local, with each account entry storing server URL, user identity, tokens, and vault status. Token refresh is handled automatically via chrome.alarms. The build uses Vite with a multi-entry configuration producing a ready-to-load unpacked extension in the dist/ directory.
 
@@ -184,4 +184,4 @@ Configuration is handled through a single environment file with sensible default
 
 ## Technology
 
-Arsenale is built on a modern open-source stack: a Node.js and TypeScript server with a layered Express architecture backed by PostgreSQL through Prisma ORM, and a React client with Zustand state management and Material UI components. The monorepo includes four workspaces: `server/`, `client/`, `tunnel-agent/`, and `clients/browser-extensions/`. Remote desktop rendering uses the Guacamole protocol via guacamole-lite and guacamole-common-js. SSH terminals use XTerm.js with the ssh2 library. Real-time communication uses Socket.IO for terminal I/O, notifications, and monitoring updates. The zero-trust tunnel system uses raw `ws` WebSocket connections with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. The ABAC policy engine evaluates `AccessPolicy` Prisma records at session start time to enforce time-window, trusted-device, and MFA step-up constraints.
+Arsenale is built on a modern open-source stack: a Node.js and TypeScript server with a layered Express architecture backed by PostgreSQL through Prisma ORM, and a React client with Zustand state management and Material UI components. The monorepo includes four workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`. Remote desktop rendering uses the Guacamole protocol via guacamole-lite and guacamole-common-js. SSH terminals use XTerm.js with the ssh2 library. Real-time communication uses Socket.IO for terminal I/O, notifications, and monitoring updates. The zero-trust tunnel system uses raw `ws` WebSocket connections with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. The ABAC policy engine evaluates `AccessPolicy` Prisma records at session start time to enforce time-window, trusted-device, and MFA step-up constraints.

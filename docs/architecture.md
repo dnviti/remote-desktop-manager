@@ -1,374 +1,427 @@
+---
+title: Architecture
+description: System architecture, component interactions, data flow, and design decisions
+generated-by: ctdf-docs
+generated-at: 2026-03-16T19:30:00Z
+source-files:
+  - server/src/index.ts
+  - server/src/app.ts
+  - server/prisma/schema.prisma
+  - client/src/main.tsx
+  - client/src/App.tsx
+  - client/vite.config.ts
+  - extra-clients/browser-extensions/manifest.json
+---
+
 # Architecture
 
-> Auto-generated on 2026-03-15 by `/docs create architecture`.
-> Source of truth is the codebase. Run `/docs update architecture` after code changes.
+Arsenale is a monorepo with npm workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`.
 
 ## System Overview
 
-Arsenale is a **monorepo** managed by npm workspaces with three packages:
+```mermaid
+flowchart TD
+    Browser[Browser Client<br/>React 19 + Vite]
+    Extension[Browser Extension<br/>Chrome MV3]
 
+    Browser -->|HTTP/WS| Nginx[Nginx Reverse Proxy<br/>:8080 prod / :3000 dev]
+    Extension -->|HTTP| Server
+
+    Nginx -->|/api/*| Server[Express Server<br/>:3001]
+    Nginx -->|/socket.io/*| Server
+    Nginx -->|/guacamole/*| GuacWS[Guacamole WS<br/>:3002]
+
+    Server -->|Prisma ORM| DB[(PostgreSQL 16)]
+    Server -->|SSH2| SSHTarget[SSH Targets]
+    Server -->|TCP| Guacd[guacd :4822]
+    GuacWS -->|TCP| Guacd
+    Guacd -->|RDP/VNC| RemoteDesktops[RDP/VNC Targets]
+
+    Server -->|SSH| SSHGateway[SSH Gateway<br/>:2222]
+    SSHGateway -->|TCP| SSHTarget
+
+    TunnelAgent[Tunnel Agent] -->|mTLS WS| Server
+    TunnelAgent -->|TCP| Guacd
 ```
-arsenale/
-├── server/          # Express + TypeScript backend (workspace: "server")
-├── client/          # React 19 + Vite frontend (workspace: "client")
-├── tunnel-agent/    # Lightweight tunnel agent embedded in gateway containers (workspace: "tunnel-agent")
-├── ssh-gateway/     # Optional SSH gateway container
-├── docker/          # Docker build contexts (guacenc sidecar)
-├── compose.yml      # Production Docker Compose
-├── compose.dev.yml  # Development Docker Compose (PostgreSQL + guacenc)
-├── package.json     # Root workspace config + shared scripts
-└── .env             # Environment variables (root level, shared by all)
-```
-
-The root `package.json` defines both workspaces and orchestration scripts (`dev`, `build`, `verify`, `docker:dev`, etc.). All environment variables are loaded from the root `.env` file; the server's `prisma.config.ts` resolves the path to `../.env` explicitly.
-
-<!-- manual-start -->
-<!-- manual-end -->
 
 ## Server Architecture
 
-### Entry Point
+### Layered Design
 
-`server/src/index.ts` is the main entry point. On startup it:
+```mermaid
+flowchart TD
+    Routes["Routes (32 files)<br/>Express routers"] --> Controllers["Controllers (30 files)<br/>Request parsing, validation"]
+    Controllers --> Services["Services (53 files)<br/>Business logic, encryption"]
+    Services --> Prisma["Prisma ORM<br/>Type-safe database access"]
+    Prisma --> PostgreSQL[(PostgreSQL 16)]
 
-1. Kills stale processes on ports 3001 and 3002 (dev hot-reload safety)
-2. Runs `prisma migrate deploy` to apply pending database migrations
-3. Runs startup data migrations (email verification backfill, vault setup backfill)
-4. Recovers orphaned sessions from a previous server instance
-5. Initializes GeoIP database (MaxMind GeoLite2, optional)
-6. Initializes Passport.js strategies (OAuth, SAML)
-7. Creates the HTTP server and attaches Socket.IO (SSH, notifications, gateway monitor)
-8. Starts scheduled background jobs:
-   - SSH key rotation (cron-based)
-   - LDAP sync (cron-based)
-   - Membership expiry check (cron-based)
-   - External sync profile jobs (cron-based, e.g. NetBox)
-   - Gateway health monitoring
-   - Managed gateway health check (30s) and reconciliation (5m)
-   - Auto-scaling evaluation (30s)
-   - Expired external share cleanup (hourly)
-   - Expired refresh token cleanup (hourly)
-   - Absolute-timeout token family cleanup (every 5m)
-   - Secret expiry check (every 6 hours)
-   - Idle session marking (every minute)
-   - Inactive session closure (every minute)
-   - Old closed session cleanup (daily)
-   - Expired recording cleanup (daily)
-9. Starts the Guacamole WebSocket server (guacamole-lite) on port 3002 for RDP/VNC
-10. Listens on port 3001
+    Routes --> Middleware["Middleware (19 files)<br/>Auth, CSRF, rate limits"]
 
-### Layered Pattern
-
-```
-Routes → Controllers → Services → Prisma ORM
+    Socket["Socket.IO Handlers (5 files)<br/>SSH, notifications, monitoring"] --> Services
 ```
 
-| Layer | Location | Responsibility |
-|-------|----------|---------------|
-| **Routes** | `server/src/routes/*.routes.ts` | URL path definitions, middleware chaining, rate limiters |
-| **Controllers** | `server/src/controllers/*.controller.ts` | Request parsing, Zod validation, response formatting |
-| **Schemas** | `server/src/schemas/*.schemas.ts` | Zod validation schemas shared by controllers and services |
-| **Services** | `server/src/services/*.service.ts` | Business logic, database queries, encryption, external integrations |
-| **ORM** | `server/src/lib/prisma.ts` + `server/prisma/schema.prisma` | Prisma Client for PostgreSQL |
-| **Middleware** | `server/src/middleware/*.middleware.ts` | JWT auth, tenant/team RBAC, CSRF, rate limiting, error handling |
-| **Orchestrator** | `server/src/orchestrator/*.ts` | Container orchestration providers (Docker, Podman, Kubernetes, none) |
-| **Sync Engine** | `server/src/sync/*.ts` | External data-source sync (engine + providers, e.g. NetBox) |
-| **CLI** | `server/src/cli/` | Admin CLI with 12 command groups (user, tenant, gateway, secret, session, etc.) |
+**Entry point** (`server/src/index.ts`):
+1. Runs `prisma migrate deploy` (auto-migration on startup)
+2. Executes startup data migrations (email verification, vault setup marking)
+3. Recovers orphaned sessions from previous server instances
+4. Initializes Passport authentication and GeoIP services
+5. Creates HTTP server, attaches Socket.IO and Guacamole WebSocket server
+6. Sets up zero-trust tunnel WebSocket endpoint
+7. Launches scheduled jobs (key rotation, LDAP sync, cleanup, monitoring)
 
-### Middleware Pipeline
+**App setup** (`server/src/app.ts`):
+1. Helmet security headers (CSP, HSTS, X-Frame-Options, Referrer-Policy)
+2. Custom Permissions-Policy header
+3. Trust proxy configuration
+4. CORS (origin restricted to `CLIENT_URL`, credentials enabled)
+5. JSON parser (500KB limit)
+6. Cookie parser + Passport initialization
+7. Optional HTTP request logger
+8. Global CSRF validation (exempts specific auth and share endpoints)
+9. Mounts 32 route files under `/api`
+10. Custom 404 handler + centralized error middleware
 
-The Express app (`server/src/app.ts`) applies middleware in this order:
+### Route Domains
 
-1. **Helmet** — security headers (CSP, HSTS, frame-guard, referrer-policy)
-2. **Trust Proxy** — configurable via `TRUST_PROXY` env var
-3. **CORS** — restricted to `CLIENT_URL` origin with credentials
-4. **JSON body parser** — 500KB limit
-5. **Cookie parser** — for refresh token cookies
-6. **Passport** — initialized for OAuth/SAML strategies
-7. **Request logger** — optional HTTP request logging
-8. **Route handlers** — 30 route groups mounted under `/api/*`
-9. **Error handler** — centralized error response formatting
+| Domain | Prefix | Files | Purpose |
+|--------|--------|-------|---------|
+| Authentication | `/api/auth` | auth, oauth, saml | Login, register, OAuth, SAML, MFA |
+| Vault | `/api/vault` | vault | Unlock/lock, password reveal, MFA unlock |
+| Connections | `/api/connections` | connections | CRUD, sharing, import/export |
+| Folders | `/api/folders` | folders | Connection folder management |
+| Sessions | `/api/sessions` | sessions | SSH/RDP/VNC session lifecycle, monitoring |
+| Users | `/api/user` | user, 2fa, sms, webauthn | Profile, password, email, MFA setup |
+| Secrets | `/api/secrets` | secrets | Vault secret CRUD, versioning, sharing |
+| Vault Folders | `/api/vault-folders` | vault-folders | Secret folder organization |
+| Public Share | `/api/share` | share | External secret access (unauthenticated) |
+| Audit | `/api/audit` | audit | Log queries, geo analysis |
+| Notifications | `/api/notifications` | notifications | In-app notification management |
+| Tenants | `/api/tenants` | tenants | Multi-tenant management, user admin |
+| Teams | `/api/teams` | teams | Team CRUD, member management |
+| Gateways | `/api/gateways` | gateways | Gateway CRUD, orchestration, tunnels |
+| Admin | `/api/admin` | admin | Email config, app config, providers |
+| Files | `/api/files` | files | Upload/download with quota enforcement |
+| Tabs | `/api/tabs` | tabs | Tab state sync |
+| Recordings | `/api/recordings` | recordings | Session recording playback |
+| GeoIP | `/api/geoip` | geoip | IP geolocation lookup |
+| LDAP | `/api/ldap` | ldap | LDAP status, test, sync |
+| Sync | `/api/sync-profiles` | sync | Connection sync (NetBox) |
+| Vault Providers | `/api/vault-providers` | vault-providers | External vault integration |
+| Access Policies | `/api/access-policies` | access-policies | ABAC policy management |
+| Health | `/api/health`, `/api/ready` | — | Health and readiness probes |
 
-### Socket.IO Namespaces
+### Middleware Stack
 
-| Namespace | Handler File | Purpose |
-|-----------|-------------|---------|
-| `/ssh` | `server/src/socket/ssh.handler.ts` | SSH terminal sessions + SFTP file operations |
-| `/notifications` | `server/src/socket/notification.handler.ts` | Real-time notification delivery |
-| `/gateway-monitor` | `server/src/socket/gatewayMonitor.handler.ts` | Real-time gateway health + instance updates |
+| Middleware | Purpose |
+|-----------|---------|
+| `auth.middleware.ts` | JWT verification, token binding (IP+UA hash), IP/UA validation |
+| `csrf.middleware.ts` | CSRF token validation for state-changing requests |
+| `tenant.middleware.ts` | Tenant context binding, role enforcement (7 roles) |
+| `team.middleware.ts` | Team membership checks, role enforcement |
+| `validate.middleware.ts` | Request schema validation |
+| `error.middleware.ts` | Centralized error handler with logging |
+| `requestLogger.middleware.ts` | Optional HTTP request logging |
+| Rate limiters (7 files) | Login, registration, SMS, OAuth, session, vault, identity, reset |
 
-All Socket.IO namespaces authenticate via JWT middleware using the `auth.token` handshake parameter.
+### Scheduled Jobs
 
-### Zero-Trust Tunnel (TunnelBroker)
+Started at server boot (`server/src/index.ts`):
 
-The TunnelBroker enables zero-trust network access by allowing gateway agents to connect to the Arsenale server through outbound-only WSS connections, eliminating the need for inbound ports on gateway hosts. This is conceptually similar to Cloudflare Tunnel, but fully self-hosted.
-
-**Server side:**
-
-- `server/src/services/tunnel.service.ts` — Core TunnelBroker service. Maintains a global registry (`Map<gatewayId, TunnelConnection>`) of connected agents. Key exports:
-  - `registerTunnel()` / `deregisterTunnel()` — Manage agent lifecycle in the registry
-  - `openStream(gatewayId, host, port)` — Returns a `net.Duplex`-compatible stream for transparent integration with SSH2 and guacamole-lite
-  - `generateTunnelToken()` / `revokeTunnelToken()` — Token management (256-bit, AES-256-GCM encrypted, SHA-256 hashed for constant-time comparison)
-  - `authenticateTunnelRequest()` — Validates bearer token against stored hash
-  - `createTcpProxy()` — Creates a local TCP proxy server that bridges to a remote service through the tunnel
-  - `sendCertRenew()` / `processCertRotations()` / `startCertRotationScheduler()` — mTLS certificate rotation
-- `server/src/socket/tunnel.handler.ts` — Raw `ws` WebSocket server attached at `/api/tunnel/connect`. Authenticates upgrade requests via `Authorization: Bearer <tunnel-token>` and `X-Gateway-Id` headers, then delegates to the TunnelBroker for frame processing.
-
-**Binary multiplexing protocol:**
-
-```
-4-byte header:
-  byte 0   : message type (OPEN=1, DATA=2, CLOSE=3, PING=4, PONG=5, HEARTBEAT=6, CERT_RENEW=7)
-  byte 1   : flags (reserved, 0)
-  bytes 2-3: streamId (uint16 big-endian)
-+ variable-length payload
-```
-
-When the server needs to reach a service behind a gateway (e.g., SSH or guacd), it calls `openStream()` which sends an OPEN frame with a `host:port` payload through the tunnel WebSocket. The agent opens a local TCP connection and bridges DATA frames bidirectionally. CLOSE frames tear down individual streams. PING/PONG frames provide heartbeat and RTT measurement. HEARTBEAT frames carry JSON health metadata (`{ healthy, latencyMs, activeStreams }`).
-
-**Health monitoring integration:**
-
-`server/src/services/gatewayMonitor.service.ts` imports `hasTunnel()` and `getTunnelInfo()` from the tunnel service. For tunnel-enabled gateways, health checks use tunnel connection state and heartbeat metadata rather than direct TCP probes. Tunnel metrics (uptime, RTT, active streams, bytes transferred, agent health) are emitted via a `TunnelMetricsEvent` through Socket.IO to the `/gateway-monitor` namespace.
-
-**Tunnel Agent (`tunnel-agent/` workspace):**
-
-A lightweight Node.js package embedded into every managed gateway container image. Source files:
-
-| File | Purpose |
-|------|---------|
-| `tunnel-agent/src/index.ts` | Entry point; loads config and starts the agent |
-| `tunnel-agent/src/tunnel.ts` | `TunnelAgent` class: manages WSS connection, reconnection, heartbeats |
-| `tunnel-agent/src/config.ts` | Reads configuration from environment variables; exits cleanly if absent (dormant mode) |
-| `tunnel-agent/src/tcpForwarder.ts` | Handles OPEN/DATA/CLOSE frames by opening local TCP connections to the target service |
-| `tunnel-agent/src/protocol.ts` | Shared binary frame encoding/decoding (`buildFrame`, `parseFrame`) |
-| `tunnel-agent/src/auth.ts` | Builds WebSocket connection options (bearer token, mTLS certificates) |
-
-The agent is dormant by default. It activates only when `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`, and `TUNNEL_LOCAL_PORT` are set. Auto-reconnect uses exponential backoff (1s to 60s). Optional mTLS is supported via `TUNNEL_CA_CERT`, `TUNNEL_CLIENT_CERT`, and `TUNNEL_CLIENT_KEY` environment variables.
-
-For managed gateways, `managedGateway.service.ts` automatically injects tunnel environment variables into the container and suppresses host-port publishing so traffic flows exclusively through the tunnel.
-
-A standalone `tunnel-agent/Dockerfile` is provided for deploying alongside non-managed (external) gateways. For managed gateways, the `ssh-gateway/Dockerfile` and `docker/guacd/Dockerfile` embed the agent via multi-stage builds.
-
-**Audit actions:** `TUNNEL_CONNECT`, `TUNNEL_DISCONNECT`, `TUNNEL_TOKEN_GENERATE`, `TUNNEL_TOKEN_ROTATE`.
-
-### Attribute-Based Access Control (ABAC)
-
-ABAC extends the role-based permission model by evaluating contextual attributes at session start time.
-
-- `server/src/services/abac.service.ts` — Core evaluation engine. The `evaluate(ctx: AbacContext)` function collects all `AccessPolicy` records matching the connection's folder, team, and tenant scopes, then checks each policy's constraints. Policies are **additive** (most restrictive combination wins). Returns `{ allowed: true }` or `{ allowed: false, reason, policyId, targetType, targetId }` on the first denial.
-- `server/src/services/accessPolicy.service.ts` — CRUD service for `AccessPolicy` Prisma records. Provides `listPolicies(tenantId)`, `createPolicy()`, `updatePolicy()`, and `deletePolicy()` with tenant-scoped target validation (TENANT, TEAM, or FOLDER).
-
-**Policy constraints:**
-
-| Constraint | Field | Effect |
-|------------|-------|--------|
-| Time windows | `allowedTimeWindows` | Comma-separated `HH:MM-HH:MM` UTC ranges; sessions denied outside these windows. Supports overnight ranges (e.g., `22:00-06:00`). |
-| Trusted device | `requireTrustedDevice` | User must have authenticated with WebAuthn during the current login session. |
-| MFA step-up | `requireMfaStepUp` | User must have completed any MFA challenge (TOTP, WebAuthn, or SMS) during login. |
-
-**Evaluation context (`AbacContext`):** Includes `userId`, `folderId`, `teamId`, `tenantId`, `usedWebAuthnInLogin`, `completedMfaStepUp`, `ipAddress`, and `connectionId`. The MFA method used during login (`totp`, `webauthn`, or `sms`) is embedded in the JWT payload as `mfaMethod` and forwarded to the evaluator.
-
-**Deny reasons:** `outside_working_hours`, `untrusted_device`, `mfa_step_up_required`. Denials are logged as `SESSION_DENIED_ABAC` audit events with details including the triggering policy and reason.
-
-<!-- manual-start -->
-<!-- manual-end -->
+| Job | Purpose |
+|-----|---------|
+| Key rotation | SSH keypair auto-rotation |
+| LDAP sync | Periodic LDAP directory synchronization |
+| Membership expiry | Cleanup expired tenant/team memberships |
+| Gateway health monitoring | 30-second health check intervals |
+| Gateway reconciliation | 5-minute instance state reconciliation |
+| Auto-scaling | Dynamic gateway instance scaling |
+| Cleanup: expired shares | Remove expired connection/secret shares |
+| Cleanup: expired tokens | Purge expired refresh tokens |
+| Cleanup: recordings | Remove recordings past retention period |
+| Cleanup: idle sessions | Mark and close idle sessions |
+| Secret expiry checks | Notify on approaching secret expiration |
 
 ## Client Architecture
 
-### Tech Stack
+### Application Structure
 
-- **React 19** with TypeScript
-- **Vite** — dev server (port 3000) with proxy to backend
-- **Material-UI (MUI) v7** — component library
-- **Zustand** — state management (14 stores)
-- **Axios** — HTTP client with automatic JWT refresh
-- **Socket.IO Client** — real-time SSH terminals, notifications, gateway monitoring
-- **XTerm.js** — SSH terminal rendering
-- **guacamole-common-js** — RDP/VNC rendering via Guacamole protocol
+```mermaid
+flowchart TD
+    Main["main.tsx<br/>React 19 entry"] --> ThemeProvider["ThemeProvider<br/>MUI v7 multi-theme"]
+    ThemeProvider --> Router["BrowserRouter<br/>React Router v6"]
+    Router --> Routes["Route definitions<br/>App.tsx"]
 
-### Component Tree
+    Routes --> Public["Public Routes<br/>Login, Register, Reset"]
+    Routes --> Auth["Auth Routes<br/>OAuth callback, Vault setup"]
+    Routes --> Protected["Protected Routes<br/>Dashboard, Viewer, Recording"]
 
-```
-App
-├── LoginPage / RegisterPage / ForgotPasswordPage / ResetPasswordPage
-├── OAuthCallbackPage / VaultSetupPage
-├── PublicSharePage
-├── DashboardPage
-│   └── MainLayout
-│       ├── Sidebar
-│       │   ├── ConnectionTree (folders, favorites, recents, shared)
-│       │   ├── TeamConnectionSection
-│       │   └── TenantSwitcher
-│       ├── TabBar
-│       ├── TabPanel
-│       │   ├── SshTerminal + SftpBrowser + SftpTransferQueue
-│       │   ├── RdpViewer + FileBrowser
-│       │   └── VncViewer
-│       ├── DockedToolbar (over active RDP/VNC)
-│       ├── ReconnectOverlay
-│       ├── VaultLockedOverlay
-│       ├── NotificationBell
-│       └── Full-Screen Dialogs (rendered at root)
-│           ├── SettingsDialog (23 settings sections)
-│           ├── AuditLogDialog / ConnectionAuditLogDialog
-│           ├── KeychainDialog (secrets manager)
-│           ├── RecordingsDialog
-│           ├── ConnectionDialog / FolderDialog
-│           ├── ShareDialog / ShareFolderDialog
-│           ├── ImportDialog / ExportDialog
-│           ├── ConnectAsDialog / UserProfileDialog
-│           ├── CreateUserDialog / InviteDialog
-│           ├── TeamDialog
-│           └── GatewayDialog / GatewayTemplateDialog
-├── ConnectionViewerPage (standalone popup)
-└── RecordingPlayerPage (standalone popup)
+    Protected --> Dashboard["DashboardPage<br/>MainLayout + Dialogs"]
+    Protected --> Viewer["ConnectionViewerPage<br/>SSH/RDP/VNC popup"]
+    Protected --> Recording["RecordingPlayerPage<br/>Session playback"]
+
+    Dashboard --> MainLayout["MainLayout<br/>AppBar + Sidebar + Tabs + 15 Dialogs"]
 ```
 
-### State Management
+### State Management (Zustand)
 
-14 Zustand stores handle all client-side state:
+| Store | File | Purpose |
+|-------|------|---------|
+| `authStore` | `authStore.ts` | JWT tokens (in-memory), CSRF token, user profile |
+| `connectionsStore` | `connectionsStore.ts` | Own, shared, and team connections + folders |
+| `tabsStore` | `tabsStore.ts` | Open tabs, active tab, server sync (debounced 1s) |
+| `vaultStore` | `vaultStore.ts` | Vault lock status, MFA unlock methods, polling (60s) |
+| `secretStore` | `secretStore.ts` | Vault secrets, filters, versions, folders, tenant vault |
+| `teamStore` | `teamStore.ts` | Teams, members, CRUD operations |
+| `tenantStore` | `tenantStore.ts` | Tenant details, users, memberships, switching |
+| `gatewayStore` | `gatewayStore.ts` | Gateways, SSH keys, orchestration, templates, tunnels |
+| `accessPolicyStore` | `accessPolicyStore.ts` | ABAC policies CRUD |
+| `themeStore` | `themeStore.ts` | Theme name, light/dark mode |
+| `uiPreferencesStore` | `uiPreferencesStore.ts` | 50+ persisted UI layout preferences |
+| `notificationStore` | `notificationStore.ts` | Snackbar notification (single) |
+| `notificationListStore` | `notificationListStore.ts` | In-app notification list, unread count |
+| `terminalSettingsStore` | `terminalSettingsStore.ts` | User SSH terminal defaults |
+| `rdpSettingsStore` | `rdpSettingsStore.ts` | User RDP defaults |
 
-| Store | Purpose |
-|-------|---------|
-| `authStore` | JWT tokens, CSRF, user identity, tenant context |
-| `connectionsStore` | Connections, folders (own, shared, team) |
-| `tabsStore` | Open tabs with server-side persistence |
-| `vaultStore` | Vault lock status, MFA unlock availability |
-| `uiPreferencesStore` | Persistent UI layout preferences (localStorage) |
-| `tenantStore` | Tenant details, user management, memberships |
-| `gatewayStore` | Gateways, SSH keys, sessions, orchestration |
-| `teamStore` | Teams, members, roles |
-| `secretStore` | Vault secrets, sharing, tenant vault |
-| `themeStore` | Light/dark mode toggle |
-| `rdpSettingsStore` | User's default RDP settings |
-| `terminalSettingsStore` | User's default SSH terminal settings |
-| `notificationStore` | Toast notifications (ephemeral) |
-| `notificationListStore` | Persistent notifications from server |
+### Custom Hooks
 
-### API Layer
+| Hook | Purpose |
+|------|---------|
+| `useAuth` | Auth bootstrap, auto-refresh on mount |
+| `useSocket(namespace)` | Socket.IO connection with JWT auth |
+| `useAsyncAction` | Loading/error state for dialog form submissions |
+| `useLazyMount(trigger)` | Defer Suspense mounting until first needed |
+| `useKeyboardCapture` | Focus, fullscreen, keyboard lock, browser key suppression |
+| `useAutoReconnect` | Exponential backoff with jitter for reconnection |
+| `useSftpTransfers(socket)` | Chunked SFTP upload/download with progress tracking |
+| `useShareSync` | Notification-driven data refresh (debounced 500ms) |
+| `useDlpBrowserHardening` | Block DevTools, view-source, save, print shortcuts |
+| `useGatewayMonitor` | Real-time gateway health via Socket.IO |
+| `useFullscreen(ref)` | Container-scoped fullscreen toggle |
+| `useCopyToClipboard` | Clipboard copy with 2-second feedback |
 
-29 API modules in `client/src/api/` (28 endpoint modules + `client.ts`) provide typed Axios wrappers for every server endpoint. The central `client.ts` configures:
+### Dialog Pattern
 
-- Automatic `Authorization: Bearer <jwt>` header injection
-- CSRF token injection for auth-sensitive endpoints (refresh, logout, tenant-switch)
-- Automatic 401 retry with token refresh (single-flight pattern to prevent stampede)
+All features overlaying the main workspace use full-screen MUI `Dialog` components rendered from `MainLayout`, not separate page routes. This preserves active RDP/SSH sessions.
 
-<!-- manual-start -->
-<!-- manual-end -->
+```mermaid
+flowchart LR
+    MainLayout --> |state| DialogState["useState: open/closed"]
+    DialogState --> Dialog["<Dialog fullScreen>"]
+    Dialog --> AppBar["<AppBar> + Close button"]
+    Dialog --> Content["Dialog content"]
 
-## Real-Time Connection Flows
-
-### SSH Flow
-
-```
-Client                    Server                     Target Host
-  │                         │                            │
-  ├─ Tab open ──────────────►                            │
-  │                         │                            │
-  ├─ Socket.IO /ssh ────────►                            │
-  │  (JWT in handshake)     │                            │
-  │                         ├─ session:start ────────────►
-  │                         │  (SSH2 connection,         │
-  │                         │   optional bastion hop)    │
-  │                         │                            │
-  │  ◄── session:ready ─────┤                            │
-  │                         │                            │
-  │  ── data (keystrokes) ──►  ── stream.write ──────────►
-  │  ◄── data (output) ─────  ◄── stream.on('data') ────┤
-  │                         │                            │
-  │  ── resize ─────────────►  ── pty resize ────────────►
-  │                         │                            │
-  │  ── sftp:* events ──────►  ── SFTP subsystem ────────►
-  │                         │                            │
-  │  ── disconnect ─────────►  ── client.end() ──────────►
+    style Dialog fill:#e1f5fe
 ```
 
-- Terminal rendered with **XTerm.js** (configurable theme, font, cursor style)
-- SFTP file browser uses the same SSH connection's SFTP subsystem
-- Session heartbeats sent every 30s (implicit on keystroke, explicit from client)
-- Optional **asciicast recording** when `RECORDING_ENABLED=true`
-- Bastion/gateway routing: SSH_BASTION (user credentials) or MANAGED_SSH (server-managed keys)
-- Load balancing across managed gateway instances (round-robin or least-connections)
+15 dialogs: Connection, Folder, Share, ShareFolder, ConnectAs, Settings, AuditLog, ConnectionAuditLog, Keychain, UserProfile, Recordings, Export, Import, CreateUser, Invite.
 
-### RDP/VNC Flow
+## Real-Time Communication
 
+### SSH Terminal Sessions
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant SocketIO as Socket.IO (/ssh)
+    participant Server
+    participant SSH2 as SSH2 Library
+    participant Target as SSH Target
+
+    Browser->>SocketIO: connect (JWT auth)
+    Browser->>SocketIO: open(sessionId, connectionId)
+    Server->>SSH2: createConnection(host, port, credentials)
+    SSH2->>Target: SSH handshake
+    Target-->>SSH2: shell ready
+
+    loop Terminal I/O
+        Browser->>SocketIO: stdin(data)
+        SocketIO->>SSH2: write(data)
+        SSH2-->>SocketIO: stdout/stderr
+        SocketIO-->>Browser: data(output)
+    end
+
+    Browser->>SocketIO: resize(cols, rows)
+    Browser->>SocketIO: sftp:list/upload/download
+    Browser->>SocketIO: close()
 ```
-Client                    Server :3001              guacamole-lite :3002     guacd :4822
-  │                         │                            │                      │
-  ├─ POST /sessions/rdp ───►                             │                      │
-  │  (connectionId)         │                            │                      │
-  │                         ├─ encrypt token ────────────►                      │
-  │  ◄── { token, wsUrl } ──┤  (AES-256-GCM)            │                      │
-  │                         │                            │                      │
-  ├─ WebSocket /guacamole ──────────────────────────────►│                      │
-  │  (encrypted token)      │                            ├─ Guacamole proto ───►│
-  │                         │                            │  (connect to target) │
-  │  ◄── Guacamole frames ──────────────────────────────┤◄─────────────────────┤
-  │  ── Guacamole input ────────────────────────────────►├──────────────────────►
+
+SFTP file transfers use 64KB chunked streaming over the same Socket.IO connection.
+
+### RDP/VNC Sessions
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant API as Express API
+    participant GuacWS as Guacamole WS (:3002)
+    participant Guacd as guacd (:4822)
+    participant Target as RDP/VNC Target
+
+    Browser->>API: POST /sessions/rdp (connectionId)
+    API-->>Browser: { token, sessionId }
+    Browser->>GuacWS: WebSocket connect (token)
+    GuacWS->>Guacd: Guacamole protocol
+    Guacd->>Target: RDP/VNC protocol
+    Target-->>Guacd: Display updates
+    Guacd-->>GuacWS: Guacamole instructions
+    GuacWS-->>Browser: Rendered display
 ```
 
-- Rendered with **guacamole-common-js** (canvas-based)
-- Clipboard sync, drive redirection, audio, and display settings configurable per connection
-- Guacamole token encrypted with AES-256-GCM using `GUACAMOLE_SECRET`
-- Optional `.guac` format recording when `RECORDING_ENABLED=true`
-- Same gateway routing and load balancing as SSH (for managed guacd instances)
+Guacamole tokens are AES-256-GCM encrypted, containing connection parameters that `guacd` uses to establish the remote session.
 
-<!-- manual-start -->
-<!-- manual-end -->
+## Data Model Overview
 
-## Network Topology
+```mermaid
+erDiagram
+    User ||--o{ Connection : owns
+    User ||--o{ SharedConnection : "shared with"
+    User ||--o{ VaultSecret : owns
+    User ||--o{ SharedSecret : "shared with"
+    User ||--o{ RefreshToken : has
+    User ||--o{ OAuthAccount : links
+    User ||--o{ WebAuthnCredential : registers
 
-### Development
+    Tenant ||--o{ TenantMember : has
+    Tenant ||--o{ Team : contains
+    Tenant ||--o{ Gateway : owns
 
-| Service | Port | Protocol |
-|---------|------|----------|
-| Vite dev server | 3000 | HTTP (proxies `/api` → 3001, `/socket.io` → 3001, `/guacamole` → 3002) |
-| Express server | 3001 | HTTP + WebSocket (Socket.IO) |
-| guacamole-lite | 3002 | WebSocket (Guacamole protocol) |
-| PostgreSQL | 5432 | TCP (Docker, bound to 127.0.0.1) |
-| guacd | 4822 | TCP (Guacamole daemon, local or Docker) |
-| guacenc sidecar | 3003 | HTTP (video conversion service, Docker) |
+    Team ||--o{ TeamMember : has
+    Team ||--o{ Connection : owns
+    Team ||--o{ VaultSecret : scopes
 
-In development, the Vite dev server handles all proxying. The server and client run as separate Node.js processes outside Docker, while PostgreSQL and guacenc run inside Docker via `compose.dev.yml`.
+    Connection ||--o{ SharedConnection : shared
+    Connection ||--o{ ActiveSession : hosts
+    Connection }o--o| Folder : "grouped in"
+    Connection }o--o| Gateway : "routes through"
 
-### Production
+    VaultSecret ||--o{ VaultSecretVersion : versions
+    VaultSecret ||--o{ SharedSecret : shared
+    VaultSecret ||--o{ ExternalSecretShare : "shared externally"
+    VaultSecret }o--o| VaultFolder : "grouped in"
 
-| Service | Port | Protocol |
-|---------|------|----------|
-| Nginx (client container) | 8080 (mapped to host 3000) | HTTP |
-| Express (server container) | 3001 | HTTP + WebSocket (internal) |
-| guacamole-lite | 3002 | WebSocket (internal) |
-| PostgreSQL | 5432 | TCP (internal) |
-| guacd | 4822 | TCP (internal) |
-| guacenc | 3003 | HTTP (internal) |
+    ActiveSession ||--o| SessionRecording : records
 
-In production, all services communicate over the `arsenale_net` Docker network. Only the Nginx client container exposes port 8080 to the host. Nginx reverse-proxies:
+    Gateway ||--o{ ManagedGatewayInstance : manages
+```
 
-| Path | Upstream |
-|------|----------|
-| `/api/*` | `http://server:3001` |
-| `/socket.io/*` | `http://server:3001` (WebSocket upgrade) |
-| `/guacamole/*` | `http://server:3002` (WebSocket upgrade, 24h timeout) |
-| `/health` | Local 200 response |
-| `/*` | SPA fallback to `index.html` |
+### Key Enums
 
-<!-- manual-start -->
-<!-- manual-end -->
+| Enum | Values |
+|------|--------|
+| `TenantRole` | OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST |
+| `TeamRole` | TEAM_ADMIN, TEAM_EDITOR, TEAM_VIEWER |
+| `ConnectionType` | RDP, SSH, VNC |
+| `SecretType` | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
+| `SecretScope` | PERSONAL, TEAM, TENANT |
+| `SessionProtocol` | SSH, RDP, VNC |
+| `GatewayType` | GUACD, SSH_BASTION, MANAGED_SSH |
+| `Permission` | READ_ONLY, FULL_ACCESS |
 
-## Development vs Production
+## Security Architecture
 
-| Aspect | Development | Production |
-|--------|------------|------------|
-| **Server** | `tsx watch` (hot reload) | Compiled JS via `tsc`, runs `node dist/index.js` |
-| **Client** | Vite dev server with HMR | Static build served by Nginx |
-| **Database** | PostgreSQL in Docker (`compose.dev.yml`) | PostgreSQL in Docker (`compose.yml`) |
-| **guacd** | Local install or Docker | Docker container in compose stack |
-| **Proxy** | Vite dev server proxy | Nginx reverse proxy |
-| **Auth secrets** | Dev defaults auto-generated | Required via environment variables |
-| **SERVER_ENCRYPTION_KEY** | Auto-generated (not persisted) | Required (64 hex chars) |
-| **Containers** | Only PostgreSQL + guacenc | Full stack (5+ containers) |
-| **Container runtime** | Docker or Podman | Docker or Podman (rootless supported) |
-| **Network** | Host networking + port mapping | Internal Docker network (`arsenale_net`) |
+### Encryption at Rest
 
-<!-- manual-start -->
-<!-- manual-end -->
+```mermaid
+flowchart LR
+    Password[User Password] -->|Argon2id| MasterKey[Master Key]
+    MasterKey -->|AES-256-GCM| EncryptedCreds[Encrypted Credentials]
+    MasterKey -->|AES-256-GCM| EncryptedSecrets[Encrypted Secrets]
+
+    ServerKey[SERVER_ENCRYPTION_KEY] -->|AES-256-GCM| EncryptedVaultKey[Encrypted Vault Key]
+    ServerKey -->|AES-256-GCM| GuacTokens[Guacamole Tokens]
+    ServerKey -->|AES-256-GCM| SSHKeys[SSH Key Pairs]
+```
+
+- **Per-user master key**: Derived from password via Argon2id, held in-memory with configurable TTL
+- **Vault key**: Each user's vault key encrypted with server encryption key, decrypted only when vault is unlocked
+- **Team vault keys**: Shared decryption keys distributed to team members
+- **Tenant vault keys**: For tenant-scoped secrets
+
+### Authentication Flow
+
+```mermaid
+flowchart TD
+    Start[Login Request] --> LocalOrOAuth{Auth Method?}
+    LocalOrOAuth -->|Local| Credentials[Email + Password]
+    LocalOrOAuth -->|OAuth| Provider[Google/GitHub/Microsoft/OIDC]
+    LocalOrOAuth -->|SAML| SAML[SAML 2.0 IdP]
+    LocalOrOAuth -->|LDAP| LDAP[LDAP Directory]
+
+    Credentials --> MFA{MFA Required?}
+    Provider --> MFA
+    SAML --> MFA
+    LDAP --> MFA
+
+    MFA -->|TOTP| TOTP[TOTP Verification]
+    MFA -->|WebAuthn| WebAuthn[Passkey Verification]
+    MFA -->|SMS| SMS[SMS Code Verification]
+    MFA -->|No| Tokens
+
+    TOTP --> Tokens[Issue JWT + Refresh Token]
+    WebAuthn --> Tokens
+    SMS --> Tokens
+
+    Tokens --> TokenBinding[Bind to IP + User-Agent Hash]
+```
+
+### Defense Layers
+
+| Layer | Mechanism |
+|-------|-----------|
+| Transport | HTTPS, HSTS, CSP headers |
+| Authentication | JWT with token binding, refresh token rotation |
+| Authorization | RBAC (7 tenant roles, 3 team roles), ABAC policies |
+| Rate Limiting | Per-endpoint limits (login, registration, SMS, OAuth, vault, session) |
+| Data Protection | AES-256-GCM encryption, Argon2id key derivation |
+| DLP | Clipboard, download, upload, print restrictions |
+| Audit | 120+ action types, geo-IP enrichment, impossible travel detection |
+| Network | IP allowlist (tenant-level), CSRF protection |
+| Session | Absolute timeout (12h default), inactivity timeout (1h default), concurrent session limits |
+
+## Browser Extension Architecture
+
+```mermaid
+flowchart TD
+    Popup[Popup App<br/>React] -->|chrome.runtime| SW[Service Worker<br/>background.ts]
+    Options[Options Page<br/>React] -->|chrome.runtime| SW
+    Content[Content Scripts<br/>Autofill] -->|chrome.runtime| SW
+
+    SW -->|fetch API| Server[Arsenale Server<br/>/api/*]
+    SW -->|chrome.storage| Storage[(chrome.storage<br/>Accounts, tokens)]
+    SW -->|chrome.alarms| Alarms[Token Refresh<br/>Scheduled]
+
+    Content -->|DOM| Forms[Web Page Forms<br/>Credential injection]
+```
+
+- Multi-account support with encrypted token storage (AES-GCM in `chrome.storage.session`)
+- Service worker handles all API calls (bypasses CORS)
+- Content scripts detect login forms and inject credentials from vault
+- Token refresh via `chrome.alarms` (persistent scheduling)
+
+## Gateway Orchestration
+
+```mermaid
+flowchart TD
+    Server[Arsenale Server] -->|Docker/Podman API| Orchestrator{Orchestrator}
+    Orchestrator -->|docker| Docker[Docker Engine]
+    Orchestrator -->|podman| Podman[Podman]
+    Orchestrator -->|kubectl| K8s[Kubernetes]
+
+    Orchestrator --> Instance1[Gateway Instance 1]
+    Orchestrator --> Instance2[Gateway Instance 2]
+    Orchestrator --> InstanceN[Gateway Instance N]
+
+    Server -->|Health Check 30s| Instance1
+    Server -->|Reconciliation 5m| Orchestrator
+
+    LB[Load Balancer] --> Instance1
+    LB --> Instance2
+    LB --> InstanceN
+
+    style LB fill:#fff3e0
+```
+
+- **Auto-scaling**: Min/max replicas, sessions-per-instance threshold
+- **Health monitoring**: 30-second intervals, consecutive failure tracking
+- **Load balancing**: Round-robin or least-connections strategy
+- **Templates**: Reusable gateway configurations for one-click deployment

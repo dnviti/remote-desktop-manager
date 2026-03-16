@@ -5,13 +5,13 @@ on:
     tags: ['v*']
     branches: [main]
     paths:
-      - 'ssh-gateway/**'
-      - 'tunnel-agent/**'
+      - 'gateways/ssh-gateway/**'
+      - 'gateways/tunnel-agent/**'
   pull_request:
     branches: [main]
     paths:
-      - 'ssh-gateway/**'
-      - 'tunnel-agent/**'
+      - 'gateways/ssh-gateway/**'
+      - 'gateways/tunnel-agent/**'
   workflow_dispatch:
 
 concurrency:
@@ -61,7 +61,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./ssh-gateway/Dockerfile
+          file: ./gateways/ssh-gateway/Dockerfile
           push: false
           load: true
           tags: ssh-gateway:scan
@@ -88,7 +88,7 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./ssh-gateway/Dockerfile
+          file: ./gateways/ssh-gateway/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

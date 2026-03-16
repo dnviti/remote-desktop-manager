@@ -20,7 +20,7 @@ The tunnel system connects remote gateway agents to the Arsenale server over a s
   |  Arsenale Server                                      |  Remote Network
   |  +-----------------+      WSS (port 3001)             |  +------------------+
   |  | TunnelBroker    |<---------------------------------|--| TunnelAgent      |
-  |  | (tunnel.service)|   Binary frames over WS          |  | (tunnel-agent/)  |
+  |  | (tunnel.service)|   Binary frames over WS          |  | (gateways/tunnel-agent/)  |
   |  +------+----------+                                  |  +------+-----------+
   |         |                                             |         |
   |  +------+----------+                                  |  +------+-----------+
@@ -50,7 +50,7 @@ The tunnel system connects remote gateway agents to the Arsenale server over a s
 
 ## Binary Frame Protocol
 
-The wire protocol is identical on both server (`server/src/services/tunnel.service.ts`) and agent (`tunnel-agent/src/protocol.ts`). Every WebSocket message is a binary frame with the following layout:
+The wire protocol is identical on both server (`server/src/services/tunnel.service.ts`) and agent (`gateways/tunnel-agent/src/protocol.ts`). Every WebSocket message is a binary frame with the following layout:
 
 ### Header Format
 
@@ -78,7 +78,7 @@ Total header size: **4 bytes** (constant `HEADER_SIZE`).
 | `HEARTBEAT`  | 6     | Agent -> Broker  | Optional JSON health metadata                 |
 | `CERT_RENEW` | 7     | Broker -> Agent  | JSON `{ clientCert: "<PEM>" }`                |
 
-Defined in both `tunnel.service.ts` and `tunnel-agent/src/protocol.ts`:
+Defined in both `tunnel.service.ts` and `gateways/tunnel-agent/src/protocol.ts`:
 
 ```typescript
 // server/src/services/tunnel.service.ts (lines 32-40)
@@ -98,7 +98,7 @@ export const MsgType = {
 Both sides use an identical `buildFrame` function:
 
 ```typescript
-// tunnel-agent/src/protocol.ts (lines 27-35)
+// gateways/tunnel-agent/src/protocol.ts (lines 27-35)
 export function buildFrame(type: MsgTypeValue, streamId: number, payload?: Buffer): Buffer {
   const body = payload ?? Buffer.alloc(0);
   const frame = Buffer.allocUnsafe(HEADER_SIZE + body.length);
@@ -301,15 +301,15 @@ DB writes are best-effort (`.catch(() => {})`) to avoid blocking the frame handl
 ## Agent-Side: TunnelAgent
 
 **Files:**
-- `tunnel-agent/src/tunnel.ts` -- main `TunnelAgent` class
-- `tunnel-agent/src/tcpForwarder.ts` -- local TCP connection management
-- `tunnel-agent/src/protocol.ts` -- binary frame encoding/decoding
-- `tunnel-agent/src/config.ts` -- environment-based configuration
-- `tunnel-agent/src/auth.ts` -- WebSocket auth headers and mTLS options
+- `gateways/tunnel-agent/src/tunnel.ts` -- main `TunnelAgent` class
+- `gateways/tunnel-agent/src/tcpForwarder.ts` -- local TCP connection management
+- `gateways/tunnel-agent/src/protocol.ts` -- binary frame encoding/decoding
+- `gateways/tunnel-agent/src/config.ts` -- environment-based configuration
+- `gateways/tunnel-agent/src/auth.ts` -- WebSocket auth headers and mTLS options
 
 ### Configuration & Dormant Mode
 
-Configuration is entirely environment-driven (`tunnel-agent/src/config.ts`):
+Configuration is entirely environment-driven (`gateways/tunnel-agent/src/config.ts`):
 
 | Variable                     | Required | Default     | Description                              |
 |------------------------------|----------|-------------|------------------------------------------|
@@ -329,7 +329,7 @@ Configuration is entirely environment-driven (`tunnel-agent/src/config.ts`):
 
 ### Connection Lifecycle & Reconnection
 
-The `TunnelAgent` class (`tunnel-agent/src/tunnel.ts`) manages a single WebSocket connection with automatic reconnection:
+The `TunnelAgent` class (`gateways/tunnel-agent/src/tunnel.ts`) manages a single WebSocket connection with automatic reconnection:
 
 ```
 start() -> connect() -> [open] -> startPing()
@@ -347,7 +347,7 @@ Graceful shutdown: `SIGTERM` and `SIGINT` set `stopped = true`, close the WebSoc
 
 ### TCP Forwarder (`handleOpenFrame` -> local TCP)
 
-When the broker sends an OPEN frame, the agent's `handleOpenFrame()` (`tunnel-agent/src/tcpForwarder.ts`):
+When the broker sends an OPEN frame, the agent's `handleOpenFrame()` (`gateways/tunnel-agent/src/tcpForwarder.ts`):
 
 1. Parses `"host:port"` from the payload.
 2. Validates the port is 1-65535.
@@ -716,7 +716,7 @@ The raw tunnel token is never written to the audit log.
 
 ### Adding a New Message Type
 
-1. **Define the constant** in both `server/src/services/tunnel.service.ts` and `tunnel-agent/src/protocol.ts`:
+1. **Define the constant** in both `server/src/services/tunnel.service.ts` and `gateways/tunnel-agent/src/protocol.ts`:
    ```typescript
    export const MsgType = {
      // ... existing types
@@ -814,8 +814,8 @@ To complete the cert rotation stub:
 | Session Controller     | `server/src/controllers/session.controller.ts`        |
 | SSH Service            | `server/src/services/ssh.service.ts`                  |
 | Gateway Monitor        | `server/src/services/gatewayMonitor.service.ts`       |
-| Agent Protocol         | `tunnel-agent/src/protocol.ts`                        |
-| Agent TCP Forwarder    | `tunnel-agent/src/tcpForwarder.ts`                    |
-| Agent Main Class       | `tunnel-agent/src/tunnel.ts`                          |
-| Agent Config           | `tunnel-agent/src/config.ts`                          |
-| Agent Auth             | `tunnel-agent/src/auth.ts`                            |
+| Agent Protocol         | `gateways/tunnel-agent/src/protocol.ts`                        |
+| Agent TCP Forwarder    | `gateways/tunnel-agent/src/tcpForwarder.ts`                    |
+| Agent Main Class       | `gateways/tunnel-agent/src/tunnel.ts`                          |
+| Agent Config           | `gateways/tunnel-agent/src/config.ts`                          |
+| Agent Auth             | `gateways/tunnel-agent/src/auth.ts`                            |

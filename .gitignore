@@ -186,7 +186,7 @@ downloads/
 eggs/
 .eggs/
 lib/
-!clients/browser-extensions/src/lib/
+!extra-clients/browser-extensions/src/lib/
 lib64/
 parts/
 sdist/

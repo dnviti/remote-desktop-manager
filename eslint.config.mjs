@@ -17,7 +17,7 @@ export default tseslint.config(
   // ── Base TypeScript rules (all workspaces) ────────────────────
   ...tseslint.configs.strict,
   {
-    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}", "tunnel-agent/src/**/*.ts", "clients/browser-extensions/src/**/*.{ts,tsx}"],
+    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}", "tunnel-agent/src/**/*.ts", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -36,7 +36,7 @@ export default tseslint.config(
 
   // ── Security rules (all workspaces) ───────────────────────────
   {
-    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}", "tunnel-agent/src/**/*.ts", "clients/browser-extensions/src/**/*.{ts,tsx}"],
+    files: ["server/src/**/*.ts", "client/src/**/*.{ts,tsx}", "tunnel-agent/src/**/*.ts", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
     plugins: { security },
     rules: {
       ...security.configs.recommended.rules,
@@ -67,7 +67,7 @@ export default tseslint.config(
 
   // ── Client-specific rules (React) ─────────────────────────────
   {
-    files: ["client/src/**/*.{ts,tsx}", "clients/browser-extensions/src/**/*.{ts,tsx}"],
+    files: ["client/src/**/*.{ts,tsx}", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
     plugins: {
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
