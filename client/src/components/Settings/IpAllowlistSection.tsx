@@ -6,6 +6,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { getIpAllowlist, updateIpAllowlist, IpAllowlistData } from '../../api/tenant.api';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 
 // Simple client-side CIDR / IP validation
 // eslint-disable-next-line security/detect-unsafe-regex
@@ -68,13 +69,13 @@ function isValidEntry(entry: string): boolean {
 
 export default function IpAllowlistSection() {
   const user = useAuthStore((s) => s.user);
+  const notify = useNotificationStore((s) => s.notify);
   const tenantId = user?.tenantId;
 
   const [config, setConfig] = useState<IpAllowlistData>({ enabled: false, mode: 'flag', entries: [] });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
 
   // Input state for adding a new CIDR entry
   const [newEntry, setNewEntry] = useState('');
@@ -95,11 +96,10 @@ export default function IpAllowlistSection() {
     if (!tenantId) return;
     setSaving(true);
     setError('');
-    setSuccess(false);
     try {
       const updated = await updateIpAllowlist(tenantId, config);
       setConfig(updated);
-      setSuccess(true);
+      notify('Settings saved successfully.', 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to save IP allowlist settings'));
     } finally {
@@ -157,14 +157,13 @@ export default function IpAllowlistSection() {
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>Settings saved successfully.</Alert>}
 
         {/* Enable toggle */}
         <FormControlLabel
           control={
             <Switch
               checked={config.enabled}
-              onChange={(e) => { setConfig((prev) => ({ ...prev, enabled: e.target.checked })); setSuccess(false); }}
+              onChange={(e) => { setConfig((prev) => ({ ...prev, enabled: e.target.checked })); }}
               disabled={saving}
             />
           }
@@ -180,7 +179,7 @@ export default function IpAllowlistSection() {
               </Typography>
               <RadioGroup
                 value={config.mode}
-                onChange={(e) => { setConfig((prev) => ({ ...prev, mode: e.target.value as 'flag' | 'block' })); setSuccess(false); }}
+                onChange={(e) => { setConfig((prev) => ({ ...prev, mode: e.target.value as 'flag' | 'block' })); }}
               >
                 <FormControlLabel
                   value="flag"

@@ -13,6 +13,7 @@ import {
 import {
   createExternalShare, listExternalShares, revokeExternalShare,
 } from '../../api/secrets.api';
+import { useNotificationStore } from '../../store/notificationStore';
 import type { ExternalShareResult, ExternalShareListItem } from '../../api/secrets.api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
@@ -45,6 +46,7 @@ export default function ExternalShareDialog({
   const [result, setResult] = useState<ExternalShareResult | null>(null);
   const { copied, copy: copyToClipboard } = useCopyToClipboard();
   const [shares, setShares] = useState<ExternalShareListItem[]>([]);
+  const notify = useNotificationStore((s) => s.notify);
 
   useEffect(() => {
     if (open && secretId) {
@@ -90,6 +92,7 @@ export default function ExternalShareDialog({
     await run(async () => {
       const res = await createExternalShare(secretId, input);
       setResult(res);
+      notify('Share link created successfully!', 'success');
       await loadShares();
     }, 'Failed to create external share');
   };
@@ -128,9 +131,6 @@ export default function ExternalShareDialog({
 
         {result ? (
           <Box sx={{ mt: 1 }}>
-            <Alert severity="success" sx={{ mb: 2 }}>
-              Share link created successfully!
-            </Alert>
             <TextField
               fullWidth
               value={result.shareUrl}

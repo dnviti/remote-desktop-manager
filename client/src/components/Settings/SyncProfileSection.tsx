@@ -23,6 +23,7 @@ import {
 import type { SyncProfileData, SyncLogEntry, SyncPlanData, CreateSyncProfileInput, UpdateSyncProfileInput } from '../../api/sync.api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 import SyncPreviewDialog from './SyncPreviewDialog';
 
 const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning' | 'info' | 'default'> = {
@@ -34,6 +35,7 @@ const STATUS_COLORS: Record<string, 'success' | 'error' | 'warning' | 'info' | '
 };
 
 export default function SyncProfileSection() {
+  const notify = useNotificationStore((s) => s.notify);
   const [profiles, setProfiles] = useState<SyncProfileData[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
@@ -43,7 +45,6 @@ export default function SyncProfileSection() {
   const [previewPlan, setPreviewPlan] = useState<SyncPlanData | null>(null);
   const [previewProfileId, setPreviewProfileId] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [snackMsg, setSnackMsg] = useState('');
   const [snackError, setSnackError] = useState('');
 
   // Form state
@@ -178,12 +179,11 @@ export default function SyncProfileSection() {
   };
 
   const handleTest = async (id: string) => {
-    setSnackMsg('');
     setSnackError('');
     try {
       const result = await testSyncConnection(id);
       if (result.ok) {
-        setSnackMsg('Connection successful');
+        notify('Connection successful', 'success');
       } else {
         setSnackError(`Connection failed: ${result.error}`);
       }
@@ -193,7 +193,6 @@ export default function SyncProfileSection() {
   };
 
   const handleSync = async (id: string) => {
-    setSnackMsg('');
     setSnackError('');
     try {
       const result = await triggerSync(id, true);
@@ -212,7 +211,7 @@ export default function SyncProfileSection() {
       setPreviewOpen(false);
       setPreviewPlan(null);
       setPreviewProfileId(null);
-      setSnackMsg('Sync completed successfully');
+      notify('Sync completed successfully', 'success');
       loadProfiles();
     } catch (err) {
       setSnackError(extractApiError(err, 'Sync failed'));
@@ -250,7 +249,6 @@ export default function SyncProfileSection() {
           </Button>
         </Stack>
 
-        {snackMsg && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSnackMsg('')}>{snackMsg}</Alert>}
         {snackError && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setSnackError('')}>{snackError}</Alert>}
         {actionError && <Alert severity="error" sx={{ mb: 2 }}>{actionError}</Alert>}
 

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   Dialog, AppBar, Toolbar, Typography, Box, IconButton, Tabs, Tab,
-  Stack, useMediaQuery,
+  Stack, useMediaQuery, Card, CardContent, Button,
 } from '@mui/material';
 import {
   Close as CloseIcon,
@@ -14,6 +14,8 @@ import {
   Sync as SyncIcon,
   AdminPanelSettings as AdminPanelSettingsIcon,
   VpnLock as TunnelIcon,
+  CloudUpload as CloudUploadIcon,
+  CloudDownload as CloudDownloadIcon,
 } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { getProfile } from '../../api/user.api';
@@ -78,14 +80,18 @@ interface SettingsDialogProps {
   linkedProvider?: string | null;
   onViewUserProfile?: (userId: string) => void;
   onGeoIpClick?: (ip: string) => void;
+  onImport?: () => void;
+  onExport?: () => void;
 }
 
-export default function SettingsDialog({ open, onClose, initialTab, linkedProvider, onViewUserProfile, onGeoIpClick }: SettingsDialogProps) {
+export default function SettingsDialog({ open, onClose, initialTab, linkedProvider, onViewUserProfile, onGeoIpClick, onImport, onExport }: SettingsDialogProps) {
   const user = useAuthStore((s) => s.user);
   const [hasPassword, setHasPassword] = useState(true);
+  const [deleteOrgTrigger, setDeleteOrgTrigger] = useState<(() => void) | null>(null);
 
   const hasTenant = Boolean(user?.tenantId);
   const isAdmin = isAdminOrAbove(user?.tenantRole);
+  const isOwner = user?.tenantRole === 'OWNER';
 
   const tabs = useMemo(() => {
     const t = [...BASE_TABS];
@@ -195,7 +201,40 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
               <ChangePasswordSection hasPassword={hasPassword} />
             </Stack>
           )}
-          {resolvedTab === 'connections' && <ConnectionDefaultsSection />}
+          {resolvedTab === 'connections' && (
+            <Stack spacing={3}>
+              {/* Import & Export */}
+              <Card variant="outlined">
+                <CardContent>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Import & Export
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Import connections from a file or export your current connections.
+                  </Typography>
+                  <Box sx={{ display: 'flex', gap: 1, mt: 2 }}>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<CloudUploadIcon />}
+                      onClick={onImport}
+                    >
+                      Import
+                    </Button>
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<CloudDownloadIcon />}
+                      onClick={onExport}
+                    >
+                      Export
+                    </Button>
+                  </Box>
+                </CardContent>
+              </Card>
+              <ConnectionDefaultsSection />
+            </Stack>
+          )}
           {resolvedTab === 'security' && (
             <Stack spacing={3}>
               <TwoFactorSection />
@@ -208,8 +247,35 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           )}
           {resolvedTab === 'organization' && (
             <Stack spacing={3}>
-              <TenantSection onNavigateToTab={setActiveTab} onViewUserProfile={onViewUserProfile} />
+              <TenantSection
+                onViewUserProfile={onViewUserProfile}
+                onDeleteRequest={(trigger) => setDeleteOrgTrigger(() => trigger)}
+              />
               {isAdmin && <TenantConnectionPolicySection />}
+              {isOwner && deleteOrgTrigger && (
+                <Card
+                  variant="outlined"
+                  sx={{
+                    borderColor: 'rgba(239,68,68,0.3)',
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(239,68,68,0.04)' : 'rgba(239,68,68,0.02)',
+                  }}
+                >
+                  <CardContent>
+                    <Typography variant="h6" sx={{ color: 'error.main', mb: 1 }}>Danger Zone</Typography>
+                    <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                      Permanently delete this organization, all teams, and remove all members. This action cannot be undone.
+                    </Typography>
+                    <Button
+                      color="error"
+                      variant="outlined"
+                      size="small"
+                      onClick={deleteOrgTrigger}
+                    >
+                      Delete Organization
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
             </Stack>
           )}
           {resolvedTab === 'teams' && (

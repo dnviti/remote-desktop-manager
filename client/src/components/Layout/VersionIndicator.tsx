@@ -30,14 +30,21 @@ export default function VersionIndicator() {
         alignItems: 'center',
         gap: 0.5,
         borderTop: 1,
-        borderColor: 'divider',
+        borderColor: 'rgba(35,35,40,0.6)',
       }}
     >
       <Chip
         label={`v${info.current}`}
         size="small"
         variant="outlined"
-        sx={{ height: 20, fontSize: '0.7rem', '& .MuiChip-label': { px: 0.75 } }}
+        sx={{
+          height: 20,
+          fontSize: '0.7rem',
+          color: '#52525b',
+          borderColor: 'rgba(0,229,160,0.15)',
+          backgroundColor: 'rgba(0,229,160,0.03)',
+          '& .MuiChip-label': { px: 0.75 },
+        }}
       />
       {showUpdate && info.latest && info.latestUrl && (
         <Tooltip title={`Update available: v${info.latest}`} arrow>
@@ -52,10 +59,17 @@ export default function VersionIndicator() {
               icon={<NewReleasesIcon sx={{ fontSize: '0.85rem !important' }} />}
               label={`v${info.latest}`}
               size="small"
-              color="warning"
               variant="outlined"
               clickable
-              sx={{ height: 20, fontSize: '0.7rem', '& .MuiChip-label': { px: 0.75 } }}
+              sx={{
+                height: 20,
+                fontSize: '0.7rem',
+                color: '#00e5a0',
+                borderColor: 'rgba(0,229,160,0.4)',
+                backgroundColor: 'rgba(0,229,160,0.06)',
+                '& .MuiChip-label': { px: 0.75 },
+                '& .MuiChip-icon': { color: '#00e5a0' },
+              }}
             />
           </Link>
         </Tooltip>

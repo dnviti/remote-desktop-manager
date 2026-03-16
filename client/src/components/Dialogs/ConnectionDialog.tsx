@@ -321,124 +321,129 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
             />
           </Box>
           <Box>
-            <Typography variant="caption" color="text.secondary" sx={{ mb: 0.5, display: 'block' }}>
-              Credentials
-            </Typography>
-            <ToggleButtonGroup
-              value={credentialMode}
-              exclusive
-              onChange={(_e, val) => { if (val) setCredentialMode(val); }}
-              size="small"
-              fullWidth
-            >
-              <ToggleButton value="manual">
-                <Keyboard fontSize="small" sx={{ mr: 0.5 }} /> Manual
-              </ToggleButton>
-              <ToggleButton value="keychain" disabled={!vaultUnlocked}>
-                <VpnKey fontSize="small" sx={{ mr: 0.5 }} /> From Keychain
-              </ToggleButton>
-              {hasTenant && vaultProviders.length > 0 && (
-                <ToggleButton value="external-vault">
-                  <CloudIcon fontSize="small" sx={{ mr: 0.5 }} /> External Vault
-                </ToggleButton>
-              )}
-            </ToggleButtonGroup>
-          </Box>
-          {credentialMode === 'external-vault' ? (
-            <>
-              <FormControl fullWidth>
-                <InputLabel>Vault Provider</InputLabel>
-                <Select
-                  value={selectedVaultProviderId ?? ''}
-                  label="Vault Provider"
-                  onChange={(e) => setSelectedVaultProviderId(e.target.value || null)}
+            <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Credentials</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              <Box>
+                <ToggleButtonGroup
+                  value={credentialMode}
+                  exclusive
+                  onChange={(_e, val) => { if (val) setCredentialMode(val); }}
+                  size="small"
+                  fullWidth
                 >
-                  {vaultProviders.filter((p) => p.enabled).map((p) => (
-                    <MenuItem key={p.id} value={p.id}>
-                      {p.name} — {p.serverUrl}
-                    </MenuItem>
-                  ))}
+                  <ToggleButton value="manual">
+                    <Keyboard fontSize="small" sx={{ mr: 0.5 }} /> Manual
+                  </ToggleButton>
+                  <ToggleButton value="keychain" disabled={!vaultUnlocked}>
+                    <VpnKey fontSize="small" sx={{ mr: 0.5 }} /> From Keychain
+                  </ToggleButton>
+                  {hasTenant && vaultProviders.length > 0 && (
+                    <ToggleButton value="external-vault">
+                      <CloudIcon fontSize="small" sx={{ mr: 0.5 }} /> External Vault
+                    </ToggleButton>
+                  )}
+                </ToggleButtonGroup>
+              </Box>
+              {credentialMode === 'external-vault' ? (
+                <>
+                  <FormControl fullWidth>
+                    <InputLabel>Vault Provider</InputLabel>
+                    <Select
+                      value={selectedVaultProviderId ?? ''}
+                      label="Vault Provider"
+                      onChange={(e) => setSelectedVaultProviderId(e.target.value || null)}
+                    >
+                      {vaultProviders.filter((p) => p.enabled).map((p) => (
+                        <MenuItem key={p.id} value={p.id}>
+                          {p.name} — {p.serverUrl}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Secret Path"
+                    value={vaultSecretPath}
+                    onChange={(e) => setVaultSecretPath(e.target.value)}
+                    fullWidth
+                    required
+                    placeholder="e.g. servers/web1"
+                    helperText="Path within the KV v2 mount (must contain username/password fields)"
+                  />
+                </>
+              ) : credentialMode === 'keychain' ? (
+                <SecretPicker
+                  value={selectedSecretId}
+                  onChange={(id) => setSelectedSecretId(id)}
+                  connectionType={type}
+                  error={!selectedSecretId && !!error}
+                  initialName={connection?.credentialSecretName}
+                  initialType={connection?.credentialSecretType as 'LOGIN' | 'SSH_KEY' | undefined}
+                />
+              ) : (
+                <>
+                  <TextField
+                    label="Username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    fullWidth
+                    required={!isEditMode}
+                    placeholder={isEditMode ? 'Leave blank to keep unchanged' : undefined}
+                  />
+                  <TextField
+                    label="Password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    type="password"
+                    fullWidth
+                    placeholder={isEditMode ? 'Leave blank to keep unchanged' : undefined}
+                  />
+                  {type === 'RDP' && (
+                    <TextField
+                      label="Domain (optional)"
+                      value={domain}
+                      onChange={(e) => setDomain(e.target.value)}
+                      fullWidth
+                      placeholder={isEditMode ? 'Leave blank to keep unchanged' : 'e.g. CONTOSO'}
+                    />
+                  )}
+                </>
+              )}
+            </Box>
+          </Box>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="subtitle2">Options</Typography>
+              <FormControl fullWidth size="small">
+                <InputLabel>Default connect behavior</InputLabel>
+                <Select
+                  value={defaultConnectMode}
+                  label="Default connect behavior"
+                  onChange={(e) => setDefaultConnectMode(e.target.value)}
+                >
+                  <MenuItem value="">Use saved credentials (default)</MenuItem>
+                  <MenuItem value="domain">Use domain profile credentials</MenuItem>
+                  <MenuItem value="prompt">Always ask (show Connect As dialog)</MenuItem>
                 </Select>
               </FormControl>
               <TextField
-                label="Secret Path"
-                value={vaultSecretPath}
-                onChange={(e) => setVaultSecretPath(e.target.value)}
+                label="Description (optional)"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
                 fullWidth
-                required
-                placeholder="e.g. servers/web1"
-                helperText="Path within the KV v2 mount (must contain username/password fields)"
-              />
-            </>
-          ) : credentialMode === 'keychain' ? (
-            <SecretPicker
-              value={selectedSecretId}
-              onChange={(id) => setSelectedSecretId(id)}
-              connectionType={type}
-              error={!selectedSecretId && !!error}
-              initialName={connection?.credentialSecretName}
-              initialType={connection?.credentialSecretType as 'LOGIN' | 'SSH_KEY' | undefined}
-            />
-          ) : (
-            <>
-              <TextField
-                label="Username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                fullWidth
-                required={!isEditMode}
-                placeholder={isEditMode ? 'Leave blank to keep unchanged' : undefined}
-              />
-              <TextField
-                label="Password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                type="password"
-                fullWidth
-                placeholder={isEditMode ? 'Leave blank to keep unchanged' : undefined}
+                multiline
+                rows={2}
               />
               {type === 'RDP' && (
-                <TextField
-                  label="Domain (optional)"
-                  value={domain}
-                  onChange={(e) => setDomain(e.target.value)}
-                  fullWidth
-                  placeholder={isEditMode ? 'Leave blank to keep unchanged' : 'e.g. CONTOSO'}
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={enableDrive}
+                      onChange={(e) => setEnableDrive(e.target.checked)}
+                    />
+                  }
+                  label="Enable file sharing (drive redirection)"
                 />
               )}
-            </>
-          )}
-          <FormControl fullWidth size="small">
-            <InputLabel>Default connect behavior</InputLabel>
-            <Select
-              value={defaultConnectMode}
-              label="Default connect behavior"
-              onChange={(e) => setDefaultConnectMode(e.target.value)}
-            >
-              <MenuItem value="">Use saved credentials (default)</MenuItem>
-              <MenuItem value="domain">Use domain profile credentials</MenuItem>
-              <MenuItem value="prompt">Always ask (show Connect As dialog)</MenuItem>
-            </Select>
-          </FormControl>
-          <TextField
-            label="Description (optional)"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            fullWidth
-            multiline
-            rows={2}
-          />
-          {type === 'RDP' && (
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={enableDrive}
-                  onChange={(e) => setEnableDrive(e.target.checked)}
-                />
-              }
-              label="Enable file sharing (drive redirection)"
-            />
-          )}
+          </Box>
           {type === 'SSH' && (
             <Accordion variant="outlined" disableGutters>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>

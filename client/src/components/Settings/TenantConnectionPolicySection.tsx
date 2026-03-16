@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import {
-  Box, Typography, Button, Accordion, AccordionSummary, AccordionDetails,
+  Box, Typography, Button, Card, CardContent, Accordion, AccordionSummary, AccordionDetails,
   Switch, FormControlLabel, Stack, Alert,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useTenantStore } from '../../store/tenantStore';
+import { useNotificationStore } from '../../store/notificationStore';
 import type { EnforcedConnectionSettings } from '../../api/tenant.api';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
 import type { RdpSettings } from '../../constants/rdpDefaults';
@@ -21,7 +22,7 @@ export default function TenantConnectionPolicySection() {
   const tenant = useTenantStore((s) => s.tenant);
   const updateTenant = useTenantStore((s) => s.updateTenant);
   const { loading, error, clearError, run } = useAsyncAction();
-  const [success, setSuccess] = useState(false);
+  const notify = useNotificationStore((s) => s.notify);
 
   const [sshEnabled, setSshEnabled] = useState(false);
   const [rdpEnabled, setRdpEnabled] = useState(false);
@@ -67,7 +68,6 @@ export default function TenantConnectionPolicySection() {
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleSave = async () => {
-    setSuccess(false);
     clearError();
     const payload: EnforcedConnectionSettings = {};
     if (sshEnabled && Object.keys(sshSettings).length > 0) payload.ssh = sshSettings;
@@ -79,11 +79,10 @@ export default function TenantConnectionPolicySection() {
       () => updateTenant({ enforcedConnectionSettings: hasAny ? payload : null }),
       'Failed to save connection policy',
     );
-    if (ok) setSuccess(true);
+    if (ok) notify('Settings saved successfully.', 'success');
   };
 
   const handleClear = async () => {
-    setSuccess(false);
     clearError();
     const ok = await run(
       () => updateTenant({ enforcedConnectionSettings: null }),
@@ -96,14 +95,15 @@ export default function TenantConnectionPolicySection() {
       setSshSettings({});
       setRdpSettings({});
       setVncSettings({});
-      setSuccess(true);
+      notify('Settings saved successfully.', 'success');
     }
   };
 
   if (!tenant) return null;
 
   return (
-    <Box>
+    <Card>
+      <CardContent>
       <Typography variant="h6" gutterBottom>Connection Policy Enforcement</Typography>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
         Settings configured here are enforced on all connections in the organization.
@@ -111,7 +111,6 @@ export default function TenantConnectionPolicySection() {
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }}>Connection policy saved.</Alert>}
 
       <Stack spacing={1}>
         <Accordion variant="outlined" disableGutters>
@@ -195,6 +194,7 @@ export default function TenantConnectionPolicySection() {
           Clear All
         </Button>
       </Box>
-    </Box>
+      </CardContent>
+    </Card>
   );
 }

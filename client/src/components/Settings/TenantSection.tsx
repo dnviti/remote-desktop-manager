@@ -17,13 +17,15 @@ import IdentityVerification from '../common/IdentityVerification';
 import VaultProvidersSection from './VaultProvidersSection';
 import { extractApiError } from '../../utils/apiError';
 import { ALL_ROLES, ROLE_LABELS, isAdminOrAbove, type TenantRole } from '../../utils/roles';
+import { useNotificationStore } from '../../store/notificationStore';
 
 interface TenantSectionProps {
-  onNavigateToTab?: (tabId: string) => void;
   onViewUserProfile?: (userId: string) => void;
+  /** Parent calls this ref to expose the delete-org trigger */
+  onDeleteRequest?: (trigger: () => void) => void;
 }
 
-export default function TenantSection({ onNavigateToTab, onViewUserProfile }: TenantSectionProps) {
+export default function TenantSection({ onViewUserProfile, onDeleteRequest }: TenantSectionProps) {
   const user = useAuthStore((s) => s.user);
   const tenant = useTenantStore((s) => s.tenant);
   const users = useTenantStore((s) => s.users);
@@ -112,13 +114,18 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
   const [expiryValue, setExpiryValue] = useState('');
   const [savingExpiry, setSavingExpiry] = useState(false);
 
+  const notify = useNotificationStore((s) => s.notify);
   const tenantRole = user?.tenantRole;
   const isAdmin = isAdminOrAbove(tenantRole);
-  const isOwner = tenantRole === 'OWNER';
 
   useEffect(() => {
     fetchTenant();
   }, [fetchTenant]);
+
+  // Expose delete trigger to parent
+  useEffect(() => {
+    onDeleteRequest?.(() => setDeleteConfirmOpen(true));
+  }, [onDeleteRequest]);
 
   useEffect(() => {
     if (tenant) {
@@ -325,7 +332,8 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
     setChangeEmailError('');
     try {
       await adminChangeUserEmail(tenant.id, changeEmailTarget.id, newEmail.trim(), verificationId);
-      setChangeEmailPhase('done');
+      notify(`Email changed successfully to ${newEmail.trim()}`, 'success');
+      setChangeEmailOpen(false);
       fetchUsers();
     } catch (err: unknown) {
       setChangeEmailError(extractApiError(err, 'Failed to change email'));
@@ -368,6 +376,7 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
       const res = await adminChangeUserPassword(tenant.id, changePwdTarget.id, newPassword, verificationId);
       setRecoveryKey(res.recoveryKey);
       setChangePwdPhase('done');
+      notify('Password changed successfully', 'success');
     } catch (err: unknown) {
       setChangePwdError(extractApiError(err, 'Failed to change password'));
       setChangePwdPhase('input');
@@ -423,7 +432,7 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
 
       {/* Organization Info */}
-      <Card sx={{ mb: 3 }}>
+      <Card>
         <CardContent>
           <Typography variant="h6" gutterBottom>Organization Info</Typography>
           <Stack spacing={2}>
@@ -477,10 +486,153 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
               </Box>
             )}
           </Stack>
+        </CardContent>
+      </Card>
 
-          {isAdmin && (
-            <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-              <Typography variant="subtitle2" gutterBottom>Security Policy</Typography>
+      {/* Members */}
+      <Card>
+        <CardContent>
+          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+            <Typography variant="h6" sx={{ flexGrow: 1 }}>Members</Typography>
+            {isAdmin && (
+              <Stack direction="row" spacing={1}>
+                <Button
+                  startIcon={<GroupAdd />}
+                  variant="contained"
+                  size="small"
+                  onClick={() => setCreateUserOpen(true)}
+                >
+                  Create User
+                </Button>
+                <Button
+                  startIcon={<PersonAdd />}
+                  variant="outlined"
+                  size="small"
+                  onClick={() => setInviteOpen(true)}
+                >
+                  Invite
+                </Button>
+              </Stack>
+            )}
+          </Box>
+          {usersLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
+              <CircularProgress size={24} />
+            </Box>
+          ) : (
+            <TableContainer>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>User</TableCell>
+                    <TableCell>Role</TableCell>
+                    <TableCell>MFA</TableCell>
+                    {isAdmin && <TableCell>Expires</TableCell>}
+                    {isAdmin && <TableCell>Status</TableCell>}
+                    {isAdmin && <TableCell align="right">Actions</TableCell>}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {users.map((u) => (
+                    <TableRow key={u.id} sx={u.enabled === false ? { opacity: 0.5 } : undefined}>
+                      <TableCell
+                        sx={{ cursor: onViewUserProfile ? 'pointer' : undefined }}
+                        onClick={() => onViewUserProfile?.(u.id)}
+                      >
+                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                          <Avatar src={u.avatarData || undefined} sx={{ width: 28, height: 28 }}>
+                            {(u.username || u.email).charAt(0).toUpperCase()}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="body2">
+                              {u.username || u.email}
+                              {u.id === user?.id && (
+                                <Typography component="span" variant="caption" color="text.secondary"> (you)</Typography>
+                              )}
+                            </Typography>
+                            {u.username && (
+                              <Typography variant="caption" color="text.secondary">{u.email}</Typography>
+                            )}
+                          </Box>
+                        </Box>
+                      </TableCell>
+                      <TableCell>
+                        {isAdmin && u.id !== user?.id ? (
+                          <Select
+                            value={u.role}
+                            size="small"
+                            onChange={(e) => handleRoleChange(u.id, e.target.value)}
+                            sx={{ minWidth: 110 }}
+                          >
+                            {ALL_ROLES.map((r) => (
+                              <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
+                            ))}
+                          </Select>
+                        ) : (
+                          <Chip label={u.role} size="small" variant="outlined" />
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {u.totpEnabled || u.smsMfaEnabled ? (
+                          <Chip label="Active" color="success" size="small" />
+                        ) : (
+                          <Chip label="None" size="small" />
+                        )}
+                      </TableCell>
+                      {isAdmin && (
+                        <TableCell>
+                          {u.expiresAt ? (
+                            <Chip
+                              label={u.expired ? 'Expired' : new Date(u.expiresAt).toLocaleDateString()}
+                              color={u.expired ? 'error' : 'default'}
+                              size="small"
+                              variant="outlined"
+                            />
+                          ) : (
+                            <Typography variant="caption" color="text.secondary">—</Typography>
+                          )}
+                        </TableCell>
+                      )}
+                      {isAdmin && (
+                        <TableCell>
+                          {u.id === user?.id ? (
+                            <Chip label="Active" color="success" size="small" />
+                          ) : (
+                            <Switch
+                              size="small"
+                              checked={u.enabled !== false}
+                              disabled={togglingUser === u.id}
+                              onChange={(_, checked) => handleToggleEnabled(u.id, checked)}
+                            />
+                          )}
+                        </TableCell>
+                      )}
+                      {isAdmin && (
+                        <TableCell align="right">
+                          {u.id !== user?.id && (
+                            <IconButton
+                              size="small"
+                              onClick={(e) => openAdminMenu(e, u)}
+                            >
+                              <MoreVert fontSize="small" />
+                            </IconButton>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Security Policy */}
+      {isAdmin && (
+        <Card>
+          <CardContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <Typography variant="h6" gutterBottom>Security Policy</Typography>
               {mfaDashboard && (
                 <Box sx={{ mb: 2, p: 2, bgcolor: 'action.hover', borderRadius: 1 }}>
                   <Typography variant="subtitle2" gutterBottom>
@@ -656,181 +808,19 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
                   />
                 ))}
               </Box>
-            </Box>
-          )}
-
-          {isOwner && (
-            <Box sx={{ mt: 3, pt: 2, borderTop: 1, borderColor: 'divider' }}>
-              <Button
-                color="error"
-                variant="outlined"
-                size="small"
-                onClick={() => setDeleteConfirmOpen(true)}
-              >
-                Delete Organization
-              </Button>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* External Vault Providers */}
-      {isAdmin && tenant && (
-        <Card sx={{ mb: 3 }}>
-          <CardContent>
-            <VaultProvidersSection tenantId={tenant.id} />
           </CardContent>
         </Card>
       )}
 
-      {/* Members */}
-      <Card sx={{ mb: 3 }}>
-        <CardContent>
-          <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-            <Typography variant="h6" sx={{ flexGrow: 1 }}>Members</Typography>
-            {isAdmin && (
-              <Stack direction="row" spacing={1}>
-                <Button
-                  startIcon={<GroupAdd />}
-                  variant="contained"
-                  size="small"
-                  onClick={() => setCreateUserOpen(true)}
-                >
-                  Create User
-                </Button>
-                <Button
-                  startIcon={<PersonAdd />}
-                  variant="outlined"
-                  size="small"
-                  onClick={() => setInviteOpen(true)}
-                >
-                  Invite
-                </Button>
-              </Stack>
-            )}
-          </Box>
-          {usersLoading ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', py: 3 }}>
-              <CircularProgress size={24} />
-            </Box>
-          ) : (
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell>User</TableCell>
-                    <TableCell>Role</TableCell>
-                    <TableCell>MFA</TableCell>
-                    {isAdmin && <TableCell>Expires</TableCell>}
-                    {isAdmin && <TableCell>Status</TableCell>}
-                    {isAdmin && <TableCell align="right">Actions</TableCell>}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {users.map((u) => (
-                    <TableRow key={u.id} sx={u.enabled === false ? { opacity: 0.5 } : undefined}>
-                      <TableCell
-                        sx={{ cursor: onViewUserProfile ? 'pointer' : undefined }}
-                        onClick={() => onViewUserProfile?.(u.id)}
-                      >
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Avatar src={u.avatarData || undefined} sx={{ width: 28, height: 28 }}>
-                            {(u.username || u.email).charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2">
-                              {u.username || u.email}
-                              {u.id === user?.id && (
-                                <Typography component="span" variant="caption" color="text.secondary"> (you)</Typography>
-                              )}
-                            </Typography>
-                            {u.username && (
-                              <Typography variant="caption" color="text.secondary">{u.email}</Typography>
-                            )}
-                          </Box>
-                        </Box>
-                      </TableCell>
-                      <TableCell>
-                        {isAdmin && u.id !== user?.id ? (
-                          <Select
-                            value={u.role}
-                            size="small"
-                            onChange={(e) => handleRoleChange(u.id, e.target.value)}
-                            sx={{ minWidth: 110 }}
-                          >
-                            {ALL_ROLES.map((r) => (
-                              <MenuItem key={r} value={r}>{ROLE_LABELS[r]}</MenuItem>
-                            ))}
-                          </Select>
-                        ) : (
-                          <Chip label={u.role} size="small" variant="outlined" />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        {u.totpEnabled || u.smsMfaEnabled ? (
-                          <Chip label="Active" color="success" size="small" />
-                        ) : (
-                          <Chip label="None" size="small" />
-                        )}
-                      </TableCell>
-                      {isAdmin && (
-                        <TableCell>
-                          {u.expiresAt ? (
-                            <Chip
-                              label={u.expired ? 'Expired' : new Date(u.expiresAt).toLocaleDateString()}
-                              color={u.expired ? 'error' : 'default'}
-                              size="small"
-                              variant="outlined"
-                            />
-                          ) : (
-                            <Typography variant="caption" color="text.secondary">—</Typography>
-                          )}
-                        </TableCell>
-                      )}
-                      {isAdmin && (
-                        <TableCell>
-                          {u.id === user?.id ? (
-                            <Chip label="Active" color="success" size="small" />
-                          ) : (
-                            <Switch
-                              size="small"
-                              checked={u.enabled !== false}
-                              disabled={togglingUser === u.id}
-                              onChange={(_, checked) => handleToggleEnabled(u.id, checked)}
-                            />
-                          )}
-                        </TableCell>
-                      )}
-                      {isAdmin && (
-                        <TableCell align="right">
-                          {u.id !== user?.id && (
-                            <IconButton
-                              size="small"
-                              onClick={(e) => openAdminMenu(e, u)}
-                            >
-                              <MoreVert fontSize="small" />
-                            </IconButton>
-                          )}
-                        </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Quick Links */}
-      <Card>
-        <CardContent>
-          <Typography variant="h6" gutterBottom>Teams</Typography>
-          <Button variant="outlined" onClick={() => onNavigateToTab?.('teams')}>
-            Manage Teams
-          </Button>
-        </CardContent>
-      </Card>
+      {/* External Vault Providers */}
+      {isAdmin && tenant && (
+        <Card>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>External Vault Providers</Typography>
+            <VaultProvidersSection tenantId={tenant.id} />
+          </CardContent>
+        </Card>
+      )}
 
       <InviteDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
       <CreateUserDialog open={createUserOpen} onClose={() => setCreateUserOpen(false)} />
@@ -991,11 +981,6 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
               />
             </>
           )}
-          {changeEmailPhase === 'done' && (
-            <Alert severity="success">
-              Email changed successfully to <strong>{newEmail}</strong>.
-            </Alert>
-          )}
         </DialogContent>
         <DialogActions>
           {changeEmailPhase === 'input' && (
@@ -1009,9 +994,6 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
                 {changeEmailLoading ? 'Verifying...' : 'Continue'}
               </Button>
             </>
-          )}
-          {changeEmailPhase === 'done' && (
-            <Button onClick={() => setChangeEmailOpen(false)}>Close</Button>
           )}
         </DialogActions>
       </Dialog>
@@ -1061,9 +1043,6 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
           )}
           {changePwdPhase === 'done' && (
             <>
-              <Alert severity="success" sx={{ mb: 2 }}>
-                Password changed successfully.
-              </Alert>
               <Alert severity="warning" sx={{ mb: 2 }}>
                 The user&apos;s vault has been reset. Save the recovery key below — it will not be shown again.
               </Alert>
@@ -1126,6 +1105,7 @@ export default function TenantSection({ onNavigateToTab, onViewUserProfile }: Te
           </Button>
         </DialogActions>
       </Dialog>
+
     </>
   );
 }

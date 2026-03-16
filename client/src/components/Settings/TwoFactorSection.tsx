@@ -5,10 +5,12 @@ import {
 import { QRCodeSVG } from 'qrcode.react';
 import { setup2FA, verify2FA, disable2FA, get2FAStatus } from '../../api/twofa.api';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 
 type Phase = 'idle' | 'setup' | 'disabling';
 
 export default function TwoFactorSection() {
+  const notify = useNotificationStore((s) => s.notify);
   const [enabled, setEnabled] = useState(false);
   const [statusLoading, setStatusLoading] = useState(true);
   const [phase, setPhase] = useState<Phase>('idle');
@@ -17,7 +19,6 @@ export default function TwoFactorSection() {
   const [code, setCode] = useState('');
   const [disableCode, setDisableCode] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -29,7 +30,6 @@ export default function TwoFactorSection() {
 
   const handleStartSetup = async () => {
     setError('');
-    setSuccess('');
     setLoading(true);
     try {
       const result = await setup2FA();
@@ -49,7 +49,7 @@ export default function TwoFactorSection() {
     try {
       await verify2FA(code);
       setEnabled(true);
-      setSuccess('Two-factor authentication enabled successfully');
+      notify('Two-factor authentication enabled successfully', 'success');
       setPhase('idle');
       setCode('');
       setSecret('');
@@ -67,7 +67,7 @@ export default function TwoFactorSection() {
     try {
       await disable2FA(disableCode);
       setEnabled(false);
-      setSuccess('Two-factor authentication disabled');
+      notify('Two-factor authentication disabled', 'success');
       setPhase('idle');
       setDisableCode('');
     } catch (err: unknown) {
@@ -103,7 +103,6 @@ export default function TwoFactorSection() {
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {/* State: 2FA disabled, idle */}
         {!enabled && phase === 'idle' && (

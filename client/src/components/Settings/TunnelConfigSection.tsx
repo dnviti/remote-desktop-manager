@@ -11,6 +11,7 @@ import {
 import { useAuthStore } from '../../store/authStore';
 import { useTenantStore } from '../../store/tenantStore';
 import { useGatewayStore } from '../../store/gatewayStore';
+import { useNotificationStore } from '../../store/notificationStore';
 import { extractApiError } from '../../utils/apiError';
 
 // eslint-disable-next-line security/detect-unsafe-regex
@@ -58,7 +59,7 @@ export default function TunnelConfigSection() {
   const [cidrError, setCidrError] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState(false);
+  const notify = useNotificationStore((s) => s.notify);
 
   // Sync local state from tenant data
   useEffect(() => {
@@ -79,7 +80,6 @@ export default function TunnelConfigSection() {
   const handleSave = useCallback(async () => {
     setSaving(true);
     setError('');
-    setSuccess(false);
     try {
       await updateTenant({
         tunnelDefaultEnabled,
@@ -90,14 +90,14 @@ export default function TunnelConfigSection() {
         tunnelAgentAllowedCidrs,
       });
       await fetchTenant();
-      setSuccess(true);
+      notify('Settings saved successfully.', 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to save tunnel configuration'));
     } finally {
       setSaving(false);
     }
   }, [
-    updateTenant, fetchTenant,
+    updateTenant, fetchTenant, notify,
     tunnelDefaultEnabled, tunnelRequireForRemote, tunnelAutoTokenRotation,
     tunnelTokenRotationDays, tunnelTokenMaxLifetimeDays, tunnelAgentAllowedCidrs,
   ]);
@@ -144,13 +144,12 @@ export default function TunnelConfigSection() {
           </Typography>
 
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-          {success && <Alert severity="success" sx={{ mb: 2 }}>Settings saved successfully.</Alert>}
 
           <FormControlLabel
             control={
               <Switch
                 checked={tunnelDefaultEnabled}
-                onChange={(e) => { setTunnelDefaultEnabled(e.target.checked); setSuccess(false); }}
+                onChange={(e) => { setTunnelDefaultEnabled(e.target.checked);}}
                 disabled={saving}
               />
             }
@@ -162,7 +161,7 @@ export default function TunnelConfigSection() {
               control={
                 <Switch
                   checked={tunnelRequireForRemote}
-                  onChange={(e) => { setTunnelRequireForRemote(e.target.checked); setSuccess(false); }}
+                  onChange={(e) => { setTunnelRequireForRemote(e.target.checked);}}
                   disabled={saving}
                 />
               }
@@ -189,7 +188,7 @@ export default function TunnelConfigSection() {
             control={
               <Switch
                 checked={tunnelAutoTokenRotation}
-                onChange={(e) => { setTunnelAutoTokenRotation(e.target.checked); setSuccess(false); }}
+                onChange={(e) => { setTunnelAutoTokenRotation(e.target.checked);}}
                 disabled={saving}
               />
             }
@@ -202,7 +201,7 @@ export default function TunnelConfigSection() {
               type="number"
               label="Rotation interval (days)"
               value={tunnelTokenRotationDays}
-              onChange={(e) => { setTunnelTokenRotationDays(Math.max(1, parseInt(e.target.value, 10) || 1)); setSuccess(false); }}
+              onChange={(e) => { setTunnelTokenRotationDays(Math.max(1, parseInt(e.target.value, 10) || 1));}}
               disabled={saving || !tunnelAutoTokenRotation}
               slotProps={{ htmlInput: { min: 1, max: 365 } }}
               sx={{ width: 200 }}
@@ -215,7 +214,6 @@ export default function TunnelConfigSection() {
               onChange={(e) => {
                 const val = e.target.value;
                 setTunnelTokenMaxLifetimeDays(val === '' ? null : Math.max(1, parseInt(val, 10) || 1));
-                setSuccess(false);
               }}
               disabled={saving}
               slotProps={{ htmlInput: { min: 1, max: 365 } }}

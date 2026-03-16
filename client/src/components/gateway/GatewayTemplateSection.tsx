@@ -9,6 +9,7 @@ import {
   RocketLaunch as DeployIcon, Description as TemplateIcon,
 } from '@mui/icons-material';
 import { useGatewayStore } from '../../store/gatewayStore';
+import { useNotificationStore } from '../../store/notificationStore';
 import type { GatewayTemplateData } from '../../api/gateway.api';
 import GatewayTemplateDialog from './GatewayTemplateDialog';
 import { extractApiError } from '../../utils/apiError';
@@ -26,7 +27,7 @@ export default function GatewayTemplateSection() {
   const [deleting, setDeleting] = useState(false);
   const [deployingId, setDeployingId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const notify = useNotificationStore((s) => s.notify);
 
   useEffect(() => {
     fetchTemplates();
@@ -54,10 +55,9 @@ export default function GatewayTemplateSection() {
   const handleDeploy = async (tpl: GatewayTemplateData) => {
     setDeployingId(tpl.id);
     setError('');
-    setSuccess('');
     try {
       const gateway = await deployFromTemplateAction(tpl.id);
-      setSuccess(`Gateway "${gateway.name}" created and deployment started.`);
+      notify(`Gateway "${gateway.name}" created and deployment started.`, 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to deploy from template'));
     } finally {
@@ -79,7 +79,6 @@ export default function GatewayTemplateSection() {
       </Box>
 
       {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-      {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
       {templatesLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>

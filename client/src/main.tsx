@@ -6,6 +6,7 @@ import { ThemeProvider, CssBaseline } from '@mui/material';
 import App from './App';
 import { useThemeStore } from './store/themeStore';
 import { themes } from './theme';
+import './global.css';
 
 function Root() {
   const mode = useThemeStore((s) => s.mode);

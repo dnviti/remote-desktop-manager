@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link as RouterLink, useNavigate } from 'react-router-dom';
 import {
-  Box, Card, CardContent, TextField, Button, Typography, Alert, Link,
+  Box, TextField, Button, Typography, Alert, Link,
 } from '@mui/material';
 import { registerApi, getPublicConfig } from '../api/auth.api';
 import { resendVerificationEmail } from '../api/email.api';
@@ -97,32 +97,67 @@ export default function RegisterPage() {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
+        bgcolor: '#08080a',
+        background: 'radial-gradient(ellipse at 50% 40%, rgba(0,229,160,0.04) 0%, #08080a 70%)',
       }}
     >
-      <Card sx={{ width: 400, maxWidth: '90vw' }}>
-        <CardContent>
-          <Typography variant="h5" gutterBottom align="center">
+      <Box sx={{
+        width: 400,
+        maxWidth: '90vw',
+        bgcolor: '#0f0f12',
+        border: '1px solid rgba(35,35,40,0.6)',
+        borderRadius: 4,
+        boxShadow: '0 8px 32px rgba(0,0,0,0.4)',
+        p: 3,
+      }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 1 }}>
+            <Box sx={{ width: 24, height: 3, borderRadius: 1, bgcolor: '#00e5a0' }} />
+          </Box>
+          <Typography variant="h5" gutterBottom align="center" sx={{
+            fontFamily: "'Instrument Serif', Georgia, serif",
+            fontSize: '2.25rem',
+            color: '#f4f4f5',
+            fontWeight: 400,
+          }}>
             Create Account
           </Typography>
 
           {signupDisabled ? (
             <>
-              <Alert severity="info" sx={{ mb: 2 }}>
+              <Alert severity="info" sx={{
+                mb: 2,
+                bgcolor: 'rgba(59,130,246,0.08)',
+                color: '#93c5fd',
+                border: '1px solid rgba(59,130,246,0.15)',
+                '& .MuiAlert-icon': { color: '#93c5fd' },
+              }}>
                 Public registration is currently disabled. Please contact your organization administrator to get an account.
               </Alert>
-              <Typography variant="body2" align="center">
+              <Typography variant="body2" align="center" sx={{ color: '#a1a1aa' }}>
                 Already have an account?{' '}
-                <Link component={RouterLink} to="/login">Sign in</Link>
+                <Link component={RouterLink} to="/login" sx={{ color: '#00e5a0', '&:hover': { color: '#00cc8e' } }}>Sign in</Link>
               </Typography>
             </>
           ) : registered ? (
             <>
-              <Alert severity="success" sx={{ mb: 2 }}>
+              <Alert severity="success" sx={{
+                mb: 2,
+                bgcolor: 'rgba(0,229,160,0.08)',
+                color: '#00e5a0',
+                border: '1px solid rgba(0,229,160,0.15)',
+                '& .MuiAlert-icon': { color: '#00e5a0' },
+              }}>
                 {successMessage}
               </Alert>
               {recoveryKey && (
-                <Alert severity="warning" sx={{ mb: 2 }}>
-                  <Typography variant="subtitle2" gutterBottom>
+                <Alert severity="warning" sx={{
+                  mb: 2,
+                  bgcolor: 'rgba(234,179,8,0.08)',
+                  color: '#fde68a',
+                  border: '1px solid rgba(234,179,8,0.15)',
+                  '& .MuiAlert-icon': { color: '#fde68a' },
+                }}>
+                  <Typography variant="subtitle2" gutterBottom sx={{ color: '#fde68a' }}>
                     Save your vault recovery key:
                   </Typography>
                   <Typography
@@ -130,21 +165,23 @@ export default function RegisterPage() {
                     sx={{
                       fontFamily: 'monospace',
                       wordBreak: 'break-all',
-                      bgcolor: 'action.hover',
+                      bgcolor: '#161619',
+                      color: '#f4f4f5',
                       p: 1,
                       borderRadius: 1,
+                      border: '1px solid #232328',
                       userSelect: 'all',
                     }}
                   >
                     {recoveryKey}
                   </Typography>
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1 }}>
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: '#a1a1aa' }}>
                     This key allows you to recover your encrypted vault if you forget your password.
                     Store it in a safe place. It is shown only once.
                   </Typography>
                 </Alert>
               )}
-              <Typography variant="body2" align="center" sx={{ mb: 2 }}>
+              <Typography variant="body2" align="center" sx={{ mb: 2, color: '#a1a1aa' }}>
                 Didn't receive the email? Check your spam folder or resend it.
               </Typography>
               <Button
@@ -152,22 +189,41 @@ export default function RegisterPage() {
                 variant="outlined"
                 onClick={handleResend}
                 disabled={resendCountdown > 0}
-                sx={{ mb: 1 }}
+                sx={{
+                  mb: 1,
+                  borderColor: '#232328',
+                  color: '#a1a1aa',
+                  '&:hover': {
+                    borderColor: '#00e5a0',
+                    color: '#00e5a0',
+                    bgcolor: 'rgba(0,229,160,0.06)',
+                  },
+                  '&.Mui-disabled': {
+                    borderColor: 'rgba(35,35,40,0.6)',
+                    color: '#52525b',
+                  },
+                }}
               >
                 {resendCountdown > 0
                   ? `Resend verification email (${resendCountdown}s)`
                   : 'Resend verification email'}
               </Button>
-              <Typography variant="body2" align="center">
-                <Link component={RouterLink} to="/login">Go to Sign In</Link>
+              <Typography variant="body2" align="center" sx={{ color: '#a1a1aa' }}>
+                <Link component={RouterLink} to="/login" sx={{ color: '#00e5a0', '&:hover': { color: '#00cc8e' } }}>Go to Sign In</Link>
               </Typography>
             </>
           ) : (
             <>
-              <Typography variant="body2" color="text.secondary" align="center" mb={3}>
+              <Typography variant="body2" align="center" mb={3} sx={{ color: '#a1a1aa' }}>
                 Your password is also your vault key
               </Typography>
-              {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+              {error && <Alert severity="error" sx={{
+                mb: 2,
+                bgcolor: 'rgba(239,68,68,0.08)',
+                color: '#fca5a5',
+                border: '1px solid rgba(239,68,68,0.15)',
+                '& .MuiAlert-icon': { color: '#fca5a5' },
+              }}>{error}</Alert>}
               <Box component="form" onSubmit={handleSubmit}>
                 <OAuthButtons mode="register" />
                 <TextField
@@ -204,19 +260,31 @@ export default function RegisterPage() {
                   type="submit"
                   variant="contained"
                   disabled={loading}
-                  sx={{ mt: 2, mb: 1 }}
+                  sx={{
+                    mt: 2,
+                    mb: 1,
+                    bgcolor: '#00e5a0',
+                    color: '#08080a',
+                    fontWeight: 600,
+                    '&:hover': {
+                      bgcolor: '#00cc8e',
+                    },
+                    '&.Mui-disabled': {
+                      bgcolor: 'rgba(0,229,160,0.3)',
+                      color: 'rgba(8,8,10,0.5)',
+                    },
+                  }}
                 >
                   {loading ? 'Creating account...' : 'Sign Up'}
                 </Button>
-                <Typography variant="body2" align="center">
+                <Typography variant="body2" align="center" sx={{ color: '#a1a1aa' }}>
                   Already have an account?{' '}
-                  <Link component={RouterLink} to="/login">Sign in</Link>
+                  <Link component={RouterLink} to="/login" sx={{ color: '#00e5a0', '&:hover': { color: '#00cc8e' } }}>Sign in</Link>
                 </Typography>
               </Box>
             </>
           )}
-        </CardContent>
-      </Card>
+      </Box>
     </Box>
   );
 }

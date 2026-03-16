@@ -26,7 +26,6 @@ export default function ChangePasswordSection({ hasPassword }: ChangePasswordSec
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const { loading, error, setError, run } = useAsyncAction();
-  const [success, setSuccess] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
 
   // Identity verification state
@@ -39,7 +38,6 @@ export default function ChangePasswordSection({ hasPassword }: ChangePasswordSec
   if (!hasPassword) return null;
 
   const handleStartPasswordChange = async () => {
-    setSuccess('');
     await run(async () => {
       const result = await initiatePasswordChange();
       if (result.skipVerification) {
@@ -62,7 +60,6 @@ export default function ChangePasswordSection({ hasPassword }: ChangePasswordSec
 
   const handlePasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSuccess('');
 
     if (newPassword !== confirmPassword) {
       setError('Passwords do not match');
@@ -100,7 +97,6 @@ export default function ChangePasswordSection({ hasPassword }: ChangePasswordSec
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {phase === 'idle' && (
           <Button

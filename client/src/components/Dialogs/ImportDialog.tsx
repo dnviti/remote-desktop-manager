@@ -29,6 +29,7 @@ import {
 } from '@mui/icons-material';
 import { importConnections, type ImportResult, type ImportOptions } from '../../api/importExport.api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { useNotificationStore } from '../../store/notificationStore';
 
 interface ImportDialogProps {
   open: boolean;
@@ -54,6 +55,7 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
   const [duplicateStrategy, setDuplicateStrategy] = useState<'SKIP' | 'OVERWRITE' | 'RENAME'>('SKIP');
   const { loading, error, setError, clearError, run } = useAsyncAction();
   const [result, setResult] = useState<ImportResult | null>(null);
+  const notify = useNotificationStore((s) => s.notify);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,6 +140,7 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
       const res = await importConnections(file, options);
       setResult(res);
       setStep(3);
+      notify(`Import complete: ${res.imported} imported, ${res.skipped} skipped, ${res.failed} failed`, 'success');
     }, 'Import failed');
   };
 
@@ -283,9 +286,9 @@ export default function ImportDialog({ open, onClose }: ImportDialogProps) {
               </Box>
             ) : (
               <>
-                <Alert severity="success" sx={{ mb: 2 }}>
-                  Import complete: {result.imported} imported, {result.skipped} skipped, {result.failed} failed
-                </Alert>
+                <Typography variant="body1" sx={{ mb: 2 }}>
+                  {result.imported} imported, {result.skipped} skipped, {result.failed} failed
+                </Typography>
                 {result.errors.length > 0 && (
                   <TableContainer component={Paper}>
                     <Table size="small">

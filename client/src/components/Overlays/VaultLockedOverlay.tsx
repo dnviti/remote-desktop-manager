@@ -154,15 +154,15 @@ export default function VaultLockedOverlay() {
       disableEscapeKeyDown
       sx={{ zIndex: 1400 }}
       slotProps={{
-        backdrop: { sx: { bgcolor: 'rgba(0, 0, 0, 0.5)' } },
-        paper: { elevation: 8, sx: { p: 4, maxWidth: 400, width: '100%', textAlign: 'center' } },
+        backdrop: { sx: { bgcolor: 'rgba(8,8,10,0.7)' } },
+        paper: { elevation: 8, sx: { p: 4, maxWidth: 400, width: '100%', textAlign: 'center', bgcolor: '#0f0f12', border: '1px solid rgba(35,35,40,0.6)', borderRadius: 4 } },
       }}
     >
-        <LockIcon sx={{ fontSize: 48, color: 'warning.main', mb: 2 }} />
-        <Typography variant="h6" gutterBottom>
+        <LockIcon sx={{ fontSize: 48, color: '#00e5a0', mb: 2 }} />
+        <Typography variant="h6" gutterBottom sx={{ fontFamily: "'Instrument Serif', Georgia, serif", color: '#f4f4f5' }}>
           Vault Locked
         </Typography>
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+        <Typography variant="body2" sx={{ mb: 3, color: '#a1a1aa' }}>
           {activeMethod !== 'password'
             ? 'Your vault was locked. Verify your identity to unlock.'
             : 'Your vault was locked due to inactivity timeout. Enter your password to unlock and resume.'}
@@ -180,7 +180,7 @@ export default function VaultLockedOverlay() {
             {loading ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                 <CircularProgress size={32} />
-                <Typography variant="body2" color="text.secondary">
+                <Typography variant="body2" sx={{ color: '#a1a1aa' }}>
                   Waiting for your security key or passkey...
                 </Typography>
               </Box>
@@ -190,6 +190,7 @@ export default function VaultLockedOverlay() {
                 variant="contained"
                 fullWidth
                 startIcon={<FingerprintIcon />}
+                sx={{ bgcolor: '#00e5a0', color: '#08080a', '&:hover': { bgcolor: '#00cc8e' } }}
               >
                 Retry Passkey
               </Button>
@@ -215,7 +216,7 @@ export default function VaultLockedOverlay() {
               variant="contained"
               fullWidth
               disabled={loading || code.length < 6}
-              sx={{ mt: 1 }}
+              sx={{ mt: 1, bgcolor: '#00e5a0', color: '#08080a', '&:hover': { bgcolor: '#00cc8e' } }}
             >
               {loading ? 'Verifying...' : 'Verify Code'}
             </Button>
@@ -232,7 +233,7 @@ export default function VaultLockedOverlay() {
                 fullWidth
                 disabled={loading}
                 startIcon={<SmsIcon />}
-                sx={{ mt: 1 }}
+                sx={{ mt: 1, bgcolor: '#00e5a0', color: '#08080a', '&:hover': { bgcolor: '#00cc8e' } }}
               >
                 {loading ? 'Sending...' : 'Send SMS Code'}
               </Button>
@@ -253,7 +254,7 @@ export default function VaultLockedOverlay() {
                   variant="contained"
                   fullWidth
                   disabled={loading || code.length < 6}
-                  sx={{ mt: 1 }}
+                  sx={{ mt: 1, bgcolor: '#00e5a0', color: '#08080a', '&:hover': { bgcolor: '#00cc8e' } }}
                 >
                   {loading ? 'Verifying...' : 'Verify Code'}
                 </Button>
@@ -280,7 +281,7 @@ export default function VaultLockedOverlay() {
               variant="contained"
               fullWidth
               disabled={loading}
-              sx={{ mt: 1 }}
+              sx={{ mt: 1, bgcolor: '#00e5a0', color: '#08080a', '&:hover': { bgcolor: '#00cc8e' } }}
             >
               {loading ? 'Unlocking...' : 'Unlock Vault'}
             </Button>
@@ -290,7 +291,7 @@ export default function VaultLockedOverlay() {
         {/* Method switcher */}
         {otherMethods.length > 0 && (
           <>
-            <Divider sx={{ my: 2 }} />
+            <Divider sx={{ my: 2, borderColor: 'rgba(35,35,40,0.6)' }} />
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
               {otherMethods.map((method) => (
                 <Link
@@ -298,7 +299,7 @@ export default function VaultLockedOverlay() {
                   component="button"
                   variant="body2"
                   onClick={() => setActiveMethod(method)}
-                  sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, justifyContent: 'center' }}
+                  sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.5, justifyContent: 'center', color: '#00e5a0' }}
                 >
                   {getMethodIcon(method)}
                   Use {getMethodLabel(method)} instead
@@ -313,7 +314,7 @@ export default function VaultLockedOverlay() {
           variant="text"
           fullWidth
           color="inherit"
-          sx={{ mt: 2 }}
+          sx={{ mt: 2, color: '#a1a1aa' }}
         >
           Logout
         </Button>

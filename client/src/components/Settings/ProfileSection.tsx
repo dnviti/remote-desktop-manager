@@ -10,6 +10,7 @@ import {
 } from '../../api/user.api';
 import IdentityVerification from '../common/IdentityVerification';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { useNotificationStore } from '../../store/notificationStore';
 
 interface ProfileSectionProps {
   onHasPasswordResolved: (hasPassword: boolean) => void;
@@ -25,7 +26,7 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
   const [email, setEmail] = useState('');
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
   const { loading, error, setError, run } = useAsyncAction();
-  const [success, setSuccess] = useState('');
+  const notify = useNotificationStore((s) => s.notify);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Email change state
@@ -52,8 +53,9 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
 
   useEffect(() => {
     if (linkedProvider) {
-      setSuccess(`${linkedProvider.charAt(0).toUpperCase() + linkedProvider.slice(1)} account linked successfully`);
+      notify(`${linkedProvider.charAt(0).toUpperCase() + linkedProvider.slice(1)} account linked successfully`, 'success');
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- notify is stable
   }, [linkedProvider]);
 
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -70,7 +72,7 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
       setError('');
       uploadAvatar(dataUrl).then((result) => {
         updateUser({ avatarData: result.avatarData });
-        setSuccess('Avatar updated');
+        notify('Avatar updated', 'success');
       }).catch(() => {
         setError('Failed to upload avatar');
       });
@@ -80,12 +82,11 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
 
   const handleProfileSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSuccess('');
     const ok = await run(async () => {
       const result = await updateProfile({ username: username || undefined });
       updateUser({ username: result.username });
     }, 'Failed to update profile');
-    if (ok) setSuccess('Profile updated successfully');
+    if (ok) notify('Profile updated successfully', 'success');
   };
 
   const handleInitiateEmailChange = async () => {
@@ -117,7 +118,7 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
       updateUser({ email: result.email });
     }, 'Failed to confirm email change');
     if (ok) {
-      setSuccess('Email changed successfully');
+      notify('Email changed successfully', 'success');
       resetEmailChange();
     }
   };
@@ -129,7 +130,7 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
       updateUser({ email: result.email });
     }, 'Failed to confirm email change');
     if (ok) {
-      setSuccess('Email changed successfully');
+      notify('Email changed successfully', 'success');
       resetEmailChange();
     } else {
       setEmailChangePhase('entering-email');
@@ -168,7 +169,6 @@ export default function ProfileSection({ onHasPasswordResolved, linkedProvider }
         </Stack>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         <Box component="form" onSubmit={handleProfileSave}>
           <TextField

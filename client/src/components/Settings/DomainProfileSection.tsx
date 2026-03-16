@@ -11,14 +11,15 @@ import {
 } from '../../api/user.api';
 import { useVaultStore } from '../../store/vaultStore';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 
 export default function DomainProfileSection() {
   const [profile, setProfile] = useState<DomainProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [editing, setEditing] = useState(false);
+  const notify = useNotificationStore((s) => s.notify);
   const [confirmClearOpen, setConfirmClearOpen] = useState(false);
 
   const [domainName, setDomainName] = useState('');
@@ -41,7 +42,6 @@ export default function DomainProfileSection() {
 
   const handleSave = async () => {
     setError('');
-    setSuccess('');
     setSaving(true);
     try {
       const data: Record<string, string | null | undefined> = {};
@@ -55,7 +55,7 @@ export default function DomainProfileSection() {
       setDomainPassword('');
       setClearPassword(false);
       setEditing(false);
-      setSuccess('Domain profile updated');
+      notify('Domain profile updated', 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to update domain profile'));
     } finally {
@@ -66,7 +66,6 @@ export default function DomainProfileSection() {
   const handleClear = async () => {
     setConfirmClearOpen(false);
     setError('');
-    setSuccess('');
     setSaving(true);
     try {
       await clearDomainProfile();
@@ -77,7 +76,7 @@ export default function DomainProfileSection() {
       setDomainPassword('');
       setClearPassword(false);
       setEditing(false);
-      setSuccess('Domain profile cleared');
+      notify('Domain profile cleared', 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to clear domain profile'));
     } finally {
@@ -91,7 +90,6 @@ export default function DomainProfileSection() {
     setDomainPassword('');
     setClearPassword(false);
     setError('');
-    setSuccess('');
     setEditing(true);
   };
 
@@ -119,7 +117,6 @@ export default function DomainProfileSection() {
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError('')}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }} onClose={() => setSuccess('')}>{success}</Alert>}
 
         {!editing ? (
           <Box>

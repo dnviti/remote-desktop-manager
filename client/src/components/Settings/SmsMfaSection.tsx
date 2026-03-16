@@ -7,10 +7,12 @@ import {
   sendSmsMfaDisableCode, disableSmsMfa, getSmsMfaStatus,
 } from '../../api/smsMfa.api';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 
 type Phase = 'idle' | 'phone-input' | 'verify-phone' | 'disabling';
 
 export default function SmsMfaSection() {
+  const notify = useNotificationStore((s) => s.notify);
   const [enabled, setEnabled] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState<string | null>(null);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -19,7 +21,6 @@ export default function SmsMfaSection() {
   const [code, setCode] = useState('');
   const [disableCode, setDisableCode] = useState('');
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -52,7 +53,7 @@ export default function SmsMfaSection() {
       await verifySmsPhone(code);
       await enableSmsMfa();
       setEnabled(true);
-      setSuccess('SMS MFA enabled successfully');
+      notify('SMS MFA enabled successfully', 'success');
       setPhase('idle');
       setCode('');
       setPhoneInput('');
@@ -83,7 +84,7 @@ export default function SmsMfaSection() {
       await disableSmsMfa(disableCode);
       setEnabled(false);
       setPhoneNumber(null);
-      setSuccess('SMS MFA disabled');
+      notify('SMS MFA disabled', 'success');
       setPhase('idle');
       setDisableCode('');
     } catch (err: unknown) {
@@ -118,7 +119,6 @@ export default function SmsMfaSection() {
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {/* State: SMS MFA disabled, idle */}
         {!enabled && phase === 'idle' && (
@@ -126,7 +126,7 @@ export default function SmsMfaSection() {
             variant="contained"
             color="success"
             disabled={loading}
-            onClick={() => { setPhase('phone-input'); setError(''); setSuccess(''); }}
+            onClick={() => { setPhase('phone-input'); setError(''); }}
           >
             {loading ? 'Setting up...' : 'Enable SMS Authentication'}
           </Button>

@@ -12,8 +12,10 @@ import {
   type WebAuthnCredentialInfo,
 } from '../../api/webauthn.api';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 
 export default function WebAuthnSection() {
+  const notify = useNotificationStore((s) => s.notify);
   const [enabled, setEnabled] = useState(false);
   const [credentials, setCredentials] = useState<WebAuthnCredentialInfo[]>([]);
   const [statusLoading, setStatusLoading] = useState(true);
@@ -26,7 +28,6 @@ export default function WebAuthnSection() {
   const [editName, setEditName] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
 
   const loadData = useCallback(async () => {
@@ -51,7 +52,6 @@ export default function WebAuthnSection() {
 
   const handleStartRegistration = async () => {
     setError('');
-    setSuccess('');
     setRegistering(true);
     try {
       const options = await getWebAuthnRegistrationOptions();
@@ -75,7 +75,7 @@ export default function WebAuthnSection() {
     setLoading(true);
     try {
       await registerWebAuthnCredential(pendingCredential, friendlyName || undefined);
-      setSuccess('Security key registered successfully.');
+      notify('Security key registered successfully.', 'success');
       setNameDialogOpen(false);
       setPendingCredential(null);
       await loadData();
@@ -92,7 +92,7 @@ export default function WebAuthnSection() {
     setLoading(true);
     try {
       await removeWebAuthnCredential(id);
-      setSuccess('Security key removed.');
+      notify('Security key removed.', 'success');
       setDeleteConfirmId(null);
       await loadData();
     } catch (err: unknown) {
@@ -145,7 +145,6 @@ export default function WebAuthnSection() {
         )}
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {/* Credential list */}
         {credentials.length > 0 && (

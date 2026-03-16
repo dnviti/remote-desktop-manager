@@ -10,14 +10,15 @@ import {
 import { getEmailStatus, sendTestEmail } from '../../api/admin.api';
 import type { EmailStatus } from '../../api/admin.api';
 import { extractApiError } from '../../utils/apiError';
+import { useNotificationStore } from '../../store/notificationStore';
 
 export default function EmailProviderSection() {
+  const notify = useNotificationStore((s) => s.notify);
   const [status, setStatus] = useState<EmailStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [testTo, setTestTo] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   useEffect(() => {
     getEmailStatus()
@@ -29,11 +30,10 @@ export default function EmailProviderSection() {
   const handleSendTest = async () => {
     if (!testTo) return;
     setError('');
-    setSuccess('');
     setSending(true);
     try {
       const result = await sendTestEmail(testTo);
-      setSuccess(result.message);
+      notify(result.message, 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to send test email'));
     } finally {
@@ -88,11 +88,6 @@ export default function EmailProviderSection() {
               {error && (
                 <Alert severity="error" sx={{ mb: 1 }}>
                   {error}
-                </Alert>
-              )}
-              {success && (
-                <Alert severity="success" sx={{ mb: 1 }}>
-                  {success}
                 </Alert>
               )}
               <Stack direction="row" spacing={1}>

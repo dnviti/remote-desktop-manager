@@ -49,7 +49,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
   if (loading) {
     return (
       <Stack alignItems="center" sx={{ my: 2 }}>
-        <CircularProgress size={20} />
+        <CircularProgress size={20} sx={{ color: '#00e5a0' }} />
       </Stack>
     );
   }
@@ -60,6 +60,17 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
 
   const label = mode === 'login' ? 'Sign in' : 'Sign up';
 
+  const oauthButtonSx = {
+    borderColor: 'rgba(35,35,40,0.6)',
+    color: '#a1a1aa',
+    bgcolor: 'rgba(22,22,25,0.6)',
+    '&:hover': {
+      borderColor: 'rgba(0,229,160,0.3)',
+      color: '#f4f4f5',
+      bgcolor: 'rgba(22,22,25,0.8)',
+    },
+  };
+
   return (
     <>
       <Stack spacing={1.5} sx={{ mb: 2 }}>
@@ -69,6 +80,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
             variant="outlined"
             startIcon={<GoogleIcon />}
             onClick={() => initiateOAuthLogin('google')}
+            sx={oauthButtonSx}
           >
             {label} with Google
           </Button>
@@ -79,6 +91,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
             variant="outlined"
             startIcon={<MicrosoftIcon />}
             onClick={() => initiateOAuthLogin('microsoft')}
+            sx={oauthButtonSx}
           >
             {label} with Microsoft
           </Button>
@@ -89,6 +102,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
             variant="outlined"
             startIcon={<GitHubIcon />}
             onClick={() => initiateOAuthLogin('github')}
+            sx={oauthButtonSx}
           >
             {label} with GitHub
           </Button>
@@ -99,6 +113,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
             variant="outlined"
             startIcon={<OidcIcon />}
             onClick={() => initiateOAuthLogin('oidc')}
+            sx={oauthButtonSx}
           >
             {label} with SSO
           </Button>
@@ -109,6 +124,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
             variant="outlined"
             startIcon={<SamlIcon />}
             onClick={() => initiateSamlLogin()}
+            sx={oauthButtonSx}
           >
             {label} with SAML SSO
           </Button>
@@ -116,7 +132,7 @@ export default function OAuthButtons({ mode }: OAuthButtonsProps) {
       </Stack>
 
       <Divider sx={{ mb: 2 }}>
-        <Typography variant="body2" color="text.secondary">
+        <Typography variant="body2" sx={{ color: '#52525b' }}>
           or
         </Typography>
       </Divider>

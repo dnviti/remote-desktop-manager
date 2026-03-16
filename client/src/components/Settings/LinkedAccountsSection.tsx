@@ -3,6 +3,7 @@ import {
   Card, CardContent, Typography, Button, Alert, Stack, Chip, IconButton,
   List, ListItem, ListItemIcon, ListItemText, ListItemSecondaryAction,
 } from '@mui/material';
+import { useNotificationStore } from '../../store/notificationStore';
 import GitHubIcon from '@mui/icons-material/GitHub';
 import GoogleIcon from '@mui/icons-material/Google';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
@@ -64,7 +65,7 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
   const [accounts, setAccounts] = useState<LinkedAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const notify = useNotificationStore((s) => s.notify);
 
   useEffect(() => {
     Promise.all([getOAuthProviders(), getLinkedAccounts()])
@@ -83,11 +84,10 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
 
   const handleUnlink = async (provider: string) => {
     setError('');
-    setSuccess('');
     try {
       await unlinkOAuthAccount(provider);
       setAccounts((prev) => prev.filter((a) => a.provider !== provider));
-      setSuccess(`${labels[provider] ?? provider} account unlinked`);
+      notify(`${labels[provider] ?? provider} account unlinked`, 'success');
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to unlink account'));
     }
@@ -122,7 +122,6 @@ export default function LinkedAccountsSection({ hasPassword }: LinkedAccountsSec
         </Typography>
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-        {success && <Alert severity="success" sx={{ mb: 2 }}>{success}</Alert>}
 
         {accounts.length > 0 && (
           <List disablePadding>

@@ -203,6 +203,15 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
         onContextMenu={handleContextMenu}
         sx={{
           pl: depthPl(depth),
+          borderLeft: '2px solid transparent',
+          transition: 'all 0.15s ease',
+          '&:hover': {
+            bgcolor: 'rgba(0,229,160,0.04)',
+          },
+          '&.Mui-selected, &.Mui-selected:hover': {
+            bgcolor: 'rgba(0,229,160,0.08)',
+            borderLeftColor: '#00e5a0',
+          },
           ...(compact && { py: 0.125 }),
           ...(draggable && { cursor: 'grab' }),
           ...(isDragging && { opacity: 0.4 }),
@@ -212,28 +221,28 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
       >
         <ListItemIcon sx={{ minWidth: compact ? 24 : 32 }}>
           {conn.type === 'SSH' ? (
-            <SshIcon fontSize="small" color="secondary" />
+            <SshIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
           ) : conn.type === 'VNC' ? (
-            <VncIcon fontSize="small" color="info" />
+            <VncIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
           ) : (
-            <RdpIcon fontSize="small" color="primary" />
+            <RdpIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
           )}
         </ListItemIcon>
         <ListItemText
           primary={conn.name}
           secondary={compact ? undefined : `${conn.host}:${conn.port}`}
-          primaryTypographyProps={{ variant: 'body2', noWrap: true }}
-          secondaryTypographyProps={{ variant: 'caption', noWrap: true }}
+          primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { color: '#f4f4f5' } }}
+          secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { color: '#52525b' } }}
         />
         {conn.isOwner && onToggleFavorite && (
           <IconButton
             size="small"
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(conn); }}
-            sx={{ p: 0.25 }}
+            sx={{ p: 0.25, '&:hover': { bgcolor: 'rgba(0,229,160,0.08)' } }}
           >
             {conn.isFavorite
-              ? <StarIcon fontSize="small" color="warning" />
-              : <StarBorderIcon fontSize="small" sx={{ opacity: 0.3 }} />}
+              ? <StarIcon fontSize="small" sx={{ color: '#00e5a0' }} />
+              : <StarBorderIcon fontSize="small" sx={{ color: '#52525b', opacity: 0.5 }} />}
           </IconButton>
         )}
       </ListItemButton>
@@ -247,50 +256,65 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
             ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
             : undefined
         }
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: '#161619',
+              border: '1px solid rgba(35,35,40,0.6)',
+              '& .MuiMenuItem-root': {
+                color: '#f4f4f5',
+                fontSize: '0.8125rem',
+                '&:hover': { bgcolor: 'rgba(0,229,160,0.06)' },
+                '&.Mui-disabled': { color: '#52525b' },
+              },
+              '& .MuiDivider-root': { borderColor: 'rgba(35,35,40,0.6)' },
+            },
+          },
+        }}
       >
         <MenuItem onClick={handleConnect}>
-          <ListItemIcon><ConnectIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><ConnectIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Connect</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleConnectAs}>
-          <ListItemIcon><SwitchAccountIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><SwitchAccountIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Connect As...</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleOpenInNewWindow}>
-          <ListItemIcon><OpenInNewIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><OpenInNewIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Open in New Window</ListItemText>
         </MenuItem>
         {conn.isOwner && onToggleFavorite && (
           <MenuItem onClick={() => { handleCloseMenu(); onToggleFavorite(conn); }}>
             <ListItemIcon>
               {conn.isFavorite
-                ? <StarBorderIcon fontSize="small" />
-                : <StarIcon fontSize="small" color="warning" />}
+                ? <StarBorderIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
+                : <StarIcon fontSize="small" sx={{ color: '#00e5a0' }} />}
             </ListItemIcon>
             <ListItemText>{conn.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</ListItemText>
           </MenuItem>
         )}
         <Divider />
         <MenuItem onClick={handleMove} disabled={!conn.isOwner}>
-          <ListItemIcon><MoveIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><MoveIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Move to Folder</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleEdit} disabled={!conn.isOwner}>
-          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Edit</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleShare} disabled={!conn.isOwner}>
-          <ListItemIcon><ShareIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><ShareIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Share</ListItemText>
         </MenuItem>
         {onViewAuditLog && (
           <MenuItem onClick={handleViewAuditLog}>
-            <ListItemIcon><HistoryIcon fontSize="small" /></ListItemIcon>
+            <ListItemIcon><HistoryIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
             <ListItemText>Activity Log</ListItemText>
           </MenuItem>
         )}
         <MenuItem onClick={handleDelete} disabled={!conn.isOwner}>
-          <ListItemIcon><DeleteIcon fontSize="small" color={conn.isOwner ? 'error' : undefined} /></ListItemIcon>
+          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: conn.isOwner ? '#ef4444' : '#52525b' }} /></ListItemIcon>
           <ListItemText>Delete</ListItemText>
         </MenuItem>
       </Menu>
@@ -365,23 +389,26 @@ export function FolderItem({
         onContextMenu={handleContextMenu}
         sx={{
           pl: isOver ? depthPl(depth) - 0.375 : depthPl(depth),
+          borderLeft: '2px solid transparent',
+          transition: 'all 0.15s ease',
+          '&:hover': {
+            bgcolor: 'rgba(0,229,160,0.04)',
+          },
           ...(compact && { py: 0.125 }),
           ...(isOver && {
-            bgcolor: 'action.hover',
-            borderLeft: '3px solid',
-            borderColor: 'primary.main',
+            bgcolor: 'rgba(0,229,160,0.08)',
+            borderLeftColor: '#00e5a0',
           }),
-          transition: 'background-color 0.15s ease',
         }}
       >
         <ListItemIcon sx={{ minWidth: compact ? 24 : 32 }}>
-          {open ? <FolderOpenIcon fontSize="small" /> : <FolderIcon fontSize="small" />}
+          {open ? <FolderOpenIcon fontSize="small" sx={{ color: '#52525b' }} /> : <FolderIcon fontSize="small" sx={{ color: '#52525b' }} />}
         </ListItemIcon>
         <ListItemText
           primary={node.folder.name}
-          primaryTypographyProps={{ variant: 'body2' }}
+          primaryTypographyProps={{ variant: 'body2', sx: { color: '#f4f4f5' } }}
         />
-        {open ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}
+        {open ? <ExpandMore fontSize="small" sx={{ color: '#52525b' }} /> : <ChevronRight fontSize="small" sx={{ color: '#52525b' }} />}
       </ListItemButton>
 
       <Menu
@@ -393,34 +420,48 @@ export function FolderItem({
             ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
             : undefined
         }
+        slotProps={{
+          paper: {
+            sx: {
+              bgcolor: '#161619',
+              border: '1px solid rgba(35,35,40,0.6)',
+              '& .MuiMenuItem-root': {
+                color: '#f4f4f5',
+                fontSize: '0.8125rem',
+                '&:hover': { bgcolor: 'rgba(0,229,160,0.06)' },
+              },
+              '& .MuiDivider-root': { borderColor: 'rgba(35,35,40,0.6)' },
+            },
+          },
+        }}
       >
         <MenuItem onClick={() => { handleCloseMenu(); onCreateConnection(node.folder.id, teamId); }}>
-          <ListItemIcon><AddIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><AddIcon fontSize="small" sx={{ color: '#00e5a0' }} /></ListItemIcon>
           <ListItemText>New Connection</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => { handleCloseMenu(); onCreateFolder(node.folder.id, teamId); }}>
-          <ListItemIcon><CreateNewFolderIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><CreateNewFolderIcon fontSize="small" sx={{ color: '#00e5a0' }} /></ListItemIcon>
           <ListItemText>New Subfolder</ListItemText>
         </MenuItem>
         {onBulkOpen && (
           <MenuItem onClick={() => { handleCloseMenu(); onBulkOpen(node.folder.id); }}>
-            <ListItemIcon><PlaylistPlayIcon fontSize="small" /></ListItemIcon>
+            <ListItemIcon><PlaylistPlayIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
             <ListItemText>Open All</ListItemText>
           </MenuItem>
         )}
         {onShareFolder && (
           <MenuItem onClick={() => { handleCloseMenu(); onShareFolder(node.folder.id, node.folder.name); }}>
-            <ListItemIcon><FolderSharedIcon fontSize="small" /></ListItemIcon>
+            <ListItemIcon><FolderSharedIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
             <ListItemText>Share Folder</ListItemText>
           </MenuItem>
         )}
         <Divider />
         <MenuItem onClick={() => { handleCloseMenu(); onEditFolder(node.folder); }}>
-          <ListItemIcon><EditIcon fontSize="small" /></ListItemIcon>
+          <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
           <ListItemText>Rename</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => { handleCloseMenu(); onDeleteFolder(node.folder); }}>
-          <ListItemIcon><DeleteIcon fontSize="small" color="error" /></ListItemIcon>
+          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#ef4444' }} /></ListItemIcon>
           <ListItemText>Delete</ListItemText>
         </MenuItem>
       </Menu>
