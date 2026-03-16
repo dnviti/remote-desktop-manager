@@ -1,0 +1,340 @@
+/* ── Popup Shell Styles ─── */
+/* Matches the Arsenale Dark Editorial Precision design language */
+
+:root {
+  --bg: #08080a;
+  --raised: #0f0f12;
+  --surface: #161619;
+  --surface-light: #1c1c20;
+  --border: #232328;
+  --accent: #00e5a0;
+  --accent-dim: #00cc8e;
+  --text-primary: #f4f4f5;
+  --text-secondary: #a1a1aa;
+  --text-muted: #52525b;
+  --danger: #ef4444;
+  --radius: 8px;
+}
+
+/* ── Layout ─── */
+
+.popup-container {
+  display: flex;
+  flex-direction: column;
+  min-height: 500px;
+  background: var(--bg);
+}
+
+.popup-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* ── Empty State ─── */
+
+.popup-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 500px;
+  gap: 12px;
+  text-align: center;
+  padding: 24px;
+}
+
+.popup-empty-icon {
+  color: var(--text-muted);
+  margin-bottom: 8px;
+}
+
+.popup-empty h2 {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.popup-empty p {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* ── Header ─── */
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 12px 8px;
+  border-bottom: 1px solid var(--border);
+  gap: 8px;
+}
+
+/* ── Buttons ─── */
+
+.btn {
+  cursor: pointer;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+  transition: background 150ms, opacity 150ms;
+}
+
+.btn:hover { opacity: 0.9; }
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--bg);
+  padding: 10px 20px;
+}
+
+.btn-icon {
+  background: transparent;
+  color: var(--text-secondary);
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover {
+  background: var(--surface);
+  color: var(--text-primary);
+}
+
+/* ── Account Switcher ─── */
+
+.account-switcher {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.account-switcher-trigger {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.account-avatar {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.account-avatar.small {
+  width: 24px;
+  height: 24px;
+  font-size: 11px;
+}
+
+.account-label {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-chevron {
+  flex-shrink: 0;
+  transition: transform 150ms;
+}
+
+.account-chevron.open {
+  transform: rotate(180deg);
+}
+
+.account-dropdown {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  z-index: 10;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+}
+
+.account-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 100ms;
+}
+
+.account-option:hover {
+  background: var(--surface);
+}
+
+.account-option.selected {
+  background: var(--surface-light);
+}
+
+.account-option-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.account-option-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-option-email {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── Vault Status ─── */
+
+.vault-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.vault-status.unlocked svg { color: var(--accent); }
+.vault-status.locked svg { color: var(--text-muted); }
+
+.vault-server {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+}
+
+.vault-badge {
+  display: flex;
+  align-items: center;
+}
+
+.vault-badge.unlocked svg { color: var(--accent); }
+
+/* ── Tabs ─── */
+
+.popup-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+}
+
+.popup-tab {
+  flex: 1;
+  padding: 10px 0;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 150ms, border-color 150ms;
+}
+
+.popup-tab:hover {
+  color: var(--text-primary);
+}
+
+.popup-tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+/* ── Tab Panel ─── */
+
+.tab-panel {
+  flex: 1;
+  padding: 16px;
+}
+
+.tab-placeholder {
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 40px 16px;
+}
+
+.tab-placeholder-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 40px 16px;
+  color: var(--text-muted);
+}
+
+.tab-placeholder-section h3 {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.tab-placeholder-section p {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin: 0;
+  max-width: 260px;
+  line-height: 1.5;
+}
+
+.coming-soon {
+  display: inline-block;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background: rgba(0, 229, 160, 0.1);
+  border-radius: 20px;
+  margin-top: 4px;
+}
