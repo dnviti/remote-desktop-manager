@@ -27,7 +27,8 @@
   "workspaces": [
     "server",
     "client",
-    "tunnel-agent"
+    "tunnel-agent",
+    "clients/browser-extensions"
   ],
   "scripts": {
     "predev": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up -d postgres && npm run db:generate",
@@ -38,13 +39,13 @@
     "dev:client:wait": "wait-on -t 60000 http-get://localhost:3001/api/health && npm run dev -w client",
     "dev:docker": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up --build",
     "dev:docker:detach": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up --build -d",
-    "build": "npm run build -w server && npm run build -w client && npm run build -w tunnel-agent",
+    "build": "npm run build -w server && npm run build -w client && npm run build -w tunnel-agent && npm run build -w browser-extensions",
     "docker:dev": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up -d",
     "docker:dev:down": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml down",
     "docker:prod": "$(./scripts/container-runtime.sh) compose --env-file .env.production up -d --build",
     "db:migrate": "npm run db:migrate -w server",
     "db:generate": "npm run db:generate -w server",
-    "typecheck": "npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w tunnel-agent",
+    "typecheck": "npm run typecheck -w server && npm run typecheck -w client && npm run typecheck -w tunnel-agent && npm run typecheck -w browser-extensions",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "sast": "npm audit --audit-level=critical",
