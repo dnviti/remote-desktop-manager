@@ -1,6 +1,6 @@
 {
   "name": "tunnel-agent",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Zero-trust tunnel agent — embedded in managed gateway containers",
   "license": "BUSL-1.1",
   "private": true,

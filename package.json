@@ -1,6 +1,6 @@
 {
   "name": "arsenale",
-  "version": "1.5.2",
+  "version": "1.6.0",
   "description": "Web-based remote desktop manager for SSH and RDP connections with encrypted vault, team sharing, and multi-tenant support",
   "author": "Daniele Viti <daniele@dnviti.dev>",
   "license": "BUSL-1.1",
