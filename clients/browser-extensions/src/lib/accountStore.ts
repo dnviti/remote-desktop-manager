@@ -5,6 +5,7 @@ import {
   getOrCreateKey,
   isEncryptedToken,
 } from './tokenEncryption';
+import { invalidateAccountsCache } from './fetchAccounts';
 
 const STORAGE_KEY_ACCOUNTS = 'accounts';
 const STORAGE_KEY_ACTIVE = 'activeAccountId';
@@ -124,6 +125,7 @@ export async function getActiveAccount(): Promise<Account | null> {
 /** Set the active account by ID. */
 export async function setActiveAccountId(id: string | null): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY_ACTIVE]: id });
+  invalidateAccountsCache();
 }
 
 /** Add a new account and make it active. Returns the created account (tokens decrypted). */
@@ -152,6 +154,7 @@ export async function addAccount(
     [STORAGE_KEY_ACTIVE]: account.id,
   });
 
+  invalidateAccountsCache();
   // Return the account with plaintext tokens (caller needs them)
   return account;
 }
@@ -173,6 +176,7 @@ export async function updateAccount(
     encrypted.push(await encryptAccountTokens(a, key));
   }
   await chrome.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: encrypted });
+  invalidateAccountsCache();
 
   return updated;
 }
@@ -196,6 +200,7 @@ export async function removeAccount(id: string): Promise<void> {
     updates[STORAGE_KEY_ACTIVE] = filtered.length > 0 ? filtered[0].id : null;
   }
   await chrome.storage.local.set(updates);
+  invalidateAccountsCache();
 }
 
 /** Touch `lastUsed` for a given account. */
@@ -209,5 +214,6 @@ export async function touchAccount(id: string): Promise<void> {
       encrypted.push(await encryptAccountTokens(a, key));
     }
     await chrome.storage.local.set({ [STORAGE_KEY_ACCOUNTS]: encrypted });
+    invalidateAccountsCache();
   }
 }

@@ -1,18 +1,11 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type { Account } from '../types';
 import { sendMessage, healthCheck, login } from '../lib/apiClient';
+import { fetchAccounts } from '../lib/fetchAccounts';
 import { AccountList } from './AccountList';
 import { AddAccountForm } from './AddAccountForm';
 import { AutofillSettings } from './AutofillSettings';
 import './options.css';
-
-async function fetchAccounts(): Promise<{ accounts: Account[]; activeId: string | null }> {
-  const res = await sendMessage<Account[]>({ type: 'GET_ACCOUNTS' });
-  const accounts = res.success && res.data ? res.data : [];
-  const storage = await chrome.storage.local.get('activeAccountId');
-  const activeId = (storage['activeAccountId'] as string | null | undefined) ?? null;
-  return { accounts, activeId };
-}
 
 export function OptionsApp(): React.ReactElement {
   const [accounts, setAccounts] = useState<Account[]>([]);
