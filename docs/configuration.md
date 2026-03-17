@@ -1,248 +1,251 @@
 ---
 title: Configuration
-description: Environment variables, config files, and feature flags reference
+description: Environment variables, config files, feature flags, and service configuration
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
   - .env.example
-  - server/src/index.ts
-  - server/src/app.ts
-  - server/src/config/passport.ts
+  - server/src/config.ts
   - server/prisma.config.ts
   - client/vite.config.ts
-  - compose.yml
-  - compose.dev.yml
+  - eslint.config.mjs
 ---
 
 # Configuration
 
-All environment variables are defined in a single `.env` file at the **monorepo root**. Never create a separate `server/.env` — Prisma CLI commands resolve the `.env` path to `../.env` via `server/prisma.config.ts`.
+All configuration is managed through environment variables in a single `.env` file at the monorepo root. The server reads this file on startup; the client receives its configuration via Vite's `VITE_` prefix or runtime API calls.
 
-## Core Settings
+## Environment File Location
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `NODE_ENV` | `development` | Environment mode (`development`, `production`) |
-| `PORT` | `3001` | Express server port |
-| `CLIENT_URL` | `http://localhost:3000` | Client origin for CORS and OAuth redirects |
-| `TRUST_PROXY` | `false` | Express trust proxy (`false`, `true`, number, or CIDR list) |
-| `ALLOW_LOCAL_NETWORK` | `true` | Allow connections to private IP ranges (10.x, 172.16-31.x, 192.168.x) |
+The `.env` file **must** be at the monorepo root (`/arsenale/.env`), not inside `server/`. Prisma CLI commands (`db:push`, `db:migrate`) run from the `server/` workspace, and `server/prisma.config.ts` resolves the env path to `../.env`.
 
-## Database
+Never create a separate `server/.env` — all env vars are loaded from the root.
+
+## Core Configuration
+
+### Database
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATABASE_URL` | `postgresql://arsenale:arsenale@localhost:5432/arsenale` | PostgreSQL connection string |
-| `POSTGRES_USER` | `arsenale` | Database user (Docker) |
-| `POSTGRES_PASSWORD` | `arsenale` | Database password (Docker) |
+| `DATABASE_URL` | `postgresql://arsenale:arsenale_password@127.0.0.1:5432/arsenale` | PostgreSQL connection string |
+| `POSTGRES_USER` | `arsenale` | PostgreSQL user (Docker) |
+| `POSTGRES_PASSWORD` | `arsenale_password` | PostgreSQL password (Docker) |
 | `POSTGRES_DB` | `arsenale` | Database name (Docker) |
 
-## Authentication — JWT
+### Server
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `JWT_SECRET` | `dev-secret-change-me` | Signing key for access tokens |
-| `JWT_EXPIRES_IN` | `15m` | Access token lifetime |
-| `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh token lifetime |
+| `PORT` | `3001` | Express server port |
+| `NODE_ENV` | `development` | Environment mode |
+| `CLIENT_URL` | `http://localhost:3000` | Client URL for CORS and email links |
+| `TRUST_PROXY` | `false` | Reverse proxy trust (false, true, number, or subnet) |
 
-## Authentication — OAuth
-
-### Google
-
-| Variable | Description |
-|----------|-------------|
-| `GOOGLE_CLIENT_ID` | Google OAuth client ID |
-| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
-
-### Microsoft
-
-| Variable | Description |
-|----------|-------------|
-| `MICROSOFT_CLIENT_ID` | Microsoft/Azure AD client ID |
-| `MICROSOFT_CLIENT_SECRET` | Microsoft/Azure AD client secret |
-| `MICROSOFT_TENANT_ID` | Azure AD tenant (default: `common`) |
-
-### GitHub
-
-| Variable | Description |
-|----------|-------------|
-| `GITHUB_CLIENT_ID` | GitHub OAuth app client ID |
-| `GITHUB_CLIENT_SECRET` | GitHub OAuth app client secret |
-
-### Generic OIDC
-
-| Variable | Description |
-|----------|-------------|
-| `OIDC_ISSUER_URL` | OIDC discovery URL (e.g., Authentik, Keycloak, Authelia, Zitadel) |
-| `OIDC_CLIENT_ID` | OIDC client ID |
-| `OIDC_CLIENT_SECRET` | OIDC client secret |
-| `OIDC_DISPLAY_NAME` | Button label in UI |
-
-### SAML 2.0
-
-| Variable | Description |
-|----------|-------------|
-| `SAML_ENTRY_POINT` | IdP SSO URL |
-| `SAML_ISSUER` | SP entity ID |
-| `SAML_CERT` | IdP signing certificate (PEM, no headers) |
-| `SAML_PRIVATE_KEY` | SP private key for signing/decryption |
-| `SAML_DISPLAY_NAME` | Button label in UI |
-| `SAML_WANT_ASSERTIONS_SIGNED` | Require signed assertions (default: `true`) |
-
-### LDAP
+### Secrets
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LDAP_URL` | — | LDAP server URL (e.g., `ldap://freeipa.local:389`) |
-| `LDAP_BIND_DN` | — | Bind DN for search |
-| `LDAP_BIND_PASSWORD` | — | Bind password |
-| `LDAP_BASE_DN` | — | Search base |
-| `LDAP_USER_FILTER` | `(uid={{username}})` | User search filter |
-| `LDAP_GROUP_BASE_DN` | — | Group search base |
-| `LDAP_GROUP_FILTER` | `(member={{dn}})` | Group membership filter |
-| `LDAP_GROUP_ROLE_MAPPING` | — | JSON: `{"cn=admins,...":"ADMIN"}` |
-| `LDAP_SYNC_CRON` | `0 */6 * * *` | Sync schedule |
-| `LDAP_AUTO_PROVISION` | `true` | Auto-create users on first login |
-| `LDAP_DEFAULT_TENANT_ID` | — | Tenant for auto-provisioned users |
+| `JWT_SECRET` | Auto-generated in dev | JWT signing key (**required in production**) |
+| `JWT_EXPIRES_IN` | `15m` | Access token TTL |
+| `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh token TTL |
+| `GUACAMOLE_SECRET` | Auto-generated in dev | Shared secret for Guacamole tokens |
+| `GUACAMOLE_WS_PORT` | `3002` | Guacamole WebSocket port |
+| `SERVER_ENCRYPTION_KEY` | Auto-generated in dev | Server-level AES-256 key (32 bytes hex) |
 
-### WebAuthn / Passkeys
+### Vault & Encryption
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WEBAUTHN_RP_ID` | `localhost` | Relying party ID (domain) |
-| `WEBAUTHN_RP_ORIGIN` | `http://localhost:3000` | Expected origin |
-| `WEBAUTHN_RP_NAME` | `Arsenale` | Display name |
-
-## Vault & Security
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `VAULT_TTL_MINUTES` | `30` | Master key in-memory TTL |
-| `SERVER_ENCRYPTION_KEY` | — | 32-byte hex key for server-side encryption (auto-generated in dev) |
-| `IMPOSSIBLE_TRAVEL_SPEED_KMH` | `900` | Threshold for impossible travel detection |
-| `ALLOW_EXTERNAL_SHARING` | `false` | Enable cross-tenant secret sharing |
-
-### Rate Limiting & Account Lockout
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `LOGIN_RATE_LIMIT_WINDOW_MS` | `900000` | Login attempt window (15 min) |
-| `LOGIN_RATE_LIMIT_MAX` | `10` | Max login attempts per window |
-| `ACCOUNT_LOCKOUT_THRESHOLD` | `5` | Failed attempts before lockout |
-| `ACCOUNT_LOCKOUT_DURATION_MS` | `1800000` | Lockout duration (30 min) |
-
-### Session Limits
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAX_CONCURRENT_SESSIONS` | `10` | Max concurrent remote sessions per user |
-| `ABSOLUTE_SESSION_TIMEOUT_SECONDS` | `43200` | Session absolute timeout (12 hours) |
+| `VAULT_TTL_MINUTES` | `30` | Vault session auto-lock timeout (0 = never) |
 
 ## Guacamole (RDP/VNC)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `GUACD_HOST` | `localhost` | guacd daemon host |
-| `GUACD_PORT` | `4822` | guacd daemon port |
-| `GUACAMOLE_SECRET` | `dev-guac-secret` | Token encryption key for guacamole-lite |
-| `GUACAMOLE_WS_PORT` | `3002` | Guacamole WebSocket server port |
+| `GUACD_HOST` | `localhost` | guacd daemon hostname |
+| `GUACD_PORT` | `4822` | guacd port |
+| `RECORDING_ENABLED` | `false` | Enable session recording |
+| `RECORDING_PATH` | `./data/recordings` | Recording storage directory |
+| `RECORDING_VOLUME` | `arsenale_recordings` | Docker volume name (production) |
+| `RECORDING_RETENTION_DAYS` | `90` | Auto-cleanup retention |
+| `GUACENC_SERVICE_URL` | `http://guacenc:3003` | Video conversion sidecar URL |
+| `GUACENC_TIMEOUT_MS` | `120000` | Conversion timeout |
+
+## SSH Gateway
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SSH_GATEWAY_PORT` | `2222` | SSH gateway listening port |
+| `SSH_AUTHORIZED_KEYS` | — | Newline-separated public keys |
+| `GATEWAY_API_TOKEN` | — | Shared secret for gateway API |
+| `KEY_ROTATION_CRON` | `0 2 * * *` | SSH key rotation schedule (daily 02:00 UTC) |
+| `KEY_ROTATION_ADVANCE_DAYS` | `7` | Rotation trigger threshold |
+
+## Authentication Providers
+
+### OAuth
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
+| `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
+| `MICROSOFT_CLIENT_ID` | — | Microsoft OAuth client ID |
+| `MICROSOFT_CLIENT_SECRET` | — | Microsoft OAuth client secret |
+| `GITHUB_CLIENT_ID` | — | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | — | GitHub OAuth client secret |
+
+### OIDC
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `OIDC_PROVIDER_NAME` | — | Display name for OIDC provider |
+| `OIDC_ISSUER_URL` | — | OIDC issuer URL |
+| `OIDC_CLIENT_ID` | — | OIDC client ID |
+| `OIDC_CLIENT_SECRET` | — | OIDC client secret |
+| `OIDC_CALLBACK_URL` | — | OIDC callback URL |
+| `OIDC_SCOPES` | `openid profile email` | OIDC scopes |
+
+### SAML
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SAML_PROVIDER_NAME` | — | Display name for SAML provider |
+| `SAML_ENTRY_POINT` | — | SAML SSO URL |
+| `SAML_ISSUER` | — | SAML entity ID |
+| `SAML_CALLBACK_URL` | — | SAML ACS URL |
+| `SAML_CERT` | — | SAML certificate (PEM) |
+| `SAML_METADATA_URL` | — | SAML metadata URL |
+| `SAML_WANT_AUTHN_RESPONSE_SIGNED` | `true` | Require signed SAML responses |
+
+### LDAP
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LDAP_ENABLED` | `false` | Enable LDAP authentication |
+| `LDAP_SERVER_URL` | — | LDAP server URL |
+| `LDAP_BASE_DN` | — | Base distinguished name |
+| `LDAP_BIND_DN` | — | Bind DN for searches |
+| `LDAP_BIND_PASSWORD` | — | Bind password |
+| `LDAP_USER_SEARCH_FILTER` | — | User search filter |
+| `LDAP_USER_SEARCH_BASE` | — | User search base |
+| `LDAP_DISPLAY_NAME_ATTR` | — | Display name attribute |
+| `LDAP_EMAIL_ATTR` | — | Email attribute |
+| `LDAP_UID_ATTR` | — | UID attribute |
+| `LDAP_SYNC_ENABLED` | `false` | Enable periodic LDAP sync |
+| `LDAP_SYNC_CRON` | `0 */6 * * *` | Sync schedule (every 6 hours) |
+| `LDAP_AUTO_PROVISION` | `true` | Auto-create users from LDAP |
+| `LDAP_DEFAULT_TENANT_ID` | — | Default tenant for provisioned users |
+| `LDAP_STARTTLS` | `false` | Use STARTTLS |
 
 ## Email
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `EMAIL_PROVIDER` | `smtp` | Provider: `smtp`, `sendgrid`, `ses`, `resend`, `mailgun` |
-| `EMAIL_FROM` | — | Sender address |
-| `EMAIL_VERIFY_REQUIRED` | `false` | Require email verification before login |
+| `EMAIL_PROVIDER` | `smtp` | Provider: smtp, sendgrid, ses, resend, mailgun |
+| `EMAIL_VERIFY_REQUIRED` | `true` | Enforce email verification |
 | `SELF_SIGNUP_ENABLED` | `true` | Allow self-registration |
+| `SMTP_HOST` | — | SMTP server hostname |
+| `SMTP_PORT` | `587` | SMTP port |
+| `SMTP_USER` | — | SMTP username |
+| `SMTP_PASS` | — | SMTP password |
+| `SMTP_FROM` | — | From address |
+| `SENDGRID_API_KEY` | — | SendGrid API key |
+| `RESEND_API_KEY` | — | Resend API key |
+| `MAILGUN_API_KEY` | — | Mailgun API key |
+| `MAILGUN_DOMAIN` | — | Mailgun domain |
 
-### SMTP
-
-| Variable | Description |
-|----------|-------------|
-| `SMTP_HOST` | SMTP server host |
-| `SMTP_PORT` | SMTP port (587 for TLS) |
-| `SMTP_USER` | SMTP username |
-| `SMTP_PASS` | SMTP password |
-| `SMTP_SECURE` | Use TLS (`true`/`false`) |
-
-### Cloud Providers
-
-| Provider | Variables |
-|----------|-----------|
-| SendGrid | `SENDGRID_API_KEY` |
-| AWS SES | `AWS_SES_REGION`, `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` |
-| Resend | `RESEND_API_KEY` |
-| Mailgun | `MAILGUN_API_KEY`, `MAILGUN_DOMAIN` |
-
-## SMS (MFA)
+## SMS
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SMS_PROVIDER` | — | Provider: `twilio`, `sns`, `vonage` |
+| `SMS_PROVIDER` | — | Provider: twilio, sns, vonage (dev: console) |
+| `TWILIO_ACCOUNT_SID` | — | Twilio SID |
+| `TWILIO_AUTH_TOKEN` | — | Twilio auth token |
+| `TWILIO_FROM_NUMBER` | — | Twilio phone number |
 
-| Provider | Variables |
-|----------|-----------|
-| Twilio | `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` |
-| AWS SNS | `AWS_SNS_REGION`, `AWS_SNS_ACCESS_KEY_ID`, `AWS_SNS_SECRET_ACCESS_KEY` |
-| Vonage | `VONAGE_API_KEY`, `VONAGE_API_SECRET`, `VONAGE_FROM_NUMBER` |
-
-## Logging & Monitoring
+## Security & Rate Limiting
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOG_LEVEL` | `info` | `error`, `warn`, `info`, `verbose`, `debug` |
-| `LOG_FORMAT` | `text` | `text` or `json` |
-| `LOG_TIMESTAMPS` | `true` | Include timestamps |
-| `LOG_HTTP_REQUESTS` | `false` | Log HTTP requests |
-| `LOG_GUACAMOLE` | `false` | Log Guacamole traffic |
-| `GEOIP_DB_PATH` | — | Path to MaxMind GeoLite2 database |
+| `LOGIN_RATE_LIMIT_WINDOW_MS` | `900000` | Rate limit window (15 min) |
+| `LOGIN_RATE_LIMIT_MAX_ATTEMPTS` | `5` | Max login attempts per IP per window |
+| `ACCOUNT_LOCKOUT_THRESHOLD` | `10` | Failed logins before lockout |
+| `ACCOUNT_LOCKOUT_DURATION_MS` | `1800000` | Lockout duration (30 min) |
+| `MAX_CONCURRENT_SESSIONS` | `0` | Per-user session limit (0 = unlimited) |
+| `ABSOLUTE_SESSION_TIMEOUT_SECONDS` | `43200` | Absolute timeout (12 hours, 0 = disabled) |
+| `ALLOW_LOCAL_NETWORK` | `false` | Allow connections to private networks |
+| `ALLOW_EXTERNAL_SHARING` | `false` | Enable cross-tenant sharing |
 
-## Files & Recordings
+### WebAuthn
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DRIVE_BASE_PATH` | `./drive` | File storage base directory |
-| `FILE_UPLOAD_MAX_SIZE` | `52428800` | Max upload size (50MB) |
-| `USER_DRIVE_QUOTA` | `104857600` | Per-user quota (100MB) |
-| `RECORDING_ENABLED` | `false` | Enable session recording |
-| `RECORDING_PATH` | `./recordings` | Recording storage path |
-| `RECORDING_RETENTION_DAYS` | `30` | Auto-cleanup after N days |
-| `GUACENC_SERVICE_URL` | — | Guacenc video conversion endpoint |
-| `ASCIICAST_CONVERTER_URL` | — | SSH recording conversion endpoint |
+| `WEBAUTHN_RP_ID` | `localhost` | Relying party ID |
+| `WEBAUTHN_RP_ORIGIN` | `http://localhost:3000` | Relying party origin |
+| `WEBAUTHN_RP_NAME` | `Arsenale` | Relying party display name |
+
+### GeoIP
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GEOIP_DB_PATH` | — | Path to MaxMind GeoLite2-City.mmdb |
+| `IMPOSSIBLE_TRAVEL_SPEED_KMH` | `900` | Max plausible travel speed (0 = disabled) |
+
+## File Sharing
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DRIVE_BASE_PATH` | `./data/drive` | Local file share directory |
+| `FILE_UPLOAD_MAX_SIZE` | `10485760` | Max upload size (10 MB) |
+| `USER_DRIVE_QUOTA` | `104857600` | Per-user quota (100 MB) |
 
 ## Container Orchestration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ORCHESTRATOR_TYPE` | — | `docker`, `podman`, `kubernetes`, or auto-detect |
+| `ORCHESTRATOR_TYPE` | Auto-detect | docker, podman, kubernetes, none |
 | `DOCKER_SOCKET_PATH` | `/var/run/docker.sock` | Docker socket path |
-| `DOCKER_NETWORK` | `arsenale_net` | Docker network for managed instances |
-| `PODMAN_SOCKET_PATH` | — | Podman socket path |
+| `PODMAN_SOCKET_PATH` | `$XDG_RUNTIME_DIR/podman/podman.sock` | Podman socket |
+| `DOCKER_NETWORK` | `arsenale-dev` | Container network for managed gateways |
 | `ORCHESTRATOR_K8S_NAMESPACE` | `arsenale` | Kubernetes namespace |
-| `ORCHESTRATOR_SSH_GATEWAY_IMAGE` | `ghcr.io/dnviti/arsenale/ssh-gateway:latest` | SSH gateway container image |
-| `ORCHESTRATOR_GUACD_IMAGE` | `guacamole/guacd:1.6.0` | guacd container image |
+| `ORCHESTRATOR_SSH_GATEWAY_IMAGE` | `ghcr.io/dnviti/arsenale/ssh-gateway:latest` | SSH gateway image |
+| `ORCHESTRATOR_GUACD_IMAGE` | `guacamole/guacd:1.6.0` | guacd image |
 
-## SSH Gateway & Tunnels
+## Logging
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SSH_GATEWAY_PORT` | `2222` | SSH gateway listen port |
-| `SSH_AUTHORIZED_KEYS` | — | Authorized keys file path |
-| `GATEWAY_API_TOKEN` | — | API authentication token |
-| `KEY_ROTATION_CRON` | — | SSH key rotation schedule |
-| `KEY_ROTATION_ADVANCE_DAYS` | — | Days before expiry to rotate |
+| `LOG_LEVEL` | `info` | error, warn, info, verbose, debug |
+| `LOG_FORMAT` | `text` | text or json |
+| `LOG_TIMESTAMPS` | `true` | ISO-8601 timestamps |
+| `LOG_HTTP_REQUESTS` | `false` | Log HTTP requests |
+| `LOG_GUACAMOLE` | `true` | Log guacamole-lite tunneling |
 
-## Config Files
+## Vite Client Configuration
 
-| File | Purpose |
-|------|---------|
-| `.env` | Environment variables (monorepo root) |
-| `eslint.config.mjs` | ESLint flat config (TypeScript + security + React) |
-| `server/tsconfig.json` | Server TypeScript (ES2022, CommonJS) |
-| `client/tsconfig.json` | Client TypeScript (ES2022, ESNext, react-jsx) |
-| `client/vite.config.ts` | Vite config with proxy, PWA, and chunk splitting |
-| `server/prisma.config.ts` | Prisma config (resolves .env to monorepo root) |
-| `server/prisma/schema.prisma` | Database schema |
-| `compose.dev.yml` | Development Docker stack |
-| `compose.yml` | Production Docker stack |
+The client dev server is configured in `client/vite.config.ts`:
+
+| Setting | Value | Description |
+|---------|-------|-------------|
+| Port | 3000 | Dev server port |
+| `/api` proxy | `http://localhost:3001` | API proxy (override with `VITE_API_TARGET`) |
+| `/socket.io` proxy | `http://localhost:3001` | WebSocket proxy |
+| `/guacamole` proxy | `http://localhost:3002` | Guacamole proxy |
+| Chunk size warning | 700 KB | Build warning threshold |
+
+## Feature Flags
+
+Features are controlled through environment variables and database settings:
+
+| Feature | Control | Default |
+|---------|---------|---------|
+| Self-signup | `SELF_SIGNUP_ENABLED` env + AppConfig DB | `true` |
+| Email verification | `EMAIL_VERIFY_REQUIRED` | `true` |
+| Session recording | `RECORDING_ENABLED` | `false` |
+| LDAP authentication | `LDAP_ENABLED` | `false` |
+| LDAP sync | `LDAP_SYNC_ENABLED` | `false` |
+| GeoIP tracking | `GEOIP_DB_PATH` (presence) | Disabled |
+| Impossible travel | `IMPOSSIBLE_TRAVEL_SPEED_KMH` > 0 | `900` km/h |
+| External sharing | `ALLOW_EXTERNAL_SHARING` | `false` |
+| Local network access | `ALLOW_LOCAL_NETWORK` | `false` |
+| CLI tool | `CLI_ENABLED` | `false` |
