@@ -323,6 +323,7 @@ export default function MainLayout() {
             display: 'flex',
             flexDirection: 'column',
             bgcolor: 'background.paper',
+            color: 'text.primary',
             userSelect: 'none',
           }}
         >
