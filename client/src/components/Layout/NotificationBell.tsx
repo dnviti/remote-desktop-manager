@@ -13,6 +13,7 @@ import {
   getOnNavigate,
   type NavigationActions,
 } from '../../utils/notificationActions';
+import { useDesktopNotifications } from '../../hooks/useDesktopNotifications';
 
 function timeAgo(dateStr: string): string {
   const now = Date.now();
@@ -44,6 +45,16 @@ export default function NotificationBell({ navigationActions }: NotificationBell
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
   const socketRef = useRef<Socket | null>(null);
 
+  const { sendDesktopNotification, setOnClick } = useDesktopNotifications();
+
+  // Open notification popover when user clicks a native desktop notification
+  const anchorRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    setOnClick(() => {
+      if (anchorRef.current) setAnchorEl(anchorRef.current);
+    });
+  }, [setOnClick]);
+
   // Fetch notifications on mount
   useEffect(() => {
     fetchNotifications();
@@ -60,6 +71,10 @@ export default function NotificationBell({ navigationActions }: NotificationBell
 
     socket.on('notification:new', (notification: NotificationEntry) => {
       addNotification(notification);
+      sendDesktopNotification('Arsenale', {
+        body: notification.message,
+        tag: notification.id,
+      });
     });
 
     socketRef.current = socket;
@@ -68,7 +83,7 @@ export default function NotificationBell({ navigationActions }: NotificationBell
       socket.disconnect();
       socketRef.current = null;
     };
-  }, [accessToken, addNotification]);
+  }, [accessToken, addNotification, sendDesktopNotification]);
 
   const handleClick = (notification: NotificationEntry) => {
     if (!notification.read) {
@@ -85,6 +100,7 @@ export default function NotificationBell({ navigationActions }: NotificationBell
   return (
     <>
       <IconButton
+        ref={anchorRef}
         color="inherit"
         onClick={(e) => setAnchorEl(e.currentTarget)}
         title="Notifications"

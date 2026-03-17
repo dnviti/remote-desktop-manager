@@ -48,6 +48,7 @@ interface UiPreferences {
   tunnelEventLogOpen: boolean;
   tunnelDeployGuidesOpen: boolean;
   tunnelMetricsOpen: boolean;
+  desktopNotificationsEnabled: boolean;
 }
 
 interface UiPreferencesState extends UiPreferences {
@@ -104,6 +105,7 @@ const defaults: UiPreferences = {
   tunnelEventLogOpen: false,
   tunnelDeployGuidesOpen: false,
   tunnelMetricsOpen: true,
+  desktopNotificationsEnabled: false,
 };
 
 export const useUiPreferencesStore = create<UiPreferencesState>()(
