@@ -1,8 +1,8 @@
 ---
 title: Architecture
-description: System architecture, component interactions, data flow, and design decisions
+description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -10,418 +10,555 @@ source-files:
   - client/src/main.tsx
   - client/src/App.tsx
   - client/vite.config.ts
-  - extra-clients/browser-extensions/manifest.json
+  - gateways/tunnel-agent/src/index.ts
+  - gateways/tunnel-agent/src/tunnel.ts
+  - gateways/tunnel-agent/src/protocol.ts
+  - server/src/socket/ssh.handler.ts
+  - server/src/socket/tunnel.handler.ts
+  - server/src/socket/notification.handler.ts
+  - server/src/socket/gatewayMonitor.handler.ts
 ---
 
 # Architecture
 
-Arsenale is a monorepo with npm workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`.
+Arsenale is a web-based remote access management platform for SSH, RDP, and VNC connections. It provides encrypted credential storage, multi-tenant RBAC, session recording, gateway orchestration, and a zero-trust tunnel system.
 
 ## System Overview
 
 ```mermaid
 flowchart TD
-    Browser[Browser Client<br/>React 19 + Vite]
-    Extension[Browser Extension<br/>Chrome MV3]
+    subgraph Client["Client (React 19 + Vite)"]
+        UI["Browser UI<br/>MUI v7 + Zustand"]
+        XTerm["XTerm.js<br/>SSH Terminal"]
+        Guac["guacamole-common-js<br/>RDP/VNC Viewer"]
+        PWA["PWA + Service Worker"]
+    end
 
-    Browser -->|HTTP/WS| Nginx[Nginx Reverse Proxy<br/>:8080 prod / :3000 dev]
-    Extension -->|HTTP| Server
+    subgraph Server["Server (Express + TypeScript)"]
+        API["REST API<br/>Port 3001"]
+        SIO["Socket.IO<br/>SSH + Notifications"]
+        GuacWS["Guacamole WS<br/>Port 3002"]
+        TunnelBroker["Tunnel Broker<br/>WebSocket /api/tunnel/connect"]
+    end
 
-    Nginx -->|/api/*| Server[Express Server<br/>:3001]
-    Nginx -->|/socket.io/*| Server
-    Nginx -->|/guacamole/*| GuacWS[Guacamole WS<br/>:3002]
+    subgraph Data["Data Layer"]
+        DB[(PostgreSQL 16)]
+        Prisma["Prisma ORM"]
+    end
 
-    Server -->|Prisma ORM| DB[(PostgreSQL 16)]
-    Server -->|SSH2| SSHTarget[SSH Targets]
-    Server -->|TCP| Guacd[guacd :4822]
-    GuacWS -->|TCP| Guacd
-    Guacd -->|RDP/VNC| RemoteDesktops[RDP/VNC Targets]
+    subgraph Gateways["Gateway Infrastructure"]
+        GuacD["guacd<br/>Port 4822"]
+        SSHGw["SSH Gateway<br/>Port 2222"]
+        GuacEnc["guacenc<br/>Recording Processor"]
+        TunnelAgent["Tunnel Agent"]
+    end
 
-    Server -->|SSH| SSHGateway[SSH Gateway<br/>:2222]
-    SSHGateway -->|TCP| SSHTarget
+    subgraph External["External Integrations"]
+        OAuth["OAuth/SAML/LDAP"]
+        HCVault["HashiCorp Vault"]
+        NetBox["NetBox Sync"]
+        Email["Email (SMTP/SES/SendGrid)"]
+        SMS["SMS (Twilio/SNS/Vonage)"]
+    end
 
-    TunnelAgent[Tunnel Agent] -->|mTLS WS| Server
-    TunnelAgent -->|TCP| Guacd
+    UI -->|HTTP/REST| API
+    XTerm -->|Socket.IO /ssh| SIO
+    Guac -->|WebSocket| GuacWS
+    API --> Prisma --> DB
+    SIO -->|SSH2| SSHGw
+    GuacWS --> GuacD
+    GuacD -->|RDP/VNC Protocol| SSHGw
+    TunnelAgent -->|WSS Multiplexed| TunnelBroker
+    TunnelBroker -->|TCP Forwarding| SIO
+    API --> OAuth
+    API --> HCVault
+    API --> NetBox
+    API --> Email
+    API --> SMS
+    GuacEnc -->|Convert Recordings| GuacD
 ```
+
+## Monorepo Structure
+
+The project uses npm workspaces with four packages:
+
+| Workspace | Path | Purpose |
+|-----------|------|---------|
+| **server** | `server/` | Express API, Socket.IO, Guacamole WS, Tunnel Broker |
+| **client** | `client/` | React 19 SPA with MUI v7, XTerm.js, Guacamole client |
+| **tunnel-agent** | `gateways/tunnel-agent/` | Outbound tunnel agent for zero-trust gateway connections |
+| **browser-extensions** | `extra-clients/browser-extensions/` | Chrome extension for credential autofill and keychain access |
+
+Additional gateway components (not npm workspaces):
+- `gateways/guacd/` — Custom guacd image with embedded tunnel agent
+- `gateways/guacenc/` — Recording processor (Guacamole → MP4, asciicast → GIF)
+- `gateways/ssh-gateway/` — SSH bastion with embedded tunnel agent
 
 ## Server Architecture
 
 ### Layered Design
 
 ```mermaid
-flowchart TD
-    Routes["Routes (32 files)<br/>Express routers"] --> Controllers["Controllers (30 files)<br/>Request parsing, validation"]
-    Controllers --> Services["Services (53 files)<br/>Business logic, encryption"]
-    Services --> Prisma["Prisma ORM<br/>Type-safe database access"]
-    Prisma --> PostgreSQL[(PostgreSQL 16)]
-
-    Routes --> Middleware["Middleware (19 files)<br/>Auth, CSRF, rate limits"]
-
-    Socket["Socket.IO Handlers (5 files)<br/>SSH, notifications, monitoring"] --> Services
-```
-
-**Entry point** (`server/src/index.ts`):
-1. Runs `prisma migrate deploy` (auto-migration on startup)
-2. Executes startup data migrations (email verification, vault setup marking)
-3. Recovers orphaned sessions from previous server instances
-4. Initializes Passport authentication and GeoIP services
-5. Creates HTTP server, attaches Socket.IO and Guacamole WebSocket server
-6. Sets up zero-trust tunnel WebSocket endpoint
-7. Launches scheduled jobs (key rotation, LDAP sync, cleanup, monitoring)
-
-**App setup** (`server/src/app.ts`):
-1. Helmet security headers (CSP, HSTS, X-Frame-Options, Referrer-Policy)
-2. Custom Permissions-Policy header
-3. Trust proxy configuration
-4. CORS (origin restricted to `CLIENT_URL`, credentials enabled)
-5. JSON parser (500KB limit)
-6. Cookie parser + Passport initialization
-7. Optional HTTP request logger
-8. Global CSRF validation (exempts specific auth and share endpoints)
-9. Mounts 32 route files under `/api`
-10. Custom 404 handler + centralized error middleware
-
-### Route Domains
-
-| Domain | Prefix | Files | Purpose |
-|--------|--------|-------|---------|
-| Authentication | `/api/auth` | auth, oauth, saml | Login, register, OAuth, SAML, MFA |
-| Vault | `/api/vault` | vault | Unlock/lock, password reveal, MFA unlock |
-| Connections | `/api/connections` | connections | CRUD, sharing, import/export |
-| Folders | `/api/folders` | folders | Connection folder management |
-| Sessions | `/api/sessions` | sessions | SSH/RDP/VNC session lifecycle, monitoring |
-| Users | `/api/user` | user, 2fa, sms, webauthn | Profile, password, email, MFA setup |
-| Secrets | `/api/secrets` | secrets | Vault secret CRUD, versioning, sharing |
-| Vault Folders | `/api/vault-folders` | vault-folders | Secret folder organization |
-| Public Share | `/api/share` | share | External secret access (unauthenticated) |
-| Audit | `/api/audit` | audit | Log queries, geo analysis |
-| Notifications | `/api/notifications` | notifications | In-app notification management |
-| Tenants | `/api/tenants` | tenants | Multi-tenant management, user admin |
-| Teams | `/api/teams` | teams | Team CRUD, member management |
-| Gateways | `/api/gateways` | gateways | Gateway CRUD, orchestration, tunnels |
-| Admin | `/api/admin` | admin | Email config, app config, providers |
-| Files | `/api/files` | files | Upload/download with quota enforcement |
-| Tabs | `/api/tabs` | tabs | Tab state sync |
-| Recordings | `/api/recordings` | recordings | Session recording playback |
-| GeoIP | `/api/geoip` | geoip | IP geolocation lookup |
-| LDAP | `/api/ldap` | ldap | LDAP status, test, sync |
-| Sync | `/api/sync-profiles` | sync | Connection sync (NetBox) |
-| Vault Providers | `/api/vault-providers` | vault-providers | External vault integration |
-| Access Policies | `/api/access-policies` | access-policies | ABAC policy management |
-| Health | `/api/health`, `/api/ready` | — | Health and readiness probes |
-
-### Middleware Stack
-
-| Middleware | Purpose |
-|-----------|---------|
-| `auth.middleware.ts` | JWT verification, token binding (IP+UA hash), IP/UA validation |
-| `csrf.middleware.ts` | CSRF token validation for state-changing requests |
-| `tenant.middleware.ts` | Tenant context binding, role enforcement (7 roles) |
-| `team.middleware.ts` | Team membership checks, role enforcement |
-| `validate.middleware.ts` | Request schema validation |
-| `error.middleware.ts` | Centralized error handler with logging |
-| `requestLogger.middleware.ts` | Optional HTTP request logging |
-| Rate limiters (7 files) | Login, registration, SMS, OAuth, session, vault, identity, reset |
-
-### Scheduled Jobs
-
-Started at server boot (`server/src/index.ts`):
-
-| Job | Purpose |
-|-----|---------|
-| Key rotation | SSH keypair auto-rotation |
-| LDAP sync | Periodic LDAP directory synchronization |
-| Membership expiry | Cleanup expired tenant/team memberships |
-| Gateway health monitoring | 30-second health check intervals |
-| Gateway reconciliation | 5-minute instance state reconciliation |
-| Auto-scaling | Dynamic gateway instance scaling |
-| Cleanup: expired shares | Remove expired connection/secret shares |
-| Cleanup: expired tokens | Purge expired refresh tokens |
-| Cleanup: recordings | Remove recordings past retention period |
-| Cleanup: idle sessions | Mark and close idle sessions |
-| Secret expiry checks | Notify on approaching secret expiration |
-
-## Client Architecture
-
-### Application Structure
-
-```mermaid
-flowchart TD
-    Main["main.tsx<br/>React 19 entry"] --> ThemeProvider["ThemeProvider<br/>MUI v7 multi-theme"]
-    ThemeProvider --> Router["BrowserRouter<br/>React Router v6"]
-    Router --> Routes["Route definitions<br/>App.tsx"]
-
-    Routes --> Public["Public Routes<br/>Login, Register, Reset"]
-    Routes --> Auth["Auth Routes<br/>OAuth callback, Vault setup"]
-    Routes --> Protected["Protected Routes<br/>Dashboard, Viewer, Recording"]
-
-    Protected --> Dashboard["DashboardPage<br/>MainLayout + Dialogs"]
-    Protected --> Viewer["ConnectionViewerPage<br/>SSH/RDP/VNC popup"]
-    Protected --> Recording["RecordingPlayerPage<br/>Session playback"]
-
-    Dashboard --> MainLayout["MainLayout<br/>AppBar + Sidebar + Tabs + 15 Dialogs"]
-```
-
-### State Management (Zustand)
-
-| Store | File | Purpose |
-|-------|------|---------|
-| `authStore` | `authStore.ts` | JWT tokens (in-memory), CSRF token, user profile |
-| `connectionsStore` | `connectionsStore.ts` | Own, shared, and team connections + folders |
-| `tabsStore` | `tabsStore.ts` | Open tabs, active tab, server sync (debounced 1s) |
-| `vaultStore` | `vaultStore.ts` | Vault lock status, MFA unlock methods, polling (60s) |
-| `secretStore` | `secretStore.ts` | Vault secrets, filters, versions, folders, tenant vault |
-| `teamStore` | `teamStore.ts` | Teams, members, CRUD operations |
-| `tenantStore` | `tenantStore.ts` | Tenant details, users, memberships, switching |
-| `gatewayStore` | `gatewayStore.ts` | Gateways, SSH keys, orchestration, templates, tunnels |
-| `accessPolicyStore` | `accessPolicyStore.ts` | ABAC policies CRUD |
-| `themeStore` | `themeStore.ts` | Theme name, light/dark mode |
-| `uiPreferencesStore` | `uiPreferencesStore.ts` | 50+ persisted UI layout preferences |
-| `notificationStore` | `notificationStore.ts` | Snackbar notification (single) |
-| `notificationListStore` | `notificationListStore.ts` | In-app notification list, unread count |
-| `terminalSettingsStore` | `terminalSettingsStore.ts` | User SSH terminal defaults |
-| `rdpSettingsStore` | `rdpSettingsStore.ts` | User RDP defaults |
-
-### Custom Hooks
-
-| Hook | Purpose |
-|------|---------|
-| `useAuth` | Auth bootstrap, auto-refresh on mount |
-| `useSocket(namespace)` | Socket.IO connection with JWT auth |
-| `useAsyncAction` | Loading/error state for dialog form submissions |
-| `useLazyMount(trigger)` | Defer Suspense mounting until first needed |
-| `useKeyboardCapture` | Focus, fullscreen, keyboard lock, browser key suppression |
-| `useAutoReconnect` | Exponential backoff with jitter for reconnection |
-| `useSftpTransfers(socket)` | Chunked SFTP upload/download with progress tracking |
-| `useShareSync` | Notification-driven data refresh (debounced 500ms) |
-| `useDlpBrowserHardening` | Block DevTools, view-source, save, print shortcuts |
-| `useGatewayMonitor` | Real-time gateway health via Socket.IO |
-| `useFullscreen(ref)` | Container-scoped fullscreen toggle |
-| `useCopyToClipboard` | Clipboard copy with 2-second feedback |
-
-### Dialog Pattern
-
-All features overlaying the main workspace use full-screen MUI `Dialog` components rendered from `MainLayout`, not separate page routes. This preserves active RDP/SSH sessions.
-
-```mermaid
 flowchart LR
-    MainLayout --> |state| DialogState["useState: open/closed"]
-    DialogState --> Dialog["<Dialog fullScreen>"]
-    Dialog --> AppBar["<AppBar> + Close button"]
-    Dialog --> Content["Dialog content"]
-
-    style Dialog fill:#e1f5fe
+    Routes["Routes<br/>*.routes.ts"] --> Controllers["Controllers<br/>*.controller.ts"] --> Services["Services<br/>*.service.ts"] --> Prisma["Prisma ORM"] --> DB[(PostgreSQL)]
 ```
 
-15 dialogs: Connection, Folder, Share, ShareFolder, ConnectAs, Settings, AuditLog, ConnectionAuditLog, Keychain, UserProfile, Recordings, Export, Import, CreateUser, Invite.
+**Routes** define endpoints and apply middleware (auth, validation, rate limiting). **Controllers** parse requests and delegate to services. **Services** contain business logic and database operations.
 
-## Real-Time Communication
+### Entry Point (`server/src/index.ts`)
 
-### SSH Terminal Sessions
+On startup, the server:
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant SocketIO as Socket.IO (/ssh)
-    participant Server
-    participant SSH2 as SSH2 Library
-    participant Target as SSH Target
+1. Runs `prisma migrate deploy` (automatic database migrations)
+2. Runs startup migrations (email verification, vault setup)
+3. Recovers orphaned sessions from previous server instances
+4. Initializes GeoIP database
+5. Creates HTTP server with Express app
+6. Attaches Socket.IO server (SSH terminal + notifications)
+7. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
+8. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
+9. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
+10. Registers graceful shutdown on SIGTERM/SIGINT
 
-    Browser->>SocketIO: connect (JWT auth)
-    Browser->>SocketIO: open(sessionId, connectionId)
-    Server->>SSH2: createConnection(host, port, credentials)
-    SSH2->>Target: SSH handshake
-    Target-->>SSH2: shell ready
+### Express App (`server/src/app.ts`)
 
-    loop Terminal I/O
-        Browser->>SocketIO: stdin(data)
-        SocketIO->>SSH2: write(data)
-        SSH2-->>SocketIO: stdout/stderr
-        SocketIO-->>Browser: data(output)
-    end
+Middleware stack (in order):
 
-    Browser->>SocketIO: resize(cols, rows)
-    Browser->>SocketIO: sftp:list/upload/download
-    Browser->>SocketIO: close()
-```
+1. **Helmet** — Security headers (CSP, HSTS, X-Frame-Options, Permissions-Policy)
+2. **CORS** — Origin restricted to `config.clientUrl`
+3. **Express JSON** — 500KB body limit
+4. **Cookie Parser** — For refresh token cookies
+5. **Passport** — OAuth/SAML initialization
+6. **Request Logger** — Optional HTTP logging
+7. **CSRF Validation** — Double-submit cookie pattern (exempts login, register, extension clients)
 
-SFTP file transfers use 64KB chunked streaming over the same Socket.IO connection.
+### Route Mounting
 
-### RDP/VNC Sessions
+31 route files mounted under `/api`:
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant API as Express API
-    participant GuacWS as Guacamole WS (:3002)
-    participant Guacd as guacd (:4822)
-    participant Target as RDP/VNC Target
+| Path | Purpose |
+|------|---------|
+| `/api/auth` | Authentication (password, OAuth, SAML, MFA, token refresh) |
+| `/api/vault` | Vault unlock/lock/status, MFA vault unlock |
+| `/api/connections` | Connection CRUD, sharing, import/export |
+| `/api/folders` | Folder hierarchy |
+| `/api/sessions` | RDP/VNC/SSH session lifecycle, monitoring |
+| `/api/secrets` | Vault secret CRUD, versioning, sharing, external links |
+| `/api/vault-folders` | Secret organization |
+| `/api/user` | Profile, settings, 2FA, WebAuthn, domain credentials |
+| `/api/tenants` | Multi-tenant CRUD, member management, IP allowlist |
+| `/api/teams` | Team CRUD, member roles |
+| `/api/gateways` | Gateway CRUD, deploy, scale, tunnel, SSH keys |
+| `/api/admin` | Admin settings, email config, app config |
+| `/api/audit` | Audit logs (user, tenant, connection) |
+| `/api/recordings` | Session recording playback and export |
+| `/api/notifications` | Notification management |
+| `/api/share` | Public link sharing (unauthenticated) |
+| `/api/files` | File upload/download (SFTP drive) |
+| `/api/ldap` | LDAP sync configuration |
+| `/api/sync-profiles` | NetBox connection sync |
+| `/api/vault-providers` | External vault (HashiCorp Vault) integration |
+| `/api/access-policies` | ABAC policy management |
+| `/api/health` | Readiness/liveness probes |
+| `/api/geoip` | IP geolocation lookup |
+| `/api/tabs` | Persisted open tabs |
 
-    Browser->>API: POST /sessions/rdp (connectionId)
-    API-->>Browser: { token, sessionId }
-    Browser->>GuacWS: WebSocket connect (token)
-    GuacWS->>Guacd: Guacamole protocol
-    Guacd->>Target: RDP/VNC protocol
-    Target-->>Guacd: Display updates
-    Guacd-->>GuacWS: Guacamole instructions
-    GuacWS-->>Browser: Rendered display
-```
+### Middleware
 
-Guacamole tokens are AES-256-GCM encrypted, containing connection parameters that `guacd` uses to establish the remote session.
+| Middleware | File | Purpose |
+|-----------|------|---------|
+| JWT Auth | `auth.middleware.ts` | Token verification, IP/User-Agent binding, hijack detection |
+| Error Handler | `error.middleware.ts` | Custom `AppError` class, 500 fallback |
+| CSRF | `csrf.middleware.ts` | Double-submit cookies, timing-safe comparison |
+| Async Handler | `asyncHandler.ts` | Promise rejection wrapper |
+| Tenant | `tenant.middleware.ts` | Tenant extraction and role enforcement |
+| Team | `team.middleware.ts` | Team context middleware |
+| Validation | `validate.middleware.ts` | Zod schema validation |
+| Rate Limiters | `*RateLimit*.middleware.ts` | Per-endpoint rate limiting (login, vault, SMS, session, registration) |
+| Request Logger | `requestLogger.middleware.ts` | HTTP request logging |
 
-## Data Model Overview
+### Socket.IO Handlers
+
+| Namespace | Handler | Purpose |
+|-----------|---------|---------|
+| `/ssh` | `ssh.handler.ts` | SSH terminal sessions via ssh2, SFTP file browser, session recording (asciicast), DLP enforcement |
+| `/notifications` | `notification.handler.ts` | Real-time events (share, secret, recording, impossible travel) |
+| `/gateways` | `gatewayMonitor.handler.ts` | Gateway health, instance state, scaling updates |
+
+### WebSocket Tunnel
+
+`tunnel.handler.ts` attaches a raw `ws` WebSocket server on `/api/tunnel/connect`. Gateway agents authenticate with tunnel token and gateway ID, then multiplex TCP streams using a binary frame protocol.
+
+### Background Jobs
+
+| Job | Interval | Purpose |
+|-----|----------|---------|
+| Key Rotation | Cron-based | SSH key pair rotation |
+| LDAP Sync | Every 6 hours | LDAP user provisioning |
+| Gateway Health | 30 seconds | Connectivity checks |
+| Managed Gateway Reconciliation | 5 minutes | Container state sync |
+| Auto-Scaling Evaluation | 30 seconds | Scale based on session count |
+| Expired Share Cleanup | 1 hour | Remove expired shares |
+| Expired Token Cleanup | 1 hour | Remove expired refresh tokens |
+| Idle Session Marking | 1 minute | Flag idle sessions |
+| Inactive Session Closure | 1 minute | Close timed-out sessions |
+| Session Recording Cleanup | Daily | Remove old recordings |
+| Closed Session Cleanup | Daily | Clean up closed session records |
+| Expiring Secrets Check | 6 hours | Notify about expiring secrets |
+| Membership Expiry Check | Periodic | Check and enforce membership expiry |
+
+## Database Schema
+
+32 Prisma models across 6 domains:
 
 ```mermaid
 erDiagram
     User ||--o{ Connection : owns
-    User ||--o{ SharedConnection : "shared with"
-    User ||--o{ VaultSecret : owns
-    User ||--o{ SharedSecret : "shared with"
     User ||--o{ RefreshToken : has
     User ||--o{ OAuthAccount : links
     User ||--o{ WebAuthnCredential : registers
+    User ||--o{ VaultSecret : stores
+    User ||--o{ AuditLog : generates
 
     Tenant ||--o{ TenantMember : has
     Tenant ||--o{ Team : contains
-    Tenant ||--o{ Gateway : owns
+    Tenant ||--o{ Gateway : manages
+    Tenant ||--o{ AccessPolicy : defines
 
     Team ||--o{ TeamMember : has
-    Team ||--o{ Connection : owns
-    Team ||--o{ VaultSecret : scopes
+    Team ||--o{ VaultSecret : "team secrets"
 
-    Connection ||--o{ SharedConnection : shared
-    Connection ||--o{ ActiveSession : hosts
-    Connection }o--o| Folder : "grouped in"
+    Connection ||--o{ SharedConnection : "shared with"
+    Connection ||--o{ ActiveSession : "open sessions"
+    Connection ||--o{ SessionRecording : "recorded"
+    Connection }o--o| Folder : "organized in"
     Connection }o--o| Gateway : "routes through"
 
     VaultSecret ||--o{ VaultSecretVersion : versions
-    VaultSecret ||--o{ SharedSecret : shared
-    VaultSecret ||--o{ ExternalSecretShare : "shared externally"
-    VaultSecret }o--o| VaultFolder : "grouped in"
+    VaultSecret ||--o{ SharedSecret : "shared with"
+    VaultSecret ||--o{ ExternalSecretShare : "public links"
+    VaultSecret }o--o| VaultFolder : "organized in"
 
-    ActiveSession ||--o| SessionRecording : records
-
-    Gateway ||--o{ ManagedGatewayInstance : manages
+    Gateway ||--o{ ManagedGatewayInstance : deploys
+    Gateway }o--o| GatewayTemplate : "based on"
 ```
 
-### Key Enums
+### Key Models
+
+| Model | Fields | Purpose |
+|-------|--------|---------|
+| **User** | 100+ fields | Core user with vault encryption, TOTP, domain creds, recovery keys |
+| **Tenant** | DLP, IP allowlist, tunnel config, session limits | Multi-tenant workspace |
+| **Connection** | SSH/RDP/VNC with encrypted credentials, DLP, gateway | Remote connection definition |
+| **VaultSecret** | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE | Encrypted secret storage with versioning |
+| **Gateway** | SSH/RDP/VNC gateway with health, auto-scaling, tunnel | Gateway infrastructure |
+| **ActiveSession** | Socket ID, last activity, protocol | Open session tracking |
+| **AuditLog** | 100+ action types, IP, GeoIP, flags | Comprehensive audit trail |
+| **AccessPolicy** | Time windows, trusted device, MFA step-up | ABAC policy enforcement |
+
+### Enums
 
 | Enum | Values |
 |------|--------|
-| `TenantRole` | OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST |
-| `TeamRole` | TEAM_ADMIN, TEAM_EDITOR, TEAM_VIEWER |
-| `ConnectionType` | RDP, SSH, VNC |
-| `SecretType` | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
-| `SecretScope` | PERSONAL, TEAM, TENANT |
-| `SessionProtocol` | SSH, RDP, VNC |
-| `GatewayType` | GUACD, SSH_BASTION, MANAGED_SSH |
-| `Permission` | READ_ONLY, FULL_ACCESS |
+| TenantRole | OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST |
+| TeamRole | TEAM_ADMIN, TEAM_EDITOR, TEAM_VIEWER |
+| ConnectionType | RDP, SSH, VNC |
+| SecretType | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
+| SecretScope | PERSONAL, TEAM, TENANT |
+| GatewayType | GUACD, SSH_BASTION, MANAGED_SSH |
+| SessionStatus | ACTIVE, IDLE, CLOSED |
+| ManagedInstanceStatus | PROVISIONING, RUNNING, STOPPED, ERROR, REMOVING |
+
+## Client Architecture
+
+### Technology Stack
+
+- **React 19** with Vite build
+- **Material-UI v7** for components
+- **Zustand** for state management (15 stores)
+- **XTerm.js** for SSH terminal rendering
+- **guacamole-common-js** for RDP/VNC rendering
+- **Socket.IO** for real-time communication
+- **Axios** with automatic JWT refresh
+
+### Route Structure
+
+```mermaid
+flowchart TD
+    Router["React Router"]
+    Router --> Public["Public Routes"]
+    Router --> Auth["AuthRoute"]
+    Router --> Protected["ProtectedRoute"]
+
+    Public --> Login["/login"]
+    Public --> Register["/register"]
+    Public --> Forgot["/forgot-password"]
+    Public --> Reset["/reset-password"]
+    Public --> OAuthCB["/oauth/callback"]
+    Public --> Share["/share/:token"]
+
+    Auth --> VaultSetup["/oauth/vault-setup"]
+
+    Protected --> Dashboard["/* → DashboardPage"]
+    Protected --> Viewer["/connection/:id"]
+    Protected --> Recording["/recording/:id"]
+
+    Dashboard --> MainLayout["MainLayout"]
+    MainLayout --> Sidebar["ConnectionTree"]
+    MainLayout --> TabBar["TabBar + TabPanels"]
+    MainLayout --> Dialogs["Full-Screen Dialogs<br/>(Settings, Keychain, Audit, etc.)"]
+```
+
+### State Management (15 Zustand Stores)
+
+| Store | Persistence | Purpose |
+|-------|-------------|---------|
+| `authStore` | localStorage (excludes accessToken) | Authentication state, user profile |
+| `connectionsStore` | None (fetch-driven) | Connections, folders |
+| `tabsStore` | Server-side (debounced sync) | Open tabs |
+| `vaultStore` | None (polling) | Vault lock status |
+| `secretStore` | None (fetch-driven) | Vault secrets, versions, sharing |
+| `themeStore` | localStorage | Theme name and dark/light mode |
+| `teamStore` | None | Teams and members |
+| `tenantStore` | None | Tenant context and settings |
+| `gatewayStore` | None (WebSocket updates) | Gateways, instances, scaling, tunnel |
+| `notificationStore` | None (transient) | Toast notifications |
+| `notificationListStore` | None | Notification history |
+| `accessPolicyStore` | None | ABAC policies |
+| `uiPreferencesStore` | localStorage (per-user) | 50+ layout preferences |
+| `rdpSettingsStore` | Server-side | RDP viewer defaults |
+| `terminalSettingsStore` | Server-side | Terminal appearance defaults |
+
+### Theme System
+
+6 themes × 2 modes (dark/light):
+
+| Theme | Accent | Inspiration |
+|-------|--------|-------------|
+| Editorial | Emerald | Serif headings, classic |
+| Primer | Blue | GitHub |
+| Tanuki | Purple/Orange | GitLab |
+| Monokai | Neon multi-color | Code editor |
+| Solarized | Cyan | Solarized palette |
+| OneDark | Blue | Atom One Dark |
+
+### Build Optimization
+
+Vite splits code into manual chunks for optimal loading:
+
+| Chunk | Contents |
+|-------|----------|
+| `vendor-react` | React, React-DOM, React-Router |
+| `vendor-mui` | Material-UI, Emotion |
+| `vendor-mui-icons` | MUI Icons |
+| `vendor-terminal` | XTerm.js + addons |
+| `vendor-guacamole` | Guacamole client |
+| `vendor-network` | Axios, Socket.IO |
+
+PWA support with Workbox: offline-first navigation, stale-while-revalidate for assets, cache-first for fonts.
+
+## Real-Time Connection Architecture
+
+### SSH Terminal Flow
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant SocketIO as Socket.IO /ssh
+    participant SSH2 as ssh2 Library
+    participant Target as SSH Target
+
+    Browser->>SocketIO: Connect (JWT auth)
+    SocketIO->>SSH2: Create SSH session
+    SSH2->>Target: TCP connection
+    Target-->>SSH2: SSH handshake
+    SSH2-->>SocketIO: Shell stream
+    SocketIO-->>Browser: Terminal data
+    Browser->>SocketIO: Keystroke data
+    SocketIO->>SSH2: Write to stdin
+    Note over SocketIO: Session recording (asciicast)
+    Note over SocketIO: DLP policy enforcement
+    Note over SocketIO: SFTP file browser support
+```
+
+### RDP/VNC Flow
+
+```mermaid
+sequenceDiagram
+    participant Browser
+    participant API as REST API
+    participant GuacWS as Guacamole WS :3002
+    participant GuacD as guacd :4822
+    participant Target as RDP/VNC Target
+
+    Browser->>API: POST /sessions/rdp
+    API-->>Browser: Encrypted token
+    Browser->>GuacWS: WebSocket connect + token
+    GuacWS->>GuacD: Guacamole protocol
+    GuacD->>Target: RDP/VNC protocol
+    Target-->>GuacD: Screen data
+    GuacD-->>GuacWS: Guacamole instructions
+    GuacWS-->>Browser: Render via guacamole-common-js
+    Note over GuacD: Session recording (Guacamole format)
+```
+
+### Zero-Trust Tunnel
+
+```mermaid
+sequenceDiagram
+    participant Agent as Tunnel Agent
+    participant Broker as Tunnel Broker (Server)
+    participant SSH as SSH Handler
+
+    Agent->>Broker: WSS /api/tunnel/connect<br/>Auth: Bearer tunnel-token<br/>X-Gateway-Id: uuid
+    Broker-->>Agent: Connection accepted
+    loop Heartbeat (15s)
+        Agent->>Broker: PING frame + health metadata
+        Broker-->>Agent: PONG frame
+    end
+    SSH->>Broker: Need connection to target:22
+    Broker->>Agent: OPEN frame (streamId, host:port)
+    Agent->>Agent: TCP connect to target:22
+    Agent-->>Broker: DATA frames
+    Broker-->>SSH: DATA frames
+    Note over Agent,Broker: Binary multiplexed protocol<br/>8-byte header + payload
+```
+
+**Binary Frame Protocol:**
+- Frame type (1 byte): OPEN, DATA, CLOSE, PING, PONG
+- Stream ID (4 bytes): Multiplexed stream identifier
+- Payload length (3 bytes)
+- Payload (variable)
 
 ## Security Architecture
 
 ### Encryption at Rest
 
+All sensitive data is encrypted using **AES-256-GCM**:
+
 ```mermaid
-flowchart LR
-    Password[User Password] -->|Argon2id| MasterKey[Master Key]
-    MasterKey -->|AES-256-GCM| EncryptedCreds[Encrypted Credentials]
-    MasterKey -->|AES-256-GCM| EncryptedSecrets[Encrypted Secrets]
+flowchart TD
+    Password["User Password"] -->|Argon2id| DerivedKey["Derived Key"]
+    DerivedKey -->|AES-256-GCM| MasterKey["Master Key<br/>(encrypted at rest)"]
+    MasterKey -->|AES-256-GCM| Credentials["Connection Credentials"]
+    MasterKey -->|AES-256-GCM| Secrets["Vault Secrets"]
+    MasterKey -->|AES-256-GCM| TOTP["TOTP Seeds"]
 
-    ServerKey[SERVER_ENCRYPTION_KEY] -->|AES-256-GCM| EncryptedVaultKey[Encrypted Vault Key]
-    ServerKey -->|AES-256-GCM| GuacTokens[Guacamole Tokens]
-    ServerKey -->|AES-256-GCM| SSHKeys[SSH Key Pairs]
+    ServerKey["Server Encryption Key"] -->|AES-256-GCM| SSHKeys["SSH Key Pairs"]
+    ServerKey -->|AES-256-GCM| TunnelTokens["Tunnel Tokens"]
+    ServerKey -->|AES-256-GCM| GuacTokens["RDP/VNC Tokens"]
+
+    TenantKey["Tenant Master Key"] -->|AES-256-GCM| TeamSecrets["Team/Tenant Secrets"]
+    MasterKey -->|AES-256-GCM| TenantKey
 ```
-
-- **Per-user master key**: Derived from password via Argon2id, held in-memory with configurable TTL
-- **Vault key**: Each user's vault key encrypted with server encryption key, decrypted only when vault is unlocked
-- **Team vault keys**: Shared decryption keys distributed to team members
-- **Tenant vault keys**: For tenant-scoped secrets
 
 ### Authentication Flow
 
 ```mermaid
-flowchart TD
-    Start[Login Request] --> LocalOrOAuth{Auth Method?}
-    LocalOrOAuth -->|Local| Credentials[Email + Password]
-    LocalOrOAuth -->|OAuth| Provider[Google/GitHub/Microsoft/OIDC]
-    LocalOrOAuth -->|SAML| SAML[SAML 2.0 IdP]
-    LocalOrOAuth -->|LDAP| LDAP[LDAP Directory]
+stateDiagram-v2
+    [*] --> Login: Email + Password
+    Login --> MFACheck: Credentials valid
+    Login --> Failed: Invalid credentials
 
-    Credentials --> MFA{MFA Required?}
-    Provider --> MFA
-    SAML --> MFA
-    LDAP --> MFA
+    MFACheck --> MFARequired: Has MFA enabled
+    MFACheck --> Authenticated: No MFA
 
-    MFA -->|TOTP| TOTP[TOTP Verification]
-    MFA -->|WebAuthn| WebAuthn[Passkey Verification]
-    MFA -->|SMS| SMS[SMS Code Verification]
-    MFA -->|No| Tokens
+    MFARequired --> TOTP: TOTP configured
+    MFARequired --> SMS: SMS configured
+    MFARequired --> WebAuthn: WebAuthn configured
+    MFARequired --> MFASetup: First login, MFA required by tenant
 
-    TOTP --> Tokens[Issue JWT + Refresh Token]
-    WebAuthn --> Tokens
-    SMS --> Tokens
+    TOTP --> Authenticated: Code valid
+    SMS --> Authenticated: Code valid
+    WebAuthn --> Authenticated: Credential valid
+    MFASetup --> Authenticated: Setup complete
 
-    Tokens --> TokenBinding[Bind to IP + User-Agent Hash]
+    Authenticated --> TokenIssued: JWT + Refresh token
+    TokenIssued --> [*]
 ```
 
-### Defense Layers
+**Token Security:**
+- Short-lived access tokens (15 min default)
+- Refresh tokens stored in DB with family tracking (rotation detection)
+- Token binding: IP + User-Agent hash prevents token theft
+- Automatic refresh via Axios interceptor on 401
 
-| Layer | Mechanism |
-|-------|-----------|
-| Transport | HTTPS, HSTS, CSP headers |
-| Authentication | JWT with token binding, refresh token rotation |
-| Authorization | RBAC (7 tenant roles, 3 team roles), ABAC policies |
-| Rate Limiting | Per-endpoint limits (login, registration, SMS, OAuth, vault, session) |
-| Data Protection | AES-256-GCM encryption, Argon2id key derivation |
-| DLP | Clipboard, download, upload, print restrictions |
-| Audit | 120+ action types, geo-IP enrichment, impossible travel detection |
-| Network | IP allowlist (tenant-level), CSRF protection |
-| Session | Absolute timeout (12h default), inactivity timeout (1h default), concurrent session limits |
+### Role-Based Access Control
+
+```mermaid
+flowchart TD
+    subgraph Tenant["Tenant Roles (7 levels)"]
+        OWNER --> ADMIN --> OPERATOR --> MEMBER --> CONSULTANT --> AUDITOR --> GUEST
+    end
+
+    subgraph Team["Team Roles"]
+        TEAM_ADMIN --> TEAM_EDITOR --> TEAM_VIEWER
+    end
+
+    subgraph ABAC["Attribute-Based Access Control"]
+        TimeWindow["Time Windows<br/>(09:00-18:00 UTC)"]
+        TrustedDevice["Require WebAuthn<br/>in current session"]
+        MFAStepUp["Require MFA<br/>step-up"]
+    end
+```
+
+### Audit & Anomaly Detection
+
+- 100+ tracked action types
+- GeoIP enrichment (country, city, coordinates)
+- Impossible travel detection (speed > 900 km/h between logins)
+- IP allowlist (flag or block mode per tenant)
+- DLP policies (disable copy/paste/upload/download per tenant or connection)
 
 ## Browser Extension Architecture
 
 ```mermaid
 flowchart TD
-    Popup[Popup App<br/>React] -->|chrome.runtime| SW[Service Worker<br/>background.ts]
-    Options[Options Page<br/>React] -->|chrome.runtime| SW
-    Content[Content Scripts<br/>Autofill] -->|chrome.runtime| SW
+    subgraph Extension["Chrome Extension (Manifest V3)"]
+        BG["Service Worker<br/>(background.ts)"]
+        Popup["Popup App<br/>(React)"]
+        Options["Options Page<br/>(React)"]
+        Content["Content Scripts<br/>(Autofill)"]
+    end
 
-    SW -->|fetch API| Server[Arsenale Server<br/>/api/*]
-    SW -->|chrome.storage| Storage[(chrome.storage<br/>Accounts, tokens)]
-    SW -->|chrome.alarms| Alarms[Token Refresh<br/>Scheduled]
+    subgraph Storage["chrome.storage"]
+        Local["chrome.storage.local<br/>(encrypted accounts)"]
+        Session["chrome.storage.session<br/>(encryption key, ephemeral)"]
+    end
 
-    Content -->|DOM| Forms[Web Page Forms<br/>Credential injection]
+    Popup -->|RPC| BG
+    Options -->|RPC| BG
+    Content -->|RPC| BG
+    BG -->|API calls| Server["Arsenale Server"]
+    BG --> Local
+    BG --> Session
+    Content -->|Form detection| WebPage["Web Page"]
+    Content -->|Autofill| WebPage
 ```
 
-- Multi-account support with encrypted token storage (AES-GCM in `chrome.storage.session`)
-- Service worker handles all API calls (bypasses CORS)
-- Content scripts detect login forms and inject credentials from vault
-- Token refresh via `chrome.alarms` (persistent scheduling)
+**Key Features:**
+- Multi-account support (multiple Arsenale servers)
+- Credential autofill on login forms
+- Keychain browsing and search
+- Token refresh via chrome.alarms (every 10 min)
+- AES-GCM encrypted token storage
+- Credential index for domain matching
 
-## Gateway Orchestration
+## Key Design Patterns
 
-```mermaid
-flowchart TD
-    Server[Arsenale Server] -->|Docker/Podman API| Orchestrator{Orchestrator}
-    Orchestrator -->|docker| Docker[Docker Engine]
-    Orchestrator -->|podman| Podman[Podman]
-    Orchestrator -->|kubectl| K8s[Kubernetes]
+### Full-Screen Dialog Pattern
 
-    Orchestrator --> Instance1[Gateway Instance 1]
-    Orchestrator --> Instance2[Gateway Instance 2]
-    Orchestrator --> InstanceN[Gateway Instance N]
+Features that overlay the workspace (settings, keychain, audit log) are implemented as full-screen MUI `Dialog` components, not page routes. This preserves active RDP/SSH sessions.
 
-    Server -->|Health Check 30s| Instance1
-    Server -->|Reconciliation 5m| Orchestrator
+### UI Preferences Persistence
 
-    LB[Load Balancer] --> Instance1
-    LB --> Instance2
-    LB --> InstanceN
+All layout state persists via `uiPreferencesStore` (Zustand + localStorage, per-user namespacing). 50+ keys for sidebar states, filter selections, panel positions.
 
-    style LB fill:#fff3e0
-```
+### Error Handling
 
-- **Auto-scaling**: Min/max replicas, sessions-per-instance threshold
-- **Health monitoring**: 30-second intervals, consecutive failure tracking
-- **Load balancing**: Round-robin or least-connections strategy
-- **Templates**: Reusable gateway configurations for one-click deployment
+- **Server:** Custom `AppError(message, statusCode)`, async handler wrapper, global error middleware
+- **Client:** `extractApiError(err, fallback)` utility, `useAsyncAction` hook for dialog forms
+
+### Validation
+
+Zod schemas validate all request bodies on the server via `validate()` middleware. Client mirrors schemas for form validation.

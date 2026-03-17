@@ -2,268 +2,292 @@
 title: Deployment
 description: Docker containers, CI/CD pipelines, production setup, and infrastructure
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
   - compose.yml
   - compose.dev.yml
+  - compose.demo.yml
   - server/Dockerfile
   - client/Dockerfile
-  - ssh-gateway/Dockerfile
-  - tunnel-agent/Dockerfile
-  - docker/guacd/Dockerfile
-  - .github/workflows/verify-server.yml
-  - .github/workflows/verify-client.yml
-  - .github/workflows/security-server.yml
-  - .github/workflows/security-client.yml
+  - gateways/guacd/Dockerfile
+  - gateways/guacenc/Dockerfile
+  - gateways/ssh-gateway/Dockerfile
+  - gateways/tunnel-agent/Dockerfile
+  - client/nginx.conf
+  - client/nginx.main.conf
   - .github/workflows/docker-server.yml
   - .github/workflows/docker-client.yml
-  - .github/workflows/ssh-gateway-build.yml
-  - .github/workflows/guacd-build.yml
+  - .github/workflows/verify-server.yml
+  - .github/workflows/verify-client.yml
   - .github/workflows/release.yml
 ---
 
 # Deployment
 
-## Container Architecture
+## Production Docker Compose
+
+The production stack is defined in `compose.yml`:
 
 ```mermaid
 flowchart TD
-    subgraph Production Stack
-        Client["Client (Nginx)<br/>:8080"]
-        Server["Server (Express)<br/>:3001 + :3002"]
-        PostgreSQL[(PostgreSQL 16<br/>:5432)]
-        Guacd["guacd<br/>:4822"]
-        Guacenc["guacenc<br/>:3003"]
-        SSHGateway["SSH Gateway<br/>:2222"]
+    subgraph External["External Access"]
+        Browser["Browser<br/>Port 3000"]
     end
 
-    Client -->|proxy| Server
-    Server --> PostgreSQL
-    Server --> Guacd
-    Server --> Guacenc
-    Server -.->|optional| SSHGateway
-    Guacd --> RDP/VNC[RDP/VNC Targets]
-    SSHGateway --> SSH[SSH Targets]
+    subgraph Stack["Docker Compose Stack"]
+        Client["client<br/>(Nginx :8080)"]
+        Server["server<br/>(:3001 + :3002)"]
+        Postgres[(postgres<br/>:5432)]
+        GuacD["guacd<br/>:4822"]
+        GuacEnc["guacenc<br/>:3003"]
+        SSHGw["ssh-gateway<br/>:2222"]
+    end
+
+    Browser --> Client
+    Client -->|/api proxy| Server
+    Client -->|/guacamole proxy| Server
+    Server --> Postgres
+    Server --> GuacD
+    Server --> GuacEnc
+    GuacD --> SSHGw
+
+    subgraph Volumes
+        pgdata["pgdata"]
+        drive["arsenale_drive"]
+        recordings["arsenale_recordings"]
+    end
+
+    Postgres --> pgdata
+    Server --> drive
+    Server --> recordings
+    GuacD --> drive
+    GuacD --> recordings
 ```
 
-## Docker Images
+### Services
+
+| Service | Image | Ports | Purpose |
+|---------|-------|-------|---------|
+| **postgres** | `postgres:16` | Internal | Database with health check |
+| **guacd** | `${ORCHESTRATOR_GUACD_IMAGE}` | 4822 | RDP/VNC protocol handler |
+| **guacenc** | `./gateways/guacenc` | Internal | Recording → video conversion |
+| **server** | `./server/Dockerfile` | 3001, 3002 | Express API + Guacamole WS |
+| **client** | `./client/Dockerfile` | 8080 → 3000 | Nginx reverse proxy + SPA |
+| **ssh-gateway** | `./gateways/ssh-gateway` | 2222 | SSH bastion (optional) |
+
+### Volumes
+
+| Volume | Mount | Purpose |
+|--------|-------|---------|
+| `pgdata` | PostgreSQL data | Database persistence |
+| `arsenale_drive` | `/guacd-drive` | RDP file drive redirection |
+| `arsenale_recordings` | `/recordings` | Session recordings |
+
+### Security Hardening
+
+All containers run with:
+- `cap_drop: ALL` + `cap_add: NET_BIND_SERVICE`
+- `security_opt: no-new-privileges:true`
+- `security_opt: label:disable` (Podman/SELinux compatibility)
+- Non-root users where possible
+
+### Starting Production
+
+```bash
+# Create production env file
+cp .env.example .env.production
+# Edit .env.production with production values
+
+# Start full stack
+npm run docker:prod
+```
+
+## Container Images
 
 ### Server (`server/Dockerfile`)
 
-Multi-stage Alpine-based build (Node 22-Alpine):
-1. **Build stage**: Install dependencies, generate Prisma client, compile TypeScript
-2. **Production stage**: Copy compiled code + pruned node_modules, run as non-root `appuser`
+Multi-stage build on `node:22-alpine`:
 
-- **Ports**: 3001 (API), 3002 (Guacamole WebSocket)
-- **Healthcheck**: `wget -qO- http://localhost:3001/api/health`
-- **Security**: Non-root user, minimal Alpine image
+1. Install dependencies from `package-lock.json`
+2. Generate Prisma client from schema
+3. Compile TypeScript to `dist/`
+4. Prune to production dependencies
+5. Create non-root `appuser`
+6. Create `/guacd-drive` and `/recordings` directories
+
+**Exposed ports:** 3001 (API), 3002 (Guacamole WS)
+**Health check:** `GET /api/health` (10s interval, 5 retries, 30s start period)
+**Entry:** `node dist/index.js`
 
 ### Client (`client/Dockerfile`)
 
-Multi-stage build (Node build + Nginx runtime):
-1. **Build stage**: Compile React/Vite application
-2. **Runtime stage**: Nginx 1.28-Alpine serving static files with reverse proxy
+Multi-stage build: Node 22-alpine (build) → Nginx 1.28-alpine (runtime):
 
-- **Port**: 8080
-- **Healthcheck**: `wget -qO- http://127.0.0.1:8080/health`
-- **Security**: Non-root Nginx user
+1. Install dependencies and build with Vite
+2. Copy built assets to Nginx html directory
+3. Apply custom Nginx configuration
 
-### SSH Gateway (`ssh-gateway/Dockerfile`)
+**Exposed port:** 8080
+**Health check:** `GET /health` (10s interval)
+**Entry:** `nginx -g 'daemon off;'`
 
-Alpine-based with OpenSSH and embedded tunnel agent:
-- **Ports**: 2222 (SSH), 8022 (API)
-- **Features**: Multi-stage build, tunnel agent dormant unless configured
-- **Healthcheck**: `nc -z localhost 2222`
+### Guacd Gateway (`gateways/guacd/Dockerfile`)
 
-### guacd (`docker/guacd/Dockerfile`)
+Multi-stage: tunnel-agent builder → guacamole/guacd:1.6.0 runtime:
 
-Custom Guacamole daemon based on `guacamole/guacd:1.6.0`:
-- Adds Node.js + embedded tunnel agent (dormant by default)
-- **Port**: 4822
-- **Healthcheck**: `nc -z localhost 4822`
+1. Build tunnel-agent from TypeScript
+2. Install Node.js in guacd base image
+3. Copy pre-built tunnel agent
+4. Custom entrypoint starts both guacd and tunnel agent
 
-### Tunnel Agent (`tunnel-agent/Dockerfile`)
+**Exposed port:** 4822
+**User:** daemon (non-root)
 
-Lightweight zero-trust agent (Node 22-Alpine):
-- Activated by environment variables: `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`
-- Dormant mode when env vars absent
+### SSH Gateway (`gateways/ssh-gateway/Dockerfile`)
 
-## Docker Compose
+Multi-stage: tunnel-agent builder → Alpine 3.21 runtime:
 
-### Development Stack (`compose.dev.yml`)
+1. Build tunnel-agent
+2. Install OpenSSH server
+3. Configure SSH with host keys
+4. Copy tunnel agent + key API script
 
-```bash
-npm run docker:dev       # Start
-npm run docker:dev:down  # Stop
-```
+**Exposed ports:** 2222 (SSH), 8022 (key API)
+**User:** tunnel (non-root)
 
-Services:
-- **PostgreSQL 16**: Port 5432, credentials `arsenale/arsenale`, volume `pgdata_dev`
-- **guacenc**: Port 3003, recording conversion service
+### Guacenc (`gateways/guacenc/Dockerfile`)
 
-Server and client run locally via `npm run dev` (not containerized in dev).
+Multi-stage: guacamole-server builder → agg builder → Alpine runtime:
 
-### Production Stack (`compose.yml`)
+1. Compile guacamole-server 1.6.0 with guacenc support
+2. Build agg (asciicast-to-GIF converter, multi-arch)
+3. Runtime with Python 3, ffmpeg, guacenc binary, agg binary
 
-```bash
-npm run docker:prod      # Start (requires .env.production)
-```
+**Exposed port:** 3003
+**User:** guacenc (non-root)
+**Entry:** `python3 /opt/guacenc/server.py`
 
-| Service | Image | Port | Notes |
-|---------|-------|------|-------|
-| PostgreSQL | `postgres:16` | 5432 | Persistent volume `pgdata` |
-| guacd | `guacamole/guacd:1.6.0` | 4822 | Override via `ORCHESTRATOR_GUACD_IMAGE` |
-| guacenc | Custom build | 3003 | Recording conversion |
-| Server | `server/Dockerfile` | 3001, 3002 | Auto-migrates DB on start |
-| Client | `client/Dockerfile` | 8080 | Nginx reverse proxy |
-| SSH Gateway | `ssh-gateway/Dockerfile` | 2222 | Optional |
+### Tunnel Agent (`gateways/tunnel-agent/Dockerfile`)
 
-**Security hardening** in production:
-- `security_opt: [label:disable, no-new-privileges:true]`
-- `cap_drop: [ALL]`, `cap_add: [NET_BIND_SERVICE]` (server only)
-- Docker socket mounted read-only for orchestration
-- Named volumes for persistent data (drive, recordings, database)
-- Internal network `arsenale_net`
+Multi-stage: Node 22-alpine builder → Node 22-alpine runtime:
 
-### Production Setup Steps
+**Required env:** `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`
+**User:** agent (non-root)
+**Entry:** `node dist/index.js`
 
-1. Copy environment files:
-   ```bash
-   cp .env.production.example .env.production
-   ```
+## Nginx Configuration
 
-2. Set production secrets:
-   ```bash
-   # Required secrets (generate strong random values)
-   JWT_SECRET=...
-   GUACAMOLE_SECRET=...
-   SERVER_ENCRYPTION_KEY=...    # 32-byte hex
-   POSTGRES_PASSWORD=...
-   ```
+### Reverse Proxy Routes
 
-3. Configure external access:
-   ```bash
-   CLIENT_URL=https://arsenale.example.com
-   TRUST_PROXY=true              # If behind reverse proxy
-   ```
+| Location | Target | Features |
+|----------|--------|----------|
+| `/api` | `http://server:3001` | WebSocket upgrade headers |
+| `/socket.io` | `http://server:3001` | WebSocket upgrade |
+| `/guacamole` | `http://server:3002/` | 86400s timeouts (long sessions) |
+| `/health` | 200 JSON | No logging |
+| `/assets/` | Static files | Cache 1 year (immutable, Vite hashes) |
+| `/index.html` | Static file | no-cache, no-store |
+| `/*` | Static files | SPA fallback to index.html |
 
-4. Start the stack:
-   ```bash
-   npm run docker:prod
-   ```
+### Security Headers
 
-5. Database migrations run automatically on server start.
+- `X-Frame-Options: DENY`
+- `X-Content-Type-Options: nosniff`
+- `Strict-Transport-Security: max-age=31536000`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
+- `Content-Security-Policy`: Restrictive (self, unsafe-inline for styles, ws/wss for connect)
 
-## CI/CD Pipeline
-
-### GitHub Actions Workflow Overview
-
-```mermaid
-flowchart TD
-    PR[Pull Request] --> VerifyServer[verify-server]
-    PR --> VerifyClient[verify-client]
-    PR --> SecurityServer[security-server]
-    PR --> SecurityClient[security-client]
-
-    Tag[Tag Push v*] --> VerifyServer
-    Tag --> VerifyClient
-    Tag --> SecurityServer
-    Tag --> SecurityClient
-
-    VerifyServer --> DockerServer[docker-server]
-    SecurityServer --> DockerServer
-    VerifyClient --> DockerClient[docker-client]
-    SecurityClient --> DockerClient
-
-    DockerServer -->|v* tag| Push1[Push to ghcr.io]
-    DockerClient -->|v* tag| Push2[Push to ghcr.io]
-
-    Tag --> Release[release.yml<br/>Create GitHub Release]
-
-    SSHChange[ssh-gateway/ change] --> SSHBuild[ssh-gateway-build]
-    GuacdChange[docker/guacd/ change] --> GuacdBuild[guacd-build]
-```
+## CI/CD Pipelines
 
 ### Verification Workflows
 
-**`verify-server.yml`** — Triggered on server/ changes (main/PR):
-1. Checkout → Setup Node 22 → `npm ci`
-2. `db:generate` → typecheck → lint → audit → build
-3. Concurrency: cancels duplicate runs
+```mermaid
+flowchart LR
+    Push["Push/PR to main"] --> Verify["Verify"]
+    Verify --> TC["TypeCheck"]
+    TC --> Lint["Lint"]
+    Lint --> Audit["npm audit"]
+    Audit --> Build["Build"]
+```
 
-**`verify-client.yml`** — Triggered on client/ changes (main/PR):
-1. Checkout → Setup Node 22 → `npm ci`
-2. typecheck → lint → audit → build
+**verify-server.yml:** Triggers on server/ path changes. Steps: checkout → Node 22 → npm ci → db:generate → typecheck → lint → audit → build.
 
-### Security Workflows
+**verify-client.yml:** Triggers on client/ path changes. Steps: checkout → Node 22 → npm ci → typecheck → lint → audit → build.
 
-**`security-server.yml`** / **`security-client.yml`**:
-1. **CodeQL Analysis**: JavaScript/TypeScript with security-extended queries
-2. **Trivy Filesystem Scan**: Vulnerabilities, misconfigurations, secrets
-3. Results uploaded as SARIF to GitHub Security tab
+Both cancel in-progress jobs on new pushes.
 
-### Docker Build & Push
+### Docker Build Workflows
 
-**`docker-server.yml`** / **`docker-client.yml`**:
-- **Depends on**: verify + security workflows passing
-- **Registry**: `ghcr.io/dnviti/arsenale/server` / `ghcr.io/dnviti/arsenale/client`
-- **Tags**: branch name, PR number, semver, `latest`
-- **Trivy image scan**: Critical/High severity check
-- **Push**: Only on version tags (v*)
+```mermaid
+flowchart TD
+    Tag["Version tag (v*)"] --> Verify
+    Tag --> Security["Security Scan"]
+    Verify --> BuildScan["Build & Scan"]
+    Security --> BuildScan
+    BuildScan --> Buildx["Docker Buildx"]
+    Buildx --> Trivy["Trivy Scanner<br/>(CRITICAL, HIGH)"]
+    Trivy --> SARIF["Upload SARIF"]
+    Trivy --> Push["Push to ghcr.io<br/>(tags only)"]
+```
 
-### Infrastructure Builds
+**docker-server.yml / docker-client.yml:**
+1. Run verification workflow
+2. Run security scan (CodeQL)
+3. Build Docker image with Buildx
+4. Scan with Trivy (CRITICAL + HIGH severity)
+5. Upload SARIF results to GitHub Security
+6. Push to `ghcr.io/dnviti/arsenale/server` or `ghcr.io/dnviti/arsenale/client` (version tags only)
 
-| Workflow | Trigger | Image | Platforms |
-|----------|---------|-------|-----------|
-| `ssh-gateway-build.yml` | ssh-gateway/ or tunnel-agent/ changes | `ghcr.io/dnviti/arsenale/ssh-gateway` | amd64, arm64 |
-| `guacd-build.yml` | docker/guacd/ or tunnel-agent/ changes | `ghcr.io/dnviti/arsenale/guacd` | amd64, arm64 |
-| `guacenc-build.yml` | docker/guacenc/ changes | `ghcr.io/dnviti/arsenale/guacenc` | amd64 |
+**Gateway builds:** `guacd-build.yml`, `ssh-gateway-build.yml`, `guacenc-build.yml`, `tunnel-agent-build.yml` follow the same pattern.
 
 ### Release Workflow
 
-**`release.yml`** — Triggered on tag push (v*):
-- Creates GitHub Release with auto-generated release notes
-- Draft by default (manual publish)
-- Prerelease flag for `-beta` tags
+**release.yml:** Triggers on version tag events. Creates GitHub Release with changelog.
 
-## Security Scanning
+### Registry
 
-| Tool | Scope | Trigger |
-|------|-------|---------|
-| **CodeQL** | Source code analysis (JS/TS, security-extended) | PR, main push |
-| **Trivy** | Filesystem + Docker image scan (vuln, misconfig, secret) | PR, main push |
-| **npm audit** | Dependency vulnerabilities (critical level) | Every verify run |
-| **ESLint security plugin** | OWASP vulnerability detection | Every lint run |
+All images are pushed to **GitHub Container Registry** (`ghcr.io/dnviti/arsenale/`):
 
-### Local Security Scan
+| Image | Path |
+|-------|------|
+| Server | `ghcr.io/dnviti/arsenale/server` |
+| Client | `ghcr.io/dnviti/arsenale/client` |
+| Guacd | `ghcr.io/dnviti/arsenale/guacd` |
+| SSH Gateway | `ghcr.io/dnviti/arsenale/ssh-gateway` |
+| Guacenc | `ghcr.io/dnviti/arsenale/guacenc` |
+| Tunnel Agent | `ghcr.io/dnviti/arsenale/tunnel-agent` |
 
-```bash
-npm run security          # Full scan (npm audit + ESLint + Trivy FS)
-npm run security --quick  # Quick scan (npm audit + ESLint only)
-npm run security --docker # Full scan + Docker image builds/scans
-```
+## Development Docker Compose
 
-## Container Registry
+`compose.dev.yml` provides lightweight containers for local development:
 
-All images published to GitHub Container Registry (ghcr.io):
+| Service | Port | Purpose |
+|---------|------|---------|
+| postgres | 127.0.0.1:5432 | Local database |
+| guacenc | 3003 | Recording processor (optional) |
 
-| Image | Purpose |
-|-------|---------|
-| `ghcr.io/dnviti/arsenale/server` | Express API server |
-| `ghcr.io/dnviti/arsenale/client` | Nginx + React SPA |
-| `ghcr.io/dnviti/arsenale/ssh-gateway` | SSH bastion gateway |
-| `ghcr.io/dnviti/arsenale/guacd` | Custom guacd with tunnel agent |
-| `ghcr.io/dnviti/arsenale/guacenc` | Recording conversion sidecar |
+Server and client run natively via `npm run dev`.
 
-## Ports Reference
+## Health Checks
 
-| Port | Service | Dev | Prod |
-|------|---------|-----|------|
-| 3000 | Client (Vite) | Yes | No |
-| 8080 | Client (Nginx) | No | Yes |
-| 3001 | Server API | Yes | Yes |
-| 3002 | Guacamole WebSocket | Yes | Yes |
-| 3003 | guacenc (recordings) | Yes | Yes |
-| 4822 | guacd daemon | Yes | Yes |
-| 2222 | SSH Gateway | Optional | Optional |
-| 5432 | PostgreSQL | Yes | Yes |
+| Service | Probe | Interval | Start Period |
+|---------|-------|----------|--------------|
+| PostgreSQL | `pg_isready -U $POSTGRES_USER` | 5s | — |
+| guacd | `nc -z localhost 4822` | 10s | — |
+| Server | `wget /api/health` | 10s | 30s |
+| Client | Nginx `/health` | 10s | 5s |
+| SSH Gateway | `nc -z localhost $SSH_PORT` | 10s | — |
+
+## Production Checklist
+
+1. Set all required secrets (`JWT_SECRET`, `GUACAMOLE_SECRET`, `SERVER_ENCRYPTION_KEY`)
+2. Use strong PostgreSQL credentials
+3. Configure `CLIENT_URL` to match your domain
+4. Set `TRUST_PROXY` if behind a reverse proxy
+5. Configure email provider for verification and notifications
+6. Set `WEBAUTHN_RP_ID` and `WEBAUTHN_RP_ORIGIN` to match your domain
+7. Optionally configure GeoIP database for impossible travel detection
+8. Review rate limiting defaults
+9. Set `RECORDING_ENABLED=true` if session recording is needed
+10. Configure container orchestration for managed gateways

@@ -1,186 +1,158 @@
 ---
 title: Development
-description: Contributing guide, local development setup, testing, and branch strategy
+description: Contributing guide, local development setup, testing, code quality, and branch strategy
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
-  - CLAUDE.md
   - package.json
   - server/package.json
   - client/package.json
+  - gateways/tunnel-agent/package.json
+  - extra-clients/browser-extensions/package.json
   - eslint.config.mjs
-  - server/tsconfig.json
-  - client/tsconfig.json
   - server/vitest.config.ts
   - client/vitest.config.ts
+  - CLAUDE.md
   - Makefile
 ---
 
 # Development
 
-## Monorepo Structure
+## Local Development Setup
 
-```
-arsenale/
-├── server/                    # Express API (TypeScript, CommonJS)
-│   ├── src/
-│   │   ├── index.ts          # Entry point (auto-migrate, HTTP, Socket.IO, guacd)
-│   │   ├── app.ts            # Express middleware + route mounting
-│   │   ├── routes/           # 32 route files
-│   │   ├── controllers/      # 30 controller files
-│   │   ├── services/         # 53 service files
-│   │   ├── middleware/       # 19 middleware files (auth, CSRF, rate limits)
-│   │   ├── socket/           # 5 Socket.IO handler files
-│   │   ├── types/            # Shared TypeScript types
-│   │   └── config/           # Passport, auth config
-│   └── prisma/
-│       └── schema.prisma     # 25+ data models
-├── client/                    # React 19 SPA (TypeScript, ESM/Vite)
-│   ├── src/
-│   │   ├── main.tsx          # Entry point
-│   │   ├── App.tsx           # Route definitions
-│   │   ├── api/              # 31 API modules
-│   │   ├── store/            # 15 Zustand stores
-│   │   ├── pages/            # 10 page components
-│   │   ├── components/       # 100+ UI components
-│   │   ├── hooks/            # 12 custom hooks
-│   │   ├── utils/            # Utility functions
-│   │   ├── theme/            # Multi-theme definitions
-│   │   └── constants/        # Terminal themes, RDP/VNC defaults
-│   └── vite.config.ts        # Proxy, PWA, chunk splitting
-├── tunnel-agent/              # Zero-trust tunnel agent (TypeScript, CommonJS)
-├── extra-clients/
-│   └── browser-extensions/   # Chrome Manifest V3 extension
-├── ssh-gateway/               # SSH bastion Dockerfile
-├── docker/                    # guacd, guacenc Dockerfiles
-├── .github/workflows/        # 14 CI/CD workflows
-├── compose.yml                # Production Docker stack
-├── compose.dev.yml            # Development Docker stack
-├── .env.example               # Environment template
-├── eslint.config.mjs          # Root ESLint flat config
-├── Makefile                   # Development shortcuts
-└── package.json               # Workspace root
-```
+### Prerequisites
 
-## Local Development
+- Node.js 22+, npm 10+
+- Docker or Podman (for PostgreSQL and guacd)
+- Git
 
-### Quick Start
+### First Run
 
 ```bash
-npm install
-cp .env.example .env
-npm run predev && npm run dev
+npm install                    # Install all workspace dependencies
+cp .env.example .env           # Configure environment
+npm run predev && npm run dev  # Start containers + server + client
 ```
 
-### Available Commands
+### Running Services
+
+| Command | What It Does |
+|---------|-------------|
+| `npm run dev` | Runs server (3001) + client (3000) concurrently |
+| `npm run dev:server` | Express with tsx watch, hot reload |
+| `npm run dev:client` | Vite dev server, proxies to server |
+| `npm run docker:dev` | Start PostgreSQL + guacenc containers |
+| `npm run docker:dev:down` | Stop dev containers |
+
+### Database Operations
 
 | Command | Purpose |
 |---------|---------|
-| `npm run predev` | Start Docker containers + generate Prisma client |
-| `npm run dev` | Run server (:3001) + client (:3000) concurrently |
-| `npm run dev:server` | Server only (tsx watch, hot reload) |
-| `npm run dev:client` | Client only (Vite, proxies to :3001) |
-| `npm run build` | Build all workspaces |
-| `npm run build -w server` | Build server only (tsc) |
-| `npm run build -w client` | Build client only (Vite) |
-| `npm run verify` | Full pipeline: typecheck → lint → audit → test → build |
-| `npm run typecheck` | TypeScript check (all workspaces, no emit) |
-| `npm run lint` | ESLint (all workspaces) |
-| `npm run lint:fix` | ESLint with auto-fix |
-| `npm run sast` | npm audit (dependency scan) |
-| `npm run db:generate` | Regenerate Prisma client types |
-| `npm run db:push` | Push schema changes (no migration file) |
-| `npm run db:migrate` | Create + run migration files |
-| `npm run docker:dev` | Start dev Docker containers |
-| `npm run docker:dev:down` | Stop dev Docker containers |
+| `npm run db:generate` | Generate Prisma client types after schema changes |
+| `npm run db:push` | Sync schema to database (no migration file) |
+| `npm run db:migrate` | Create new migration interactively |
+
+Migrations run automatically on server start via `prisma migrate deploy` — no manual migration step needed for development.
 
 ### Makefile Shortcuts
 
 ```bash
-make full-stack      # npm install + run server + client
-make server-dev      # Server with tsx watch
-make server-debug    # Server without watch
-make client-dev      # Vite dev server
-make migrate-dev     # Prisma migrate dev
-make prisma-studio   # Open Prisma Studio
+make full-stack     # Install + run everything
+make server-dev     # Server with Prisma generate + watch
+make client-dev     # Client dev server
+make prisma-studio  # Open Prisma Studio GUI
+make migrate-dev    # Interactive migration creation
 ```
 
 ## Code Quality
 
+### Verification Pipeline
+
+```bash
+npm run verify   # Must pass before closing any task
+```
+
+Runs in sequence: **typecheck → lint → audit → test → build**
+
+### Individual Checks
+
+| Command | Scope |
+|---------|-------|
+| `npm run typecheck` | TypeScript type-check (all workspaces, no emit) |
+| `npm run lint` | ESLint across all workspaces (flat config) |
+| `npm run lint:fix` | ESLint with auto-fix |
+| `npm run sast` | npm audit (critical severity) |
+| `npm run build` | Build all workspaces |
+
 ### ESLint Configuration
 
-Root `eslint.config.mjs` (ESM flat config) applies to all workspaces:
+The flat ESLint config (`eslint.config.mjs`) applies:
 
-- **TypeScript**: Strict config (`@typescript-eslint/recommended`)
-- **Security**: `eslint-plugin-security` (OWASP detection, object-injection disabled)
-- **React**: `react-hooks` + `react-refresh` rules
-- **Server**: Warns on `console` usage
-- **Tests**: Relaxed `@typescript-eslint` rules
-
-Ignored paths: `dist/`, `node_modules/`, `server/src/generated/`, `client/dist-node/`
+- **TypeScript strict rules** across all workspaces
+- **Security plugin** (eslint-plugin-security)
+- **Server-specific:** Discourages `console` usage (use logger utility instead)
+- **Client/Extensions:** React Hooks + React Refresh rules
+- **Test files:** Relaxed rules (no-explicit-any and non-null-assertion allowed)
+- **Ignored:** `dist/`, `node_modules/`, `generated/`
 
 ### TypeScript Configuration
 
-| Workspace | Target | Module | Key Settings |
-|-----------|--------|--------|-------------|
-| Server | ES2022 | CommonJS | Strict, source maps, declarations |
-| Client | ES2022 | ESNext (bundler) | Strict, react-jsx, isolated modules |
-| Browser Extension | ES2022 | ESNext | Same as client + Chrome types |
-| Tunnel Agent | ES2022 | CommonJS | Same as server |
+| Workspace | Target | Module | JSX | Strict |
+|-----------|--------|--------|-----|--------|
+| Server | ES2022 | CommonJS | — | Yes |
+| Client | ES2022 | ESNext | react-jsx | Yes |
+| Tunnel Agent | ES2022 | CommonJS | — | Yes |
+| Browser Extensions | ES2022 | ESNext | react-jsx | Yes |
 
-### Testing
+## Testing
 
-Tests use **Vitest** in both server and client workspaces:
+### Running Tests
 
 ```bash
-npm run test                    # All workspaces
-npm run test -w server          # Server tests only
-npm run test -w client          # Client tests only
+npm run test:watch           # Watch mode (server + client)
+npm run test -w server       # Server tests only
+npm run test -w client       # Client tests only
 ```
 
-Test files: 16 total across workspaces.
+Test framework: **Vitest** across all workspaces.
 
-### Verification Pipeline
+### Test File Locations
 
-`npm run verify` runs these steps sequentially (all must pass before closing any task):
-
-```mermaid
-flowchart LR
-    Typecheck["typecheck<br/>tsc --noEmit"] --> Lint["lint<br/>ESLint"]
-    Lint --> SAST["sast<br/>npm audit"]
-    SAST --> Test["test<br/>Vitest"]
-    Test --> Build["build<br/>tsc + vite"]
-```
+Tests follow the convention of placing test files alongside source files or in `__tests__/` directories.
 
 ## Branch Strategy
 
-| Branch | Purpose |
-|--------|---------|
-| `main` | Production (protected) |
-| `develop` | Integration branch |
-| `staging` | Pre-production testing |
-| `task/<TASK-CODE>` | Feature/fix branches (created by `/task-pick`) |
-| `release/<version>` | Release preparation |
-
-### Workflow
-
 ```mermaid
-flowchart LR
-    Task["task/TASK-001"] -->|PR| Develop[develop]
-    Develop -->|PR| Staging[staging]
-    Staging -->|PR| Main[main]
-    Main -->|tag v*| Release[GitHub Release]
+gitgraph
+    commit id: "main"
+    branch develop
+    commit id: "feature work"
+    branch task/TASK-001
+    commit id: "implement feature"
+    checkout develop
+    merge task/TASK-001 id: "PR merge"
+    branch task/TASK-002
+    commit id: "fix bug"
+    checkout develop
+    merge task/TASK-002 id: "PR merge 2"
+    checkout main
+    merge develop id: "release v1.3.3"
 ```
 
-1. Tasks create branches from `develop` via `/task-pick`
-2. Pull requests target `develop`
-3. `develop` merges to `staging` for pre-production testing
-4. `staging` merges to `main` for production release
-5. Version tags (v*) trigger CI/CD builds and GitHub Releases
+| Branch | Purpose | Merges Into |
+|--------|---------|-------------|
+| `main` | Production releases | — |
+| `develop` | Integration branch | `main` (via release) |
+| `staging` | Pre-release testing | `main` |
+| `task/<code>` | Feature/fix branches | `develop` (via PR) |
 
-## Key Development Patterns
+**Rules:**
+- All work happens on `task/<code>` branches created from `develop`
+- Every task branch requires a pull request targeting `develop`
+- Never merge directly into `develop` or `main`
+- Never delete the `develop` branch
 
-### File Naming Conventions
+## File Naming Conventions
 
 | Layer | Pattern | Example |
 |-------|---------|---------|
@@ -192,40 +164,133 @@ flowchart LR
 | Client API | `*.api.ts` | `connections.api.ts` |
 | Client hooks | `use*.ts` | `useAuth.ts` |
 
-### Full-Screen Dialog Pattern
+## Key Development Patterns
 
-Features overlaying the dashboard use full-screen MUI `Dialog` components rendered from `MainLayout`, never separate page routes. This preserves active RDP/SSH sessions.
+### Layered Architecture (Server)
 
-```typescript
-// In MainLayout:
-const [settingsOpen, setSettingsOpen] = useState(false);
+```
+Routes → Controllers → Services → Prisma ORM
+```
 
-// Dialog component:
+- **Routes:** Define endpoints, apply middleware (auth, validation, rate limiting)
+- **Controllers:** Parse requests, extract params, delegate to services
+- **Services:** Business logic, database operations, encryption
+- **Prisma ORM:** Type-safe database queries
+
+### Full-Screen Dialog Pattern (Client)
+
+Features that overlay the workspace use full-screen MUI `Dialog` components, not routes:
+
+```tsx
 <Dialog fullScreen open={open} onClose={onClose} TransitionComponent={SlideUp}>
   <AppBar position="static" sx={{ position: 'relative' }}>
     <Toolbar variant="dense">
       <IconButton onClick={onClose}><CloseIcon /></IconButton>
-      <Typography>Settings</Typography>
+      <Typography>Title</Typography>
     </Toolbar>
   </AppBar>
   <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-    {/* Content */}
+    {/* content */}
   </Box>
 </Dialog>
 ```
 
-### API Error Handling
+State managed in `MainLayout` as `useState<boolean>`.
 
-Use `extractApiError(err, fallbackMessage)` from `client/src/utils/apiError.ts` for API error extraction. For dialog forms, use the `useAsyncAction` hook.
+### Error Handling
 
-### UI Preferences Persistence
+**Server:**
+```typescript
+throw new AppError('Connection not found', 404);
+// Caught by asyncHandler → global error middleware
+```
 
-All UI layout state persisted via `uiPreferencesStore` (Zustand + localStorage key `arsenale-ui-preferences`). Never use raw `localStorage` for UI preferences.
+**Client:**
+```typescript
+import { extractApiError } from '../utils/apiError';
+const message = extractApiError(err, 'Failed to create connection');
+```
 
-### Environment Variable Loading
+### UI Preferences
 
-The `.env` file lives at the monorepo root. Prisma CLI commands run from `server/` but `server/prisma.config.ts` resolves `.env` to `../.env`. Never create `server/.env`.
+All layout state persists via `useUiPreferencesStore`:
+```typescript
+const { sidebarCompact, set } = useUiPreferencesStore();
+set('sidebarCompact', !sidebarCompact);
+```
 
-## Documentation
+Never use raw `localStorage.getItem/setItem` for UI preferences.
 
-Documentation lives in `docs/` and is generated via `/docs generate`. Keep `docs/rag-summary.md` in sync when features change. See [Documentation Index](index.md).
+### Async Actions in Dialogs
+
+```typescript
+const { loading, error, run } = useAsyncAction();
+const handleSubmit = () => run(async () => {
+  await api.createConnection(data);
+  onClose();
+});
+```
+
+## Version Bumping
+
+When bumping the version, update all locations:
+
+| File | Field |
+|------|-------|
+| `package.json` (root) | `"version"` |
+| `client/package.json` | `"version"` |
+| `server/package.json` | `"version"` |
+| `gateways/tunnel-agent/package.json` | `"version"` |
+| `extra-clients/browser-extensions/package.json` | `"version"` |
+| `extra-clients/browser-extensions/manifest.json` | `"version"` |
+| `server/src/cli.ts` | `.version('X.Y.Z')` |
+| `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
+
+Then run `npm install --package-lock-only` to update the lockfile.
+
+## Workspace Structure
+
+```
+arsenale/
+├── server/                          # Express API + Socket.IO
+│   ├── src/
+│   │   ├── index.ts                 # Entry point
+│   │   ├── app.ts                   # Express app setup
+│   │   ├── config.ts                # Configuration
+│   │   ├── cli.ts                   # CLI tool
+│   │   ├── routes/                  # Route definitions (31 files)
+│   │   ├── controllers/             # Request handlers
+│   │   ├── services/                # Business logic
+│   │   ├── middleware/              # Auth, CSRF, validation, rate limiting
+│   │   ├── socket/                  # Socket.IO + WebSocket handlers
+│   │   ├── schemas/                 # Zod validation schemas
+│   │   └── types/                   # Shared TypeScript types
+│   └── prisma/
+│       └── schema.prisma            # Database schema (32 models)
+├── client/                          # React 19 SPA
+│   ├── src/
+│   │   ├── main.tsx                 # Entry point
+│   │   ├── App.tsx                  # Router
+│   │   ├── api/                     # Axios API modules (30 files)
+│   │   ├── store/                   # Zustand stores (15 files)
+│   │   ├── pages/                   # Route components
+│   │   ├── components/              # UI components
+│   │   ├── hooks/                   # Custom React hooks
+│   │   ├── theme/                   # 6 themes × 2 modes
+│   │   └── utils/                   # Utilities
+│   ├── vite.config.ts               # Vite + PWA config
+│   └── nginx.conf                   # Production Nginx config
+├── gateways/
+│   ├── tunnel-agent/                # Zero-trust tunnel agent
+│   ├── guacd/                       # Custom guacd with tunnel
+│   ├── guacenc/                     # Recording processor
+│   └── ssh-gateway/                 # SSH bastion with tunnel
+├── extra-clients/
+│   └── browser-extensions/          # Chrome extension
+├── compose.yml                      # Production Docker Compose
+├── compose.dev.yml                  # Development Docker Compose
+├── .env.example                     # Environment template
+├── eslint.config.mjs                # Shared ESLint config
+├── Makefile                         # Development shortcuts
+└── CLAUDE.md                        # AI assistant instructions
+```

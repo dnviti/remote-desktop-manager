@@ -1,144 +1,180 @@
 ---
 title: Getting Started
-description: Installation, prerequisites, and first run guide for Arsenale
+description: Installation, prerequisites, environment setup, and first run instructions
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
-  - README.md
-  - CLAUDE.md
   - package.json
+  - server/package.json
+  - client/package.json
   - .env.example
   - compose.dev.yml
+  - Makefile
+  - README.md
 ---
 
 # Getting Started
 
 ## Prerequisites
 
-| Requirement | Version | Purpose |
-|------------|---------|---------|
-| **Node.js** | 22+ | Runtime for server and build tools |
-| **npm** | 9+ | Package manager (workspaces support) |
-| **Docker** or **Podman** | Latest | PostgreSQL database and guacd daemon |
-| **Git** | Latest | Source control |
+| Requirement | Minimum Version | Purpose |
+|-------------|----------------|---------|
+| **Node.js** | 22.x | Runtime for server and client |
+| **npm** | 10.x | Package manager (workspaces) |
+| **Docker** or **Podman** | Docker 24+ / Podman 4+ | PostgreSQL, guacd, guacenc containers |
+| **Git** | 2.x | Source control |
 
-## Installation
+Optional:
+- **GeoLite2-City.mmdb** — MaxMind GeoIP database for impossible travel detection
+- **Twilio/AWS SNS/Vonage** account — SMS MFA
+- **SMTP server** or SendGrid/SES/Resend/Mailgun — Email notifications
 
-### 1. Clone and Install
+## Quick Start
 
 ```bash
+# 1. Clone and install
 git clone https://github.com/dnviti/arsenale.git
 cd arsenale
 npm install
+
+# 2. Configure environment
+cp .env.example .env
+# Edit .env with your database credentials and secrets
+
+# 3. Start development (Docker containers + server + client)
+npm run predev && npm run dev
 ```
 
+This starts:
+- **PostgreSQL** on port 5432 (via Docker)
+- **guacenc** recording processor on port 3003 (via Docker)
+- **Server** on port 3001 (Express API + Socket.IO)
+- **Client** on port 3000 (Vite dev server, proxies to server)
+
+Database migrations run automatically on server start.
+
+## Step-by-Step Setup
+
+### 1. Install Dependencies
+
+```bash
+npm install
+```
+
+This installs dependencies for all workspaces (server, client, tunnel-agent, browser-extensions) via npm workspaces.
+
 ### 2. Configure Environment
+
+Copy the example environment file:
 
 ```bash
 cp .env.example .env
 ```
 
-The `.env` file lives at the **monorepo root**, not inside `server/`. Key variables to review:
+**Critical variables to set:**
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | `postgresql://arsenale:arsenale@localhost:5432/arsenale` | PostgreSQL connection |
-| `JWT_SECRET` | `dev-secret-change-me` | JWT signing key |
-| `GUACD_HOST` | `localhost` | Guacamole daemon host |
-| `GUACD_PORT` | `4822` | Guacamole daemon port |
-| `GUACAMOLE_SECRET` | `dev-guac-secret` | Guacamole token encryption |
-| `CLIENT_URL` | `http://localhost:3000` | CORS origin |
-| `VAULT_TTL_MINUTES` | `30` | Vault auto-lock timeout |
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `DATABASE_URL` | `postgresql://arsenale:arsenale_password@127.0.0.1:5432/arsenale` | PostgreSQL connection string |
+| `JWT_SECRET` | (generated in dev) | **Must be set in production** |
+| `GUACAMOLE_SECRET` | (generated in dev) | Shared secret for RDP/VNC tokens |
+| `CLIENT_URL` | `http://localhost:3000` | Client URL for CORS and verification links |
 
-See [Configuration](configuration.md) for the full variable reference (120+ variables).
+The `.env` file **must** live at the monorepo root, not inside `server/`. The Prisma CLI resolves its env path to `../.env` via `server/prisma.config.ts`.
 
-### 3. Start Development Stack
+### 3. Start Docker Containers
 
 ```bash
-npm run predev && npm run dev
+npm run docker:dev
 ```
 
-This single command:
-1. **`predev`**: Starts Docker containers (PostgreSQL + guacenc), generates Prisma client
-2. **`dev`**: Runs Express server (:3001) and Vite client (:3000) concurrently
+This starts:
+- **PostgreSQL 16** — Database on `127.0.0.1:5432`
+- **guacenc** — Recording processor on port 3003
 
-Database migrations run automatically on server startup — no manual migration step needed.
-
-### 4. Access the Application
-
-| URL | Service |
-|-----|---------|
-| http://localhost:3000 | Web client (Vite dev server, proxies API calls) |
-| http://localhost:3001 | Express API (direct access) |
-| http://localhost:3002 | Guacamole WebSocket (RDP/VNC) |
-
-Register a new account at the login page. The first user becomes the tenant owner.
-
-## Development Workflow
-
-```mermaid
-flowchart LR
-    PreDev["npm run predev<br/>Docker + Prisma"] --> Dev["npm run dev<br/>Server + Client"]
-    Dev --> Code["Edit code<br/>Hot reload"]
-    Code --> Verify["npm run verify<br/>Type + Lint + Build"]
-    Verify --> Commit["Commit"]
-```
-
-### Running Services Individually
+Alternatively, the `predev` script handles this automatically:
 
 ```bash
-npm run dev:server    # Express on :3001 (tsx watch, hot reload)
-npm run dev:client    # Vite on :3000 (proxies /api→:3001, /socket.io→:3001)
+npm run predev
 ```
 
-### Docker Containers
+### 4. Generate Prisma Client
+
+If not already done by `predev`:
 
 ```bash
-npm run docker:dev        # Start PostgreSQL + guacenc
-npm run docker:dev:down   # Stop dev containers
+npm run db:generate
 ```
 
-The dev stack (`compose.dev.yml`) provides:
-- **PostgreSQL 16** on port 5432 (credentials: `arsenale/arsenale`)
-- **guacenc** on port 3003 (recording conversion service)
-
-### Database Operations
+### 5. Start Development Server
 
 ```bash
-npm run db:generate    # Regenerate Prisma client types after schema changes
-npm run db:push        # Push schema changes directly (no migration file)
-npm run db:migrate     # Create and run migration files
+npm run dev
 ```
 
-Migrations run automatically on server start via `prisma migrate deploy`. Use `db:push` only for rapid prototyping; use `db:migrate` for changes that need to be tracked.
+Or run server and client separately:
+
+```bash
+# Terminal 1
+npm run dev:server    # Express on :3001
+
+# Terminal 2
+npm run dev:client    # Vite on :3000
+```
+
+### 6. Access the Application
+
+Open `http://localhost:3000` in your browser.
+
+- Register a new account (self-signup is enabled by default)
+- Set up your vault password (encrypts all credentials)
+- Create your first SSH, RDP, or VNC connection
+
+## Development Ports
+
+| Port | Service | Notes |
+|------|---------|-------|
+| 3000 | Client (Vite) | Proxies `/api` → 3001, `/guacamole` → 3002 |
+| 3001 | Server (Express) | REST API + Socket.IO |
+| 3002 | Guacamole WebSocket | RDP/VNC tunnel |
+| 3003 | guacenc | Recording processor (dev only) |
+| 4822 | guacd | RDP/VNC protocol handler (internal) |
+| 5432 | PostgreSQL | Database (bound to 127.0.0.1) |
+
+## Using the Makefile
+
+Alternative commands via Make:
+
+```bash
+make install          # npm install
+make full-stack       # Install + run server + client
+make server-dev       # Server with watch (generates DB first)
+make client-dev       # Client dev server
+make prisma-studio    # Open Prisma Studio GUI
+make migrate-dev      # Create interactive migration
+```
+
+## DevContainer Support
+
+The project includes a `.devcontainer/` configuration for VS Code Dev Containers:
+
+1. Open the project in VS Code
+2. Select "Reopen in Container" when prompted
+3. The container includes Node.js 22, Docker socket access, and PostgreSQL
 
 ## Verification
 
-Before committing, run the full verification pipeline:
+Run the full verification pipeline before committing:
 
 ```bash
 npm run verify
 ```
 
-This executes in sequence:
-1. **typecheck** — TypeScript type checking (both workspaces, no emit)
-2. **lint** — ESLint (both workspaces via root flat config)
-3. **sast** — `npm audit` (dependency vulnerability scan)
-4. **test** — Unit tests (Vitest)
-5. **build** — Server (tsc) + Client (Vite build)
+This runs: typecheck → lint → audit → test → build. All checks must pass.
 
-## First Steps After Installation
+## Next Steps
 
-1. **Register** — Create an account at the login page
-2. **Unlock Vault** — Enter your password to unlock the credential vault
-3. **Create a Connection** — Add an SSH, RDP, or VNC connection with host/port/credentials
-4. **Connect** — Click the connection to open a terminal (SSH) or remote desktop (RDP/VNC)
-
-## Alternative: Makefile
-
-```bash
-make full-stack    # Install + run server + client
-make server-dev    # Server only with tsx watch
-make client-dev    # Client only with Vite
-make prisma-studio # Open Prisma Studio UI
-```
+- [Configuration](configuration.md) — Environment variables and feature flags
+- [Architecture](architecture.md) — System design and component interactions
+- [API Reference](api-reference.md) — Complete endpoint documentation
+- [Development](development.md) — Contributing guidelines and branch strategy

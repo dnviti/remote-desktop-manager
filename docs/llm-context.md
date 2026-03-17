@@ -2,135 +2,119 @@
 title: LLM Context
 description: Consolidated single-file context for LLM and bot consumption
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
-  - CLAUDE.md
   - README.md
+  - CLAUDE.md
   - server/src/index.ts
   - server/src/app.ts
   - server/prisma/schema.prisma
   - client/src/App.tsx
   - client/vite.config.ts
-  - package.json
 ---
 
-# LLM Context — Arsenale
+# Arsenale — LLM Context
 
 ## Project Summary
 
-Arsenale is an enterprise Privileged Access Management (PAM) platform. It provides browser-based SSH, RDP, and VNC access with encrypted credential storage, multi-tenancy, audit logging, and gateway orchestration.
+Arsenale is a web-based remote access management platform for SSH, RDP, and VNC connections. Monorepo with npm workspaces: `server/` (Express + TypeScript + Prisma), `client/` (React 19 + Vite + MUI v7), `gateways/tunnel-agent/`, `extra-clients/browser-extensions/`.
 
-**Stack**: Express 5 + React 19 + PostgreSQL 16 + Prisma 7 + Socket.IO + Guacamole + Docker
-
-**Monorepo workspaces**: `server/`, `client/`, `tunnel-agent/`, `clients/browser-extensions/`
+**Stack:** Node.js 22, PostgreSQL 16, Socket.IO, XTerm.js, guacamole-common-js, Zustand, Docker/Podman/Kubernetes.
 
 ---
 
-## Architecture
+## Architecture Overview
 
-**Server** (Express, TypeScript, CommonJS):
-- Layered: Routes (32) → Controllers (30) → Services (53) → Prisma ORM → PostgreSQL
-- Entry: `server/src/index.ts` — auto-migrates DB, creates HTTP + Socket.IO + Guacamole WS servers
-- App: `server/src/app.ts` — Helmet, CORS, CSRF, Passport, 32 route mounts under `/api`
-- 19 middleware files (auth, CSRF, 7 rate limiters, tenant/team RBAC)
-- 5 Socket.IO handlers (SSH terminal, notifications, gateway monitor, tunnel)
-- Scheduled jobs: key rotation, LDAP sync, cleanup, health monitoring, auto-scaling
+**Server (Express on :3001):** Layered architecture — Routes → Controllers → Services → Prisma ORM. 31 route files under `/api`. Socket.IO for SSH terminals (`/ssh`) and notifications (`/notifications`). Guacamole WebSocket on :3002 for RDP/VNC. Raw WebSocket tunnel broker on `/api/tunnel/connect`.
 
-**Client** (React 19, Vite 7, MUI v7, Zustand):
-- 15 Zustand stores, 12 custom hooks, 31 API modules, 10 pages, 100+ components
-- Full-screen dialog pattern (15 dialogs) — overlays preserve active sessions
-- PWA with offline support, keyboard lock API, DLP browser hardening
-- Real-time: Socket.IO for SSH terminals, WebSocket for RDP/VNC via Guacamole
+**Client (Vite on :3000):** React 19 SPA. 15 Zustand stores. Full-screen MUI Dialog pattern for overlays (preserves active sessions). 6 themes × 2 modes. PWA with Workbox.
 
-**Browser Extension** (Chrome Manifest V3):
-- Service worker handles API calls (bypasses CORS), token refresh via chrome.alarms
-- Popup: account switcher, vault status, connections, keychain
-- Content scripts: form detection and credential autofill
-- Multi-account with AES-GCM encrypted token storage
+**Database:** PostgreSQL 16 with 32 Prisma models. Key models: User, Tenant, Connection, VaultSecret, Gateway, ActiveSession, AuditLog, AccessPolicy.
+
+**Gateways:** guacd (RDP/VNC protocol), SSH Gateway (bastion), guacenc (recording processor), Tunnel Agent (zero-trust outbound tunnel).
 
 ---
 
-## Key API Endpoints (150+)
+## Key Commands
 
-| Domain | Prefix | Key Operations |
-|--------|--------|---------------|
-| Auth | `/api/auth` | Login, register, OAuth, SAML, MFA (TOTP/SMS/WebAuthn), refresh |
-| Vault | `/api/vault` | Unlock/lock, MFA unlock, password reveal, auto-lock |
-| Connections | `/api/connections` | CRUD, sharing, batch share, import/export, favorites |
-| Sessions | `/api/sessions` | SSH/RDP/VNC session lifecycle, monitoring, terminate |
-| Secrets | `/api/secrets` | CRUD (5 types), versioning, sharing, external shares, tenant vault |
-| Users | `/api/user` | Profile, password, email, SSH/RDP defaults, domain profile, MFA setup |
-| Tenants | `/api/tenants` | Multi-tenant management, users, roles, IP allowlist |
-| Teams | `/api/teams` | Team CRUD, members, roles, expiry |
-| Gateways | `/api/gateways` | CRUD, SSH keys, orchestration, templates, tunnels, scaling |
-| Audit | `/api/audit` | Personal/tenant logs, geo analysis, connection/gateway audit |
-| Admin | `/api/admin` | Email config, app config, auth providers |
-| Health | `/api/health`, `/api/ready` | Health/readiness probes |
+```bash
+npm run predev && npm run dev   # Full dev setup
+npm run dev:server              # Express on :3001
+npm run dev:client              # Vite on :3000
+npm run verify                  # typecheck → lint → audit → test → build
+npm run db:generate             # Regenerate Prisma client
+npm run db:push                 # Sync schema to DB
+npm run docker:dev              # Start PostgreSQL + guacenc
+npm run build                   # Build all workspaces
+```
 
 ---
 
-## Database Models (25+)
+## API Structure
 
-**Core**: User, Connection (SSH/RDP/VNC), Folder, SharedConnection
-**Auth**: OAuthAccount, RefreshToken, WebAuthnCredential
-**Tenancy**: Tenant, TenantMember, TenantVaultMember, Team, TeamMember
-**Vault**: VaultSecret (5 types, 3 scopes), VaultSecretVersion, VaultFolder, ExternalSecretShare, SharedSecret
-**Sessions**: ActiveSession (ACTIVE/IDLE/CLOSED), SessionRecording
-**Gateways**: Gateway (3 types), GatewayTemplate, ManagedGatewayInstance, SshKeyPair
-**Monitoring**: AuditLog (120+ actions), Notification, AccessPolicy (ABAC)
-**Integration**: SyncProfile (NetBox), SyncLog, ExternalVaultProvider, AppConfig
+All endpoints under `/api`. JWT Bearer authentication. Zod validation on request bodies.
 
-**Key enums**: TenantRole (7 levels), TeamRole (3 levels), ConnectionType, SecretType, SecretScope, SessionProtocol, GatewayType, AuditAction (120+)
+**Core endpoints:** `/api/auth` (login, register, MFA, OAuth, SAML, refresh), `/api/vault` (unlock/lock, MFA unlock), `/api/connections` (CRUD, sharing, import/export), `/api/sessions` (RDP/VNC/SSH lifecycle), `/api/secrets` (CRUD, versioning, sharing, external links), `/api/user` (profile, 2FA, WebAuthn, domain profile).
+
+**Multi-tenant:** `/api/tenants` (CRUD, members, IP allowlist), `/api/teams` (CRUD, member roles), `/api/access-policies` (ABAC).
+
+**Infrastructure:** `/api/gateways` (CRUD, deploy, scale, tunnel, SSH keys, templates), `/api/recordings` (playback, export), `/api/audit` (user, tenant, connection logs).
+
+**Integrations:** `/api/vault-providers` (HashiCorp Vault), `/api/sync-profiles` (NetBox), `/api/ldap` (LDAP sync).
+
+**WebSocket:** Socket.IO `/ssh` (terminal), `/notifications` (real-time events), `/gateways` (health monitoring). Raw WS `/api/tunnel/connect` (tunnel broker with binary multiplexed protocol).
 
 ---
 
 ## Security
 
-- **Encryption**: AES-256-GCM at rest, Argon2id key derivation, per-user master key with TTL
-- **Auth**: JWT with token binding (IP+UA hash), refresh token rotation, OAuth/SAML/LDAP
-- **MFA**: TOTP, WebAuthn/Passkeys, SMS
-- **RBAC**: 7 tenant roles (OWNER→GUEST), 3 team roles
-- **ABAC**: Time windows, MFA step-up, trusted device requirements
-- **DLP**: Clipboard, download, upload, print restrictions
-- **Rate limiting**: Login, registration, SMS, OAuth, vault unlock, identity verification
-- **Audit**: 120+ action types, geo-IP enrichment, impossible travel detection
-- **Network**: IP allowlist, CSRF protection, Helmet security headers
-
----
-
-## Development Commands
-
-```bash
-npm run predev && npm run dev  # Full dev setup (Docker + server + client)
-npm run dev:server             # Express on :3001 (tsx watch)
-npm run dev:client             # Vite on :3000 (proxies to :3001)
-npm run verify                 # typecheck → lint → audit → test → build
-npm run db:generate            # Regenerate Prisma client
-npm run db:migrate             # Run database migrations
-npm run docker:prod            # Production Docker stack
-```
-
----
-
-## Key Patterns
-
-1. **Full-screen dialogs** over navigation — never create page routes for overlay UI
-2. **API errors**: Use `extractApiError(err, fallback)` from `client/src/utils/apiError.ts`
-3. **UI preferences**: Persist via `uiPreferencesStore` (Zustand + localStorage), never raw localStorage
-4. **File naming**: `*.routes.ts`, `*.controller.ts`, `*.service.ts`, `*Store.ts`, `*.api.ts`, `use*.ts`
-5. **Environment**: Single `.env` at monorepo root, Prisma resolves via `server/prisma.config.ts`
-6. **Real-time**: Socket.IO for SSH (`/ssh` namespace), native WebSocket for RDP/VNC (Guacamole on :3002)
+- **Encryption:** AES-256-GCM for all credentials, secrets, TOTP seeds. Master key derived from password via Argon2id.
+- **Auth:** JWT access tokens (15 min) + refresh tokens (7 days, DB-stored, family tracking). Token binding (IP + User-Agent).
+- **MFA:** TOTP, SMS (Twilio/SNS/Vonage), WebAuthn/FIDO2.
+- **SSO:** Google, Microsoft, GitHub OAuth. Any OIDC provider. SAML 2.0. LDAP.
+- **RBAC:** 7 tenant roles (OWNER→GUEST), 3 team roles. ABAC policies with time windows, trusted device, MFA step-up.
+- **Audit:** 100+ action types, GeoIP, impossible travel detection.
+- **DLP:** Per-tenant/connection copy, paste, upload, download controls.
 
 ---
 
 ## Configuration
 
-120+ environment variables. Key categories:
-- Database (`DATABASE_URL`), JWT (`JWT_SECRET`, `JWT_EXPIRES_IN`)
-- Guacamole (`GUACD_HOST`, `GUACAMOLE_SECRET`), Vault (`VAULT_TTL_MINUTES`)
-- OAuth (Google, Microsoft, GitHub, OIDC), SAML, LDAP
-- Email (SMTP, SendGrid, SES, Resend, Mailgun), SMS (Twilio, SNS, Vonage)
-- Orchestration (`ORCHESTRATOR_TYPE`: docker/podman/kubernetes)
-- Logging (`LOG_LEVEL`, `LOG_FORMAT`), GeoIP, recordings, files
+Single `.env` file at monorepo root. Key categories:
 
-See `docs/configuration.md` for the full reference.
+- **Database:** `DATABASE_URL`
+- **Secrets:** `JWT_SECRET`, `GUACAMOLE_SECRET`, `SERVER_ENCRYPTION_KEY`
+- **Vault:** `VAULT_TTL_MINUTES` (30)
+- **OAuth:** `GOOGLE_CLIENT_ID/SECRET`, `MICROSOFT_CLIENT_ID/SECRET`, `GITHUB_CLIENT_ID/SECRET`
+- **OIDC/SAML/LDAP:** Full provider configuration
+- **Email:** `EMAIL_PROVIDER` (smtp/sendgrid/ses/resend/mailgun)
+- **SMS:** `SMS_PROVIDER` (twilio/sns/vonage)
+- **Orchestration:** `ORCHESTRATOR_TYPE` (docker/podman/kubernetes/none)
+- **Recording:** `RECORDING_ENABLED`, `RECORDING_PATH`
+- **Security:** Rate limits, account lockout, session timeouts, WebAuthn RP config
+
+---
+
+## File Naming
+
+| Layer | Pattern | Example |
+|-------|---------|---------|
+| Routes | `*.routes.ts` | `auth.routes.ts` |
+| Controllers | `*.controller.ts` | `connection.controller.ts` |
+| Services | `*.service.ts` | `encryption.service.ts` |
+| Middleware | `*.middleware.ts` | `auth.middleware.ts` |
+| Stores | `*Store.ts` | `authStore.ts` |
+| API (client) | `*.api.ts` | `connections.api.ts` |
+| Hooks | `use*.ts` | `useAuth.ts` |
+
+---
+
+## Development Patterns
+
+- **Full-screen Dialog pattern** for overlays (not routes) — preserves active sessions
+- **`extractApiError(err, fallback)`** for API error handling in catch blocks
+- **`useAsyncAction`** hook for dialog form submissions with loading/error state
+- **`uiPreferencesStore`** for all persistent UI layout state (never raw localStorage)
+- **Vault must be unlocked** to access encrypted credentials
+- **`npm run verify`** must pass before closing any task
+- **Migrations run automatically** on server start — no manual migrate needed

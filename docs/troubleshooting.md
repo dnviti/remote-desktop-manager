@@ -2,16 +2,13 @@
 title: Troubleshooting
 description: Common errors, debugging tips, and frequently asked questions
 generated-by: ctdf-docs
-generated-at: 2026-03-16T19:30:00Z
+generated-at: 2026-03-17T10:00:00Z
 source-files:
   - server/src/index.ts
   - server/src/middleware/error.middleware.ts
   - server/src/middleware/auth.middleware.ts
-  - server/src/services/vault.service.ts
-  - server/src/services/session.service.ts
-  - client/src/api/client.ts
-  - client/src/hooks/useAutoReconnect.ts
-  - compose.dev.yml
+  - client/src/api/auth.api.ts
+  - server/src/config.ts
   - .env.example
 ---
 
@@ -21,299 +18,276 @@ source-files:
 
 ### Database Connection Failed
 
-**Symptom**: Server crashes with `Can't reach database server at localhost:5432`
+**Error:** `Can't reach database server at localhost:5432`
 
-**Cause**: PostgreSQL container not running.
+**Causes and fixes:**
+1. PostgreSQL container not running: `npm run docker:dev`
+2. Wrong `DATABASE_URL` in `.env`: verify host, port, credentials
+3. Port conflict: `sudo lsof -i :5432` to check
+4. Docker/Podman not running: start Docker daemon
 
-**Fix**:
+### Prisma Migration Failed
+
+**Error:** `Error: P3009: migrate found failed migrations`
+
+**Fix:** Check `server/prisma/migrations/` for failed migration. If in development:
 ```bash
-npm run docker:dev          # Start PostgreSQL container
-# Verify it's healthy:
-docker ps | grep postgres   # Should show "healthy"
+npm run db:push    # Force-sync schema (drops data)
 ```
 
-### Prisma Migration Error
-
-**Symptom**: `Error: P3009: migrate found failed migrations`
-
-**Cause**: A previous migration partially applied.
-
-**Fix**:
-```bash
-# Reset and re-apply (development only)
-npx prisma migrate reset --force -w server
-npm run db:generate
-```
+For production, investigate the specific migration error and fix the SQL.
 
 ### Port Already in Use
 
-**Symptom**: `EADDRINUSE: address already in use :::3001`
+**Error:** `EADDRINUSE: address already in use :::3001`
 
-**Cause**: Another process (or previous crashed server) occupies the port.
-
-**Fix**:
+**Fix:**
 ```bash
 # Find and kill the process
-lsof -ti:3001 | xargs kill -9
-# Or use a different port in .env
-PORT=3005
+lsof -i :3001
+kill <PID>
+```
+
+Common ports: 3000 (client), 3001 (server), 3002 (Guacamole WS), 5432 (PostgreSQL).
+
+### .env File Not Found
+
+**Error:** `Error: .env file not found`
+
+**Fix:** The `.env` file must be at the **monorepo root**, not inside `server/` or `client/`:
+```bash
+cp .env.example .env
 ```
 
 ### Prisma Client Not Generated
 
-**Symptom**: `Cannot find module '@prisma/client'` or type errors in generated types
+**Error:** `@prisma/client did not initialize yet`
 
-**Fix**:
+**Fix:**
 ```bash
 npm run db:generate
 ```
 
-This runs automatically during `npm run predev`, but may need manual execution after `git pull` with schema changes.
+This is automatically done by `npm run predev`.
 
 ## Authentication Issues
 
-### JWT Token Expired / 401 Errors
+### JWT Token Expired
 
-**Symptom**: API calls return 401 even though user is logged in.
+**Error:** `401 Unauthorized` on API calls
 
-**Cause**: Access token expired and auto-refresh failed.
+**How it works:** Access tokens expire after 15 minutes (default). The Axios client interceptor automatically refreshes tokens on 401. If refresh also fails, the user is redirected to login.
 
-**What happens**: The Axios interceptor in `client/src/api/client.ts` catches 401 responses and attempts `POST /api/auth/refresh`. If the refresh token is also expired (default 7d), the user is logged out.
+**If tokens keep expiring:**
+- Check `JWT_EXPIRES_IN` and `JWT_REFRESH_EXPIRES_IN` in `.env`
+- Verify server clock is synchronized
+- Check for `TOKEN_HIJACK_ATTEMPT` in audit logs (IP/User-Agent mismatch)
 
-**Fix**: Log in again. To adjust token lifetimes:
-```bash
-JWT_EXPIRES_IN=30m            # Access token (default: 15m)
-JWT_REFRESH_EXPIRES_IN=30d    # Refresh token (default: 7d)
-```
+### CSRF Token Mismatch
 
-### Token Hijack Detection
+**Error:** `403 Forbidden: CSRF token mismatch`
 
-**Symptom**: User gets logged out with "Token binding mismatch" in server logs.
+**Causes:**
+- Browser cookies blocked or cleared
+- Cross-origin request without proper CSRF header
+- Extension client not sending `Authorization: Bearer` header (extension clients bypass CSRF)
 
-**Cause**: The auth middleware (`server/src/middleware/auth.middleware.ts`) binds JWT tokens to the client's IP address and User-Agent hash. If either changes (VPN switch, browser update), the token is rejected.
+**Fix:** Ensure the client sends the CSRF token from cookies in the `x-csrf-token` header.
 
-**Fix**: Log in again from the new network/browser. This is a security feature.
+### OAuth Callback Error
 
-### OAuth Callback Fails
+**Error:** OAuth redirect fails or loops
 
-**Symptom**: OAuth login redirects back to login page without completing.
+**Causes:**
+- `CLIENT_URL` in `.env` doesn't match the actual client URL
+- OAuth callback URL in provider settings doesn't match
+- Missing or wrong `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_SECRET`, etc.
 
-**Cause**: `CLIENT_URL` in `.env` doesn't match the actual browser URL.
+### Account Lockout
 
-**Fix**: Ensure `CLIENT_URL` matches exactly (including protocol and port):
-```bash
-CLIENT_URL=http://localhost:3000   # Development
-CLIENT_URL=https://arsenale.example.com  # Production
-```
+**Error:** `Account locked` after too many failed attempts
 
-### CORS Errors
+**Default:** 10 failed attempts → 30 minute lockout.
 
-**Symptom**: Browser console shows `Access-Control-Allow-Origin` errors.
-
-**Cause**: The Express CORS middleware (`server/src/app.ts`) only allows the origin specified in `CLIENT_URL`.
-
-**Fix**: Set `CLIENT_URL` to match the exact origin the browser uses.
+**Fix:** Wait for lockout to expire, or adjust `ACCOUNT_LOCKOUT_THRESHOLD` and `ACCOUNT_LOCKOUT_DURATION_MS` in `.env`.
 
 ## Vault Issues
 
-### Vault Locked After Inactivity
+### Vault Won't Unlock
 
-**Symptom**: Credentials show as encrypted, operations require vault unlock.
+**Error:** `Invalid password` on vault unlock
 
-**Cause**: Vault master key TTL expired (default 30 minutes). The server holds the decrypted master key in memory with a configurable TTL.
+**Causes:**
+- Wrong password (master key derived from password via Argon2)
+- Vault not initialized (first-time users need vault setup)
+- Corrupted vault data
 
-**Fix**: Unlock vault again (password or MFA). Adjust timeout:
-```bash
-VAULT_TTL_MINUTES=60          # Increase TTL
-```
+**Alternative:** Use MFA-based vault unlock if TOTP/WebAuthn/SMS is configured.
 
-Tenant admins can also set a maximum auto-lock value that overrides per-user preferences.
+### Vault Auto-Locks Too Quickly
 
-### Cannot Decrypt Credentials
+**Configuration:** `VAULT_TTL_MINUTES` (default: 30). Set to `0` for never-auto-lock.
 
-**Symptom**: "Decryption failed" errors when accessing connections.
-
-**Cause**: Vault key corruption or server encryption key mismatch.
-
-**Check**:
-1. Verify `SERVER_ENCRYPTION_KEY` in `.env` hasn't changed since credentials were stored
-2. In development, if `SERVER_ENCRYPTION_KEY` is absent, a deterministic key is auto-generated — this works only if `DATABASE_URL` hasn't changed
+Users can also set per-user auto-lock via `PUT /api/vault/auto-lock`.
 
 ## Connection Issues
 
-### SSH Connection Timeout
+### SSH Connection Fails
 
-**Symptom**: SSH terminal shows "Connection timeout" or stays blank.
+**Error:** `SSH connection error` in terminal
 
-**Possible causes**:
-1. Target host unreachable from server
-2. `ALLOW_LOCAL_NETWORK=false` blocks private IP ranges
-3. SSH gateway configuration incorrect
-
-**Debug**:
-```bash
-# Test from server container
-docker exec -it arsenale-server-1 ping <target-host>
-# Check if local network access is enabled
-grep ALLOW_LOCAL_NETWORK .env
-```
+**Debugging:**
+1. Verify target host is reachable from the server
+2. Check credentials are correct (vault must be unlocked)
+3. If using a gateway, verify gateway health in the Gateway Manager
+4. Check `ALLOW_LOCAL_NETWORK` if connecting to private IPs (default: `false`)
+5. Check DLP policies if copy/paste is blocked
 
 ### RDP/VNC Black Screen
 
-**Symptom**: RDP or VNC viewer shows black screen or disconnects immediately.
+**Error:** RDP connects but shows nothing
 
-**Possible causes**:
-1. guacd container not running or unhealthy
-2. `GUACD_HOST` / `GUACD_PORT` misconfigured
-3. `GUACAMOLE_SECRET` mismatch between server and guacamole-lite
+**Causes:**
+1. `guacd` not running: check container health (`nc -z localhost 4822`)
+2. Wrong Guacamole secret: verify `GUACAMOLE_SECRET` matches between server and guacd
+3. Target RDP/VNC service not accepting connections
+4. Firewall blocking port 3389 (RDP) or 5900 (VNC) on target
 
-**Debug**:
-```bash
-# Check guacd health
-docker ps | grep guacd
-# Test readiness probe
-curl http://localhost:3001/api/ready
-# Check guacamole WebSocket port
-curl -I http://localhost:3002
-```
+### RDP Clipboard Not Working
 
-### Session Limit Reached
+**Possible causes:**
+- DLP policy `dlpDisableCopy` or `dlpDisablePaste` enabled on tenant or connection
+- Guacamole connection settings don't include clipboard
+- Browser permissions blocking clipboard access
 
-**Symptom**: "Maximum concurrent sessions reached" error.
+### Session Recording Not Working
 
-**Cause**: User exceeded `MAX_CONCURRENT_SESSIONS` (default: 10).
+**Configuration:**
+- `RECORDING_ENABLED=true` in `.env`
+- `RECORDING_PATH` must be writable
+- `guacenc` container must be running for video export
 
-**Fix**: Close existing sessions or increase the limit:
-```bash
-MAX_CONCURRENT_SESSIONS=20
-```
+### Gateway Shows "Unreachable"
 
-## Build & CI Issues
+**Debugging:**
+1. Check gateway container is running
+2. Test network connectivity from server to gateway
+3. For tunnel-based gateways, verify tunnel agent is connected
+4. Check `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID` on the agent
 
-### TypeScript Type Errors After Schema Change
+## Build and Type Errors
 
-**Symptom**: `npm run typecheck` fails with Prisma-related type errors.
+### TypeScript Errors After Schema Change
 
-**Fix**: Regenerate the Prisma client:
+**Fix:** Regenerate Prisma client:
 ```bash
 npm run db:generate
 ```
 
-### ESLint Security Warnings
+### ESLint Errors in New Code
 
-**Symptom**: `npm run lint` reports `eslint-plugin-security` warnings.
-
-**Context**: The security plugin flags potential vulnerabilities (e.g., `security/detect-object-injection`). Object injection detection is disabled globally in `eslint.config.mjs` because bracket notation is used extensively with validated inputs.
-
-### npm Audit Failures
-
-**Symptom**: `npm run sast` fails with critical vulnerabilities.
-
-**Fix**: Update affected packages:
+**Fix:**
 ```bash
-npm audit fix
-# If automated fix not available, check if the vulnerability
-# is in a dev dependency or affects your use case
+npm run lint:fix   # Auto-fix what's possible
 ```
+
+Common issues:
+- `no-console` in server code (use the logger utility)
+- Missing React hook dependencies
+- `@typescript-eslint/no-explicit-any` (use proper types)
+
+### Build Fails with Chunk Size Warning
+
+Vite warns at 700 KB chunk size. The manual chunk splitting in `client/vite.config.ts` handles most cases. If you import a large library, add it to the manual chunks configuration.
 
 ## Docker Issues
 
-### Container Runtime Detection
+### Docker Socket Permission Denied
 
-**Symptom**: `npm run docker:dev` fails with "Neither docker nor podman found".
+**Error:** `permission denied while trying to connect to the Docker daemon socket`
 
-**Cause**: The `scripts/container-runtime.sh` script auto-detects Docker or Podman.
-
-**Fix**: Install Docker or Podman, or set the runtime manually:
+**Fix:**
 ```bash
-# Check which is available
-docker --version
-podman --version
+# Add user to docker group
+sudo usermod -aG docker $USER
+# Re-login or:
+newgrp docker
 ```
 
-### Volume Permission Issues
+For Podman, ensure the socket path is correct: `PODMAN_SOCKET_PATH=$XDG_RUNTIME_DIR/podman/podman.sock`
 
-**Symptom**: Server container fails to write to `/recordings` or `/guacd-drive`.
+### Container Orchestration Not Working
 
-**Cause**: Container runs as non-root `appuser` but volumes are owned by root.
+**Error:** `Orchestrator type not detected`
 
-**Fix**: Ensure volume directories have correct permissions:
-```bash
-# For Docker
-sudo chown -R 1000:1000 ./recordings ./drive
-# For rootless Podman (maps to host user automatically)
-# No action needed
-```
+**Fix:** Set `ORCHESTRATOR_TYPE` explicitly in `.env`:
+- `docker` — Docker socket at `/var/run/docker.sock`
+- `podman` — Podman socket
+- `kubernetes` — In-cluster or kubeconfig
+- `none` — Disable managed gateways
 
-### Database Data Loss on Restart
+### PostgreSQL Data Lost After Restart
 
-**Symptom**: Data disappears after `docker compose down`.
+**Cause:** Volume not persisted.
 
-**Cause**: Using `-v` flag removes named volumes.
+**Fix:** Ensure `pgdata` volume is defined in compose file (it is by default in both `compose.yml` and `compose.dev.yml`).
 
-**Fix**: Never use `docker compose down -v` unless you intend to reset. Use `docker compose down` (without `-v`) to preserve data.
+## Network Issues
 
-## Performance Issues
+### CORS Errors in Browser
+
+**Error:** `Access-Control-Allow-Origin` header missing
+
+**Fix:** Set `CLIENT_URL` in `.env` to match exactly the URL in the browser address bar (including port).
+
+### WebSocket Connection Failed
+
+**Error:** Socket.IO or Guacamole WebSocket can't connect
+
+**Causes:**
+1. Client proxy not configured (check `client/vite.config.ts` proxy settings)
+2. In production, Nginx proxy config missing WebSocket upgrade headers
+3. Firewall or reverse proxy blocking WebSocket upgrade
+
+**Vite proxy override:** Set `VITE_API_TARGET` environment variable to override the default proxy target.
+
+### Impossible Travel False Positives
+
+**Fix:** Adjust `IMPOSSIBLE_TRAVEL_SPEED_KMH` in `.env` (default: 900 km/h). Set to `0` to disable.
+
+## Performance
 
 ### Slow API Responses
 
-**Debug**:
-1. Enable HTTP request logging:
-   ```bash
-   LOG_HTTP_REQUESTS=true
-   LOG_LEVEL=debug
-   ```
-2. Check database query performance in Prisma logs
-3. Verify PostgreSQL container has sufficient resources
+**Debugging:**
+1. Enable `LOG_HTTP_REQUESTS=true` to see request timing
+2. Check database query performance with `npx prisma studio`
+3. Verify PostgreSQL has adequate resources
+4. Check for missing database indexes
 
-### Socket.IO Connection Drops
+### High Memory Usage
 
-**Symptom**: SSH terminal disconnects intermittently.
-
-**Cause**: Proxy timeout or WebSocket upgrade failure.
-
-**Context**: The client uses `useAutoReconnect` hook with exponential backoff (base 1s, max 15s, 5 retries, 60s total timeout).
-
-**Fix**:
-- If behind a reverse proxy, ensure WebSocket upgrade is configured
-- Check `ABSOLUTE_SESSION_TIMEOUT_SECONDS` (default: 43200 = 12h)
+**Common causes:**
+1. Large number of concurrent SSH sessions (each holds a stream buffer)
+2. Vault sessions accumulating (check `VAULT_TTL_MINUTES`)
+3. Node.js default heap size too low: `NODE_OPTIONS=--max-old-space-size=4096`
 
 ## FAQ
 
-### Where is the `.env` file?
+**Q: Can I use MySQL instead of PostgreSQL?**
+A: No. The Prisma schema uses PostgreSQL-specific features (enums, UUID generation, JSON columns).
 
-At the **monorepo root** (`/arsenale/.env`), not inside `server/`. The Prisma config at `server/prisma.config.ts` resolves it to `../.env`.
+**Q: Can I run without Docker?**
+A: You need PostgreSQL accessible somewhere. `guacd` is required for RDP/VNC. SSH-only setups can skip guacd.
 
-### How do I reset the database?
+**Q: How do I reset my vault password?**
+A: If recovery keys were generated during vault setup, use them. Otherwise, the vault must be re-initialized (credentials will be lost).
 
-```bash
-npx prisma migrate reset --force -w server
-npm run db:generate
-```
+**Q: How do I add a new OAuth provider?**
+A: Set the provider's `CLIENT_ID` and `CLIENT_SECRET` in `.env`. The server auto-detects configured providers.
 
-### How do I add a new API endpoint?
+**Q: Why are my connections not showing after login?**
+A: The vault must be unlocked to decrypt connection credentials. Check vault status.
 
-1. Create or edit `server/src/routes/<domain>.routes.ts`
-2. Create or edit `server/src/controllers/<domain>.controller.ts`
-3. Create or edit `server/src/services/<domain>.service.ts`
-4. Mount the route in `server/src/app.ts`
-5. Run `npm run verify` to ensure everything passes
-
-### How do I add a new dialog?
-
-Follow the full-screen dialog pattern (see [Development](development.md#full-screen-dialog-pattern)):
-1. Create component with `Dialog fullScreen` + `SlideUp` transition
-2. Add state in `MainLayout` (`const [dialogOpen, setDialogOpen] = useState(false)`)
-3. Render at fragment root level in `MainLayout`, outside blur wrapper
-4. Never create a new page route for overlay UI
-
-### How do I add a new Zustand store?
-
-1. Create `client/src/store/<name>Store.ts`
-2. Follow existing pattern: `create<StateType>()(...)` with typed actions
-3. Use `persist` middleware if state should survive page reloads
-4. For UI preferences, add to existing `uiPreferencesStore` instead
-
-### What's the `npm run verify` pipeline?
-
-typecheck → lint → audit → test → build. All must pass before closing any task.
+**Q: How do I debug WebSocket issues?**
+A: Enable `LOG_GUACAMOLE=true` in `.env`. For Socket.IO, set `LOG_LEVEL=debug`.
