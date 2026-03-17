@@ -124,7 +124,7 @@ export default function TwoFactorSection() {
             </Typography>
             <Box sx={{
               p: 2,
-              bgcolor: '#ffffff',
+              bgcolor: 'background.paper',
               borderRadius: 1,
               display: 'inline-block',
               mb: 2,

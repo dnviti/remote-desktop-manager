@@ -3,6 +3,7 @@ import {
   AppBar, Toolbar, Typography, IconButton, Box, Chip, Menu, MenuItem,
   Snackbar, Alert, Avatar, Button, Badge,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   Lock as LockIcon,
   LockOpen as LockOpenIcon,
@@ -236,7 +237,7 @@ export default function MainLayout() {
           transition: 'filter 0.3s ease',
         }}
       >
-      <AppBar position="static" elevation={0} sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(8,8,10,0.8)' : 'rgba(255,255,255,0.9)', backdropFilter: 'blur(20px)', borderBottom: 1, borderColor: 'divider' }}>
+      <AppBar position="static" elevation={0} sx={{ zIndex: (theme) => theme.zIndex.drawer + 1, bgcolor: (theme) => theme.palette.mode === 'dark' ? alpha(theme.palette.background.default, 0.8) : alpha(theme.palette.background.default, 0.9), backdropFilter: 'blur(20px)', borderBottom: 1, borderColor: 'divider' }}>
         <Toolbar variant="dense">
           <Typography variant="h6" sx={{ flexGrow: 0, mr: 2, fontFamily: (theme) => theme.typography.h5.fontFamily, fontSize: '1.4rem', color: 'text.primary' }}>
             Arsenale

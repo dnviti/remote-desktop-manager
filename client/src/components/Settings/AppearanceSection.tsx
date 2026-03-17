@@ -87,7 +87,7 @@ export default function AppearanceSection() {
                       justifyContent: 'center',
                     }}
                   >
-                    <CheckIcon sx={{ fontSize: 14, color: muiTheme.palette.mode === 'dark' ? '#000' : '#fff' }} />
+                    <CheckIcon sx={{ fontSize: 14, color: muiTheme.palette.getContrastText(muiTheme.palette.primary.main) }} />
                   </Box>
                 )}
 

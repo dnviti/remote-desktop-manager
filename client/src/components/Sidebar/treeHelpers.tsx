@@ -32,6 +32,7 @@ import type { Folder } from '../../store/connectionsStore';
 import { openConnectionWindow } from '../../utils/openConnectionWindow';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
+import { alpha } from '@mui/material/styles';
 
 export const BASE_PL = 2;
 export const INDENT = 2;
@@ -206,11 +207,11 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
           borderLeft: '2px solid transparent',
           transition: 'all 0.15s ease',
           '&:hover': {
-            bgcolor: 'rgba(0,229,160,0.04)',
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
           },
           '&.Mui-selected, &.Mui-selected:hover': {
-            bgcolor: 'rgba(0,229,160,0.08)',
-            borderLeftColor: '#00e5a0',
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+            borderLeftColor: 'primary.main',
           },
           ...(compact && { py: 0.125 }),
           ...(draggable && { cursor: 'grab' }),
@@ -221,28 +222,28 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
       >
         <ListItemIcon sx={{ minWidth: compact ? 24 : 32 }}>
           {conn.type === 'SSH' ? (
-            <SshIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
+            <SshIcon fontSize="small" sx={{ color: 'action.active' }} />
           ) : conn.type === 'VNC' ? (
-            <VncIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
+            <VncIcon fontSize="small" sx={{ color: 'action.active' }} />
           ) : (
-            <RdpIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
+            <RdpIcon fontSize="small" sx={{ color: 'action.active' }} />
           )}
         </ListItemIcon>
         <ListItemText
           primary={conn.name}
           secondary={compact ? undefined : `${conn.host}:${conn.port}`}
-          primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { color: '#f4f4f5' } }}
-          secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { color: '#52525b' } }}
+          primaryTypographyProps={{ variant: 'body2', noWrap: true, sx: { color: 'text.primary' } }}
+          secondaryTypographyProps={{ variant: 'caption', noWrap: true, sx: { color: 'text.secondary' } }}
         />
         {conn.isOwner && onToggleFavorite && (
           <IconButton
             size="small"
             onClick={(e) => { e.stopPropagation(); onToggleFavorite(conn); }}
-            sx={{ p: 0.25, '&:hover': { bgcolor: 'rgba(0,229,160,0.08)' } }}
+            sx={{ p: 0.25, '&:hover': { bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08) } }}
           >
             {conn.isFavorite
-              ? <StarIcon fontSize="small" sx={{ color: '#00e5a0' }} />
-              : <StarBorderIcon fontSize="small" sx={{ color: '#52525b', opacity: 0.5 }} />}
+              ? <StarIcon fontSize="small" sx={{ color: 'primary.main' }} />
+              : <StarBorderIcon fontSize="small" sx={{ color: 'text.disabled', opacity: 0.5 }} />}
           </IconButton>
         )}
       </ListItemButton>
@@ -259,62 +260,63 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#161619',
-              border: '1px solid rgba(35,35,40,0.6)',
+              bgcolor: 'background.paper',
+              border: 1,
+              borderColor: 'divider',
               '& .MuiMenuItem-root': {
-                color: '#f4f4f5',
+                color: 'text.primary',
                 fontSize: '0.8125rem',
-                '&:hover': { bgcolor: 'rgba(0,229,160,0.06)' },
-                '&.Mui-disabled': { color: '#52525b' },
+                '&:hover': { bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06) },
+                '&.Mui-disabled': { color: 'text.disabled' },
               },
-              '& .MuiDivider-root': { borderColor: 'rgba(35,35,40,0.6)' },
+              '& .MuiDivider-root': { borderColor: 'divider' },
             },
           },
         }}
       >
         <MenuItem onClick={handleConnect}>
-          <ListItemIcon><ConnectIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><ConnectIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Connect</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleConnectAs}>
-          <ListItemIcon><SwitchAccountIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><SwitchAccountIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Connect As...</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleOpenInNewWindow}>
-          <ListItemIcon><OpenInNewIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><OpenInNewIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Open in New Window</ListItemText>
         </MenuItem>
         {conn.isOwner && onToggleFavorite && (
           <MenuItem onClick={() => { handleCloseMenu(); onToggleFavorite(conn); }}>
             <ListItemIcon>
               {conn.isFavorite
-                ? <StarBorderIcon fontSize="small" sx={{ color: '#a1a1aa' }} />
-                : <StarIcon fontSize="small" sx={{ color: '#00e5a0' }} />}
+                ? <StarBorderIcon fontSize="small" sx={{ color: 'action.active' }} />
+                : <StarIcon fontSize="small" sx={{ color: 'primary.main' }} />}
             </ListItemIcon>
             <ListItemText>{conn.isFavorite ? 'Remove from Favorites' : 'Add to Favorites'}</ListItemText>
           </MenuItem>
         )}
         <Divider />
         <MenuItem onClick={handleMove} disabled={!conn.isOwner}>
-          <ListItemIcon><MoveIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><MoveIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Move to Folder</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleEdit} disabled={!conn.isOwner}>
-          <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><EditIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Edit</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleShare} disabled={!conn.isOwner}>
-          <ListItemIcon><ShareIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><ShareIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Share</ListItemText>
         </MenuItem>
         {onViewAuditLog && (
           <MenuItem onClick={handleViewAuditLog}>
-            <ListItemIcon><HistoryIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+            <ListItemIcon><HistoryIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
             <ListItemText>Activity Log</ListItemText>
           </MenuItem>
         )}
         <MenuItem onClick={handleDelete} disabled={!conn.isOwner}>
-          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: conn.isOwner ? '#ef4444' : '#52525b' }} /></ListItemIcon>
+          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: conn.isOwner ? 'error.main' : 'text.disabled' }} /></ListItemIcon>
           <ListItemText>Delete</ListItemText>
         </MenuItem>
       </Menu>
@@ -392,23 +394,23 @@ export function FolderItem({
           borderLeft: '2px solid transparent',
           transition: 'all 0.15s ease',
           '&:hover': {
-            bgcolor: 'rgba(0,229,160,0.04)',
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.04),
           },
           ...(compact && { py: 0.125 }),
           ...(isOver && {
-            bgcolor: 'rgba(0,229,160,0.08)',
-            borderLeftColor: '#00e5a0',
+            bgcolor: (theme) => alpha(theme.palette.primary.main, 0.08),
+            borderLeftColor: 'primary.main',
           }),
         }}
       >
         <ListItemIcon sx={{ minWidth: compact ? 24 : 32 }}>
-          {open ? <FolderOpenIcon fontSize="small" sx={{ color: '#52525b' }} /> : <FolderIcon fontSize="small" sx={{ color: '#52525b' }} />}
+          {open ? <FolderOpenIcon fontSize="small" sx={{ color: 'text.secondary' }} /> : <FolderIcon fontSize="small" sx={{ color: 'text.secondary' }} />}
         </ListItemIcon>
         <ListItemText
           primary={node.folder.name}
-          primaryTypographyProps={{ variant: 'body2', sx: { color: '#f4f4f5' } }}
+          primaryTypographyProps={{ variant: 'body2', sx: { color: 'text.primary' } }}
         />
-        {open ? <ExpandMore fontSize="small" sx={{ color: '#52525b' }} /> : <ChevronRight fontSize="small" sx={{ color: '#52525b' }} />}
+        {open ? <ExpandMore fontSize="small" sx={{ color: 'text.secondary' }} /> : <ChevronRight fontSize="small" sx={{ color: 'text.secondary' }} />}
       </ListItemButton>
 
       <Menu
@@ -423,45 +425,46 @@ export function FolderItem({
         slotProps={{
           paper: {
             sx: {
-              bgcolor: '#161619',
-              border: '1px solid rgba(35,35,40,0.6)',
+              bgcolor: 'background.paper',
+              border: 1,
+              borderColor: 'divider',
               '& .MuiMenuItem-root': {
-                color: '#f4f4f5',
+                color: 'text.primary',
                 fontSize: '0.8125rem',
-                '&:hover': { bgcolor: 'rgba(0,229,160,0.06)' },
+                '&:hover': { bgcolor: (theme) => alpha(theme.palette.primary.main, 0.06) },
               },
-              '& .MuiDivider-root': { borderColor: 'rgba(35,35,40,0.6)' },
+              '& .MuiDivider-root': { borderColor: 'divider' },
             },
           },
         }}
       >
         <MenuItem onClick={() => { handleCloseMenu(); onCreateConnection(node.folder.id, teamId); }}>
-          <ListItemIcon><AddIcon fontSize="small" sx={{ color: '#00e5a0' }} /></ListItemIcon>
+          <ListItemIcon><AddIcon fontSize="small" sx={{ color: 'primary.main' }} /></ListItemIcon>
           <ListItemText>New Connection</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => { handleCloseMenu(); onCreateFolder(node.folder.id, teamId); }}>
-          <ListItemIcon><CreateNewFolderIcon fontSize="small" sx={{ color: '#00e5a0' }} /></ListItemIcon>
+          <ListItemIcon><CreateNewFolderIcon fontSize="small" sx={{ color: 'primary.main' }} /></ListItemIcon>
           <ListItemText>New Subfolder</ListItemText>
         </MenuItem>
         {onBulkOpen && (
           <MenuItem onClick={() => { handleCloseMenu(); onBulkOpen(node.folder.id); }}>
-            <ListItemIcon><PlaylistPlayIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+            <ListItemIcon><PlaylistPlayIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
             <ListItemText>Open All</ListItemText>
           </MenuItem>
         )}
         {onShareFolder && (
           <MenuItem onClick={() => { handleCloseMenu(); onShareFolder(node.folder.id, node.folder.name); }}>
-            <ListItemIcon><FolderSharedIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+            <ListItemIcon><FolderSharedIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
             <ListItemText>Share Folder</ListItemText>
           </MenuItem>
         )}
         <Divider />
         <MenuItem onClick={() => { handleCloseMenu(); onEditFolder(node.folder); }}>
-          <ListItemIcon><EditIcon fontSize="small" sx={{ color: '#a1a1aa' }} /></ListItemIcon>
+          <ListItemIcon><EditIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Rename</ListItemText>
         </MenuItem>
         <MenuItem onClick={() => { handleCloseMenu(); onDeleteFolder(node.folder); }}>
-          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: '#ef4444' }} /></ListItemIcon>
+          <ListItemIcon><DeleteIcon fontSize="small" sx={{ color: 'error.main' }} /></ListItemIcon>
           <ListItemText>Delete</ListItemText>
         </MenuItem>
       </Menu>
