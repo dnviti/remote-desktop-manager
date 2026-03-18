@@ -71,3 +71,26 @@ export async function bulkUpdatePreferences(
   const { data } = await api.put('/notifications/preferences', { preferences });
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Notification Schedule (DND / Quiet Hours)
+// ---------------------------------------------------------------------------
+
+export interface NotificationSchedule {
+  dndEnabled: boolean;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  quietHoursTimezone: string | null;
+}
+
+export async function getNotificationSchedule(): Promise<NotificationSchedule> {
+  const { data } = await api.get('/user/notification-schedule');
+  return data;
+}
+
+export async function updateNotificationSchedule(
+  update: Partial<NotificationSchedule>
+): Promise<NotificationSchedule> {
+  const { data } = await api.put('/user/notification-schedule', update);
+  return data;
+}

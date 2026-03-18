@@ -5,7 +5,14 @@ import { config } from '../config';
 import { getSocketClientIp } from '../utils/ip';
 import { computeBindingHash, getSocketUserAgent } from '../utils/tokenBinding';
 import * as auditService from '../services/audit.service';
-import { NotificationEntry } from '../services/notification.service';
+import type { NotificationEntry } from '../services/notification.service';
+import { logger } from '../utils/logger';
+import { isInQuietHours, NotificationType } from '../services/notification.service';
+
+/** Notification types that always bypass DND / quiet hours. */
+const SECURITY_CRITICAL_TYPES = new Set<NotificationType>([
+  NotificationType.IMPOSSIBLE_TRAVEL_DETECTED,
+]);
 
 let notificationNamespace: ReturnType<Server['of']> | null = null;
 
@@ -57,11 +64,41 @@ export function setupNotificationHandler(io: Server) {
 /**
  * Emit a notification to a specific user via Socket.IO.
  * Safe to call even if the user is not connected — it simply won't deliver.
+ *
+ * DND / quiet hours are enforced automatically: if the user is in quiet hours
+ * and the notification is NOT security-critical, the push is silently skipped.
+ * The `suppressedByQuietHours` flag on the entry is also respected as a
+ * pre-computed hint from `createNotification`.
  */
 export function emitNotification(userId: string, notification: NotificationEntry) {
-  if (notificationNamespace) {
-    notificationNamespace.to(userId).emit('notification:new', notification);
+  // Fast path: already determined by createNotification
+  if (notification.suppressedByQuietHours) {
+    logger.debug(`Socket.IO push suppressed (quiet hours) for user=${userId} type=${notification.type}`);
+    return;
   }
+
+  if (!notificationNamespace) return;
+
+  // For inline-constructed entries (from sharing, etc.), check quiet hours async
+  const type = notification.type as NotificationType;
+  if (SECURITY_CRITICAL_TYPES.has(type)) {
+    notificationNamespace.to(userId).emit('notification:new', notification);
+    return;
+  }
+
+  // Async check — fire-and-forget emit
+  isInQuietHours(userId)
+    .then((suppressed) => {
+      if (suppressed) {
+        logger.debug(`Socket.IO push suppressed (quiet hours) for user=${userId} type=${notification.type}`);
+        return;
+      }
+      notificationNamespace?.to(userId).emit('notification:new', notification);
+    })
+    .catch((err) => {
+      logger.error('Quiet hours check failed, emitting notification anyway:', err);
+      notificationNamespace?.to(userId).emit('notification:new', notification);
+    });
 }
 
 /**

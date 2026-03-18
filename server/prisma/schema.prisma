@@ -124,6 +124,10 @@ model User {
   smsOtpExpiresAt    DateTime?
   webauthnEnabled    Boolean     @default(false)
   vaultAutoLockMinutes Int?
+  notifDndEnabled          Boolean  @default(false)
+  notifQuietHoursStart     String?
+  notifQuietHoursEnd       String?
+  notifQuietHoursTimezone  String?
   domainName               String?
   domainUsername           String?
   encryptedDomainPassword  String?

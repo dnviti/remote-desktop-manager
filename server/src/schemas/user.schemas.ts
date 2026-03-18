@@ -65,3 +65,13 @@ export const updateDomainProfileSchema = z.object({
   domainPassword: z.string().max(500).nullable().optional(),
 });
 export type UpdateDomainProfileInput = z.infer<typeof updateDomainProfileSchema>;
+
+const hhmmRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+export const updateNotificationScheduleSchema = z.object({
+  dndEnabled: z.boolean().optional(),
+  quietHoursStart: z.string().regex(hhmmRegex, 'Must be HH:mm format').nullable().optional(),
+  quietHoursEnd: z.string().regex(hhmmRegex, 'Must be HH:mm format').nullable().optional(),
+  quietHoursTimezone: z.string().max(100).nullable().optional(),
+});
+export type UpdateNotificationScheduleInput = z.infer<typeof updateNotificationScheduleSchema>;
