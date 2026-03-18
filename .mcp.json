@@ -4,9 +4,9 @@
       "type": "stdio",
       "command": "/usr/bin/python3",
       "args": [
-        "/home/daniele/.claude/plugins/cache/dnviti-plugins/ctdf/3.5.1/scripts/mcp_server.py",
+        "~/.claude/plugins/cache/dnviti-plugins/ctdf/3.5.1/scripts/mcp_server.py",
         "--root",
-        "/home/daniele/Documents/Repos/arsenale"
+        "~/Documents/Repos/arsenale"
       ],
       "env": {}
     }
