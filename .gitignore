@@ -390,3 +390,4 @@ __marimo__/
 .worktrees/
 
 .claude/memory/
+.claude/worktrees/
