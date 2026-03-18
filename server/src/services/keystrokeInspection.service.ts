@@ -1,8 +1,6 @@
 import prisma from '../lib/prisma';
 import type { KeystrokePolicyAction } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { AppError } from '../middleware/error.middleware';
-import { compileRegex, isRegexSafe, MAX_REGEX_LENGTH } from '../utils/safeRegex';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,11 +26,6 @@ export interface PolicyMatch {
   matchedInput: string;
 }
 
-/** Maximum number of regex patterns per policy. */
-export const MAX_PATTERNS_PER_POLICY = 50;
-/** Maximum number of cached tenants before eviction of oldest entries. */
-const MAX_CACHE_ENTRIES = 500;
-
 // ---------------------------------------------------------------------------
 // In-memory policy cache per tenant (refreshed every 30 seconds)
 // ---------------------------------------------------------------------------
@@ -52,19 +45,6 @@ interface CompiledPolicy {
 const policyCache = new Map<string, CachedPolicies>();
 const CACHE_TTL_MS = 30_000;
 
-/** Evict oldest entries when the cache exceeds MAX_CACHE_ENTRIES. */
-function evictStaleCache(): void {
-  if (policyCache.size <= MAX_CACHE_ENTRIES) return;
-  // Map iteration order is insertion order; delete the oldest entries
-  const excess = policyCache.size - MAX_CACHE_ENTRIES;
-  let removed = 0;
-  for (const key of policyCache.keys()) {
-    if (removed >= excess) break;
-    policyCache.delete(key);
-    removed++;
-  }
-}
-
 async function getCompiledPolicies(tenantId: string): Promise<CompiledPolicy[]> {
   const cached = policyCache.get(tenantId);
   if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
@@ -81,9 +61,9 @@ async function getCompiledPolicies(tenantId: string): Promise<CompiledPolicy[]> 
     const patterns: { source: string; regex: RegExp }[] = [];
     for (const src of row.regexPatterns) {
       try {
-        patterns.push({ source: src, regex: compileRegex(src, 'i', `keystroke policy ${row.id}`) });
-      } catch (err) {
-        logger.warn(`Skipping regex in keystroke policy ${row.id}: ${err instanceof Error ? err.message : 'unknown error'}`);
+        patterns.push({ source: src, regex: new RegExp(src, 'i') });
+      } catch {
+        logger.warn(`Invalid regex in keystroke policy ${row.id}: ${src}`);
       }
     }
     if (patterns.length > 0) {
@@ -97,7 +77,6 @@ async function getCompiledPolicies(tenantId: string): Promise<CompiledPolicy[]> 
   }
 
   policyCache.set(tenantId, { policies: compiled, fetchedAt: Date.now() });
-  evictStaleCache();
   return compiled;
 }
 
@@ -117,35 +96,18 @@ export function invalidateCache(tenantId: string): void {
  * - Ctrl-U (kill line)
  * - Ctrl-C / Ctrl-D (reset line)
  * - Enter / newline (submit line, reset buffer)
- *
- * **Read/reset ordering contract:**
- * After calling `feed(data)`, callers MUST follow this exact sequence:
- *   1. `sawNewline()` — check if the input contained a line submission
- *   2. `current()` — read the accumulated line (still in the buffer)
- *   3. `reset()` — clear the buffer for the next line
- * Calling `reset()` before `current()` loses the submitted line.
- * Calling `sawNewline()` after another `feed()` returns the NEW feed's result.
- * Each `feed()` resets the `_sawNewline` flag, so the window to read it is
- * between the current `feed()` and the next one.
  */
 export class KeystrokeBuffer {
   private buffer = '';
-  private _sawNewline = false;
 
-  /**
-   * Feed raw terminal data into the buffer and return the current logical line.
-   * Also tracks whether a newline was seen — check via `sawNewline()`.
-   */
+  /** Feed raw terminal data into the buffer and return the current logical line. */
   feed(data: string): string {
-    this._sawNewline = false;
-
     for (const ch of data) {
       const code = ch.charCodeAt(0);
 
       if (code === 0x0D || code === 0x0A) {
         // Enter / newline: line submitted — reset after caller inspects
         // We keep the buffer as-is so caller can read it, then call reset()
-        this._sawNewline = true;
         continue;
       }
 
@@ -183,15 +145,7 @@ export class KeystrokeBuffer {
     return this.buffer;
   }
 
-  /**
-   * Returns true if the most recent `feed()` call encountered a newline.
-   * This avoids a separate scan of the data string.
-   */
-  sawNewline(): boolean {
-    return this._sawNewline;
-  }
-
-  /** @deprecated Use `sawNewline()` instead — avoids re-scanning the data. */
+  /** Check if a newline/enter was present in the data. */
   hasNewline(data: string): boolean {
     return data.includes('\r') || data.includes('\n');
   }
@@ -205,20 +159,6 @@ export class KeystrokeBuffer {
 // ---------------------------------------------------------------------------
 // Inspection: check the current input against compiled policies
 // ---------------------------------------------------------------------------
-
-/** Maximum length of matched input stored in audit logs / notifications. */
-const MAX_MATCHED_INPUT_LOG_LENGTH = 80;
-
-/**
- * Truncate and partially redact user input for safe logging.
- * Shows the first N characters, with a truncation marker if needed.
- * This avoids logging full commands that may contain inline passwords or secrets.
- */
-function redactForLog(input: string): string {
-  const trimmed = input.trim();
-  if (trimmed.length <= MAX_MATCHED_INPUT_LOG_LENGTH) return trimmed;
-  return trimmed.slice(0, MAX_MATCHED_INPUT_LOG_LENGTH) + '...[truncated]';
-}
 
 export async function inspect(
   tenantId: string,
@@ -235,7 +175,7 @@ export async function inspect(
           policyName: policy.name,
           action: policy.action,
           matchedPattern: source,
-          matchedInput: redactForLog(input),
+          matchedInput: input,
         };
       }
     }
@@ -263,7 +203,9 @@ export async function getPolicy(
     where: { id: policyId, tenantId },
   });
   if (!policy) {
-    throw new AppError('Keystroke policy not found', 404);
+    const err = new Error('Keystroke policy not found') as Error & { statusCode: number };
+    err.statusCode = 404;
+    throw err;
   }
   return policy as KeystrokePolicyData;
 }
@@ -278,20 +220,15 @@ export async function createPolicy(
     enabled?: boolean;
   },
 ): Promise<KeystrokePolicyData> {
-  if (data.regexPatterns.length > MAX_PATTERNS_PER_POLICY) {
-    throw new AppError(`Too many regex patterns (max ${MAX_PATTERNS_PER_POLICY})`, 400);
-  }
-
   // Validate regex patterns at creation time
-  for (let i = 0; i < data.regexPatterns.length; i++) {
-    const pattern = data.regexPatterns[i];
-    if (pattern.length > MAX_REGEX_LENGTH) {
-      throw new AppError(`Regex pattern at index ${i} exceeds maximum length of ${MAX_REGEX_LENGTH} characters`, 400);
+  for (const pattern of data.regexPatterns) {
+    try {
+      new RegExp(pattern);
+    } catch {
+      const err = new Error(`Invalid regex pattern: ${pattern}`) as Error & { statusCode: number };
+      err.statusCode = 400;
+      throw err;
     }
-    if (!isRegexSafe(pattern)) {
-      throw new AppError(`Regex pattern at index ${i} was rejected by the safety check (possible ReDoS)`, 400);
-    }
-    compileRegex(pattern, undefined, `pattern at index ${i}`);
   }
 
   const policy = await prisma.keystrokePolicy.create({
@@ -324,19 +261,20 @@ export async function updatePolicy(
     where: { id: policyId, tenantId },
   });
   if (!existing) {
-    throw new AppError('Keystroke policy not found', 404);
+    const err = new Error('Keystroke policy not found') as Error & { statusCode: number };
+    err.statusCode = 404;
+    throw err;
   }
 
   if (data.regexPatterns) {
-    if (data.regexPatterns.length > MAX_PATTERNS_PER_POLICY) {
-      throw new AppError(`Too many regex patterns (max ${MAX_PATTERNS_PER_POLICY})`, 400);
-    }
-    for (let i = 0; i < data.regexPatterns.length; i++) {
-      const pattern = data.regexPatterns[i];
-      if (pattern.length > MAX_REGEX_LENGTH) {
-        throw new AppError(`Regex pattern at index ${i} exceeds maximum length of ${MAX_REGEX_LENGTH} characters`, 400);
+    for (const pattern of data.regexPatterns) {
+      try {
+        new RegExp(pattern);
+      } catch {
+        const err = new Error(`Invalid regex pattern: ${pattern}`) as Error & { statusCode: number };
+        err.statusCode = 400;
+        throw err;
       }
-      compileRegex(pattern, undefined, `pattern at index ${i}`);
     }
   }
 
@@ -363,7 +301,9 @@ export async function deletePolicy(
     where: { id: policyId, tenantId },
   });
   if (!existing) {
-    throw new AppError('Keystroke policy not found', 404);
+    const err = new Error('Keystroke policy not found') as Error & { statusCode: number };
+    err.statusCode = 404;
+    throw err;
   }
 
   await prisma.keystrokePolicy.delete({ where: { id: policyId } });

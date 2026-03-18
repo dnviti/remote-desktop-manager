@@ -40,37 +40,28 @@ const activeSessions = new Map<string, SshSession>();
  * Notify all ADMIN+ members of a tenant about a keystroke policy violation.
  */
 function notifyTenantAdmins(tenantId: string, message: string, connectionId?: string | null) {
-  const attempt = (retryCount: number) => {
-    prisma.tenantMember
-      .findMany({
-        where: {
-          tenantId,
-          role: { in: ['OWNER', 'ADMIN'] },
-          isActive: true,
-        },
-        select: { userId: true },
-      })
-      .then((members) => {
-        for (const member of members) {
-          createNotificationAsync({
-            userId: member.userId,
-            type: NotificationType.SESSION_TERMINATED_POLICY_VIOLATION,
-            message,
-            relatedId: connectionId ?? undefined,
-          });
-        }
-      })
-      .catch((err) => {
-        if (retryCount < 2) {
-          const delayMs = 1000 * (retryCount + 1);
-          logger.warn(`Notification delivery failed (attempt ${retryCount + 1}/3), retrying in ${delayMs}ms:`, err);
-          setTimeout(() => attempt(retryCount + 1), delayMs);
-        } else {
-          logger.error('Failed to notify tenant admins about policy violation after 3 attempts:', err);
-        }
-      });
-  };
-  attempt(0);
+  prisma.tenantMember
+    .findMany({
+      where: {
+        tenantId,
+        role: { in: ['OWNER', 'ADMIN'] },
+        isActive: true,
+      },
+      select: { userId: true },
+    })
+    .then((members) => {
+      for (const member of members) {
+        createNotificationAsync({
+          userId: member.userId,
+          type: NotificationType.SESSION_TERMINATED_POLICY_VIOLATION,
+          message,
+          relatedId: connectionId ?? undefined,
+        });
+      }
+    })
+    .catch((err) => {
+      logger.error('Failed to notify tenant admins about policy violation:', err);
+    });
 }
 
 function sanitizePath(p: string): string {
@@ -451,10 +442,61 @@ export function setupSshHandler(io: Server) {
     });
 
     socket.on('data', (data: string) => {
-      if (!currentSession?.stream.writable) return;
+      if (currentSession?.stream.writable) {
+        // Keystroke inspection: feed data into the buffer and inspect on newlines
+        if (user.tenantId) {
+          keystrokeBuffer.feed(data);
 
-      const writeAndRecord = () => {
-        currentSession?.stream.write(data);
+          if (keystrokeBuffer.hasNewline(data)) {
+            const inputLine = keystrokeBuffer.current();
+            keystrokeBuffer.reset();
+
+            if (inputLine.trim()) {
+              // Fire-and-forget async inspection
+              inspectKeystroke(user.tenantId, inputLine)
+                .then((match) => {
+                  if (!match) return;
+
+                  const sessionId = `${user.userId}:${socket.id}`;
+
+                  // Log the policy violation
+                  auditService.log({
+                    userId: user.userId,
+                    action: 'SESSION_TERMINATED_POLICY_VIOLATION',
+                    targetType: 'Connection',
+                    targetId: currentConnectionId ?? undefined,
+                    details: {
+                      policyId: match.policyId,
+                      policyName: match.policyName,
+                      policyAction: match.action,
+                      matchedPattern: match.matchedPattern,
+                      matchedInput: match.matchedInput,
+                    },
+                    ipAddress: clientIp,
+                  });
+
+                  // Notify tenant admins
+                  notifyTenantAdmins(
+                    user.tenantId!,
+                    `SSH session terminated: user ${user.email} triggered keystroke policy "${match.policyName}" (pattern: ${match.matchedPattern})`,
+                    currentConnectionId,
+                  );
+
+                  if (match.action === 'BLOCK_AND_TERMINATE') {
+                    socket.emit('session:error', {
+                      message: 'Session terminated: input matched a security policy rule.',
+                    });
+                    cleanup(sessionId);
+                  }
+                })
+                .catch((err) => {
+                  logger.error('Keystroke inspection error:', err);
+                });
+            }
+          }
+        }
+
+        currentSession.stream.write(data);
         if (recordingWriter) recordingWriter.writeInput(data);
         // Throttled implicit heartbeat (at most once per 30s)
         const now = Date.now();

@@ -17,11 +17,6 @@ const SUBJECT_MAP: Record<NotificationType, string> = {
   [NotificationType.TENANT_INVITATION]: 'You have been invited to an organization — Arsenale',
   [NotificationType.RECORDING_READY]: 'Session recording is ready — Arsenale',
   [NotificationType.IMPOSSIBLE_TRAVEL_DETECTED]: 'Security Alert: Impossible Travel Detected — Arsenale',
-  [NotificationType.SECRET_CHECKOUT_REQUESTED]: 'Credential check-out requested — Arsenale',
-  [NotificationType.SECRET_CHECKOUT_APPROVED]: 'Credential check-out approved — Arsenale',
-  [NotificationType.SECRET_CHECKOUT_DENIED]: 'Credential check-out denied — Arsenale',
-  [NotificationType.SECRET_CHECKOUT_EXPIRED]: 'Credential check-out expired — Arsenale',
-  [NotificationType.LATERAL_MOVEMENT_ALERT]: 'Security Alert: Lateral Movement Anomaly Detected — Arsenale',
   [NotificationType.SESSION_TERMINATED_POLICY_VIOLATION]: 'Security Alert: SSH Session Terminated by Policy — Arsenale',
 };
 
