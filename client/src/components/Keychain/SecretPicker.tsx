@@ -83,6 +83,7 @@ export default function SecretPicker({
         metadata: null,
         tags: [],
         isFavorite: false,
+        pwnedCount: 0,
         expiresAt: null,
         currentVersion: 1,
         createdAt: '',
