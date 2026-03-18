@@ -757,6 +757,7 @@ model VaultSecret {
   metadata       Json?
   tags           String[]    @default([])
   isFavorite     Boolean     @default(false)
+  pwnedCount     Int         @default(0)
   expiresAt      DateTime?
   currentVersion Int         @default(1)
   createdAt      DateTime    @default(now())

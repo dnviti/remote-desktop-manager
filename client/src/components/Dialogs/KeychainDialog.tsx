@@ -50,6 +50,7 @@ export default function KeychainDialog({ open, onClose }: KeychainDialogProps) {
   const tenantVaultStatus = useSecretStore((s) => s.tenantVaultStatus);
   const fetchTenantVaultStatus = useSecretStore((s) => s.fetchTenantVaultStatus);
   const initTenantVault = useSecretStore((s) => s.initTenantVault);
+  const checkSecretBreach = useSecretStore((s) => s.checkSecretBreach);
   const user = useAuthStore((s) => s.user);
 
   const treeOpen = useUiPreferencesStore((s) => s.keychainTreeOpen);
@@ -296,6 +297,7 @@ export default function KeychainDialog({ open, onClose }: KeychainDialogProps) {
               onDelete={() => setDeleteTarget(selectedSecret)}
               onToggleFavorite={() => toggleFavorite(selectedSecret.id)}
               onRestore={handleRestore}
+              onCheckBreach={checkSecretBreach}
             />
           ) : (
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
