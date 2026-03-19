@@ -11,5 +11,8 @@ router.use(authenticate);
 // Database proxy session lifecycle
 router.post('/', sessionRateLimiter, asyncHandler(dbProxyController.createSession));
 router.post('/:sessionId/end', asyncHandler(dbProxyController.endSession));
+router.post('/:sessionId/heartbeat', asyncHandler(dbProxyController.heartbeat));
+router.post('/:sessionId/query', asyncHandler(dbProxyController.executeQuery));
+router.get('/:sessionId/schema', asyncHandler(dbProxyController.getSchema));
 
 export default router;
