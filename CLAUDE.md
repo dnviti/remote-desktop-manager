@@ -41,6 +41,27 @@ npm run sast                # npm audit (dependency vulnerability scan)
 npm run docker:dev          # Start guacd + PostgreSQL containers (required for dev)
 npm run docker:dev:down     # Stop dev containers
 npm run docker:prod         # Full production stack (requires .env.production)
+
+# CodeClaw Configuration
+DEV_PORTS="3000 3001 3002"               # Client, Server, Guacamole WebSocket
+START_COMMAND="npm run dev"              # Command to start dev server
+PREDEV_COMMAND="npm run predev"          # Pre-start setup (Docker + Prisma generate)
+VERIFY_COMMAND="npm run verify"          # Quality gate (typecheck → lint → audit → test → build)
+
+TEST_FRAMEWORK="vitest"                  # Test runner
+TEST_COMMAND="npm run test"              # Run tests (all workspaces)
+TEST_FILE_PATTERN="**/*.test.{ts,tsx}"   # Test file pattern
+
+CI_RUNTIME_SETUP="uses: actions/setup-node@v4\nwith:\n  node-version: 22"
+
+DEVELOPMENT_BRANCH="develop"
+STAGING_BRANCH="staging"
+PRODUCTION_BRANCH="main"
+
+PACKAGE_JSON_PATHS="package.json client/package.json server/package.json gateways/tunnel-agent/package.json extra-clients/browser-extensions/package.json"
+CHANGELOG_FILE="CHANGELOG.md"
+TAG_PREFIX="v"
+GITHUB_REPO_URL="https://github.com/dnviti/arsenale"
 ```
 
 **Important:** `npm run verify` must pass before closing any task. It runs typecheck, lint, dependency audit, and build in sequence.
@@ -266,7 +287,7 @@ Tasks can be grouped into planned releases via `releases.json` at the project ro
 
 **Task branch workflow:** `/task-pick` must always create a dedicated branch (`task/<code>`) from `develop` and, upon completion, open a pull request targeting `develop` via `gh pr create --base develop`. Never merge directly into `develop` without a PR.
 
-<!-- CTDF:START -->
+<!-- CodeClaw:START -->
 ## Key Patterns
 
 ### Task Files
@@ -331,7 +352,7 @@ This framework supports **Windows, macOS, and Linux** with automatic OS detectio
 
 ### Python Command Auto-Detection
 
-All scripts and skills reference `python3`. On Windows where only `python` is available, CTDF auto-detects the correct command:
+All scripts and skills reference `python3`. On Windows where only `python` is available, CodeClaw auto-detects the correct command:
 
 - **Auto-detection:** `platform_utils.detect_python_cmd()` tries `python3` first, then `python`, verifying each is Python 3.x via `shutil.which()`.
 - **Manual override:** Set `python_command` in `config/project-config.json` to skip auto-detection (e.g., `"python_command": "python"`).
@@ -349,7 +370,7 @@ All scripts and skills reference `python3`. On Windows where only `python` is av
 
 - **PowerShell Core (pwsh):** Required for shell-expansion features (e.g., inline file reading in agent invocations). Install from https://github.com/PowerShell/PowerShell. The legacy `cmd.exe` has limited support — commands that rely on inline expansion will fall back to direct Python file reading.
 - **Long path support:** Enable long paths in the Windows registry or via Group Policy if your project has deeply nested directories. Run: `New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force`
-- **Line endings:** Configure Git to handle line endings automatically: `git config --global core.autocrlf true`. CTDF text files use LF; Git will convert on checkout/commit.
+- **Line endings:** Configure Git to handle line endings automatically: `git config --global core.autocrlf true`. CodeClaw text files use LF; Git will convert on checkout/commit.
 - **Symlink permissions:** If your project uses symlinks, enable Developer Mode in Windows Settings or grant `SeCreateSymbolicLinkPrivilege` to your user account.
 
 ### Troubleshooting (Windows)
@@ -357,14 +378,14 @@ All scripts and skills reference `python3`. On Windows where only `python` is av
 | Issue | Solution |
 |-------|----------|
 | `python3` not found | Install Python 3 from python.org and ensure "Add to PATH" is checked. Or set `python_command` in project config. |
-| `cp -r` fails | All CTDF scripts use `shutil.copytree()` instead. If you see this error, update to the latest CTDF version. |
-| `$(cat file)` fails in cmd.exe | CTDF uses direct file reading in Python. For manual commands, use PowerShell: `$(Get-Content -Raw file)` |
+| `cp -r` fails | All CodeClaw scripts use `shutil.copytree()` instead. If you see this error, update to the latest CodeClaw version. |
+| `$(cat file)` fails in cmd.exe | CodeClaw uses direct file reading in Python. For manual commands, use PowerShell: `$(Get-Content -Raw file)` |
 | Port check fails | Ensure `netstat` is available (built into Windows). Run as Administrator if needed. |
 | Permission denied on kill | Run the terminal as Administrator for `taskkill` operations. |
 
 ### Vector Memory (opt-in)
 
-CTDF includes an optional vector memory layer that indexes source code, tasks, and generated documents for semantic search. It is **disabled by default** and requires optional dependencies.
+CodeClaw includes an optional vector memory layer that indexes source code, tasks, and generated documents for semantic search. It is **disabled by default** and requires optional dependencies.
 
 | Component | Purpose |
 |-----------|---------|
@@ -387,4 +408,4 @@ CTDF includes an optional vector memory layer that indexes source code, tasks, a
 - `index_path`: Index storage path (default: `".claude/memory/vectors"`)
 
 Vectors are stored in `.claude/memory/vectors/` (auto-added to `.gitignore`).
-<!-- CTDF:END -->
+<!-- CodeClaw:END -->
