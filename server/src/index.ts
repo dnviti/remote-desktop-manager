@@ -23,6 +23,7 @@ import * as autoscalerService from './services/autoscaler.service';
 import { completeGuacRecording, cleanupExpiredRecordings } from './services/recording.service';
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
+import { cleanupIdleTunnels } from './services/rdGateway.service';
 
 function freePort(port: number): void {
   try {
@@ -200,6 +201,13 @@ async function main() {
       logger.error('Recording cleanup failed:', err);
     });
   }, 24 * 60 * 60 * 1000);
+
+  // Cleanup idle RD Gateway tunnels every minute
+  setInterval(() => {
+    cleanupIdleTunnels(config.sessionInactivityTimeoutSeconds).catch((err) => {
+      logger.error('RD Gateway tunnel cleanup failed:', err);
+    });
+  }, 60 * 1000);
 
   // Setup guacamole-lite for RDP
   // eslint-disable-next-line @typescript-eslint/no-explicit-any

@@ -45,6 +45,7 @@ import TunnelConfigSection from '../Settings/TunnelConfigSection';
 import SamlConfigSection from '../Settings/SamlConfigSection';
 import OAuthProvidersAdminSection from '../Settings/OAuthProvidersAdminSection';
 import AccessPolicySection from '../Settings/AccessPolicySection';
+import RdGatewayConfigSection from '../Settings/RdGatewayConfigSection';
 import AppearanceSection from '../Settings/AppearanceSection';
 import NotificationPreferencesSection from '../Settings/NotificationPreferencesSection';
 import { SlideUp } from '../common/SlideUp';
@@ -303,6 +304,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
               <SelfSignupSection />
               <IpAllowlistSection />
               <AccessPolicySection />
+              <RdGatewayConfigSection />
               <OAuthProvidersAdminSection />
               <EmailProviderSection />
               <LdapConfigSection />
