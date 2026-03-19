@@ -293,6 +293,7 @@ enum SessionProtocol {
   SSH
   RDP
   VNC
+  SSH_PROXY
 }
 
 enum SessionStatus {
@@ -646,6 +647,10 @@ enum AuditAction {
   TUNNEL_TOKEN_GENERATE
   TUNNEL_TOKEN_ROTATE
   SESSION_DENIED_ABAC
+  SSH_PROXY_SESSION_START
+  SSH_PROXY_SESSION_END
+  SSH_PROXY_AUTH_FAILURE
+  SSH_PROXY_TOKEN_ISSUED
 }
 
 model AuditLog {

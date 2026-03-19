@@ -45,6 +45,7 @@ import TunnelConfigSection from '../Settings/TunnelConfigSection';
 import SamlConfigSection from '../Settings/SamlConfigSection';
 import OAuthProvidersAdminSection from '../Settings/OAuthProvidersAdminSection';
 import AccessPolicySection from '../Settings/AccessPolicySection';
+import NativeSshSection from '../Settings/NativeSshSection';
 import AppearanceSection from '../Settings/AppearanceSection';
 import NotificationPreferencesSection from '../Settings/NotificationPreferencesSection';
 import { SlideUp } from '../common/SlideUp';
@@ -301,6 +302,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           {resolvedTab === 'administration' && (
             <Stack spacing={3}>
               <SelfSignupSection />
+              <NativeSshSection />
               <IpAllowlistSection />
               <AccessPolicySection />
               <OAuthProvidersAdminSection />

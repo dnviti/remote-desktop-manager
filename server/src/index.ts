@@ -23,6 +23,7 @@ import * as autoscalerService from './services/autoscaler.service';
 import { completeGuacRecording, cleanupExpiredRecordings } from './services/recording.service';
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
+import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
 
 function freePort(port: number): void {
   try {
@@ -97,6 +98,9 @@ async function main() {
 
   // Setup zero-trust tunnel WebSocket endpoint
   setupTunnelHandler(server);
+
+  // Start SSH protocol proxy (if enabled)
+  startSshProxyServer();
 
   // Initialize session cleanup with Socket.IO reference
   initSessionCleanup(io);
@@ -369,6 +373,9 @@ async function main() {
     } catch (err) {
       logger.error('Failed to close sessions on shutdown:', err);
     }
+
+    // Stop SSH proxy server
+    stopSshProxyServer();
 
     if (guacServer) {
       try {
