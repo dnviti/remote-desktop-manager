@@ -35,6 +35,7 @@ import externalVaultRoutes from './routes/externalVault.routes';
 import accessPolicyRoutes from './routes/accessPolicy.routes';
 import sshProxyRoutes from './routes/sshProxy.routes';
 import rdGatewayRoutes from './routes/rdGateway.routes';
+import cliRoutes from './routes/cli.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger.middleware';
@@ -84,7 +85,7 @@ if (config.logHttpRequests) app.use(requestLogger);
 // Global CSRF validation for all state-changing requests (after CORS, before routes)
 app.use('/api', (req, res, next) => {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
-  const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/verify-totp', '/auth/request-sms-code', '/auth/verify-sms', '/auth/request-webauthn-options', '/auth/verify-webauthn', '/auth/mfa-setup/', '/auth/resend-verification', '/auth/saml', '/auth/config', '/share'];
+  const csrfExemptPaths = ['/auth/login', '/auth/register', '/auth/forgot-password', '/auth/reset-password', '/auth/verify-email', '/auth/verify-totp', '/auth/request-sms-code', '/auth/verify-sms', '/auth/request-webauthn-options', '/auth/verify-webauthn', '/auth/mfa-setup/', '/auth/resend-verification', '/auth/saml', '/auth/config', '/share', '/cli/auth/device'];
   // Use exact match or subpath match (path + '/') to prevent prefix collisions
   // e.g., '/auth/login' must not exempt '/auth/login-history'
   if (csrfExemptPaths.some(p => req.path === p || req.path.startsWith(p + '/'))) return next();
@@ -124,6 +125,7 @@ app.use('/api/vault-providers', externalVaultRoutes);
 app.use('/api/access-policies', accessPolicyRoutes);
 app.use('/api/sessions/ssh-proxy', sshProxyRoutes);
 app.use('/api/rdgw', rdGatewayRoutes);
+app.use('/api/cli', cliRoutes);
 
 // Health & readiness probes
 app.use('/api', healthRoutes);

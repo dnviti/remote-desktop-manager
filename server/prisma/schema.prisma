@@ -655,6 +655,8 @@ enum AuditAction {
   SSH_PROXY_SESSION_END
   SSH_PROXY_AUTH_FAILURE
   SSH_PROXY_TOKEN_ISSUED
+  DEVICE_AUTH_INITIATED
+  DEVICE_AUTH_COMPLETED
 }
 
 model AuditLog {
@@ -1121,4 +1123,22 @@ model AccessPolicy {
   updatedAt           DateTime @updatedAt
 
   @@index([targetType, targetId])
+}
+
+/// OAuth 2.0 Device Authorization Grant (RFC 8628).
+/// Used by the CLI tool to authenticate via browser-based login.
+model DeviceAuthCode {
+  id             String    @id @default(uuid())
+  deviceCode     String    @unique
+  userCode       String    @unique
+  /// Null until the user authorizes the device
+  userId         String?
+  authorized     Boolean   @default(false)
+  expiresAt      DateTime
+  interval       Int       @default(5)
+  clientId       String    @default("arsenale-cli")
+  createdAt      DateTime  @default(now())
+
+  @@index([deviceCode])
+  @@index([userCode])
 }

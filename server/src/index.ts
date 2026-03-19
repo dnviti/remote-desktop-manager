@@ -25,6 +25,7 @@ import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
 import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
 import { cleanupIdleTunnels } from './services/rdGateway.service';
+import { cleanupExpiredDeviceCodes } from './services/deviceAuth.service';
 
 function freePort(port: number): void {
   try {
@@ -212,6 +213,13 @@ async function main() {
       logger.error('RD Gateway tunnel cleanup failed:', err);
     });
   }, 60 * 1000);
+
+  // Cleanup expired device auth codes every 5 minutes
+  setInterval(() => {
+    cleanupExpiredDeviceCodes().catch((err) => {
+      logger.error('Device auth code cleanup failed:', err);
+    });
+  }, 5 * 60 * 1000);
 
   // Setup guacamole-lite for RDP
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
