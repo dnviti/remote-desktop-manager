@@ -241,4 +241,14 @@ export const config = {
     rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',
     rpName: process.env.WEBAUTHN_RP_NAME || 'Arsenale',
   },
+  // SSH Protocol Proxy
+  sshProxy: {
+    enabled: process.env.SSH_PROXY_ENABLED === 'true',
+    port: parseInt(process.env.SSH_PROXY_PORT || '2222', 10),
+    hostKey: process.env.SSH_PROXY_HOST_KEY || '',
+    allowedAuthMethods: (process.env.SSH_PROXY_AUTH_METHODS || 'token,keyboard-interactive').split(',').filter(Boolean) as Array<'token' | 'keyboard-interactive' | 'certificate'>,
+    tokenTtlSeconds: parseInt(process.env.SSH_PROXY_TOKEN_TTL_SECONDS || '300', 10),
+    caPublicKeyPath: process.env.SSH_PROXY_CA_PUBLIC_KEY || '',
+    keystrokeRecording: process.env.SSH_PROXY_KEYSTROKE_RECORDING === 'true',
+  },
 };

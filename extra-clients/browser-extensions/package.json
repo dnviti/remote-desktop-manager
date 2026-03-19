@@ -1,6 +1,6 @@
 {
   "name": "browser-extensions",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "Arsenale browser extension — Chrome Manifest V3 with multi-account management",
   "license": "BUSL-1.1",
   "private": true,

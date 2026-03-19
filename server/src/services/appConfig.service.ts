@@ -54,3 +54,25 @@ export async function getPublicConfig(): Promise<{ selfSignupEnabled: boolean; s
 export async function getMinimalPublicConfig(): Promise<{ selfSignupEnabled: boolean }> {
   return { selfSignupEnabled: await getSelfSignupEnabled() };
 }
+
+// ---------------------------------------------------------------------------
+// SSH Proxy Configuration
+// ---------------------------------------------------------------------------
+
+export interface SshProxyConfig {
+  enabled: boolean;
+  port: number;
+  allowedAuthMethods: string[];
+  caPublicKeyPath: string;
+  keystrokeRecording: boolean;
+}
+
+export function getSshProxyConfig(): SshProxyConfig {
+  return {
+    enabled: config.sshProxy.enabled,
+    port: config.sshProxy.port,
+    allowedAuthMethods: config.sshProxy.allowedAuthMethods,
+    caPublicKeyPath: config.sshProxy.caPublicKeyPath,
+    keystrokeRecording: config.sshProxy.keystrokeRecording,
+  };
+}
