@@ -36,7 +36,7 @@ export interface DbSettings {
 
 export interface ConnectionInput {
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host: string;
   port: number;
   username?: string;
@@ -56,12 +56,16 @@ export interface ConnectionInput {
   dbSettings?: DbSettings;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
+  // DB_TUNNEL-specific fields
+  targetDbHost?: string;
+  targetDbPort?: number;
+  dbType?: string;
 }
 
 export interface ConnectionData {
   id: string;
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host: string;
   port: number;
   folderId: string | null;
@@ -84,6 +88,11 @@ export interface ConnectionData {
   dbSettings?: DbSettings | null;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
+  // DB_TUNNEL-specific fields
+  targetDbHost?: string | null;
+  targetDbPort?: number | null;
+  dbType?: string | null;
+  bastionConnectionId?: string | null;
   isOwner: boolean;
   permission?: string;
   sharedBy?: string;
@@ -109,7 +118,7 @@ export async function createConnection(payload: ConnectionInput): Promise<Connec
 
 export interface ConnectionUpdate {
   name?: string;
-  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
+  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host?: string;
   port?: number;
   username?: string;
@@ -128,6 +137,10 @@ export interface ConnectionUpdate {
   dbSettings?: DbSettings | null;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
+  // DB_TUNNEL-specific fields
+  targetDbHost?: string | null;
+  targetDbPort?: number | null;
+  dbType?: string | null;
 }
 
 export async function updateConnection(

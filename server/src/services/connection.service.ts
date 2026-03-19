@@ -35,6 +35,11 @@ export interface CreateConnectionInput {
   dbSettings?: Prisma.InputJsonValue | null;
   dlpPolicy?: Prisma.InputJsonValue | null;
   defaultCredentialMode?: string | null;
+  // DB_TUNNEL-specific fields
+  bastionConnectionId?: string | null;
+  targetDbHost?: string | null;
+  targetDbPort?: number | null;
+  dbType?: string | null;
 }
 
 export interface UpdateConnectionInput {
@@ -58,6 +63,11 @@ export interface UpdateConnectionInput {
   dbSettings?: Prisma.InputJsonValue | null;
   dlpPolicy?: Prisma.InputJsonValue | null;
   defaultCredentialMode?: string | null;
+  // DB_TUNNEL-specific fields
+  bastionConnectionId?: string | null;
+  targetDbHost?: string | null;
+  targetDbPort?: number | null;
+  dbType?: string | null;
 }
 
 export async function createConnection(userId: string, input: CreateConnectionInput, tenantId?: string | null) {
@@ -132,6 +142,11 @@ export async function createConnection(userId: string, input: CreateConnectionIn
       dbSettings: input.dbSettings ?? undefined,
       dlpPolicy: input.dlpPolicy ?? undefined,
       defaultCredentialMode: input.defaultCredentialMode ?? null,
+      // DB_TUNNEL-specific fields
+      bastionConnectionId: input.bastionConnectionId ?? null,
+      targetDbHost: input.targetDbHost ?? null,
+      targetDbPort: input.targetDbPort ?? null,
+      dbType: input.dbType ?? null,
       userId,
     },
   });
@@ -158,6 +173,10 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     dbSettings: connection.dbSettings,
     dlpPolicy: connection.dlpPolicy,
     defaultCredentialMode: connection.defaultCredentialMode,
+    bastionConnectionId: connection.bastionConnectionId,
+    targetDbHost: connection.targetDbHost,
+    targetDbPort: connection.targetDbPort,
+    dbType: connection.dbType,
     createdAt: connection.createdAt,
     updatedAt: connection.updatedAt,
   };
@@ -194,6 +213,12 @@ export async function updateConnection(
   if (input.dbSettings !== undefined) data.dbSettings = input.dbSettings;
   if (input.dlpPolicy !== undefined) data.dlpPolicy = input.dlpPolicy;
   if (input.defaultCredentialMode !== undefined) data.defaultCredentialMode = input.defaultCredentialMode;
+
+  // DB_TUNNEL-specific fields
+  if (input.targetDbHost !== undefined) data.targetDbHost = input.targetDbHost;
+  if (input.targetDbPort !== undefined) data.targetDbPort = input.targetDbPort;
+  if (input.dbType !== undefined) data.dbType = input.dbType;
+  if (input.bastionConnectionId !== undefined) data.bastionConnectionId = input.bastionConnectionId;
 
   // Handle externalVaultProvider changes
   if (input.externalVaultProviderId !== undefined) {
@@ -345,6 +370,10 @@ export async function getConnection(userId: string, connectionId: string, tenant
       rdpSettings: connection.rdpSettings,
       dlpPolicy: connection.dlpPolicy,
       defaultCredentialMode: connection.defaultCredentialMode,
+      bastionConnectionId: connection.bastionConnectionId,
+      targetDbHost: connection.targetDbHost,
+      targetDbPort: connection.targetDbPort,
+      dbType: connection.dbType,
       gatewayId: connection.gatewayId,
       gateway: connection.gateway,
       isOwner: true,
@@ -374,6 +403,10 @@ export async function getConnection(userId: string, connectionId: string, tenant
       rdpSettings: connection.rdpSettings,
       dlpPolicy: connection.dlpPolicy,
       defaultCredentialMode: connection.defaultCredentialMode,
+      bastionConnectionId: connection.bastionConnectionId,
+      targetDbHost: connection.targetDbHost,
+      targetDbPort: connection.targetDbPort,
+      dbType: connection.dbType,
       gatewayId: connection.gatewayId,
       gateway: connection.gateway,
       isOwner: false,
@@ -409,6 +442,10 @@ export async function getConnection(userId: string, connectionId: string, tenant
     dbSettings: connection.dbSettings,
     dlpPolicy: connection.dlpPolicy,
     defaultCredentialMode: connection.defaultCredentialMode,
+    bastionConnectionId: connection.bastionConnectionId,
+    targetDbHost: connection.targetDbHost,
+    targetDbPort: connection.targetDbPort,
+    dbType: connection.dbType,
     gatewayId: connection.gatewayId,
     gateway: connection.gateway,
     isOwner: false,
@@ -444,6 +481,10 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       dbSettings: true,
       dlpPolicy: true,
       defaultCredentialMode: true,
+      bastionConnectionId: true,
+      targetDbHost: true,
+      targetDbPort: true,
+      dbType: true,
       createdAt: true,
       updatedAt: true,
     },
@@ -472,6 +513,10 @@ export async function listConnections(userId: string, tenantId?: string | null) 
           rdpSettings: true,
           dlpPolicy: true,
           defaultCredentialMode: true,
+          bastionConnectionId: true,
+          targetDbHost: true,
+          targetDbPort: true,
+          dbType: true,
           createdAt: true,
           updatedAt: true,
         },
@@ -514,6 +559,10 @@ export async function listConnections(userId: string, tenantId?: string | null) 
         rdpSettings: true,
         dlpPolicy: true,
         defaultCredentialMode: true,
+        bastionConnectionId: true,
+        targetDbHost: true,
+        targetDbPort: true,
+        dbType: true,
         createdAt: true,
         updatedAt: true,
       },

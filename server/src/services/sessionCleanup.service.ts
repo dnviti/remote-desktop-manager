@@ -1,6 +1,7 @@
 import { Server } from 'socket.io';
 import prisma from '../lib/prisma';
 import * as auditService from './audit.service';
+import * as dbTunnelService from './dbTunnel.service';
 import { formatDuration } from '../utils/format';
 import { logger } from '../utils/logger';
 import { config } from '../config';
@@ -34,6 +35,17 @@ export function forceDisconnectSession(session: {
   }
 
   if (session.protocol === 'RDP' || session.protocol === 'VNC') {
+    emitSessionTerminated(session.userId, session.id, 'admin_terminated');
+  }
+
+  if (session.protocol === 'DB_TUNNEL') {
+    // Close any associated DB tunnel by looking up tunnels for this user/connection
+    const tunnels = dbTunnelService.getUserTunnels(session.userId);
+    for (const tunnel of tunnels) {
+      if (tunnel.connectionId === (session as { connectionId?: string }).connectionId) {
+        dbTunnelService.closeTunnel(tunnel.id);
+      }
+    }
     emitSessionTerminated(session.userId, session.id, 'admin_terminated');
   }
 }
@@ -93,6 +105,15 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
           emitSessionTerminated(session.userId, session.id, 'absolute_timeout');
         }
 
+        if (session.protocol === 'DB_TUNNEL') {
+          // Close associated DB tunnels on absolute timeout
+          const meta = session.metadata as { tunnelId?: string } | null;
+          if (meta?.tunnelId) {
+            dbTunnelService.closeTunnel(meta.tunnelId);
+          }
+          emitSessionTerminated(session.userId, session.id, 'absolute_timeout');
+        }
+
         closedCount++;
         continue; // Skip inactivity check for this session
       }
@@ -139,6 +160,15 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
           socket.emit('session:timeout');
           socket.disconnect(true);
         }
+      }
+
+      // For DB_TUNNEL sessions: close the tunnel on inactivity timeout
+      if (session.protocol === 'DB_TUNNEL') {
+        const meta = session.metadata as { tunnelId?: string } | null;
+        if (meta?.tunnelId) {
+          dbTunnelService.closeTunnel(meta.tunnelId);
+        }
+        emitSessionTerminated(session.userId, session.id, 'session_timeout');
       }
 
       closedCount++;
