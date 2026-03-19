@@ -69,6 +69,7 @@ export interface SecretListItem {
   metadata: Record<string, unknown> | null;
   tags: string[];
   isFavorite: boolean;
+  pwnedCount: number;
   expiresAt: string | null;
   currentVersion: number;
   createdAt: string;
@@ -234,6 +235,30 @@ export async function distributeTenantKey(targetUserId: string): Promise<{ distr
 
 export async function getTenantVaultStatus(): Promise<TenantVaultStatus> {
   const { data } = await api.get('/secrets/tenant-vault/status');
+  return data;
+}
+
+// --- Breach check types ---
+
+export interface BreachCheckResult {
+  pwnedCount: number;
+}
+
+export interface BatchBreachCheckResult {
+  checked: number;
+  pwned: number;
+  results: Array<{ id: string; name: string; pwnedCount: number }>;
+}
+
+// --- Breach check API ---
+
+export async function checkSecretBreach(secretId: string): Promise<BreachCheckResult> {
+  const { data } = await api.post(`/secrets/${secretId}/breach-check`);
+  return data;
+}
+
+export async function checkAllSecretBreaches(): Promise<BatchBreachCheckResult> {
+  const { data } = await api.post('/secrets/breach-check');
   return data;
 }
 

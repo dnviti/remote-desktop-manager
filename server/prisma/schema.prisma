@@ -654,6 +654,7 @@ enum AuditAction {
   TUNNEL_TOKEN_GENERATE
   TUNNEL_TOKEN_ROTATE
   SESSION_DENIED_ABAC
+  ANOMALOUS_LATERAL_MOVEMENT
 }
 
 model AuditLog {
@@ -693,6 +694,7 @@ enum NotificationType {
   TENANT_INVITATION
   RECORDING_READY
   IMPOSSIBLE_TRAVEL_DETECTED
+  LATERAL_MOVEMENT_ALERT
 }
 
 model Notification {
@@ -756,6 +758,7 @@ model VaultSecret {
   metadata       Json?
   tags           String[]    @default([])
   isFavorite     Boolean     @default(false)
+  pwnedCount     Int         @default(0)
   expiresAt      DateTime?
   currentVersion Int         @default(1)
   createdAt      DateTime    @default(now())

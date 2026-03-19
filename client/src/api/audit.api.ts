@@ -37,7 +37,8 @@ export type AuditAction =
   | 'SECRET_SHARE_UPDATE'
   | 'GATEWAY_RECONCILE'
   | 'CONNECTION_FAVORITE'
-  | 'IMPOSSIBLE_TRAVEL_DETECTED';
+  | 'IMPOSSIBLE_TRAVEL_DETECTED'
+  | 'ANOMALOUS_LATERAL_MOVEMENT';
 
 export interface AuditLogEntry {
   id: string;
