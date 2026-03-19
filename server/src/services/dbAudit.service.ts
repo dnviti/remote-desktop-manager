@@ -82,8 +82,6 @@ export function classifyQuery(queryText: string): DbQueryType {
  */
 export function extractTables(queryText: string): string[] {
   const tables = new Set<string>();
-  /* eslint-disable security/detect-unsafe-regex -- These SQL keyword patterns are bounded (word-boundary anchored,
-     no nested quantifiers, no overlapping alternations) and operate on length-limited query text. */
   const patterns = [
     /\bFROM\s+(["`]?\w+["`]?(?:\s*\.\s*["`]?\w+["`]?)?)/gi,
     /\bJOIN\s+(["`]?\w+["`]?(?:\s*\.\s*["`]?\w+["`]?)?)/gi,
@@ -92,7 +90,6 @@ export function extractTables(queryText: string): string[] {
     /\bTABLE\s+(?:IF\s+(?:NOT\s+)?EXISTS\s+)?(["`]?\w+["`]?(?:\s*\.\s*["`]?\w+["`]?)?)/gi,
     /\bTRUNCATE\s+(?:TABLE\s+)?(["`]?\w+["`]?(?:\s*\.\s*["`]?\w+["`]?)?)/gi,
   ];
-  /* eslint-enable security/detect-unsafe-regex */
 
   for (const pattern of patterns) {
     let match: RegExpExecArray | null;
@@ -205,10 +202,8 @@ export async function getDbAuditLogs(query: DbAuditLogQuery): Promise<PaginatedD
     ];
   }
 
-  const ALLOWED_SORT_FIELDS = new Set(['createdAt', 'queryType', 'blocked', 'executionTimeMs', 'rowsAffected']);
-  const rawSort = query.sortBy ?? '';
-  const sortBy = ALLOWED_SORT_FIELDS.has(rawSort) ? rawSort : 'createdAt';
-  const sortOrder = query.sortOrder === 'asc' ? 'asc' : 'desc';
+  const sortBy = query.sortBy ?? 'createdAt';
+  const sortOrder = query.sortOrder ?? 'desc';
   const orderBy: Prisma.DbAuditLogOrderByWithRelationInput = { [sortBy]: sortOrder };
 
   const [rows, total] = await Promise.all([

@@ -37,6 +37,7 @@ import sshProxyRoutes from './routes/sshProxy.routes';
 import rdGatewayRoutes from './routes/rdGateway.routes';
 import cliRoutes from './routes/cli.routes';
 import dbProxyRoutes from './routes/dbProxy.routes';
+import dbAuditRoutes from './routes/dbAudit.routes';
 import passwordRotationRoutes from './routes/passwordRotation.routes';
 import dbTunnelRoutes from './routes/dbTunnel.routes';
 import healthRoutes from './routes/health.routes';
@@ -137,6 +138,7 @@ app.use('/api/sessions/ssh-proxy', sshProxyRoutes);
 app.use('/api/rdgw', rdGatewayRoutes);
 app.use('/api/cli', cliRoutes);
 app.use('/api/sessions/database', dbProxyRoutes);
+app.use('/api/db-audit', dbAuditRoutes);
 app.use('/api/secrets', passwordRotationRoutes);
 
 // Health & readiness probes

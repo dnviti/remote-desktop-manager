@@ -1,6 +1,5 @@
 import prisma, { MaskingStrategy, Prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { compileRegex } from '../utils/safeRegex';
 import type { TenantRoleType } from '../types';
 import crypto from 'crypto';
 
@@ -80,7 +79,6 @@ export function findMaskedColumns(
 
       // Check pattern match
       try {
-        // eslint-disable-next-line security/detect-non-literal-regexp -- Dynamic pattern from admin-configured masking policy stored in DB
         const regex = new RegExp(policy.columnPattern, 'i');
         if (regex.test(col)) {
           masked.push({
@@ -166,8 +164,12 @@ export async function getPolicy(tenantId: string, policyId: string): Promise<Mas
 }
 
 export async function createPolicy(input: MaskingPolicyInput): Promise<MaskingPolicy> {
-  // Validate regex pattern (safety + syntax check)
-  compileRegex(input.columnPattern, 'i', 'masking policy');
+  // Validate regex pattern
+  try {
+    new RegExp(input.columnPattern, 'i');
+  } catch {
+    throw new Error(`Invalid regex pattern: ${input.columnPattern}`);
+  }
 
   return prisma.dbMaskingPolicy.create({
     data: {
@@ -188,9 +190,13 @@ export async function updatePolicy(
   policyId: string,
   updates: Partial<Omit<MaskingPolicyInput, 'tenantId'>>,
 ): Promise<MaskingPolicy> {
-  // Validate regex pattern if provided (safety + syntax check)
+  // Validate regex pattern if provided
   if (updates.columnPattern) {
-    compileRegex(updates.columnPattern, 'i', 'masking policy');
+    try {
+      new RegExp(updates.columnPattern, 'i');
+    } catch {
+      throw new Error(`Invalid regex pattern: ${updates.columnPattern}`);
+    }
   }
 
   const data: Prisma.DbMaskingPolicyUpdateInput = {};

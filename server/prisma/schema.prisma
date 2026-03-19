@@ -177,8 +177,6 @@ model User {
   webauthnCredentials    WebAuthnCredential[]
   sessionRecordings      SessionRecording[]
   syncProfilesCreated    SyncProfile[]          @relation("SyncProfileCreator")
-  checkoutRequests       SecretCheckoutRequest[] @relation("CheckoutRequester")
-  checkoutApprovals      SecretCheckoutRequest[] @relation("CheckoutApprover")
   dbAuditLogs            DbAuditLog[]
 }
 
@@ -679,6 +677,14 @@ enum AuditAction {
   DB_TUNNEL_OPEN
   DB_TUNNEL_CLOSE
   DB_TUNNEL_ERROR
+  DB_QUERY_EXECUTED
+  DB_QUERY_BLOCKED
+  DB_FIREWALL_RULE_CREATE
+  DB_FIREWALL_RULE_UPDATE
+  DB_FIREWALL_RULE_DELETE
+  DB_MASKING_POLICY_CREATE
+  DB_MASKING_POLICY_UPDATE
+  DB_MASKING_POLICY_DELETE
 }
 
 model AuditLog {
@@ -1152,6 +1158,90 @@ model AccessPolicy {
   updatedAt           DateTime @updatedAt
 
   @@index([targetType, targetId])
+}
+
+// ---- Database Query Auditing & SQL Firewall ----
+
+enum DbQueryType {
+  SELECT
+  INSERT
+  UPDATE
+  DELETE
+  DDL
+  OTHER
+}
+
+/// Logs every SQL statement executed through the DB proxy gateway.
+model DbAuditLog {
+  id              String      @id @default(uuid())
+  userId          String
+  connectionId    String
+  tenantId        String?
+  queryText       String
+  queryType       DbQueryType
+  tablesAccessed  String[]    @default([])
+  rowsAffected    Int?
+  executionTimeMs Int?
+  blocked         Boolean     @default(false)
+  blockReason     String?
+  createdAt       DateTime    @default(now())
+
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  connection Connection @relation(fields: [connectionId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([connectionId, createdAt])
+  @@index([tenantId, createdAt])
+  @@index([queryType])
+  @@index([blocked])
+}
+
+enum FirewallAction {
+  BLOCK
+  ALERT
+  LOG
+}
+
+/// Configurable SQL firewall rule evaluated against every query.
+model DbFirewallRule {
+  id          String         @id @default(uuid())
+  tenantId    String
+  name        String
+  pattern     String
+  action      FirewallAction
+  scope       String?        /// Optional database or table name to limit scope
+  description String?
+  enabled     Boolean        @default(true)
+  priority    Int            @default(0)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@index([tenantId, enabled])
+  @@index([tenantId])
+}
+
+enum MaskingStrategy {
+  REDACT
+  HASH
+  PARTIAL
+}
+
+/// Column-level data masking policy applied at the proxy response layer.
+model DbMaskingPolicy {
+  id              String          @id @default(uuid())
+  tenantId        String
+  name            String
+  columnPattern   String          /// Regex pattern matching column names
+  strategy        MaskingStrategy
+  exemptRoles     String[]        @default([])
+  scope           String?         /// Optional database or table scope
+  description     String?
+  enabled         Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([tenantId, enabled])
+  @@index([tenantId])
 }
 
 /// OAuth 2.0 Device Authorization Grant (RFC 8628).
