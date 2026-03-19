@@ -95,7 +95,7 @@ TEST_FRAMEWORK="vitest"                  # Test runner
 TEST_COMMAND="npm run test"              # Run tests (all workspaces)
 TEST_FILE_PATTERN="**/*.test.{ts,tsx}"   # Test file pattern
 
-CI_RUNTIME_SETUP="uses: actions/setup-node@v6\nwith:\n  node-version: 22"
+CI_RUNTIME_SETUP="uses: actions/setup-node@v4\nwith:\n  node-version: 22"
 
 DEVELOPMENT_BRANCH="develop"
 STAGING_BRANCH="staging"
