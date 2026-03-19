@@ -69,6 +69,7 @@ export interface SecretListItem {
   metadata: Record<string, unknown> | null;
   tags: string[];
   isFavorite: boolean;
+  pwnedCount: number;
   expiresAt: string | null;
   currentVersion: number;
   createdAt: string;
@@ -237,6 +238,30 @@ export async function getTenantVaultStatus(): Promise<TenantVaultStatus> {
   return data;
 }
 
+// --- Breach check types ---
+
+export interface BreachCheckResult {
+  pwnedCount: number;
+}
+
+export interface BatchBreachCheckResult {
+  checked: number;
+  pwned: number;
+  results: Array<{ id: string; name: string; pwnedCount: number }>;
+}
+
+// --- Breach check API ---
+
+export async function checkSecretBreach(secretId: string): Promise<BreachCheckResult> {
+  const { data } = await api.post(`/secrets/${secretId}/breach-check`);
+  return data;
+}
+
+export async function checkAllSecretBreaches(): Promise<BatchBreachCheckResult> {
+  const { data } = await api.post('/secrets/breach-check');
+  return data;
+}
+
 // --- External share types ---
 
 export interface ExternalShareResult {
@@ -299,6 +324,66 @@ export async function listExternalShares(secretId: string): Promise<ExternalShar
 
 export async function revokeExternalShare(shareId: string): Promise<{ revoked: true }> {
   const { data } = await api.delete(`/secrets/external-shares/${shareId}`);
+  return data;
+}
+
+// --- Password rotation API ---
+
+export interface RotationStatusResult {
+  enabled: boolean;
+  intervalDays: number;
+  lastRotatedAt: string | null;
+  nextRotationAt: string | null;
+}
+
+export interface RotationHistoryEntry {
+  id: string;
+  status: 'SUCCESS' | 'FAILED' | 'PENDING';
+  trigger: 'SCHEDULED' | 'CHECKIN' | 'MANUAL';
+  targetOS: 'LINUX' | 'WINDOWS';
+  targetHost: string;
+  targetUser: string;
+  errorMessage: string | null;
+  durationMs: number | null;
+  createdAt: string;
+}
+
+export interface RotationResult {
+  success: boolean;
+  secretId: string;
+  logId: string;
+  error?: string;
+}
+
+export async function enableRotation(
+  secretId: string,
+  intervalDays?: number,
+): Promise<{ enabled: true; intervalDays: number }> {
+  const { data } = await api.post(`/secrets/${secretId}/rotation/enable`, { intervalDays });
+  return data;
+}
+
+export async function disableRotation(secretId: string): Promise<{ enabled: false }> {
+  const { data } = await api.post(`/secrets/${secretId}/rotation/disable`);
+  return data;
+}
+
+export async function triggerRotation(secretId: string): Promise<RotationResult> {
+  const { data } = await api.post(`/secrets/${secretId}/rotation/trigger`);
+  return data;
+}
+
+export async function getRotationStatus(secretId: string): Promise<RotationStatusResult> {
+  const { data } = await api.get(`/secrets/${secretId}/rotation/status`);
+  return data;
+}
+
+export async function getRotationHistory(
+  secretId: string,
+  limit?: number,
+): Promise<RotationHistoryEntry[]> {
+  const params = limit ? { limit: String(limit) } : {};
+  const { data } = await api.get(`/secrets/${secretId}/rotation/history`, { params });
   return data;
 }
 

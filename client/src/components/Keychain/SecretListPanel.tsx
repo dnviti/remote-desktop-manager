@@ -12,6 +12,7 @@ import {
   Edit as EditIcon, Share as ShareIcon, Delete as DeleteIcon,
   ContentCopy as CopyIcon,
   DriveFileMove as MoveIcon,
+  GppBad as BreachIcon,
 } from '@mui/icons-material';
 import { useDraggable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
@@ -107,6 +108,15 @@ function DraggableSecretItem({
             <Typography variant="caption" color="text.secondary" noWrap>
               {TYPE_LABELS[secret.type]}
             </Typography>
+            {secret.pwnedCount > 0 && (
+              <Chip
+                icon={<BreachIcon sx={{ fontSize: '0.7rem' }} />}
+                label="Breached"
+                size="small"
+                color="error"
+                sx={{ height: 16, fontSize: '0.6rem' }}
+              />
+            )}
             {daysUntilExpiry !== null && daysUntilExpiry <= 30 && (
               <Chip
                 label={daysUntilExpiry <= 0 ? 'Expired' : `${daysUntilExpiry}d left`}

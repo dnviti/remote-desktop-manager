@@ -9,6 +9,7 @@ export { NotificationType };
 /** Notification types that always bypass DND / quiet hours. */
 export const SECURITY_CRITICAL_TYPES = new Set<NotificationType>([
   NotificationType.IMPOSSIBLE_TRAVEL_DETECTED,
+  NotificationType.LATERAL_MOVEMENT_ALERT,
 ]);
 
 export interface CreateNotificationInput {

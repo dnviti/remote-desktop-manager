@@ -16,6 +16,9 @@ const DEFAULT_DB_PORTS: Record<string, number> = {
   postgresql: 5432,
   mysql: 3306,
   mongodb: 27017,
+  oracle: 1521,
+  mssql: 1433,
+  db2: 50000,
 };
 
 export interface DbProxySessionResult {

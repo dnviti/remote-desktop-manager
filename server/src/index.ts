@@ -8,7 +8,7 @@ import { initializePassport } from './config/passport';
 import { setupSocketIO } from './socket';
 import { logger, toGuacamoleLogLevel } from './utils/logger';
 import prisma from './lib/prisma';
-import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, stopAllJobs } from './services/scheduler.service';
+import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startPasswordRotationJob, stopAllJobs } from './services/scheduler.service';
 import { startAllSyncJobs, stopAllSyncJobs } from './services/syncScheduler.service';
 import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
 import { cleanupExpiredShares } from './services/externalShare.service';
@@ -23,6 +23,7 @@ import * as autoscalerService from './services/autoscaler.service';
 import { completeGuacRecording, cleanupExpiredRecordings } from './services/recording.service';
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
+import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
 
 function freePort(port: number): void {
   try {
@@ -98,6 +99,9 @@ async function main() {
   // Setup zero-trust tunnel WebSocket endpoint
   setupTunnelHandler(server);
 
+  // Start SSH protocol proxy (if enabled)
+  startSshProxyServer();
+
   // Initialize session cleanup with Socket.IO reference
   initSessionCleanup(io);
 
@@ -105,6 +109,7 @@ async function main() {
   startKeyRotationJob();
   startLdapSyncJob();
   startMembershipExpiryJob();
+  startPasswordRotationJob();
   startAllSyncJobs().catch((err) => {
     logger.error('Failed to start sync jobs:', err);
   });
@@ -369,6 +374,9 @@ async function main() {
     } catch (err) {
       logger.error('Failed to close sessions on shutdown:', err);
     }
+
+    // Stop SSH proxy server
+    stopSshProxyServer();
 
     if (guacServer) {
       try {

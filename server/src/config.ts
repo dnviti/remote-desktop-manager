@@ -199,6 +199,11 @@ export const config = {
   geoipDbPath: process.env.GEOIP_DB_PATH ? path.resolve(process.env.GEOIP_DB_PATH) : '',
   // Impossible travel detection — maximum plausible speed in km/h (default: 900, faster than commercial aviation)
   impossibleTravelSpeedKmh: parseInt(process.env.IMPOSSIBLE_TRAVEL_SPEED_KMH || '900', 10),
+  // Lateral movement anomaly detection (MITRE T1021)
+  lateralMovementEnabled: process.env.LATERAL_MOVEMENT_DETECTION_ENABLED !== 'false',
+  lateralMovementMaxDistinctTargets: parseInt(process.env.LATERAL_MOVEMENT_MAX_DISTINCT_TARGETS || '10', 10),
+  lateralMovementWindowMinutes: parseInt(process.env.LATERAL_MOVEMENT_WINDOW_MINUTES || '5', 10),
+  lateralMovementLockoutMinutes: parseInt(process.env.LATERAL_MOVEMENT_LOCKOUT_MINUTES || '30', 10),
   // Reverse proxy trust depth for Express.
   // Controls how `req.ip` is resolved from X-Forwarded-For.
   // false = disabled, true = trust all, number = hop count to trust.
@@ -241,5 +246,15 @@ export const config = {
     rpId: process.env.WEBAUTHN_RP_ID || 'localhost',
     rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',
     rpName: process.env.WEBAUTHN_RP_NAME || 'Arsenale',
+  },
+  // SSH Protocol Proxy
+  sshProxy: {
+    enabled: process.env.SSH_PROXY_ENABLED === 'true',
+    port: parseInt(process.env.SSH_PROXY_PORT || '2222', 10),
+    hostKey: process.env.SSH_PROXY_HOST_KEY || '',
+    allowedAuthMethods: (process.env.SSH_PROXY_AUTH_METHODS || 'token,keyboard-interactive').split(',').filter(Boolean) as Array<'token' | 'keyboard-interactive' | 'certificate'>,
+    tokenTtlSeconds: parseInt(process.env.SSH_PROXY_TOKEN_TTL_SECONDS || '300', 10),
+    caPublicKeyPath: process.env.SSH_PROXY_CA_PUBLIC_KEY || '',
+    keystrokeRecording: process.env.SSH_PROXY_KEYSTROKE_RECORDING === 'true',
   },
 };

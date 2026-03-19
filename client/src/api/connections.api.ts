@@ -17,11 +17,21 @@ export interface ResolvedDlpPolicy {
   disableUpload: boolean;
 }
 
-export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb';
+export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2';
 
 export interface DbSettings {
   protocol: DbProtocol;
   databaseName?: string;
+  /** Oracle: SID for the target instance (mutually exclusive with serviceName). */
+  oracleSid?: string;
+  /** Oracle: Service name for the target instance. */
+  oracleServiceName?: string;
+  /** MSSQL: Named instance (e.g. "SQLEXPRESS"). */
+  mssqlInstanceName?: string;
+  /** MSSQL: Authentication mode — "sql" for SQL auth, "windows" for NTLM/Kerberos. */
+  mssqlAuthMode?: 'sql' | 'windows';
+  /** DB2: Database alias as cataloged on the DB2 Connect gateway. */
+  db2DatabaseAlias?: string;
 }
 
 export interface ConnectionInput {

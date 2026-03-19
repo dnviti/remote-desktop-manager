@@ -2,8 +2,13 @@ import { z } from 'zod';
 import { sshTerminalConfigSchema, rdpSettingsSchema, vncSettingsSchema, dlpPolicySchema } from './common.schemas';
 
 const dbSettingsSchema = z.object({
-  protocol: z.enum(['postgresql', 'mysql', 'mongodb']),
+  protocol: z.enum(['postgresql', 'mysql', 'mongodb', 'oracle', 'mssql', 'db2']),
   databaseName: z.string().max(255).optional(),
+  oracleSid: z.string().max(255).optional(),
+  oracleServiceName: z.string().max(255).optional(),
+  mssqlInstanceName: z.string().max(255).optional(),
+  mssqlAuthMode: z.enum(['sql', 'windows']).optional(),
+  db2DatabaseAlias: z.string().max(255).optional(),
 }).optional();
 
 export const createConnectionSchema = z.object({
