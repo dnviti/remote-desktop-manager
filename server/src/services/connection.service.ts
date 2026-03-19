@@ -32,6 +32,7 @@ export interface CreateConnectionInput {
   sshTerminalConfig?: Prisma.InputJsonValue | null;
   rdpSettings?: Prisma.InputJsonValue | null;
   vncSettings?: Prisma.InputJsonValue | null;
+  dbSettings?: Prisma.InputJsonValue | null;
   dlpPolicy?: Prisma.InputJsonValue | null;
   defaultCredentialMode?: string | null;
 }
@@ -54,6 +55,7 @@ export interface UpdateConnectionInput {
   sshTerminalConfig?: Prisma.InputJsonValue | null;
   rdpSettings?: Prisma.InputJsonValue | null;
   vncSettings?: Prisma.InputJsonValue | null;
+  dbSettings?: Prisma.InputJsonValue | null;
   dlpPolicy?: Prisma.InputJsonValue | null;
   defaultCredentialMode?: string | null;
 }
@@ -127,6 +129,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
       sshTerminalConfig: input.sshTerminalConfig ?? undefined,
       rdpSettings: input.rdpSettings ?? undefined,
       vncSettings: input.vncSettings ?? undefined,
+      dbSettings: input.dbSettings ?? undefined,
       dlpPolicy: input.dlpPolicy ?? undefined,
       defaultCredentialMode: input.defaultCredentialMode ?? null,
       userId,
@@ -152,6 +155,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
     sshTerminalConfig: connection.sshTerminalConfig,
     rdpSettings: connection.rdpSettings,
     vncSettings: connection.vncSettings,
+    dbSettings: connection.dbSettings,
     dlpPolicy: connection.dlpPolicy,
     defaultCredentialMode: connection.defaultCredentialMode,
     createdAt: connection.createdAt,
@@ -187,6 +191,7 @@ export async function updateConnection(
   if (input.sshTerminalConfig !== undefined) data.sshTerminalConfig = input.sshTerminalConfig;
   if (input.rdpSettings !== undefined) data.rdpSettings = input.rdpSettings;
   if (input.vncSettings !== undefined) data.vncSettings = input.vncSettings;
+  if (input.dbSettings !== undefined) data.dbSettings = input.dbSettings;
   if (input.dlpPolicy !== undefined) data.dlpPolicy = input.dlpPolicy;
   if (input.defaultCredentialMode !== undefined) data.defaultCredentialMode = input.defaultCredentialMode;
 
@@ -292,6 +297,7 @@ export async function updateConnection(
     sshTerminalConfig: updated.sshTerminalConfig,
     rdpSettings: updated.rdpSettings,
     vncSettings: updated.vncSettings,
+    dbSettings: updated.dbSettings,
     dlpPolicy: updated.dlpPolicy,
     defaultCredentialMode: updated.defaultCredentialMode,
     createdAt: updated.createdAt,
@@ -400,6 +406,7 @@ export async function getConnection(userId: string, connectionId: string, tenant
     sshTerminalConfig: connection.sshTerminalConfig,
     rdpSettings: connection.rdpSettings,
     vncSettings: connection.vncSettings,
+    dbSettings: connection.dbSettings,
     dlpPolicy: connection.dlpPolicy,
     defaultCredentialMode: connection.defaultCredentialMode,
     gatewayId: connection.gatewayId,
@@ -434,6 +441,7 @@ export async function listConnections(userId: string, tenantId?: string | null) 
       sshTerminalConfig: true,
       rdpSettings: true,
       vncSettings: true,
+      dbSettings: true,
       dlpPolicy: true,
       defaultCredentialMode: true,
       createdAt: true,

@@ -181,6 +181,7 @@ export const config = {
   orchestratorK8sNamespace: process.env.ORCHESTRATOR_K8S_NAMESPACE || 'arsenale',
   orchestratorSshGatewayImage: process.env.ORCHESTRATOR_SSH_GATEWAY_IMAGE || 'ghcr.io/dnviti/arsenale/ssh-gateway:latest',
   orchestratorGuacdImage: process.env.ORCHESTRATOR_GUACD_IMAGE || 'guacamole/guacd:1.6.0',
+  orchestratorDbProxyImage: process.env.ORCHESTRATOR_DB_PROXY_IMAGE || 'ghcr.io/dnviti/arsenale/db-proxy:latest',
   // Session recording
   recordingEnabled: process.env.RECORDING_ENABLED === 'true',
   recordingPath: path.resolve(process.env.RECORDING_PATH || '/recordings'),

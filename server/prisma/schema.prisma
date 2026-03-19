@@ -244,6 +244,7 @@ model Connection {
   sshTerminalConfig Json?
   rdpSettings       Json?
   vncSettings       Json?
+  dbSettings        Json?
   dlpPolicy         Json?
   defaultCredentialMode String?
   userId            String
@@ -275,12 +276,14 @@ enum ConnectionType {
   RDP
   SSH
   VNC
+  DATABASE
 }
 
 enum GatewayType {
   GUACD
   SSH_BASTION
   MANAGED_SSH
+  DB_PROXY
 }
 
 enum GatewayHealthStatus {
@@ -293,6 +296,7 @@ enum SessionProtocol {
   SSH
   RDP
   VNC
+  DATABASE
 }
 
 enum SessionStatus {

@@ -504,7 +504,7 @@ export async function listActiveSessions(req: AuthRequest, res: Response) {
 
   const sessions = await sessionService.getActiveSessions({
     tenantId: req.user.tenantId,
-    protocol: protocol === 'SSH' ? 'SSH' : protocol === 'RDP' ? 'RDP' : protocol === 'VNC' ? 'VNC' : undefined,
+    protocol: protocol === 'SSH' ? 'SSH' : protocol === 'RDP' ? 'RDP' : protocol === 'VNC' ? 'VNC' : protocol === 'DATABASE' ? 'DATABASE' : undefined,
     gatewayId,
   });
   res.json(sessions);

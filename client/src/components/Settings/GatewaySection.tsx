@@ -102,7 +102,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   };
 
   const canExpand = (gw: GatewayData) =>
-    gw.type === 'MANAGED_SSH' || gw.type === 'GUACD';
+    gw.type === 'MANAGED_SSH' || gw.type === 'GUACD' || gw.type === 'DB_PROXY';
 
   const handleEdit = (gw: GatewayData) => {
     setEditingGateway(gw);
@@ -495,9 +495,9 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                           </TableCell>
                           <TableCell>
                             <Chip
-                              label={gw.type === 'GUACD' ? 'GUACD' : gw.type === 'MANAGED_SSH' ? 'Managed SSH' : 'SSH Bastion'}
+                              label={gw.type === 'GUACD' ? 'GUACD' : gw.type === 'MANAGED_SSH' ? 'Managed SSH' : gw.type === 'DB_PROXY' ? 'DB Proxy' : 'SSH Bastion'}
                               size="small"
-                              color={gw.type === 'GUACD' ? 'info' : gw.type === 'MANAGED_SSH' ? 'success' : 'warning'}
+                              color={gw.type === 'GUACD' ? 'info' : gw.type === 'MANAGED_SSH' ? 'success' : gw.type === 'DB_PROXY' ? 'secondary' : 'warning'}
                               variant="outlined"
                             />
                           </TableCell>
