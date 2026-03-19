@@ -37,27 +37,10 @@ LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
 RUN apk update && apk upgrade --no-cache
 
-# Enterprise database driver dependencies:
-#   - libaio, libnsl: Oracle Instant Client runtime requirements
-#   - unixodbc:       ODBC driver manager for MSSQL (FreeTDS/msodbcsql)
-#   - freetds:        Open-source TDS protocol library for MSSQL connections
-#   - libxml2:        Required by DB2 DRDA client libraries
-# These are lightweight runtime-only packages; the actual protocol handling
-# is done by the Go adapters in gateways/db-proxy/adapters/.
-RUN apk add --no-cache \
-  libaio \
-  libnsl \
-  unixodbc \
-  freetds \
-  libxml2
-
 # Embed pre-built tunnel agent
 COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist
 COPY --from=tunnel-builder /tunnel-agent/node_modules /opt/tunnel-agent/node_modules
 COPY --from=tunnel-builder /tunnel-agent/package.json /opt/tunnel-agent/package.json
-
-# Copy Go protocol adapters source (built externally or by CI)
-COPY gateways/db-proxy/adapters/ /opt/db-proxy/adapters/
 
 COPY gateways/db-proxy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
@@ -70,9 +53,7 @@ ENV DB_LISTEN_PORT=5432
 
 EXPOSE 5432
 
-# Health check: verifies the entrypoint process is alive. Once the protocol-aware
-# proxy binary is implemented, upgrade this to probe DB_LISTEN_PORT directly.
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-  CMD test -f /proc/1/status || exit 1
+HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=10s \
+  CMD nc -z localhost ${DB_LISTEN_PORT:-5432} || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

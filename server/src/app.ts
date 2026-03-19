@@ -33,7 +33,7 @@ import ldapRoutes from './routes/ldap.routes';
 import syncRoutes from './routes/sync.routes';
 import externalVaultRoutes from './routes/externalVault.routes';
 import accessPolicyRoutes from './routes/accessPolicy.routes';
-import keystrokePolicyRoutes from './routes/keystrokePolicy.routes';
+import dbProxyRoutes from './routes/dbProxy.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger.middleware';
@@ -128,7 +128,7 @@ app.use('/api/ldap', ldapRoutes);
 app.use('/api/sync-profiles', syncRoutes);
 app.use('/api/vault-providers', externalVaultRoutes);
 app.use('/api/access-policies', accessPolicyRoutes);
-app.use('/api/keystroke-policies', keystrokePolicyRoutes);
+app.use('/api/sessions/database', dbProxyRoutes);
 
 // Health & readiness probes
 app.use('/api', healthRoutes);

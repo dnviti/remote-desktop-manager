@@ -37,7 +37,7 @@ interface ConnectionDialogProps {
 
 export default function ConnectionDialog({ open, onClose, connection, folderId, teamId }: ConnectionDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL'>('SSH');
+  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC' | 'DATABASE'>('SSH');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('22');
   const [username, setUsername] = useState('');
@@ -149,14 +149,13 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     }
   }, [open, connection, fetchGateways, hasTenant]);
 
-  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL') => {
+  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE') => {
     setType(newType);
-    const knownPorts = ['22', '3389', '5900', '5432', '3306', '27017', '1521', '1433', '50000'];
+    const knownPorts = ['22', '3389', '5900', '5432', '3306', '27017'];
     if (newType === 'SSH' && knownPorts.includes(port)) setPort('22');
     if (newType === 'RDP' && knownPorts.includes(port)) setPort('3389');
     if (newType === 'VNC' && knownPorts.includes(port)) setPort('5900');
     if (newType === 'DATABASE' && knownPorts.includes(port)) setPort('5432');
-    if (newType === 'DB_TUNNEL' && knownPorts.includes(port)) setPort('22');
     setGatewayId('');
     if (newType === 'DATABASE') {
       setDbSettings((prev) => ({ protocol: 'postgresql', ...prev }));
@@ -324,14 +323,13 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
             <Select
               value={type}
               label="Type"
-              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL')}
+              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC' | 'DATABASE')}
               disabled={isEditMode}
             >
               <MenuItem value="SSH">SSH</MenuItem>
               <MenuItem value="RDP">RDP</MenuItem>
               <MenuItem value="VNC">VNC</MenuItem>
               <MenuItem value="DATABASE">Database</MenuItem>
-              <MenuItem value="DB_TUNNEL">Database (SSH Tunnel)</MenuItem>
             </Select>
           </FormControl>
           {hasTenant && availableGateways.length > 0 && (
@@ -593,17 +591,14 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                       label="Database Protocol"
                       onChange={(e) => {
                         const proto = e.target.value as DbProtocol;
-                        setDbSettings({ protocol: proto });
-                        const protoPorts: Record<string, string> = { postgresql: '5432', mysql: '3306', mongodb: '27017', oracle: '1521', mssql: '1433', db2: '50000' };
+                        setDbSettings((prev) => ({ ...prev, protocol: proto }));
+                        const protoPorts: Record<string, string> = { postgresql: '5432', mysql: '3306', mongodb: '27017' };
                         setPort(protoPorts[proto] ?? '5432');
                       }}
                     >
                       <MenuItem value="postgresql">PostgreSQL</MenuItem>
                       <MenuItem value="mysql">MySQL / MariaDB</MenuItem>
                       <MenuItem value="mongodb">MongoDB</MenuItem>
-                      <MenuItem value="oracle">Oracle (TNS)</MenuItem>
-                      <MenuItem value="mssql">Microsoft SQL Server (TDS)</MenuItem>
-                      <MenuItem value="db2">IBM DB2 (DRDA)</MenuItem>
                     </Select>
                   </FormControl>
                   <TextField
@@ -613,58 +608,6 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                     fullWidth
                     placeholder="e.g. mydb"
                   />
-                  {dbSettings.protocol === 'oracle' && (
-                    <>
-                      <TextField
-                        label="Oracle SID (optional)"
-                        value={dbSettings.oracleSid ?? ''}
-                        onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleSid: e.target.value || undefined, oracleServiceName: e.target.value ? undefined : prev.oracleServiceName }))}
-                        fullWidth
-                        placeholder="e.g. ORCL"
-                        helperText="Mutually exclusive with Service Name"
-                      />
-                      <TextField
-                        label="Oracle Service Name (optional)"
-                        value={dbSettings.oracleServiceName ?? ''}
-                        onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleServiceName: e.target.value || undefined, oracleSid: e.target.value ? undefined : prev.oracleSid }))}
-                        fullWidth
-                        placeholder="e.g. orcl.example.com"
-                        helperText="Mutually exclusive with SID"
-                      />
-                    </>
-                  )}
-                  {dbSettings.protocol === 'mssql' && (
-                    <>
-                      <TextField
-                        label="Instance Name (optional)"
-                        value={dbSettings.mssqlInstanceName ?? ''}
-                        onChange={(e) => setDbSettings((prev) => ({ ...prev, mssqlInstanceName: e.target.value || undefined }))}
-                        fullWidth
-                        placeholder="e.g. SQLEXPRESS"
-                      />
-                      <FormControl fullWidth>
-                        <InputLabel>Authentication Mode</InputLabel>
-                        <Select
-                          value={dbSettings.mssqlAuthMode ?? 'sql'}
-                          label="Authentication Mode"
-                          onChange={(e) => setDbSettings((prev) => ({ ...prev, mssqlAuthMode: e.target.value as 'sql' | 'windows' }))}
-                        >
-                          <MenuItem value="sql">SQL Server Authentication</MenuItem>
-                          <MenuItem value="windows">Windows Authentication (NTLM/Kerberos)</MenuItem>
-                        </Select>
-                      </FormControl>
-                    </>
-                  )}
-                  {dbSettings.protocol === 'db2' && (
-                    <TextField
-                      label="Database Alias (optional)"
-                      value={dbSettings.db2DatabaseAlias ?? ''}
-                      onChange={(e) => setDbSettings((prev) => ({ ...prev, db2DatabaseAlias: e.target.value || undefined }))}
-                      fullWidth
-                      placeholder="e.g. SAMPLE"
-                      helperText="Alias as cataloged on the DB2 Connect gateway"
-                    />
-                  )}
                 </Box>
               </AccordionDetails>
             </Accordion>

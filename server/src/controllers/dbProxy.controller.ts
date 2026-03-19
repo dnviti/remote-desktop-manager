@@ -1,7 +1,7 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest, assertAuthenticated } from '../types';
 import { getConnection } from '../services/connection.service';
-import * as dbSessionService from '../services/dbSession.service';
+import { createDbProxySession, endDbProxySession } from '../services/dbProxy.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import { getClientIp } from '../utils/ip';
@@ -30,7 +30,7 @@ export async function createSession(req: AuthRequest, res: Response, next: NextF
       throw new AppError('Not a DATABASE connection', 400);
     }
 
-    const result = await dbSessionService.createSession({
+    const result = await createDbProxySession({
       userId: req.user.userId,
       connectionId,
       tenantId: req.user.tenantId,
@@ -59,53 +59,6 @@ export async function createSession(req: AuthRequest, res: Response, next: NextF
 export async function endSession(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
   const sessionId = req.params.sessionId as string;
-  await dbSessionService.endSession(req.user.userId, sessionId);
+  await endDbProxySession(req.user.userId, sessionId);
   res.json({ ok: true });
-}
-
-// ---- Database session heartbeat ----
-
-export async function heartbeat(req: AuthRequest, res: Response) {
-  assertAuthenticated(req);
-  const sessionId = req.params.sessionId as string;
-  await dbSessionService.heartbeat(sessionId, req.user.userId);
-  res.json({ ok: true });
-}
-
-// ---- Execute SQL query ----
-
-export async function executeQuery(req: AuthRequest, res: Response, next: NextFunction) {
-  try {
-    assertAuthenticated(req);
-    const sessionId = req.params.sessionId as string;
-    const { sql } = req.body as { sql: string };
-
-    if (!sql || typeof sql !== 'string') {
-      throw new AppError('sql is required', 400);
-    }
-
-    const result = await dbSessionService.executeQuery({
-      userId: req.user.userId,
-      sessionId,
-      sql,
-      ipAddress: getClientIp(req) ?? undefined,
-    });
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-}
-
-// ---- Get database schema ----
-
-export async function getSchema(req: AuthRequest, res: Response, next: NextFunction) {
-  try {
-    assertAuthenticated(req);
-    const sessionId = req.params.sessionId as string;
-    const schema = await dbSessionService.getSchema(req.user.userId, sessionId);
-    res.json(schema);
-  } catch (err) {
-    next(err);
-  }
 }

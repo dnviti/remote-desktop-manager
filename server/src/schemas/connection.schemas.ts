@@ -2,18 +2,13 @@ import { z } from 'zod';
 import { sshTerminalConfigSchema, rdpSettingsSchema, vncSettingsSchema, dlpPolicySchema } from './common.schemas';
 
 const dbSettingsSchema = z.object({
-  protocol: z.enum(['postgresql', 'mysql', 'mongodb', 'oracle', 'mssql', 'db2']),
+  protocol: z.enum(['postgresql', 'mysql', 'mongodb']),
   databaseName: z.string().max(255).optional(),
-  oracleSid: z.string().max(255).optional(),
-  oracleServiceName: z.string().max(255).optional(),
-  mssqlInstanceName: z.string().max(255).optional(),
-  mssqlAuthMode: z.enum(['sql', 'windows']).optional(),
-  db2DatabaseAlias: z.string().max(255).optional(),
 }).optional();
 
-const createConnectionBaseSchema = z.object({
+export const createConnectionSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE', 'DB_TUNNEL']),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   username: z.string().optional(),
@@ -55,7 +50,7 @@ export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;
 
 const updateConnectionBaseSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE', 'DB_TUNNEL']).optional(),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']).optional(),
   host: z.string().min(1).optional(),
   port: z.number().int().min(1).max(65535).optional(),
   username: z.string().optional(),

@@ -291,7 +291,6 @@ enum ConnectionType {
   SSH
   VNC
   DATABASE
-  DB_TUNNEL
 }
 
 enum GatewayType {
@@ -311,9 +310,7 @@ enum SessionProtocol {
   SSH
   RDP
   VNC
-  SSH_PROXY
   DATABASE
-  DB_TUNNEL
 }
 
 enum SessionStatus {

@@ -17,26 +17,16 @@ export interface ResolvedDlpPolicy {
   disableUpload: boolean;
 }
 
-export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2';
+export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb';
 
 export interface DbSettings {
   protocol: DbProtocol;
   databaseName?: string;
-  /** Oracle: SID for the target instance (mutually exclusive with serviceName). */
-  oracleSid?: string;
-  /** Oracle: Service name for the target instance. */
-  oracleServiceName?: string;
-  /** MSSQL: Named instance (e.g. "SQLEXPRESS"). */
-  mssqlInstanceName?: string;
-  /** MSSQL: Authentication mode — "sql" for SQL auth, "windows" for NTLM/Kerberos. */
-  mssqlAuthMode?: 'sql' | 'windows';
-  /** DB2: Database alias as cataloged on the DB2 Connect gateway. */
-  db2DatabaseAlias?: string;
 }
 
 export interface ConnectionInput {
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
   host: string;
   port: number;
   username?: string;
@@ -65,7 +55,7 @@ export interface ConnectionInput {
 export interface ConnectionData {
   id: string;
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
   host: string;
   port: number;
   folderId: string | null;
@@ -118,7 +108,7 @@ export async function createConnection(payload: ConnectionInput): Promise<Connec
 
 export interface ConnectionUpdate {
   name?: string;
-  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
+  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
   host?: string;
   port?: number;
   username?: string;
