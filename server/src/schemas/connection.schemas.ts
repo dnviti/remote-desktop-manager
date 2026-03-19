@@ -1,9 +1,14 @@
 import { z } from 'zod';
 import { sshTerminalConfigSchema, rdpSettingsSchema, vncSettingsSchema, dlpPolicySchema } from './common.schemas';
 
+const dbSettingsSchema = z.object({
+  protocol: z.enum(['postgresql', 'mysql', 'mongodb']),
+  databaseName: z.string().max(255).optional(),
+}).optional();
+
 export const createConnectionSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(['RDP', 'SSH', 'VNC']),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   username: z.string().optional(),
@@ -20,6 +25,7 @@ export const createConnectionSchema = z.object({
   sshTerminalConfig: sshTerminalConfigSchema.optional(),
   rdpSettings: rdpSettingsSchema.optional(),
   vncSettings: vncSettingsSchema.optional(),
+  dbSettings: dbSettingsSchema,
   dlpPolicy: dlpPolicySchema.nullable().optional(),
   defaultCredentialMode: z.enum(['saved', 'domain', 'prompt']).nullable().optional(),
 }).refine(
@@ -34,7 +40,7 @@ export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;
 
 export const updateConnectionSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(['RDP', 'SSH', 'VNC']).optional(),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']).optional(),
   host: z.string().min(1).optional(),
   port: z.number().int().min(1).max(65535).optional(),
   username: z.string().optional(),
@@ -50,6 +56,7 @@ export const updateConnectionSchema = z.object({
   sshTerminalConfig: sshTerminalConfigSchema.nullable().optional(),
   rdpSettings: rdpSettingsSchema.nullable().optional(),
   vncSettings: vncSettingsSchema.nullable().optional(),
+  dbSettings: dbSettingsSchema.nullable().optional(),
   dlpPolicy: dlpPolicySchema.nullable().optional(),
   defaultCredentialMode: z.enum(['saved', 'domain', 'prompt']).nullable().optional(),
 }).refine(

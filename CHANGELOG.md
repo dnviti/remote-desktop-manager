@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-03-16
+
+### Added
+- Scaffold browser extension with Manifest V3 and multi-account management (BEXT-101)
+- Extension authentication flow with JWT, CSRF, and MFA support (BEXT-102)
+- Keychain integration with vault unlock, secret listing, and copy (BEXT-103)
+- Connection listing and one-click session launch in browser extension (BEXT-104)
+- Contextual credential autofill on web pages via content script (BEXT-105)
+- Core PWA support with manifest, service worker, and installability (PWA-001)
+- PWA update notification with reload prompt (PWA-002)
+- PWA app shortcuts for quick actions (PWA-003)
+- SSH session recording MP4 export and download (REC-338)
+- Multi-theme switcher with 6 selectable themes from Settings UI (THEME-2028)
+
+### Fixed
+- Encrypt extension tokens at rest in chrome.storage (RPAT-001)
+- Add client-side login rate limiting to browser extension (RPAT-002)
+- Deduplicate storage reads in browser extension account fetching (RPAT-003)
+
 ## [1.5.1] - 2026-03-15
 
 ### Fixed
@@ -225,7 +244,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Email verification preventing unverified account login
 - ESLint security plugin enforced in CI
 
-[Unreleased]: https://github.com/dnviti/arsenale/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/dnviti/arsenale/compare/v1.6.0...HEAD
+[1.6.0]: https://github.com/dnviti/arsenale/compare/v1.5.2...v1.6.0
 [1.5.1]: https://github.com/dnviti/arsenale/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/dnviti/arsenale/compare/v1.4.1...v1.5.0
 [1.4.1]: https://github.com/dnviti/arsenale/compare/v1.4.0...v1.4.1

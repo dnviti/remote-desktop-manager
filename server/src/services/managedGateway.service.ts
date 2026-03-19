@@ -68,7 +68,7 @@ function buildContainerConfig(
         TUNNEL_SERVER_URL:  tunnelEnv.serverUrl,
         TUNNEL_TOKEN:       tunnelEnv.token,
         TUNNEL_GATEWAY_ID:  tunnelEnv.gatewayId,
-        TUNNEL_LOCAL_PORT:  gateway.type === 'MANAGED_SSH' ? '2222' : '4822',
+        TUNNEL_LOCAL_PORT:  gateway.type === 'MANAGED_SSH' ? '2222' : gateway.type === 'DB_PROXY' ? '5432' : '4822',
         ...(tunnelEnv.caCert      ? { TUNNEL_CA_CERT:     tunnelEnv.caCert }      : {}),
         ...(tunnelEnv.clientCert  ? { TUNNEL_CLIENT_CERT: tunnelEnv.clientCert }  : {}),
       }
@@ -93,6 +93,28 @@ function buildContainerConfig(
         'arsenale.gateway-id': gateway.id,
         'arsenale.tenant-id': gateway.tenantId,
         'arsenale.type': 'ssh',
+      },
+      ...(config.dockerNetwork ? { network: config.dockerNetwork } : {}),
+      restartPolicy: 'always',
+    };
+  }
+
+  if (gateway.type === 'DB_PROXY') {
+    return {
+      image: config.orchestratorDbProxyImage,
+      name: baseName,
+      namespace: k8sNamespace,
+      env: {
+        ...tunnelEnvVars,
+      },
+      ports: [
+        { container: 5432, ...(publishHostPort != null ? { host: publishHostPort } : {}) },
+      ],
+      labels: {
+        'arsenale.managed': 'true',
+        'arsenale.gateway-id': gateway.id,
+        'arsenale.tenant-id': gateway.tenantId,
+        'arsenale.type': 'db-proxy',
       },
       ...(config.dockerNetwork ? { network: config.dockerNetwork } : {}),
       restartPolicy: 'always',
@@ -148,9 +170,9 @@ export async function deployGatewayInstance(
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
 
-  if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD') {
+  if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD' && gateway.type !== 'DB_PROXY') {
     throw new AppError(
-      'Only MANAGED_SSH and GUACD gateways can be deployed as managed containers',
+      'Only MANAGED_SSH, GUACD, and DB_PROXY gateways can be deployed as managed containers',
       400,
     );
   }
@@ -369,9 +391,9 @@ export async function scaleGateway(
 
   log.info(`Scaling gateway ${gatewayId} to ${replicas} replicas`);
 
-  if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD') {
+  if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD' && gateway.type !== 'DB_PROXY') {
     throw new AppError(
-      'Only MANAGED_SSH and GUACD gateways can be scaled',
+      'Only MANAGED_SSH, GUACD, and DB_PROXY gateways can be scaled',
       400,
     );
   }

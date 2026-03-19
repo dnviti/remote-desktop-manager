@@ -16,7 +16,7 @@ interface GatewayTemplateDialogProps {
 
 export default function GatewayTemplateDialog({ open, onClose, template }: GatewayTemplateDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH'>('MANAGED_SSH');
+  const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY'>('MANAGED_SSH');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [description, setDescription] = useState('');
@@ -77,10 +77,13 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
     setError('');
   }, [open, template]);
 
-  const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH') => {
+  const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY') => {
     setType(newType);
     if (newType === 'SSH_BASTION') {
-      if (!port || port === '4822' || port === '2222') setPort('22');
+      if (!port || port === '4822' || port === '2222' || port === '5432') setPort('22');
+    }
+    if (newType === 'DB_PROXY') {
+      if (!port || port === '4822' || port === '2222' || port === '22') setPort('5432');
     }
     if (newType === 'MANAGED_SSH' && !apiPort) {
       setApiPort('8022');
@@ -89,7 +92,7 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
     }
   };
 
-  const isManagedType = type === 'MANAGED_SSH' || type === 'GUACD';
+  const isManagedType = type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY';
 
   const handleSave = async () => {
     if (!name.trim()) {
@@ -162,6 +165,7 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
               <MenuItem value="GUACD">GUACD (RDP/VNC proxy)</MenuItem>
               <MenuItem value="SSH_BASTION">SSH Bastion</MenuItem>
               <MenuItem value="MANAGED_SSH">Managed SSH</MenuItem>
+              <MenuItem value="DB_PROXY">DB Proxy (Database Gateway)</MenuItem>
             </Select>
           </FormControl>
 
