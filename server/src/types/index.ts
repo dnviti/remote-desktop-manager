@@ -131,6 +131,13 @@ export interface VncSettings {
   disableAudio?: boolean;
 }
 
+export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb';
+
+export interface DbSettings {
+  protocol: DbProtocol;
+  databaseName?: string;
+}
+
 export interface DlpPolicy {
   disableCopy?: boolean;
   disablePaste?: boolean;

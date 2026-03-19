@@ -125,9 +125,9 @@ export default function GatewayTemplateSection() {
                   </TableCell>
                   <TableCell>
                     <Chip
-                      label={tpl.type === 'GUACD' ? 'GUACD' : tpl.type === 'MANAGED_SSH' ? 'Managed SSH' : 'SSH Bastion'}
+                      label={tpl.type === 'GUACD' ? 'GUACD' : tpl.type === 'MANAGED_SSH' ? 'Managed SSH' : tpl.type === 'DB_PROXY' ? 'DB Proxy' : 'SSH Bastion'}
                       size="small"
-                      color={tpl.type === 'GUACD' ? 'info' : tpl.type === 'MANAGED_SSH' ? 'success' : 'warning'}
+                      color={tpl.type === 'GUACD' ? 'info' : tpl.type === 'MANAGED_SSH' ? 'success' : tpl.type === 'DB_PROXY' ? 'secondary' : 'warning'}
                       variant="outlined"
                     />
                   </TableCell>

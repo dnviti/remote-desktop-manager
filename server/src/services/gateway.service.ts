@@ -170,6 +170,10 @@ export async function createGateway(
     if (!keyPair) {
       throw new AppError('Cannot create MANAGED_SSH gateway: no SSH key pair generated for this tenant. Generate one first.', 400);
     }
+  } else if (input.type === 'DB_PROXY') {
+    if (input.username || input.password || input.sshPrivateKey) {
+      throw new AppError('DB_PROXY gateways do not use direct credentials. Credentials are injected per-session from the vault.', 400);
+    }
   } else if (input.username || input.password || input.sshPrivateKey) {
     throw new AppError('Credentials can only be set for SSH_BASTION gateways', 400);
   }
@@ -208,7 +212,7 @@ export async function createGateway(
 
   log.debug(`Created gateway ${gateway.id} (${input.type}) in tenant ${tenantId}`);
 
-  const isManagedPublished = input.publishPorts && (input.type === 'MANAGED_SSH' || input.type === 'GUACD');
+  const isManagedPublished = input.publishPorts && (input.type === 'MANAGED_SSH' || input.type === 'GUACD' || input.type === 'DB_PROXY');
   if ((input.monitoringEnabled ?? true) && isManagedPublished) {
     startInstanceMonitor(gateway.id, tenantId, input.monitorIntervalMs ?? 5000);
   } else if ((input.monitoringEnabled ?? true) && !isManagedPublished) {
@@ -300,7 +304,7 @@ export async function updateGateway(
       select: { host: true, port: true, type: true, monitorIntervalMs: true, monitoringEnabled: true, publishPorts: true, tenantId: true },
     });
     if (current) {
-      const isManagedPublished = current.publishPorts && (current.type === 'MANAGED_SSH' || current.type === 'GUACD');
+      const isManagedPublished = current.publishPorts && (current.type === 'MANAGED_SSH' || current.type === 'GUACD' || current.type === 'DB_PROXY');
       if (isManagedPublished) {
         // Stop any existing monitor — TCP probing is meaningless for published-port gateways
         stopMonitor(gatewayId);
@@ -406,7 +410,7 @@ export async function testGatewayConnectivity(
 
   // For managed+publishPorts gateways, probe the first running instance instead
   // of the gateway-level host:port (which is an internal container port).
-  const isManagedPublished = gateway.publishPorts && (gateway.type === 'MANAGED_SSH' || gateway.type === 'GUACD');
+  const isManagedPublished = gateway.publishPorts && (gateway.type === 'MANAGED_SSH' || gateway.type === 'GUACD' || gateway.type === 'DB_PROXY');
   if (isManagedPublished) {
     const instance = await prisma.managedGatewayInstance.findFirst({
       where: { gatewayId, status: 'RUNNING' },

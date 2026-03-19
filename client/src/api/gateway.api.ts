@@ -5,7 +5,7 @@ export type GatewayHealthStatus = 'UNKNOWN' | 'REACHABLE' | 'UNREACHABLE';
 export interface GatewayData {
   id: string;
   name: string;
-  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH';
+  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host: string;
   port: number;
   description: string | null;
@@ -44,7 +44,7 @@ export interface GatewayData {
 
 export interface GatewayInput {
   name: string;
-  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH';
+  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host: string;
   port: number;
   description?: string;
@@ -322,7 +322,7 @@ export async function updateScalingConfig(
 export interface GatewayTemplateData {
   id: string;
   name: string;
-  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH';
+  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host: string;
   port: number;
   description: string | null;
@@ -346,7 +346,7 @@ export interface GatewayTemplateData {
 
 export interface GatewayTemplateInput {
   name: string;
-  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH';
+  type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host?: string;
   port?: number;
   description?: string;

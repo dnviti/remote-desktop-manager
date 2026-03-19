@@ -35,7 +35,7 @@ interface GatewayDialogProps {
 
 export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH'>('GUACD');
+  const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY'>('GUACD');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [description, setDescription] = useState('');
@@ -148,10 +148,10 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, gateway]);
 
-  const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH') => {
+  const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY') => {
     setType(newType);
-    const defaultPort = newType === 'GUACD' ? '4822' : newType === 'MANAGED_SSH' ? '2222' : '22';
-    if (!port || port === '4822' || port === '22' || port === '2222') {
+    const defaultPort = newType === 'GUACD' ? '4822' : newType === 'MANAGED_SSH' ? '2222' : newType === 'DB_PROXY' ? '5432' : '22';
+    if (!port || port === '4822' || port === '22' || port === '2222' || port === '5432') {
       setPort(defaultPort);
     }
     if (newType === 'MANAGED_SSH' && !apiPort) {
@@ -197,7 +197,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           if (sshPrivateKey) data.sshPrivateKey = sshPrivateKey;
         }
         if (publishPorts !== (gateway.publishPorts ?? false)) data.publishPorts = publishPorts;
-        if ((type === 'MANAGED_SSH' || type === 'GUACD') && lbStrategy !== (gateway.lbStrategy ?? 'ROUND_ROBIN')) data.lbStrategy = lbStrategy;
+        if ((type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && lbStrategy !== (gateway.lbStrategy ?? 'ROUND_ROBIN')) data.lbStrategy = lbStrategy;
         if (monitoringEnabled !== gateway.monitoringEnabled) data.monitoringEnabled = monitoringEnabled;
         const intervalNum = parseInt(monitorIntervalMs, 10);
         if (intervalNum && intervalNum !== gateway.monitorIntervalMs) data.monitorIntervalMs = intervalNum;
@@ -220,8 +220,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           ...(type === 'SSH_BASTION' && password ? { password } : {}),
           ...(type === 'SSH_BASTION' && sshPrivateKey ? { sshPrivateKey } : {}),
           ...(type === 'MANAGED_SSH' && apiPortNum ? { apiPort: apiPortNum } : {}),
-          ...((type === 'MANAGED_SSH' || type === 'GUACD') && publishPorts ? { publishPorts } : {}),
-          ...((type === 'MANAGED_SSH' || type === 'GUACD') ? { lbStrategy } : {}),
+          ...((type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && publishPorts ? { publishPorts } : {}),
+          ...((type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') ? { lbStrategy } : {}),
         });
       }
     }, isEditMode ? 'Failed to update gateway' : 'Failed to create gateway');
@@ -455,17 +455,23 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
             <Select
               value={type}
               label="Type"
-              onChange={(e) => handleTypeChange(e.target.value as 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH')}
+              onChange={(e) => handleTypeChange(e.target.value as 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY')}
               disabled={isEditMode}
             >
               <MenuItem value="GUACD">GUACD (RDP Gateway)</MenuItem>
               <MenuItem value="SSH_BASTION">SSH Bastion (Jump Host)</MenuItem>
               <MenuItem value="MANAGED_SSH">Managed SSH Gateway</MenuItem>
+              <MenuItem value="DB_PROXY">DB Proxy (Database Gateway)</MenuItem>
             </Select>
           </FormControl>
           {type === 'MANAGED_SSH' && (
             <Alert severity="info">
               This gateway uses the server&apos;s SSH key pair for authentication. No credentials needed.
+            </Alert>
+          )}
+          {type === 'DB_PROXY' && (
+            <Alert severity="info">
+              Database proxy gateway. Credentials are injected per-session from the vault.
             </Alert>
           )}
           {type === 'MANAGED_SSH' && (
@@ -479,7 +485,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               helperText={publishPorts ? 'Auto-assigned at deploy' : 'HTTP port for the key management sidecar (default: 8022)'}
             />
           )}
-          {(type === 'MANAGED_SSH' || type === 'GUACD') && (
+          {(type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
             <FormControlLabel
               control={
                 <Switch
@@ -498,12 +504,12 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               label="Publish Ports (external access)"
             />
           )}
-          {publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD') && (
+          {publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
             <Alert severity="info" sx={{ py: 0.5 }}>
               Each deployed instance will get a unique randomly-assigned host port for external access.
             </Alert>
           )}
-          {(type === 'MANAGED_SSH' || type === 'GUACD') && (
+          {(type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
             <FormControl fullWidth size="small">
               <InputLabel>Load Balancing Strategy</InputLabel>
               <Select
@@ -532,10 +538,10 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               onChange={(e) => setPort(e.target.value)}
               type="number"
               sx={{ width: 120 }}
-              disabled={(publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD')) || (isTunnelEnabled && isEditMode)}
+              disabled={(publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY')) || (isTunnelEnabled && isEditMode)}
               helperText={
                 isTunnelEnabled && isEditMode ? 'Tunnel' :
-                publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD') ? 'Host port auto-assigned at deploy' :
+                publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') ? 'Host port auto-assigned at deploy' :
                 undefined
               }
             />
@@ -591,7 +597,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                 onChange={(e) => setIsDefault(e.target.checked)}
               />
             }
-            label={`Set as default ${type === 'GUACD' ? 'GUACD' : type === 'MANAGED_SSH' ? 'Managed SSH' : 'SSH Bastion'} gateway`}
+            label={`Set as default ${type === 'GUACD' ? 'GUACD' : type === 'MANAGED_SSH' ? 'Managed SSH' : type === 'DB_PROXY' ? 'DB Proxy' : 'SSH Bastion'} gateway`}
           />
           <FormControlLabel
             control={
@@ -616,7 +622,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           <SessionTimeoutConfig value={inactivityTimeout} onChange={setInactivityTimeout} />
 
           {/* Auto-Scaling Configuration (edit mode, managed gateway types only) */}
-          {isEditMode && gateway?.isManaged && (type === 'MANAGED_SSH' || type === 'GUACD') && (
+          {isEditMode && gateway?.isManaged && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
             <Accordion sx={{ mt: 1 }}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle2">Auto-Scaling Configuration</Typography>
