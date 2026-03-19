@@ -8,7 +8,7 @@ import { initializePassport } from './config/passport';
 import { setupSocketIO } from './socket';
 import { logger, toGuacamoleLogLevel } from './utils/logger';
 import prisma from './lib/prisma';
-import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startCheckoutExpiryJob, startPasswordRotationJob, stopAllJobs } from './services/scheduler.service';
+import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startPasswordRotationJob, stopAllJobs } from './services/scheduler.service';
 import { startAllSyncJobs, stopAllSyncJobs } from './services/syncScheduler.service';
 import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
 import { cleanupExpiredShares } from './services/externalShare.service';
@@ -113,7 +113,6 @@ async function main() {
   startKeyRotationJob();
   startLdapSyncJob();
   startMembershipExpiryJob();
-  startCheckoutExpiryJob();
   startPasswordRotationJob();
   startAllSyncJobs().catch((err) => {
     logger.error('Failed to start sync jobs:', err);

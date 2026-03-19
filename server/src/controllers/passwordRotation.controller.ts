@@ -5,18 +5,9 @@ import * as auditService from '../services/audit.service';
 import { getClientIp } from '../utils/ip';
 import type { EnableRotationInput } from '../schemas/passwordRotation.schemas';
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** Extract and validate the :id route param as a UUID (not sensitive data). */
-function parseResourceId(req: AuthRequest): string {
-  const id = req.params.id as string | undefined;
-  if (!id || !UUID_RE.test(id)) throw Object.assign(new Error('Invalid resource ID'), { statusCode: 400 });
-  return id;
-}
-
 export async function enableRotation(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = parseResourceId(req);
+  const secretId = req.params.id as string;
   const { intervalDays } = req.body as EnableRotationInput;
 
   await passwordRotationService.enableRotation(
@@ -40,7 +31,7 @@ export async function enableRotation(req: AuthRequest, res: Response) {
 
 export async function disableRotation(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = parseResourceId(req);
+  const secretId = req.params.id as string;
 
   await passwordRotationService.disableRotation(
     req.user.userId,
@@ -62,7 +53,7 @@ export async function disableRotation(req: AuthRequest, res: Response) {
 
 export async function triggerRotation(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = parseResourceId(req);
+  const secretId = req.params.id as string;
 
   const result = await passwordRotationService.rotatePassword(
     secretId,
@@ -75,7 +66,7 @@ export async function triggerRotation(req: AuthRequest, res: Response) {
 
 export async function getRotationStatus(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = parseResourceId(req);
+  const secretId = req.params.id as string;
 
   const status = await passwordRotationService.getRotationStatus(secretId);
   res.json(status);
@@ -83,7 +74,7 @@ export async function getRotationStatus(req: AuthRequest, res: Response) {
 
 export async function getRotationHistory(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = parseResourceId(req);
+  const secretId = req.params.id as string;
   const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
 
   const history = await passwordRotationService.getRotationHistory(secretId, limit);

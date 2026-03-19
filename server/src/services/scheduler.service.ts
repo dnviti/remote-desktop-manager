@@ -9,7 +9,6 @@ import * as auditService from './audit.service';
 let rotationTask: ScheduledTask | null = null;
 let ldapSyncTask: ScheduledTask | null = null;
 let membershipExpiryTask: ScheduledTask | null = null;
-let checkoutExpiryTask: ScheduledTask | null = null;
 let passwordRotationTask: ScheduledTask | null = null;
 
 export function startKeyRotationJob(): void {
@@ -324,9 +323,7 @@ export function startPasswordRotationJob(): void {
         svc.processScheduledRotations().catch((err) => {
           logger.error('[scheduler] Unhandled error in processScheduledRotations:', err);
         }),
-      ).catch((err) => {
-        logger.error('[scheduler] Failed to import passwordRotation.service:', err);
-      });
+      );
     },
     { timezone: 'UTC' },
   );
@@ -348,10 +345,6 @@ export function stopAllJobs(): void {
   if (membershipExpiryTask) {
     membershipExpiryTask.stop();
     membershipExpiryTask = null;
-  }
-  if (checkoutExpiryTask) {
-    checkoutExpiryTask.stop();
-    checkoutExpiryTask = null;
   }
   if (passwordRotationTask) {
     passwordRotationTask.stop();

@@ -665,6 +665,8 @@ enum AuditAction {
   TUNNEL_TOKEN_ROTATE
   SESSION_DENIED_ABAC
   ANOMALOUS_LATERAL_MOVEMENT
+  PASSWORD_ROTATION_SUCCESS
+  PASSWORD_ROTATION_FAILED
 }
 
 model AuditLog {
@@ -1140,22 +1142,39 @@ model AccessPolicy {
   @@index([targetType, targetId])
 }
 
-enum KeystrokePolicyAction {
-  BLOCK_AND_TERMINATE
-  ALERT_ONLY
+enum RotationStatus {
+  SUCCESS
+  FAILED
+  PENDING
 }
 
-model KeystrokePolicy {
-  id            String                @id @default(uuid())
-  tenantId      String
-  name          String
-  description   String?
-  action        KeystrokePolicyAction
-  regexPatterns String[]
-  enabled       Boolean               @default(true)
-  createdAt     DateTime              @default(now())
-  updatedAt     DateTime              @updatedAt
+enum RotationTrigger {
+  SCHEDULED
+  CHECKIN
+  MANUAL
+}
 
-  @@index([tenantId])
-  @@index([tenantId, enabled])
+enum RotationTargetOS {
+  LINUX
+  WINDOWS
+}
+
+/// Tracks every password rotation attempt on a target system.
+model PasswordRotationLog {
+  id          String          @id @default(uuid())
+  secretId    String
+  status      RotationStatus
+  trigger     RotationTrigger
+  targetOS    RotationTargetOS
+  targetHost  String
+  targetUser  String
+  errorMessage String?
+  durationMs  Int?
+  initiatedBy String?
+  createdAt   DateTime        @default(now())
+
+  secret VaultSecret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+
+  @@index([secretId, createdAt])
+  @@index([status])
 }
