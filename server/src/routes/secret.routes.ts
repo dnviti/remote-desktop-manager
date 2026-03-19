@@ -16,6 +16,9 @@ router.post('/tenant-vault/init', asyncHandler(secretController.initTenantVault)
 router.post('/tenant-vault/distribute', validate(distributeTenantKeySchema), asyncHandler(secretController.distributeTenantKey));
 router.get('/tenant-vault/status', asyncHandler(secretController.tenantVaultStatus));
 
+// Breach check — batch (before /:id to avoid param collision)
+router.post('/breach-check', asyncHandler(secretController.checkAllBreaches));
+
 // External share revoke (before /:id to avoid param collision)
 router.delete('/external-shares/:shareId', asyncHandler(externalShareController.revoke));
 
@@ -25,6 +28,9 @@ router.post('/', validate(createSecretSchema), asyncHandler(secretController.cre
 router.get('/:id', validateUuidParam(), asyncHandler(secretController.getOne));
 router.put('/:id', validateUuidParam(), validate(updateSecretSchema), asyncHandler(secretController.update));
 router.delete('/:id', validateUuidParam(), asyncHandler(secretController.remove));
+
+// Breach check — single secret
+router.post('/:id/breach-check', validateUuidParam(), asyncHandler(secretController.checkBreach));
 
 // Versions
 router.get('/:id/versions', validateUuidParam(), asyncHandler(secretController.listVersions));

@@ -252,6 +252,27 @@ export async function listShares(req: AuthRequest, res: Response) {
   res.json(result);
 }
 
+// --- Breach check handlers ---
+
+export async function checkBreach(req: AuthRequest, res: Response) {
+  assertAuthenticated(req);
+  const result = await secretService.checkSecretBreach(
+    req.user.userId,
+    req.params.id as string,
+    req.user.tenantId
+  );
+  res.json(result);
+}
+
+export async function checkAllBreaches(req: AuthRequest, res: Response) {
+  assertAuthenticated(req);
+  const result = await secretService.checkAllSecretBreaches(
+    req.user.userId,
+    req.user.tenantId
+  );
+  res.json(result);
+}
+
 // --- Tenant vault handlers ---
 
 export async function initTenantVault(req: AuthRequest, res: Response) {

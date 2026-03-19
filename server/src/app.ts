@@ -36,6 +36,8 @@ import accessPolicyRoutes from './routes/accessPolicy.routes';
 import sshProxyRoutes from './routes/sshProxy.routes';
 import rdGatewayRoutes from './routes/rdGateway.routes';
 import cliRoutes from './routes/cli.routes';
+import dbProxyRoutes from './routes/dbProxy.routes';
+import passwordRotationRoutes from './routes/passwordRotation.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger.middleware';
@@ -126,6 +128,8 @@ app.use('/api/access-policies', accessPolicyRoutes);
 app.use('/api/sessions/ssh-proxy', sshProxyRoutes);
 app.use('/api/rdgw', rdGatewayRoutes);
 app.use('/api/cli', cliRoutes);
+app.use('/api/sessions/database', dbProxyRoutes);
+app.use('/api/secrets', passwordRotationRoutes);
 
 // Health & readiness probes
 app.use('/api', healthRoutes);

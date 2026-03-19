@@ -248,6 +248,7 @@ model Connection {
   sshTerminalConfig Json?
   rdpSettings       Json?
   vncSettings       Json?
+  dbSettings        Json?
   dlpPolicy         Json?
   defaultCredentialMode String?
   userId            String
@@ -279,12 +280,14 @@ enum ConnectionType {
   RDP
   SSH
   VNC
+  DATABASE
 }
 
 enum GatewayType {
   GUACD
   SSH_BASTION
   MANAGED_SSH
+  DB_PROXY
 }
 
 enum GatewayHealthStatus {
@@ -298,6 +301,7 @@ enum SessionProtocol {
   RDP
   VNC
   SSH_PROXY
+  DATABASE
 }
 
 enum SessionStatus {
@@ -657,6 +661,9 @@ enum AuditAction {
   SSH_PROXY_TOKEN_ISSUED
   DEVICE_AUTH_INITIATED
   DEVICE_AUTH_COMPLETED
+  ANOMALOUS_LATERAL_MOVEMENT
+  PASSWORD_ROTATION_SUCCESS
+  PASSWORD_ROTATION_FAILED
 }
 
 model AuditLog {
@@ -696,6 +703,7 @@ enum NotificationType {
   TENANT_INVITATION
   RECORDING_READY
   IMPOSSIBLE_TRAVEL_DETECTED
+  LATERAL_MOVEMENT_ALERT
 }
 
 model Notification {
@@ -759,8 +767,12 @@ model VaultSecret {
   metadata       Json?
   tags           String[]    @default([])
   isFavorite     Boolean     @default(false)
+  pwnedCount     Int         @default(0)
   expiresAt      DateTime?
   currentVersion Int         @default(1)
+  targetRotationEnabled  Boolean   @default(false)
+  rotationIntervalDays   Int       @default(30)
+  lastRotatedAt          DateTime?
   createdAt      DateTime    @default(now())
   updatedAt      DateTime    @updatedAt
 
@@ -772,12 +784,14 @@ model VaultSecret {
   shares         SharedSecret[]
   externalShares ExternalSecretShare[]
   connections    Connection[]
+  rotationLogs   PasswordRotationLog[]
 
   @@index([userId, scope])
   @@index([teamId])
   @@index([tenantId, scope])
   @@index([expiresAt])
   @@index([expiresAt, userId])
+  @@index([targetRotationEnabled, lastRotatedAt])
 }
 
 model VaultSecretVersion {
@@ -1141,4 +1155,41 @@ model DeviceAuthCode {
 
   @@index([deviceCode])
   @@index([userCode])
+}
+
+enum RotationStatus {
+  SUCCESS
+  FAILED
+  PENDING
+}
+
+enum RotationTrigger {
+  SCHEDULED
+  CHECKIN
+  MANUAL
+}
+
+enum RotationTargetOS {
+  LINUX
+  WINDOWS
+}
+
+/// Tracks every password rotation attempt on a target system.
+model PasswordRotationLog {
+  id          String          @id @default(uuid())
+  secretId    String
+  status      RotationStatus
+  trigger     RotationTrigger
+  targetOS    RotationTargetOS
+  targetHost  String
+  targetUser  String
+  errorMessage String?
+  durationMs  Int?
+  initiatedBy String?
+  createdAt   DateTime        @default(now())
+
+  secret VaultSecret @relation(fields: [secretId], references: [id], onDelete: Cascade)
+
+  @@index([secretId, createdAt])
+  @@index([status])
 }

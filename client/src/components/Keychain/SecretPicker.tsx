@@ -32,7 +32,7 @@ const SCOPE_COLORS: Record<string, 'default' | 'primary' | 'secondary'> = {
 interface SecretPickerProps {
   value: string | null;
   onChange: (secretId: string | null, secret: SecretListItem | null) => void;
-  connectionType: 'SSH' | 'RDP' | 'VNC';
+  connectionType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE';
   disabled?: boolean;
   error?: boolean;
   helperText?: string;
@@ -83,6 +83,7 @@ export default function SecretPicker({
         metadata: null,
         tags: [],
         isFavorite: false,
+        pwnedCount: 0,
         expiresAt: null,
         currentVersion: 1,
         createdAt: '',

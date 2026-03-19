@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const createGatewaySchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
+  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   description: z.string().max(500).optional(),
@@ -68,7 +68,7 @@ export type RotationPolicyInput = z.infer<typeof rotationPolicySchema>;
 
 export const createTemplateSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
+  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']),
   host: z.string().default(''),
   port: z.number().int().min(1).max(65535).optional(),
   description: z.string().max(500).optional(),
@@ -84,11 +84,11 @@ export const createTemplateSchema = z.object({
   publishPorts: z.boolean().optional(),
   lbStrategy: z.enum(['ROUND_ROBIN', 'LEAST_CONNECTIONS']).optional(),
 }).transform((data) => {
-  const isManagedType = data.type === 'MANAGED_SSH' || data.type === 'GUACD';
+  const isManagedType = data.type === 'MANAGED_SSH' || data.type === 'GUACD' || data.type === 'DB_PROXY';
   return {
     ...data,
     host: isManagedType ? '' : data.host,
-    port: data.port ?? (data.type === 'MANAGED_SSH' ? 2222 : data.type === 'GUACD' ? 4822 : undefined),
+    port: data.port ?? (data.type === 'MANAGED_SSH' ? 2222 : data.type === 'GUACD' ? 4822 : data.type === 'DB_PROXY' ? 5432 : undefined),
   };
 }).refine(
   (data) => data.port !== undefined,
@@ -98,7 +98,7 @@ export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 
 export const updateTemplateSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH']),
+  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']),
   host: z.string(),
   port: z.number().int().min(1).max(65535),
   description: z.string().max(500),
