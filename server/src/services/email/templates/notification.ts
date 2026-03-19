@@ -17,6 +17,7 @@ const SUBJECT_MAP: Record<NotificationType, string> = {
   [NotificationType.TENANT_INVITATION]: 'You have been invited to an organization — Arsenale',
   [NotificationType.RECORDING_READY]: 'Session recording is ready — Arsenale',
   [NotificationType.IMPOSSIBLE_TRAVEL_DETECTED]: 'Security Alert: Impossible Travel Detected — Arsenale',
+  [NotificationType.LATERAL_MOVEMENT_ALERT]: 'Security Alert: Lateral Movement Anomaly Detected — Arsenale',
 };
 
 function buildHtml(subject: string, message: string): string {

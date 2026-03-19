@@ -199,6 +199,11 @@ export const config = {
   geoipDbPath: process.env.GEOIP_DB_PATH ? path.resolve(process.env.GEOIP_DB_PATH) : '',
   // Impossible travel detection — maximum plausible speed in km/h (default: 900, faster than commercial aviation)
   impossibleTravelSpeedKmh: parseInt(process.env.IMPOSSIBLE_TRAVEL_SPEED_KMH || '900', 10),
+  // Lateral movement anomaly detection (MITRE T1021)
+  lateralMovementEnabled: process.env.LATERAL_MOVEMENT_DETECTION_ENABLED !== 'false',
+  lateralMovementMaxDistinctTargets: parseInt(process.env.LATERAL_MOVEMENT_MAX_DISTINCT_TARGETS || '10', 10),
+  lateralMovementWindowMinutes: parseInt(process.env.LATERAL_MOVEMENT_WINDOW_MINUTES || '5', 10),
+  lateralMovementLockoutMinutes: parseInt(process.env.LATERAL_MOVEMENT_LOCKOUT_MINUTES || '30', 10),
   // Reverse proxy trust depth for Express.
   // Controls how `req.ip` is resolved from X-Forwarded-For.
   // false = disabled, true = trust all, number = hop count to trust.

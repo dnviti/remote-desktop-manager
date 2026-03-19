@@ -36,7 +36,7 @@ const CATEGORIES: NotificationCategory[] = [
   },
   {
     label: 'Security',
-    types: ['IMPOSSIBLE_TRAVEL_DETECTED'],
+    types: ['IMPOSSIBLE_TRAVEL_DETECTED', 'LATERAL_MOVEMENT_ALERT'],
   },
   {
     label: 'Organization',
@@ -57,6 +57,7 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   SECRET_EXPIRING: 'Secret Expiring Soon',
   SECRET_EXPIRED: 'Secret Expired',
   IMPOSSIBLE_TRAVEL_DETECTED: 'Impossible Travel Detected',
+  LATERAL_MOVEMENT_ALERT: 'Lateral Movement Anomaly',
   TENANT_INVITATION: 'Organization Invitation',
   RECORDING_READY: 'Session Recording Ready',
 };

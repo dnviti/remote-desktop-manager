@@ -10,7 +10,8 @@ export type NotificationType =
   | 'SECRET_EXPIRED'
   | 'TENANT_INVITATION'
   | 'RECORDING_READY'
-  | 'IMPOSSIBLE_TRAVEL_DETECTED';
+  | 'IMPOSSIBLE_TRAVEL_DETECTED'
+  | 'LATERAL_MOVEMENT_ALERT';
 
 export interface NotificationEntry {
   id: string;
