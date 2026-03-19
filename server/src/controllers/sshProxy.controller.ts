@@ -28,10 +28,7 @@ export async function createProxyToken(
   );
 
   const proxyPort = config.sshProxy.port;
-  // Sanitize hostname — req.hostname is derived from the Host header and
-  // can be attacker-controlled. Strip anything that isn't a valid hostname char.
-  const rawHost = req.hostname || 'localhost';
-  const serverHost = rawHost.replace(/[^a-zA-Z0-9.\-:[\]]/g, '') || 'localhost';
+  const serverHost = req.hostname || 'localhost';
 
   res.json({
     token: result.token,

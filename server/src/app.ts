@@ -33,6 +33,7 @@ import ldapRoutes from './routes/ldap.routes';
 import syncRoutes from './routes/sync.routes';
 import externalVaultRoutes from './routes/externalVault.routes';
 import accessPolicyRoutes from './routes/accessPolicy.routes';
+import sshProxyRoutes from './routes/sshProxy.routes';
 import dbProxyRoutes from './routes/dbProxy.routes';
 import passwordRotationRoutes from './routes/passwordRotation.routes';
 import healthRoutes from './routes/health.routes';
@@ -129,6 +130,7 @@ app.use('/api/ldap', ldapRoutes);
 app.use('/api/sync-profiles', syncRoutes);
 app.use('/api/vault-providers', externalVaultRoutes);
 app.use('/api/access-policies', accessPolicyRoutes);
+app.use('/api/sessions/ssh-proxy', sshProxyRoutes);
 app.use('/api/sessions/database', dbProxyRoutes);
 app.use('/api/secrets', passwordRotationRoutes);
 

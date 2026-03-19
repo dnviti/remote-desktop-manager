@@ -56,28 +56,6 @@ export async function getMinimalPublicConfig(): Promise<{ selfSignupEnabled: boo
 }
 
 // ---------------------------------------------------------------------------
-// Setup Status
-// ---------------------------------------------------------------------------
-
-let setupCache: { completed: boolean; expiresAt: number } | null = null;
-
-export async function isSetupCompleted(): Promise<boolean> {
-  const now = Date.now();
-  if (setupCache && setupCache.expiresAt > now) {
-    return setupCache.completed;
-  }
-  try {
-    const row = await prisma.appConfig.findUnique({ where: { key: 'setupCompleted' } });
-    const value = row?.value === 'true';
-    setupCache = { completed: value, expiresAt: now + CACHE_TTL_MS };
-    return value;
-  } catch (err) {
-    logger.error('Failed to read AppConfig setupCompleted:', err);
-    return false;
-  }
-}
-
-// ---------------------------------------------------------------------------
 // SSH Proxy Configuration
 // ---------------------------------------------------------------------------
 
