@@ -11,7 +11,6 @@ import crypto from 'crypto';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { issueTokens } from './auth.service';
-import { AppError } from '../middleware/error.middleware';
 
 const log = logger.child('deviceAuth');
 
@@ -27,17 +26,11 @@ const POLLING_INTERVAL = 5;
 // Characters used for the user code (no ambiguous chars like 0/O, 1/I/L)
 const USER_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
-function uniformRandom(max: number): number {
-  const limit = 256 - (256 % max);
-  let b: number;
-  do { b = crypto.randomBytes(1)[0]; } while (b >= limit);
-  return b % max;
-}
-
 function generateUserCode(): string {
+  const bytes = crypto.randomBytes(USER_CODE_LENGTH);
   let code = '';
   for (let i = 0; i < USER_CODE_LENGTH; i++) {
-    code += USER_CODE_CHARS[uniformRandom(USER_CODE_CHARS.length)];
+    code += USER_CODE_CHARS[bytes[i] % USER_CODE_CHARS.length];
   }
   // Format as XXXX-XXXX for readability
   return `${code.slice(0, 4)}-${code.slice(4)}`;
@@ -52,32 +45,20 @@ export async function initiateDeviceAuth(clientUrl: string) {
   const userCode = generateUserCode();
   const expiresAt = new Date(Date.now() + DEVICE_CODE_TTL_SECONDS * 1000);
 
-  // Retry on userCode collision (unique constraint) — extremely unlikely but handled
-  const MAX_RETRIES = 3;
-  let finalUserCode = userCode;
-  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-    try {
-      await prisma.deviceAuthCode.create({
-        data: {
-          deviceCode,
-          userCode: finalUserCode,
-          expiresAt,
-          interval: POLLING_INTERVAL,
-        },
-      });
-      break;
-    } catch (err) {
-      const isUniqueViolation = (err as { code?: string }).code === 'P2002';
-      if (!isUniqueViolation || attempt === MAX_RETRIES - 1) throw err;
-      finalUserCode = generateUserCode();
-    }
-  }
+  await prisma.deviceAuthCode.create({
+    data: {
+      deviceCode,
+      userCode,
+      expiresAt,
+      interval: POLLING_INTERVAL,
+    },
+  });
 
-  log.verbose(`Device auth initiated: user_code=${finalUserCode}`);
+  log.verbose(`Device auth initiated: user_code=${userCode}`);
 
   return {
     device_code: deviceCode,
-    user_code: finalUserCode,
+    user_code: userCode,
     verification_uri: `${clientUrl}/device`,
     verification_uri_complete: `${clientUrl}/device?code=${userCode}`,
     expires_in: DEVICE_CODE_TTL_SECONDS,
@@ -101,16 +82,16 @@ export async function authorizeDevice(userId: string, userCode: string) {
   });
 
   if (!record) {
-    throw new AppError('Invalid device code', 404);
+    throw new Error('Invalid device code');
   }
 
   if (record.expiresAt < new Date()) {
     await prisma.deviceAuthCode.delete({ where: { id: record.id } });
-    throw new AppError('Device code has expired', 410);
+    throw new Error('Device code has expired');
   }
 
   if (record.authorized) {
-    throw new AppError('Device code already authorized', 409);
+    throw new Error('Device code already authorized');
   }
 
   await prisma.deviceAuthCode.update({

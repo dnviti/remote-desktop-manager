@@ -24,6 +24,8 @@ import { completeGuacRecording, cleanupExpiredRecordings } from './services/reco
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
 import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
+import { cleanupIdleTunnels } from './services/rdGateway.service';
+import { cleanupExpiredDeviceCodes } from './services/deviceAuth.service';
 
 function freePort(port: number): void {
   try {
@@ -220,7 +222,6 @@ async function main() {
       logger.error('Device auth code cleanup failed:', err);
     });
   }, 5 * 60 * 1000);
-
 
   // Setup guacamole-lite for RDP
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
