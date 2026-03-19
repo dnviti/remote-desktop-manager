@@ -39,6 +39,7 @@ interface UiPreferences {
   connAuditLogSortBy: string;
   connAuditLogSortOrder: string;
   auditLogAutoRefreshPaused: boolean;
+  auditLogDialogTab: string;
   lastActiveTenantId: string;
   keychainTreeOpen: boolean;
   keychainFolderExpandState: Record<string, boolean>;
@@ -96,6 +97,7 @@ const defaults: UiPreferences = {
   connAuditLogSortBy: 'createdAt',
   connAuditLogSortOrder: 'desc',
   auditLogAutoRefreshPaused: false,
+  auditLogDialogTab: 'general',
   lastActiveTenantId: '',
   keychainTreeOpen: true,
   keychainFolderExpandState: {},

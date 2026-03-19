@@ -34,6 +34,7 @@ import syncRoutes from './routes/sync.routes';
 import externalVaultRoutes from './routes/externalVault.routes';
 import accessPolicyRoutes from './routes/accessPolicy.routes';
 import dbProxyRoutes from './routes/dbProxy.routes';
+import dbAuditRoutes from './routes/dbAudit.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger.middleware';
@@ -122,6 +123,7 @@ app.use('/api/sync-profiles', syncRoutes);
 app.use('/api/vault-providers', externalVaultRoutes);
 app.use('/api/access-policies', accessPolicyRoutes);
 app.use('/api/sessions/database', dbProxyRoutes);
+app.use('/api/db-audit', dbAuditRoutes);
 
 // Health & readiness probes
 app.use('/api', healthRoutes);
