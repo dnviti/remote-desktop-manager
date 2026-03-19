@@ -9,8 +9,13 @@
     "cpu_cores": 20
   },
   "offloading": {
+    "level": 5,
     "enabled": true,
     "auto_route": true,
+    "tool_calls": {
+      "enabled": true,
+      "include_tools": ["Bash", "Read", "Grep", "Glob", "Edit", "Write"]
+    },
     "offloadable_tasks": [
       "generate-boilerplate",
       "format-code",

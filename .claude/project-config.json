@@ -59,6 +59,6 @@
   "ollama": {
     "enabled": true,
     "model": "qwen3.5:latest",
-    "offloading": true
+    "offloading_level": 5
   }
 }

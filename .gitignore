@@ -391,3 +391,5 @@ __marimo__/
 
 .claude/memory/
 .claude/worktrees/
+
+.mcp.json

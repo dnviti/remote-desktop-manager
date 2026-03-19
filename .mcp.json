@@ -1,12 +1,12 @@
 {
   "mcpServers": {
-    "ctdf-vector-memory": {
+    "claw-vector-memory": {
       "type": "stdio",
       "command": "/usr/bin/python3",
       "args": [
-        "~/.claude/plugins/cache/dnviti-plugins/ctdf/3.5.1/scripts/mcp_server.py",
+        "/home/daniele/.claude/plugins/cache/dnviti-plugins/claw/4.0.0/scripts/mcp_server.py",
         "--root",
-        "~/Documents/Repos/arsenale"
+        "/home/daniele/Documents/Repos/arsenale"
       ],
       "env": {}
     }

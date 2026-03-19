@@ -48,6 +48,7 @@ import AccessPolicySection from '../Settings/AccessPolicySection';
 import NativeSshSection from '../Settings/NativeSshSection';
 import AppearanceSection from '../Settings/AppearanceSection';
 import NotificationPreferencesSection from '../Settings/NotificationPreferencesSection';
+import NotificationsSection from '../Settings/NotificationsSection';
 import { SlideUp } from '../common/SlideUp';
 import { isAdminOrAbove } from '../../utils/roles';
 
@@ -60,9 +61,9 @@ interface TabDef {
 const BASE_TABS: TabDef[] = [
   { id: 'profile', label: 'Profile', icon: <PersonIcon /> },
   { id: 'appearance', label: 'Appearance', icon: <PaletteIcon /> },
+  { id: 'notifications', label: 'Notifications', icon: <NotificationsIcon /> },
   { id: 'connections', label: 'Connections', icon: <TerminalIcon /> },
   { id: 'security', label: 'Security', icon: <ShieldIcon /> },
-  { id: 'notifications', label: 'Notifications', icon: <NotificationsIcon /> },
   { id: 'organization', label: 'Organization', icon: <BusinessIcon /> },
 ];
 
@@ -211,6 +212,12 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           {resolvedTab === 'appearance' && (
             <AppearanceSection />
           )}
+          {resolvedTab === 'notifications' && (
+            <Stack spacing={3}>
+              <NotificationsSection />
+              <NotificationPreferencesSection />
+            </Stack>
+          )}
           {resolvedTab === 'connections' && (
             <Stack spacing={3}>
               {/* Import & Export */}
@@ -254,9 +261,6 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
               <DomainProfileSection />
               <LinkedAccountsSection hasPassword={hasPassword} />
             </Stack>
-          )}
-          {resolvedTab === 'notifications' && (
-            <NotificationPreferencesSection />
           )}
           {resolvedTab === 'organization' && (
             <Stack spacing={3}>

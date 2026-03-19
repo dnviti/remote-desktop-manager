@@ -20,6 +20,7 @@ import { getSocketClientIp } from '../utils/ip';
 import { computeBindingHash, getSocketUserAgent } from '../utils/tokenBinding';
 import prisma from '../lib/prisma';
 import { resolveDlpPolicy } from '../utils/dlp';
+import { checkLateralMovement } from '../services/lateralMovement.service';
 import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
 
 interface ActiveTransfer {
@@ -144,6 +145,18 @@ export function setupSshHandler(io: Server) {
       try {
         if ((data.username && !data.password) || (!data.username && data.password)) {
           const msg = 'Both username and password must be provided together';
+          logSessionError(msg);
+          socket.emit('session:error', { message: msg });
+          return;
+        }
+
+        // Lateral movement anomaly detection (MITRE T1021)
+        const lmResult = await checkLateralMovement(user.userId, data.connectionId, clientIp);
+        if (!lmResult.allowed) {
+          const msg =
+            `Session denied: anomalous lateral movement detected. ` +
+            `${lmResult.distinctTargets} distinct targets in ${lmResult.windowMinutes} min ` +
+            `(threshold: ${lmResult.threshold}). Your account has been temporarily suspended.`;
           logSessionError(msg);
           socket.emit('session:error', { message: msg });
           return;

@@ -11,6 +11,7 @@ export interface NotificationPreferenceEntry {
 // Security-critical types default to email=true
 const EMAIL_DEFAULT_TRUE = new Set<NotificationType>([
   NotificationType.IMPOSSIBLE_TRAVEL_DETECTED,
+  NotificationType.LATERAL_MOVEMENT_ALERT,
   NotificationType.SECRET_EXPIRING,
 ]);
 

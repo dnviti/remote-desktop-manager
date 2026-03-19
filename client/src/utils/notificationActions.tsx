@@ -90,6 +90,10 @@ const NOTIFICATION_ACTIONS: Record<NotificationType, NotificationActionDef> = {
     icon: <FlightIcon fontSize="small" color="error" />,
     onNavigate: (_n, actions) => actions.openAuditLog(),
   },
+  LATERAL_MOVEMENT_ALERT: {
+    icon: <WarningIcon fontSize="small" color="error" />,
+    onNavigate: (_n, actions) => actions.openAuditLog(),
+  },
 };
 
 // ── Public helpers ───────────────────────────────────────────────────

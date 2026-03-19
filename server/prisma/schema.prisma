@@ -124,6 +124,10 @@ model User {
   smsOtpExpiresAt    DateTime?
   webauthnEnabled    Boolean     @default(false)
   vaultAutoLockMinutes Int?
+  notifDndEnabled          Boolean  @default(false)
+  notifQuietHoursStart     String?
+  notifQuietHoursEnd       String?
+  notifQuietHoursTimezone  String?
   domainName               String?
   domainUsername           String?
   encryptedDomainPassword  String?
@@ -244,6 +248,7 @@ model Connection {
   sshTerminalConfig Json?
   rdpSettings       Json?
   vncSettings       Json?
+  dbSettings        Json?
   dlpPolicy         Json?
   defaultCredentialMode String?
   userId            String
@@ -275,12 +280,14 @@ enum ConnectionType {
   RDP
   SSH
   VNC
+  DATABASE
 }
 
 enum GatewayType {
   GUACD
   SSH_BASTION
   MANAGED_SSH
+  DB_PROXY
 }
 
 enum GatewayHealthStatus {
@@ -294,6 +301,7 @@ enum SessionProtocol {
   RDP
   VNC
   SSH_PROXY
+  DATABASE
 }
 
 enum SessionStatus {
@@ -651,6 +659,7 @@ enum AuditAction {
   SSH_PROXY_SESSION_END
   SSH_PROXY_AUTH_FAILURE
   SSH_PROXY_TOKEN_ISSUED
+  ANOMALOUS_LATERAL_MOVEMENT
 }
 
 model AuditLog {
@@ -690,6 +699,7 @@ enum NotificationType {
   TENANT_INVITATION
   RECORDING_READY
   IMPOSSIBLE_TRAVEL_DETECTED
+  LATERAL_MOVEMENT_ALERT
 }
 
 model Notification {
@@ -753,6 +763,7 @@ model VaultSecret {
   metadata       Json?
   tags           String[]    @default([])
   isFavorite     Boolean     @default(false)
+  pwnedCount     Int         @default(0)
   expiresAt      DateTime?
   currentVersion Int         @default(1)
   createdAt      DateTime    @default(now())

@@ -1,18 +1,22 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   Card, CardContent, Typography, Box, Switch, FormControlLabel,
   CircularProgress, Alert, Table, TableBody, TableCell, TableHead,
-  TableRow, Tooltip,
+  TableRow, Tooltip, TextField, Autocomplete, Divider,
 } from '@mui/material';
 import {
   Notifications as NotificationsIcon,
   Email as EmailIcon,
+  DoNotDisturb as DoNotDisturbIcon,
 } from '@mui/icons-material';
 import {
   getPreferences,
   updatePreference,
+  getNotificationSchedule,
+  updateNotificationSchedule,
   type NotificationType,
   type NotificationPreference,
+  type NotificationSchedule,
 } from '../../api/notifications.api';
 import { extractApiError } from '../../utils/apiError';
 
@@ -32,7 +36,7 @@ const CATEGORIES: NotificationCategory[] = [
   },
   {
     label: 'Security',
-    types: ['IMPOSSIBLE_TRAVEL_DETECTED'],
+    types: ['IMPOSSIBLE_TRAVEL_DETECTED', 'LATERAL_MOVEMENT_ALERT'],
   },
   {
     label: 'Organization',
@@ -53,9 +57,30 @@ const TYPE_LABELS: Record<NotificationType, string> = {
   SECRET_EXPIRING: 'Secret Expiring Soon',
   SECRET_EXPIRED: 'Secret Expired',
   IMPOSSIBLE_TRAVEL_DETECTED: 'Impossible Travel Detected',
+  LATERAL_MOVEMENT_ALERT: 'Lateral Movement Anomaly',
   TENANT_INVITATION: 'Organization Invitation',
   RECORDING_READY: 'Session Recording Ready',
 };
+
+/** Build a sorted list of common IANA timezone names via Intl API. */
+function getTimezoneOptions(): string[] {
+  try {
+    // Intl.supportedValuesOf is available in modern browsers
+    return (Intl as unknown as { supportedValuesOf(key: string): string[] })
+      .supportedValuesOf('timeZone');
+  } catch {
+    // Fallback: a curated short list
+    return [
+      'UTC',
+      'America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
+      'America/Sao_Paulo', 'Europe/London', 'Europe/Paris', 'Europe/Berlin',
+      'Europe/Rome', 'Europe/Moscow', 'Asia/Dubai', 'Asia/Kolkata',
+      'Asia/Shanghai', 'Asia/Tokyo', 'Australia/Sydney', 'Pacific/Auckland',
+    ];
+  }
+}
+
+const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 export default function NotificationPreferencesSection() {
   const [prefs, setPrefs] = useState<Map<NotificationType, NotificationPreference>>(new Map());
@@ -63,11 +88,26 @@ export default function NotificationPreferencesSection() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState<Set<NotificationType>>(new Set());
 
+  // Quiet Hours / DND state
+  const [schedule, setSchedule] = useState<NotificationSchedule>({
+    dndEnabled: false,
+    quietHoursStart: null,
+    quietHoursEnd: null,
+    quietHoursTimezone: null,
+  });
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+
+  const timezoneOptions = useMemo(() => getTimezoneOptions(), []);
+
   useEffect(() => {
-    getPreferences()
-      .then((list) => {
+    Promise.all([
+      getPreferences(),
+      getNotificationSchedule(),
+    ])
+      .then(([list, sched]) => {
         const map = new Map(list.map((p) => [p.type, p]));
         setPrefs(map);
+        setSchedule(sched);
       })
       .catch((err) => setError(extractApiError(err, 'Failed to load preferences')))
       .finally(() => setLoading(false));
@@ -111,6 +151,27 @@ export default function NotificationPreferencesSection() {
     []
   );
 
+  const handleScheduleChange = useCallback(
+    async (update: Partial<NotificationSchedule>) => {
+      // Capture previous state for rollback on error
+      const previous = { ...schedule };
+      // Optimistic update
+      setSchedule((prev) => ({ ...prev, ...update }));
+      setScheduleSaving(true);
+      try {
+        const updated = await updateNotificationSchedule(update);
+        setSchedule(updated);
+      } catch (err) {
+        // Revert to previous state on failure
+        setSchedule(previous);
+        setError(extractApiError(err, 'Failed to update notification schedule'));
+      } finally {
+        setScheduleSaving(false);
+      }
+    },
+    [schedule]
+  );
+
   if (loading) {
     return (
       <Card variant="outlined">
@@ -122,6 +183,7 @@ export default function NotificationPreferencesSection() {
   }
 
   return (
+    <>
     <Card variant="outlined">
       <CardContent>
         <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
@@ -208,5 +270,94 @@ export default function NotificationPreferencesSection() {
         ))}
       </CardContent>
     </Card>
+
+    {/* Quiet Hours / Do Not Disturb */}
+    <Card variant="outlined" sx={{ mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+          <DoNotDisturbIcon fontSize="small" color="action" />
+          <Typography variant="subtitle1" fontWeight="bold">
+            Quiet Hours
+          </Typography>
+        </Box>
+        <Typography variant="body2" color="text.secondary" gutterBottom>
+          Suppress non-critical real-time notifications during specific hours.
+          Notifications are still saved and can be read later.
+          Security-critical alerts always bypass quiet hours.
+        </Typography>
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* DND toggle */}
+        <FormControlLabel
+          control={
+            <Switch
+              checked={schedule.dndEnabled}
+              disabled={scheduleSaving}
+              onChange={(e) => handleScheduleChange({ dndEnabled: e.target.checked })}
+            />
+          }
+          label={
+            <Box>
+              <Typography variant="body2" fontWeight="medium">Do Not Disturb</Typography>
+              <Typography variant="caption" color="text.secondary">
+                Immediately suppress all non-critical real-time notifications
+              </Typography>
+            </Box>
+          }
+          sx={{ mb: 2, alignItems: 'flex-start', ml: 0 }}
+        />
+
+        <Divider sx={{ my: 2 }} />
+
+        {/* Quiet hours time range */}
+        <Typography variant="body2" fontWeight="medium" sx={{ mb: 1.5 }}>
+          Scheduled Quiet Hours
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center', mb: 2 }}>
+          <TextField
+            label="Start time"
+            type="time"
+            size="small"
+            value={schedule.quietHoursStart ?? ''}
+            disabled={scheduleSaving}
+            onChange={(e) =>
+              handleScheduleChange({ quietHoursStart: e.target.value || null })
+            }
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ width: 150 }}
+          />
+          <Typography variant="body2" color="text.secondary">to</Typography>
+          <TextField
+            label="End time"
+            type="time"
+            size="small"
+            value={schedule.quietHoursEnd ?? ''}
+            disabled={scheduleSaving}
+            onChange={(e) =>
+              handleScheduleChange({ quietHoursEnd: e.target.value || null })
+            }
+            slotProps={{ inputLabel: { shrink: true } }}
+            sx={{ width: 150 }}
+          />
+        </Box>
+
+        {/* Timezone selector */}
+        <Autocomplete
+          size="small"
+          options={timezoneOptions}
+          value={schedule.quietHoursTimezone ?? browserTimezone}
+          disabled={scheduleSaving}
+          onChange={(_e, value) =>
+            handleScheduleChange({ quietHoursTimezone: value ?? browserTimezone })
+          }
+          renderInput={(params) => (
+            <TextField {...params} label="Timezone" />
+          )}
+          sx={{ maxWidth: 350 }}
+        />
+      </CardContent>
+    </Card>
+    </>
   );
 }

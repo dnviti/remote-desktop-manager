@@ -17,9 +17,16 @@ export interface ResolvedDlpPolicy {
   disableUpload: boolean;
 }
 
+export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb';
+
+export interface DbSettings {
+  protocol: DbProtocol;
+  databaseName?: string;
+}
+
 export interface ConnectionInput {
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
   host: string;
   port: number;
   username?: string;
@@ -36,6 +43,7 @@ export interface ConnectionInput {
   sshTerminalConfig?: Partial<SshTerminalConfig>;
   rdpSettings?: Partial<RdpSettings>;
   vncSettings?: Partial<VncSettings>;
+  dbSettings?: DbSettings;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
 }
@@ -43,7 +51,7 @@ export interface ConnectionInput {
 export interface ConnectionData {
   id: string;
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
   host: string;
   port: number;
   folderId: string | null;
@@ -63,6 +71,7 @@ export interface ConnectionData {
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
   rdpSettings?: Partial<RdpSettings> | null;
   vncSettings?: Partial<VncSettings> | null;
+  dbSettings?: DbSettings | null;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
   isOwner: boolean;
@@ -90,7 +99,7 @@ export async function createConnection(payload: ConnectionInput): Promise<Connec
 
 export interface ConnectionUpdate {
   name?: string;
-  type?: 'RDP' | 'SSH' | 'VNC';
+  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
   host?: string;
   port?: number;
   username?: string;
@@ -106,6 +115,7 @@ export interface ConnectionUpdate {
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
   rdpSettings?: Partial<RdpSettings> | null;
   vncSettings?: Partial<VncSettings> | null;
+  dbSettings?: DbSettings | null;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
 }

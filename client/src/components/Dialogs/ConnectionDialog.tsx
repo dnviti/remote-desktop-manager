@@ -6,7 +6,7 @@ import {
   ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Keyboard, VpnKey, Cloud as CloudIcon } from '@mui/icons-material';
-import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy } from '../../api/connections.api';
+import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy, DbSettings, DbProtocol } from '../../api/connections.api';
 import { useConnectionsStore } from '../../store/connectionsStore';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
 import { mergeTerminalConfig } from '../../constants/terminalThemes';
@@ -37,7 +37,7 @@ interface ConnectionDialogProps {
 
 export default function ConnectionDialog({ open, onClose, connection, folderId, teamId }: ConnectionDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC'>('SSH');
+  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC' | 'DATABASE'>('SSH');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('22');
   const [username, setUsername] = useState('');
@@ -48,6 +48,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const [sshTerminalConfig, setSshTerminalConfig] = useState<Partial<SshTerminalConfig>>({});
   const [rdpSettings, setRdpSettings] = useState<Partial<RdpSettings>>({});
   const [vncSettings, setVncSettings] = useState<Partial<VncSettings>>({});
+  const [dbSettings, setDbSettings] = useState<Partial<DbSettings>>({});
   const [gatewayId, setGatewayId] = useState('');
   const [credentialMode, setCredentialMode] = useState<'manual' | 'keychain' | 'external-vault'>('manual');
   const [selectedSecretId, setSelectedSecretId] = useState<string | null>(null);
@@ -94,6 +95,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setVncSettings(
         (connection.vncSettings as Partial<VncSettings>) ?? {}
       );
+      setDbSettings(
+        (connection.dbSettings as Partial<DbSettings>) ?? {}
+      );
       if (connection.externalVaultProviderId) {
         setCredentialMode('external-vault');
         setSelectedVaultProviderId(connection.externalVaultProviderId);
@@ -126,6 +130,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setSshTerminalConfig({});
       setRdpSettings({});
       setVncSettings({});
+      setDbSettings({});
       setCredentialMode('manual');
       setSelectedSecretId(null);
       setSelectedVaultProviderId(null);
@@ -135,17 +140,23 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     }
   }, [open, connection, fetchGateways, hasTenant]);
 
-  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC') => {
+  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE') => {
     setType(newType);
-    if (newType === 'SSH' && (port === '3389' || port === '5900')) setPort('22');
-    if (newType === 'RDP' && (port === '22' || port === '5900')) setPort('3389');
-    if (newType === 'VNC' && (port === '22' || port === '3389')) setPort('5900');
+    const knownPorts = ['22', '3389', '5900', '5432', '3306', '27017'];
+    if (newType === 'SSH' && knownPorts.includes(port)) setPort('22');
+    if (newType === 'RDP' && knownPorts.includes(port)) setPort('3389');
+    if (newType === 'VNC' && knownPorts.includes(port)) setPort('5900');
+    if (newType === 'DATABASE' && knownPorts.includes(port)) setPort('5432');
     setGatewayId('');
+    if (newType === 'DATABASE') {
+      setDbSettings((prev) => ({ protocol: 'postgresql', ...prev }));
+    }
   };
 
   const availableGateways = gateways.filter((g) => {
     if (type === 'SSH') return g.type === 'SSH_BASTION' || g.type === 'MANAGED_SSH';
     if (type === 'RDP' || type === 'VNC') return g.type === 'GUACD';
+    if (type === 'DATABASE') return g.type === 'DB_PROXY';
     return false;
   });
 
@@ -189,6 +200,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'VNC' && {
             vncSettings: Object.keys(vncSettings).length > 0 ? vncSettings : null,
           }),
+          ...(type === 'DATABASE' && {
+            dbSettings: dbSettings.protocol ? dbSettings as DbSettings : null,
+          }),
           defaultCredentialMode: (defaultConnectMode as 'saved' | 'domain' | 'prompt') || null,
           ...((type === 'RDP' || type === 'VNC') && {
             dlpPolicy: Object.values(dlpPolicy).some(Boolean) ? dlpPolicy : null,
@@ -225,6 +239,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'VNC' && Object.keys(vncSettings).length > 0 && {
             vncSettings,
           }),
+          ...(type === 'DATABASE' && dbSettings.protocol && {
+            dbSettings: dbSettings as DbSettings,
+          }),
           ...(defaultConnectMode ? { defaultCredentialMode: defaultConnectMode as 'saved' | 'domain' | 'prompt' } : {}),
           ...((type === 'RDP' || type === 'VNC') && Object.values(dlpPolicy).some(Boolean) && {
             dlpPolicy,
@@ -251,6 +268,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     setSshTerminalConfig({});
     setRdpSettings({});
     setVncSettings({});
+    setDbSettings({});
     setCredentialMode('manual');
     setSelectedSecretId(null);
     setSelectedVaultProviderId(null);
@@ -279,12 +297,13 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
             <Select
               value={type}
               label="Type"
-              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC')}
+              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC' | 'DATABASE')}
               disabled={isEditMode}
             >
               <MenuItem value="SSH">SSH</MenuItem>
               <MenuItem value="RDP">RDP</MenuItem>
               <MenuItem value="VNC">VNC</MenuItem>
+              <MenuItem value="DATABASE">Database</MenuItem>
             </Select>
           </FormControl>
           {hasTenant && availableGateways.length > 0 && (
@@ -489,6 +508,41 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                   resolvedDefaults={mergeVncConfig()}
                   enforcedFields={tenantEnforced?.vnc}
                 />
+              </AccordionDetails>
+            </Accordion>
+          )}
+          {type === 'DATABASE' && (
+            <Accordion variant="outlined" disableGutters defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle2">Database Settings</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Database Protocol</InputLabel>
+                    <Select
+                      value={dbSettings.protocol ?? 'postgresql'}
+                      label="Database Protocol"
+                      onChange={(e) => {
+                        const proto = e.target.value as DbProtocol;
+                        setDbSettings((prev) => ({ ...prev, protocol: proto }));
+                        const protoPorts: Record<string, string> = { postgresql: '5432', mysql: '3306', mongodb: '27017' };
+                        setPort(protoPorts[proto] ?? '5432');
+                      }}
+                    >
+                      <MenuItem value="postgresql">PostgreSQL</MenuItem>
+                      <MenuItem value="mysql">MySQL / MariaDB</MenuItem>
+                      <MenuItem value="mongodb">MongoDB</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Database Name (optional)"
+                    value={dbSettings.databaseName ?? ''}
+                    onChange={(e) => setDbSettings((prev) => ({ ...prev, databaseName: e.target.value || undefined }))}
+                    fullWidth
+                    placeholder="e.g. mydb"
+                  />
+                </Box>
               </AccordionDetails>
             </Accordion>
           )}
