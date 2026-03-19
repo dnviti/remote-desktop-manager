@@ -291,6 +291,7 @@ enum ConnectionType {
   SSH
   VNC
   DATABASE
+  DB_TUNNEL
 }
 
 enum GatewayType {
@@ -312,6 +313,7 @@ enum SessionProtocol {
   VNC
   SSH_PROXY
   DATABASE
+  DB_TUNNEL
 }
 
 enum SessionStatus {
@@ -674,6 +676,9 @@ enum AuditAction {
   ANOMALOUS_LATERAL_MOVEMENT
   PASSWORD_ROTATION_SUCCESS
   PASSWORD_ROTATION_FAILED
+  DB_TUNNEL_OPEN
+  DB_TUNNEL_CLOSE
+  DB_TUNNEL_ERROR
 }
 
 model AuditLog {

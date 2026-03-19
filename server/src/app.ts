@@ -38,6 +38,7 @@ import rdGatewayRoutes from './routes/rdGateway.routes';
 import cliRoutes from './routes/cli.routes';
 import dbProxyRoutes from './routes/dbProxy.routes';
 import passwordRotationRoutes from './routes/passwordRotation.routes';
+import dbTunnelRoutes from './routes/dbTunnel.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
 import { requestLogger } from './middleware/requestLogger.middleware';

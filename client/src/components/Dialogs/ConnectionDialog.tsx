@@ -37,7 +37,7 @@ interface ConnectionDialogProps {
 
 export default function ConnectionDialog({ open, onClose, connection, folderId, teamId }: ConnectionDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC' | 'DATABASE'>('SSH');
+  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL'>('SSH');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('22');
   const [username, setUsername] = useState('');
@@ -149,13 +149,14 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     }
   }, [open, connection, fetchGateways, hasTenant]);
 
-  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE') => {
+  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL') => {
     setType(newType);
     const knownPorts = ['22', '3389', '5900', '5432', '3306', '27017', '1521', '1433', '50000'];
     if (newType === 'SSH' && knownPorts.includes(port)) setPort('22');
     if (newType === 'RDP' && knownPorts.includes(port)) setPort('3389');
     if (newType === 'VNC' && knownPorts.includes(port)) setPort('5900');
     if (newType === 'DATABASE' && knownPorts.includes(port)) setPort('5432');
+    if (newType === 'DB_TUNNEL' && knownPorts.includes(port)) setPort('22');
     setGatewayId('');
     if (newType === 'DATABASE') {
       setDbSettings((prev) => ({ protocol: 'postgresql', ...prev }));
@@ -323,13 +324,14 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
             <Select
               value={type}
               label="Type"
-              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC' | 'DATABASE')}
+              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL')}
               disabled={isEditMode}
             >
               <MenuItem value="SSH">SSH</MenuItem>
               <MenuItem value="RDP">RDP</MenuItem>
               <MenuItem value="VNC">VNC</MenuItem>
               <MenuItem value="DATABASE">Database</MenuItem>
+              <MenuItem value="DB_TUNNEL">Database (SSH Tunnel)</MenuItem>
             </Select>
           </FormControl>
           {hasTenant && availableGateways.length > 0 && (

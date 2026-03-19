@@ -11,9 +11,9 @@ const dbSettingsSchema = z.object({
   db2DatabaseAlias: z.string().max(255).optional(),
 }).optional();
 
-export const createConnectionSchema = z.object({
+const createConnectionBaseSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE', 'DB_TUNNEL']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   username: z.string().optional(),
@@ -51,11 +51,11 @@ export const createConnectionSchema = createConnectionBaseSchema.refine(
   { message: 'targetDbHost and targetDbPort are required for DB_TUNNEL connections' }
 );
 
-export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;
+export type CreateConnectionInput = z.infer<typeof createConnectionBaseSchema>;
 
 const updateConnectionBaseSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']).optional(),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE', 'DB_TUNNEL']).optional(),
   host: z.string().min(1).optional(),
   port: z.number().int().min(1).max(65535).optional(),
   username: z.string().optional(),
@@ -86,4 +86,4 @@ export const updateConnectionSchema = updateConnectionBaseSchema.refine(
   { message: 'externalVaultPath is required when externalVaultProviderId is set', path: ['externalVaultPath'] }
 );
 
-export type UpdateConnectionInput = z.infer<typeof updateConnectionSchema>;
+export type UpdateConnectionInput = z.infer<typeof updateConnectionBaseSchema>;

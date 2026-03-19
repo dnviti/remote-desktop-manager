@@ -36,7 +36,7 @@ export interface DbSettings {
 
 export interface ConnectionInput {
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host: string;
   port: number;
   username?: string;
@@ -65,7 +65,7 @@ export interface ConnectionInput {
 export interface ConnectionData {
   id: string;
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host: string;
   port: number;
   folderId: string | null;
@@ -118,7 +118,7 @@ export async function createConnection(payload: ConnectionInput): Promise<Connec
 
 export interface ConnectionUpdate {
   name?: string;
-  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE';
+  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host?: string;
   port?: number;
   username?: string;
