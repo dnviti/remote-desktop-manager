@@ -262,6 +262,12 @@ model Connection {
   externalVaultProviderId   String?
   externalVaultPath         String?
 
+  // DB_TUNNEL fields — bastion connection, target database host/port, and DB type
+  bastionConnectionId       String?
+  targetDbHost              String?
+  targetDbPort              Int?
+  dbType                    String?
+
   folder           Folder?                @relation(fields: [folderId], references: [id], onDelete: SetNull)
   team             Team?                  @relation(fields: [teamId], references: [id])
   user             User                   @relation(fields: [userId], references: [id])
@@ -283,6 +289,7 @@ enum ConnectionType {
   SSH
   VNC
   DATABASE
+  DB_TUNNEL
 }
 
 enum GatewayType {
@@ -304,6 +311,7 @@ enum SessionProtocol {
   VNC
   SSH_PROXY
   DATABASE
+  DB_TUNNEL
 }
 
 enum SessionStatus {
@@ -666,6 +674,9 @@ enum AuditAction {
   ANOMALOUS_LATERAL_MOVEMENT
   PASSWORD_ROTATION_SUCCESS
   PASSWORD_ROTATION_FAILED
+  DB_TUNNEL_OPEN
+  DB_TUNNEL_CLOSE
+  DB_TUNNEL_ERROR
   DB_QUERY_EXECUTED
   DB_QUERY_BLOCKED
   DB_FIREWALL_RULE_CREATE

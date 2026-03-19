@@ -11,11 +11,24 @@ export interface CredentialOverride {
   credentialMode?: 'saved' | 'domain' | 'manual';
 }
 
+export interface DbTunnelState {
+  tunnelId: string;
+  sessionId: string;
+  localHost: string;
+  localPort: number;
+  connectionString: string | null;
+  targetDbHost: string;
+  targetDbPort: number;
+  dbType: string | null;
+  healthy: boolean;
+}
+
 export interface Tab {
   id: string;
   connection: ConnectionData;
   active: boolean;
   credentials?: CredentialOverride;
+  dbTunnel?: DbTunnelState;
 }
 
 interface TabsState {
@@ -27,6 +40,8 @@ interface TabsState {
   setActiveTab: (tabId: string) => void;
   restoreTabs: (connections: ConnectionData[]) => Promise<void>;
   clearAll: () => Promise<void>;
+  setDbTunnel: (tabId: string, tunnel: DbTunnelState) => void;
+  clearDbTunnel: (tabId: string) => void;
 }
 
 // Module-level debounce handle (not part of Zustand state)
@@ -155,6 +170,22 @@ export const useTabsStore = create<TabsState>((set, get) => ({
     } catch {
       // Silently ignore restore failures
     }
+  },
+
+  setDbTunnel: (tabId, tunnel) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, dbTunnel: tunnel } : t,
+      ),
+    }));
+  },
+
+  clearDbTunnel: (tabId) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) =>
+        t.id === tabId ? { ...t, dbTunnel: undefined } : t,
+      ),
+    }));
   },
 
   clearAll: async () => {

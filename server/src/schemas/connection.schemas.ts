@@ -11,9 +11,9 @@ const dbSettingsSchema = z.object({
   db2DatabaseAlias: z.string().max(255).optional(),
 }).optional();
 
-export const createConnectionSchema = z.object({
+const createConnectionBaseSchema = z.object({
   name: z.string().min(1),
-  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE', 'DB_TUNNEL']),
   host: z.string().min(1),
   port: z.number().int().min(1).max(65535),
   username: z.string().optional(),
@@ -33,19 +33,29 @@ export const createConnectionSchema = z.object({
   dbSettings: dbSettingsSchema,
   dlpPolicy: dlpPolicySchema.nullable().optional(),
   defaultCredentialMode: z.enum(['saved', 'domain', 'prompt']).nullable().optional(),
-}).refine(
+  // DB_TUNNEL-specific fields
+  targetDbHost: z.string().min(1).optional(),
+  targetDbPort: z.number().int().min(1).max(65535).optional(),
+  dbType: z.string().min(1).optional(),
+  bastionConnectionId: z.string().uuid().nullable().optional(),
+});
+
+export const createConnectionSchema = createConnectionBaseSchema.refine(
   (data) => data.credentialSecretId || data.externalVaultProviderId || (data.username !== undefined && data.password !== undefined),
   { message: 'Either credentialSecretId, externalVaultProviderId, or both username and password must be provided' }
 ).refine(
   (data) => !data.externalVaultProviderId || (data.externalVaultPath && data.externalVaultPath.trim().length > 0),
   { message: 'externalVaultPath is required when externalVaultProviderId is set', path: ['externalVaultPath'] }
+).refine(
+  (data) => data.type !== 'DB_TUNNEL' || (data.targetDbHost && data.targetDbPort),
+  { message: 'targetDbHost and targetDbPort are required for DB_TUNNEL connections' }
 );
 
-export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;
+export type CreateConnectionInput = z.infer<typeof createConnectionBaseSchema>;
 
-export const updateConnectionSchema = z.object({
+const updateConnectionBaseSchema = z.object({
   name: z.string().min(1).optional(),
-  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE']).optional(),
+  type: z.enum(['RDP', 'SSH', 'VNC', 'DATABASE', 'DB_TUNNEL']).optional(),
   host: z.string().min(1).optional(),
   port: z.number().int().min(1).max(65535).optional(),
   username: z.string().optional(),
@@ -64,9 +74,16 @@ export const updateConnectionSchema = z.object({
   dbSettings: dbSettingsSchema.nullable().optional(),
   dlpPolicy: dlpPolicySchema.nullable().optional(),
   defaultCredentialMode: z.enum(['saved', 'domain', 'prompt']).nullable().optional(),
-}).refine(
+  // DB_TUNNEL-specific fields
+  targetDbHost: z.string().min(1).nullable().optional(),
+  targetDbPort: z.number().int().min(1).max(65535).nullable().optional(),
+  dbType: z.string().min(1).nullable().optional(),
+  bastionConnectionId: z.string().uuid().nullable().optional(),
+});
+
+export const updateConnectionSchema = updateConnectionBaseSchema.refine(
   (data) => !data.externalVaultProviderId || (data.externalVaultPath && data.externalVaultPath.trim().length > 0),
   { message: 'externalVaultPath is required when externalVaultProviderId is set', path: ['externalVaultPath'] }
 );
 
-export type UpdateConnectionInput = z.infer<typeof updateConnectionSchema>;
+export type UpdateConnectionInput = z.infer<typeof updateConnectionBaseSchema>;
