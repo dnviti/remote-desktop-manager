@@ -353,7 +353,9 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
     const mountGen = connectionGenRef.current;
 
     return () => {
-      ++connectionGenRef.current;
+      // Copy ref to local variable — React refs may change by the time cleanup runs.
+      const genRef = connectionGenRef;
+      ++genRef.current;
       cancelReconnect();
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);

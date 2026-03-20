@@ -1,20 +1,6 @@
 name: Security Server
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '!server/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '!server/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
   workflow_call:
 
@@ -35,7 +21,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
@@ -54,7 +40,7 @@ jobs:
   trivy-filesystem:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@0.35.0

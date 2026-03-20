@@ -411,8 +411,10 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
     const mountGen = connectionGenRef.current;
 
     return () => {
-      // Bump generation to invalidate any in-flight connectSession from this mount
-      ++connectionGenRef.current;
+      // Bump generation to invalidate any in-flight connectSession from this mount.
+      // Copy ref to local variable — React refs may change by the time cleanup runs.
+      const genRef = connectionGenRef;
+      ++genRef.current;
       cancelReconnect();
       if (heartbeatRef.current) {
         clearInterval(heartbeatRef.current);

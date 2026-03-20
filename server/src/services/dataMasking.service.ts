@@ -79,6 +79,7 @@ export function findMaskedColumns(
 
       // Check pattern match
       try {
+        // eslint-disable-next-line security/detect-non-literal-regexp -- Dynamic pattern from admin-configured masking policy stored in DB
         const regex = new RegExp(policy.columnPattern, 'i');
         if (regex.test(col)) {
           masked.push({
@@ -166,6 +167,7 @@ export async function getPolicy(tenantId: string, policyId: string): Promise<Mas
 export async function createPolicy(input: MaskingPolicyInput): Promise<MaskingPolicy> {
   // Validate regex pattern
   try {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
     new RegExp(input.columnPattern, 'i');
   } catch {
     throw new Error(`Invalid regex pattern: ${input.columnPattern}`);
@@ -193,6 +195,7 @@ export async function updatePolicy(
   // Validate regex pattern if provided
   if (updates.columnPattern) {
     try {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
       new RegExp(updates.columnPattern, 'i');
     } catch {
       throw new Error(`Invalid regex pattern: ${updates.columnPattern}`);

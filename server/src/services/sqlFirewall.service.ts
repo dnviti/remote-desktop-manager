@@ -83,6 +83,7 @@ export async function evaluateQuery(
     // Check built-in patterns
     for (const builtin of BUILTIN_DENY_PATTERNS) {
       try {
+        // eslint-disable-next-line security/detect-non-literal-regexp -- Built-in firewall patterns are compile-time constants defined in this module
         const regex = new RegExp(builtin.pattern, 'i');
         if (regex.test(queryText)) {
           const syntheticRule: FirewallRule = {
@@ -130,6 +131,7 @@ function matchesRule(
   }
 
   try {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- Dynamic pattern from admin-configured firewall rule stored in DB
     const regex = new RegExp(rule.pattern, 'i');
     return regex.test(queryText);
   } catch {
@@ -156,6 +158,7 @@ export async function getRule(tenantId: string, ruleId: string): Promise<Firewal
 export async function createRule(input: FirewallRuleInput): Promise<FirewallRule> {
   // Validate regex pattern
   try {
+    // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
     new RegExp(input.pattern, 'i');
   } catch {
     throw new Error(`Invalid regex pattern: ${input.pattern}`);
@@ -183,6 +186,7 @@ export async function updateRule(
   // Validate regex pattern if provided
   if (updates.pattern) {
     try {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
       new RegExp(updates.pattern, 'i');
     } catch {
       throw new Error(`Invalid regex pattern: ${updates.pattern}`);
