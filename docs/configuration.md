@@ -2,7 +2,7 @@
 title: Configuration
 description: Environment variables, config files, feature flags, and service configuration
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - .env.example
   - server/src/config.ts
@@ -80,6 +80,25 @@ Never create a separate `server/.env` — all env vars are loaded from the root.
 | `GATEWAY_API_TOKEN` | — | Shared secret for gateway API |
 | `KEY_ROTATION_CRON` | `0 2 * * *` | SSH key rotation schedule (daily 02:00 UTC) |
 | `KEY_ROTATION_ADVANCE_DAYS` | `7` | Rotation trigger threshold |
+
+## Database Access
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_PROXY_ENABLED` | `false` | Enable database protocol gateway |
+| `DB_PROXY_HOST` | `localhost` | DB proxy container host |
+| `DB_PROXY_API_PORT` | `8080` | DB proxy management API port |
+
+## SSH Keystroke Inspection
+
+Keystroke policies are managed per-tenant via the `/api/keystroke-policies` endpoint. Policies define regex patterns matched against SSH input with two actions: `BLOCK_AND_TERMINATE` (prevents command execution and kills session) or `ALERT_ONLY` (logs and notifies but allows execution). Policy cache refreshes every 30 seconds.
+
+## Credential Checkout (PAM)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| Checkout request duration | 1-1440 min | Configurable per-request |
+| Expiry check interval | 5 min | Cron job for auto-expiry |
 
 ## Authentication Providers
 

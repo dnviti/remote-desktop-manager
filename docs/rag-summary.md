@@ -1,10 +1,10 @@
 # Arsenale
 
-> Auto-generated on 2026-03-15. High-level product overview for LLM RAG consumption.
+> Auto-generated on 2026-03-20. High-level product overview for LLM RAG consumption.
 
 ## What is Arsenale
 
-Arsenale is a modern, web-based remote access management platform designed to replace legacy tools like mRemoteNG, RoyalTS, and standalone Apache Guacamole deployments. It provides a unified interface for managing SSH, RDP, and VNC connections through a browser, eliminating the need for desktop clients or complex jump host configurations. Unlike traditional tools that store credentials locally or rely on unencrypted configuration files, Arsenale encrypts all credentials at rest using a zero-knowledge vault architecture where the server never has access to plaintext passwords.
+Arsenale is a modern, web-based remote access management platform designed to replace legacy tools like mRemoteNG, RoyalTS, and standalone Apache Guacamole deployments. It provides a unified interface for managing SSH, RDP, VNC, and database connections through a browser or native clients, eliminating the need for complex jump host configurations. Unlike traditional tools that store credentials locally or rely on unencrypted configuration files, Arsenale encrypts all credentials at rest using a zero-knowledge vault architecture where the server never has access to plaintext passwords.
 
 Arsenale combines the remote access capabilities of Guacamole with enterprise-grade features like multi-tenant organizations, team collaboration, encrypted credential vaults, granular audit logging, and managed container infrastructure. It is designed for teams that need centralized, secure remote access without sacrificing usability.
 
@@ -91,6 +91,50 @@ Data Loss Prevention (DLP) policies control clipboard and file operations in RDP
 The native browser right-click context menu is globally suppressed across the entire authenticated UI to prevent access to browser functions (Save As, Print, Inspect) that could bypass DLP controls. Existing custom context menus in the sidebar (connections, folders, vault secrets) are unaffected as they already call `preventDefault()` and `stopPropagation()`. SSH terminal sessions provide a custom right-click context menu (`SessionContextMenu`) with DLP-aware Copy and Paste actions, SFTP file browser toggle, fullscreen toggle, and session disconnect. Copy and Paste menu items are disabled when the corresponding DLP policy flags are active. RDP and VNC sessions retain their native right-click forwarding to the remote machine; session-specific actions for these protocols (clipboard, special keys, screenshot, disconnect) are available via the docked edge toolbar.
 
 Browser-level exfiltration vectors are blocked as an additional DLP hardening layer in both development and production builds. DevTools shortcuts (F12, Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C), View Source (Ctrl+U), Save Page (Ctrl+S), and Print (Ctrl+P) are all intercepted and suppressed. Ctrl+Shift+C is carved out when an SSH terminal is focused so the terminal's own DLP-aware copy handler processes it instead. Drag-and-drop from the page to external applications is also prevented. Text selection is disabled on UI chrome elements (AppBar, toolbar, tabs, sidebar, drawers) while remaining enabled in form inputs, text areas, and terminal/viewer content.
+
+## Database Access
+
+Arsenale supports database connections through two mechanisms: a web-based SQL client via the Database Protocol Gateway, and agentless SSH-tunneled connections.
+
+The Database Protocol Gateway (`gateways/db-proxy/`) is a Go-based managed container supporting Oracle (TNS), MSSQL (TDS), and IBM DB2 protocols. It runs as a managed gateway container with an API management port and protocol-specific ports for database connections. Users can execute SQL queries, browse database schemas, and view results through a browser-based database client integrated as a new connection tab type. All database queries are audited with full SQL logging.
+
+Agentless database access via SSH port-forwarding (`DB_TUNNEL` connection type) enables direct connections to databases through existing SSH bastion hosts or managed SSH gateways without requiring a dedicated database proxy. The server creates an SSH tunnel with local port forwarding, proxies database queries through the tunnel, and returns results to the client.
+
+Database query auditing records every SQL statement executed through both proxy and tunnel connections. A SQL firewall enables administrators to define rules that block or allow specific SQL patterns, preventing data exfiltration or destructive operations. Data masking policies allow administrators to define regex-based patterns for masking sensitive columns (e.g., credit card numbers, SSNs) in query results.
+
+## SSH Keystroke Inspection
+
+Real-time SSH keystroke inspection monitors terminal input against configurable regex-based policies per tenant. Each policy defines a set of regex patterns and an action: `BLOCK_AND_TERMINATE` (prevents the command from reaching the remote host and immediately terminates the session) or `ALERT_ONLY` (logs the violation and notifies administrators but allows execution). The inspection service maintains a per-session keystroke buffer that reconstructs the logical input line from raw terminal data, handling control characters like backspace, Ctrl-U (kill line), and Ctrl-C. When a newline is detected, the accumulated command is inspected against compiled policies before being forwarded to the SSH stream. Policies are cached per-tenant with a 30-second TTL and include ReDoS safety checks to reject patterns with nested quantifiers. Policy violations are recorded in the audit log and trigger real-time notifications to tenant administrators with retry-based delivery.
+
+## Credential Checkout (PAM)
+
+Temporary credential check-out/check-in implements a privileged access management (PAM) workflow for shared credentials. Users request temporary access to secrets or connections they don't own, specifying a duration (1-1440 minutes) and an optional reason. Resource owners and tenant/team administrators receive notifications and can approve or reject requests. Approved checkouts create time-limited access that automatically expires. Early check-in allows returning credentials before the expiry window. The system uses atomic database operations to prevent TOCTOU race conditions in approval/rejection workflows. A background scheduler runs every 5 minutes to process expired checkouts. All checkout lifecycle events are audited and generate real-time notifications.
+
+## Password Rotation
+
+Automatic password rotation enables credential rotation on target systems connected through Arsenale. When enabled on a vault secret, the system can rotate passwords automatically on a configurable schedule or be triggered manually. Rotation history is tracked with full audit logging.
+
+## Lateral Movement Detection
+
+Arsenale implements MITRE T1021 (Remote Services) anomaly detection to identify suspicious patterns of concurrent connections to multiple targets. When a user connects to more distinct targets than the configured threshold within a sliding time window, the system temporarily suspends the account and alerts tenant administrators via real-time notifications and audit logging.
+
+## Pwned Password Check
+
+Vault secrets of type LOGIN are checked against the HaveIBeenPwned breach database using k-Anonymity (only the first 5 SHA-1 hash characters are sent). The breach count is stored on the secret record and surfaced in the UI. Users are warned when stored credentials appear in known data breaches.
+
+## Native Client Access
+
+### SSH Proxy
+
+The SSH Protocol Proxy enables native SSH clients (PuTTY, OpenSSH, etc.) to connect through Arsenale. Users obtain a short-lived proxy token via the REST API, which the SSH proxy server validates to inject vault credentials and route the connection through the appropriate gateway. All sessions are audited identically to browser-based SSH sessions.
+
+### RD Gateway (MS-TSGU)
+
+The RD Gateway (`gateways/rdgw/`) implements the Microsoft Terminal Services Gateway (MS-TSGU) protocol, enabling native Windows RDP clients (mstsc.exe) to connect through Arsenale. The gateway handles TSGU protocol negotiation, retrieves credentials from the vault, and forwards the RDP connection to the target server. Administrators configure the gateway per-tenant with server addresses and ports. Users can download pre-configured .rdp files from the web UI.
+
+### Arsenale Connect CLI
+
+The Arsenale Connect CLI (`tools/arsenale-cli/`) is a Go-based command-line tool for native client orchestration. It authenticates using RFC 8628 Device Authorization: the CLI displays a verification URL and user code, the user authorizes in the web browser, and the CLI polls for a token. Once authenticated, the CLI can list connections, retrieve vault credentials, generate SSH proxy tokens, download .rdp files, and launch native SSH/RDP clients with credential injection.
 
 ## Connection Policy Enforcement
 
@@ -184,4 +228,4 @@ Configuration is handled through a single environment file with sensible default
 
 ## Technology
 
-Arsenale is built on a modern open-source stack: a Node.js and TypeScript server with a layered Express architecture backed by PostgreSQL through Prisma ORM, and a React client with Zustand state management and Material UI components. The monorepo includes four workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`. Remote desktop rendering uses the Guacamole protocol via guacamole-lite and guacamole-common-js. SSH terminals use XTerm.js with the ssh2 library. Real-time communication uses Socket.IO for terminal I/O, notifications, and monitoring updates. The zero-trust tunnel system uses raw `ws` WebSocket connections with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. The ABAC policy engine evaluates `AccessPolicy` Prisma records at session start time to enforce time-window, trusted-device, and MFA step-up constraints.
+Arsenale is built on a modern open-source stack: a Node.js and TypeScript server with a layered Express architecture backed by PostgreSQL through Prisma ORM, and a React client with Zustand state management and Material UI components. The monorepo includes four npm workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`, plus Go-based gateway components (`gateways/db-proxy/`, `gateways/rdgw/`) and a Go CLI tool (`tools/arsenale-cli/`). Remote desktop rendering uses the Guacamole protocol via guacamole-lite and guacamole-common-js. SSH terminals use XTerm.js with the ssh2 library. Real-time communication uses Socket.IO for terminal I/O, notifications, and monitoring updates. The zero-trust tunnel system uses raw `ws` WebSocket connections with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. The ABAC policy engine evaluates `AccessPolicy` Prisma records at session start time to enforce time-window, trusted-device, and MFA step-up constraints.

@@ -2,13 +2,14 @@
 title: Troubleshooting
 description: Common errors, debugging tips, and frequently asked questions
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - server/src/index.ts
   - server/src/middleware/error.middleware.ts
   - server/src/middleware/auth.middleware.ts
   - client/src/api/auth.api.ts
   - server/src/config.ts
+  - server/src/services/keystrokeInspection.service.ts
   - .env.example
 ---
 
@@ -271,6 +272,37 @@ For Podman, ensure the socket path is correct: `PODMAN_SOCKET_PATH=$XDG_RUNTIME_
 1. Large number of concurrent SSH sessions (each holds a stream buffer)
 2. Vault sessions accumulating (check `VAULT_TTL_MINUTES`)
 3. Node.js default heap size too low: `NODE_OPTIONS=--max-old-space-size=4096`
+
+## Keystroke Policy Issues
+
+### Policy Not Matching
+
+**Symptom:** SSH commands not being caught by keystroke policies.
+
+**Causes and fixes:**
+1. Policy not enabled: verify `enabled: true` in policy settings
+2. Regex pattern error: check pattern validity in the API response
+3. Cache delay: policies refresh every 30 seconds — wait and retry
+4. ReDoS safety: patterns with nested quantifiers are automatically rejected
+
+### Session Terminated Unexpectedly
+
+**Symptom:** SSH session closed with "input matched a security policy rule"
+
+**Cause:** A `BLOCK_AND_TERMINATE` keystroke policy matched the entered command.
+
+**Fix:** Review keystroke policies in Settings → Keystroke Policies. Check audit log for the matched pattern.
+
+## Database Connection Issues
+
+### Database Proxy Not Connecting
+
+**Symptom:** Database sessions fail to establish via the proxy gateway.
+
+**Causes and fixes:**
+1. DB proxy container not running: check gateway status in Settings → Gateways
+2. Wrong protocol ports: verify Oracle (1521), MSSQL (1433), DB2 (50000) configuration
+3. Network connectivity: ensure the proxy container can reach the target database server
 
 ## FAQ
 

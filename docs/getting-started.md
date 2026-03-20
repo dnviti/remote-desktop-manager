@@ -2,11 +2,13 @@
 title: Getting Started
 description: Installation, prerequisites, environment setup, and first run instructions
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - package.json
   - server/package.json
   - client/package.json
+  - gateways/tunnel-agent/package.json
+  - extra-clients/browser-extensions/package.json
   - .env.example
   - compose.dev.yml
   - Makefile

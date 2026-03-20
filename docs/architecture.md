@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -17,6 +17,16 @@ source-files:
   - server/src/socket/tunnel.handler.ts
   - server/src/socket/notification.handler.ts
   - server/src/socket/gatewayMonitor.handler.ts
+  - server/src/services/keystrokeInspection.service.ts
+  - server/src/services/checkout.service.ts
+  - server/src/services/lateralMovement.service.ts
+  - server/src/services/sshProxy.service.ts
+  - server/src/services/rdGateway.service.ts
+  - server/src/services/dbProxy.service.ts
+  - server/src/services/dbTunnel.service.ts
+  - server/src/services/passwordRotation.service.ts
+  - server/src/services/deviceAuth.service.ts
+  - tools/arsenale-cli/main.go
 ---
 
 # Architecture
@@ -51,6 +61,12 @@ flowchart TD
         SSHGw["SSH Gateway<br/>Port 2222"]
         GuacEnc["guacenc<br/>Recording Processor"]
         TunnelAgent["Tunnel Agent"]
+        DBProxy["DB Proxy Gateway<br/>Oracle/MSSQL/DB2"]
+        RDGateway["RD Gateway<br/>MS-TSGU Protocol"]
+    end
+
+    subgraph Tools["Tools"]
+        CLI["Arsenale Connect CLI<br/>Native Client Orchestration"]
     end
 
     subgraph External["External Integrations"]
@@ -76,6 +92,9 @@ flowchart TD
     API --> Email
     API --> SMS
     GuacEnc -->|Convert Recordings| GuacD
+    API --> DBProxy
+    API --> RDGateway
+    CLI -->|Device Auth + REST| API
 ```
 
 ## Monorepo Structure
@@ -134,7 +153,7 @@ Middleware stack (in order):
 
 ### Route Mounting
 
-31 route files mounted under `/api`:
+40 route files mounted under `/api`:
 
 | Path | Purpose |
 |------|---------|
@@ -162,6 +181,15 @@ Middleware stack (in order):
 | `/api/health` | Readiness/liveness probes |
 | `/api/geoip` | IP geolocation lookup |
 | `/api/tabs` | Persisted open tabs |
+| `/api/checkouts` | Credential checkout/check-in (PAM) |
+| `/api/sessions/ssh-proxy` | SSH proxy token issuance for native clients |
+| `/api/rdgw` | RD Gateway (MS-TSGU) configuration and .rdp file generation |
+| `/api/cli` | CLI device authorization (RFC 8628) |
+| `/api/sessions/database` | Database proxy sessions and query execution |
+| `/api/sessions/db-tunnel` | SSH-tunneled database connections |
+| `/api/db-audit` | Database query audit logs, SQL firewall rules, masking policies |
+| `/api/secrets` (rotation) | Password rotation enable/disable/trigger/status |
+| `/api/keystroke-policies` | SSH keystroke inspection policy CRUD |
 
 ### Middleware
 
@@ -182,7 +210,7 @@ Middleware stack (in order):
 | Namespace | Handler | Purpose |
 |-----------|---------|---------|
 | `/ssh` | `ssh.handler.ts` | SSH terminal sessions via ssh2, SFTP file browser, session recording (asciicast), DLP enforcement |
-| `/notifications` | `notification.handler.ts` | Real-time events (share, secret, recording, impossible travel) |
+| `/notifications` | `notification.handler.ts` | Real-time events (share, secret, recording, impossible travel, checkout approval, lateral movement, keystroke violations) |
 | `/gateways` | `gatewayMonitor.handler.ts` | Gateway health, instance state, scaling updates |
 
 ### WebSocket Tunnel
@@ -206,10 +234,12 @@ Middleware stack (in order):
 | Closed Session Cleanup | Daily | Clean up closed session records |
 | Expiring Secrets Check | 6 hours | Notify about expiring secrets |
 | Membership Expiry Check | Periodic | Check and enforce membership expiry |
+| Checkout Expiry | 5 minutes | Auto-expire approved checkouts past TTL |
+| Password Rotation | Cron-based | Rotate credentials on target systems |
 
 ## Database Schema
 
-32 Prisma models across 6 domains:
+40+ Prisma models across 6 domains:
 
 ```mermaid
 erDiagram
@@ -262,12 +292,14 @@ erDiagram
 |------|--------|
 | TenantRole | OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST |
 | TeamRole | TEAM_ADMIN, TEAM_EDITOR, TEAM_VIEWER |
-| ConnectionType | RDP, SSH, VNC |
+| ConnectionType | RDP, SSH, VNC, DATABASE, DB_TUNNEL |
 | SecretType | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
 | SecretScope | PERSONAL, TEAM, TENANT |
-| GatewayType | GUACD, SSH_BASTION, MANAGED_SSH |
+| GatewayType | GUACD, SSH_BASTION, MANAGED_SSH, DB_PROXY |
 | SessionStatus | ACTIVE, IDLE, CLOSED |
 | ManagedInstanceStatus | PROVISIONING, RUNNING, STOPPED, ERROR, REMOVING |
+| CheckoutStatus | PENDING, APPROVED, REJECTED, EXPIRED, CHECKED_IN |
+| KeystrokePolicyAction | BLOCK_AND_TERMINATE, ALERT_ONLY |
 
 ## Client Architecture
 
@@ -510,6 +542,54 @@ flowchart TD
 - IP allowlist (flag or block mode per tenant)
 - DLP policies (disable copy/paste/upload/download per tenant or connection)
 
+### SSH Keystroke Inspection
+
+Real-time keystroke inspection monitors SSH sessions for policy-violating commands:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant SSHHandler as SSH Handler
+    participant Buffer as KeystrokeBuffer
+    participant Inspector as Inspection Service
+    participant Target as SSH Target
+
+    User->>SSHHandler: Keystroke data
+    SSHHandler->>Buffer: feed(data)
+    alt No newline
+        SSHHandler->>Target: Forward immediately
+    else Newline detected
+        Buffer-->>SSHHandler: sawNewline() = true
+        SSHHandler->>Inspector: inspect(tenantId, inputLine)
+        alt No match
+            Inspector-->>SSHHandler: null
+            SSHHandler->>Target: Forward data
+        else BLOCK_AND_TERMINATE
+            Inspector-->>SSHHandler: PolicyMatch
+            SSHHandler->>User: Session terminated
+            Note over SSHHandler: Audit log + admin notification
+        else ALERT_ONLY
+            Inspector-->>SSHHandler: PolicyMatch
+            SSHHandler->>Target: Forward data
+            Note over SSHHandler: Audit log + admin notification
+        end
+    end
+```
+
+### Credential Checkout (PAM)
+
+Temporary credential check-out/check-in with approval workflow:
+- Request -> Approve/Reject -> Use -> Check-in/Expire
+- Atomic status transitions (TOCTOU-safe)
+- Batch resource name resolution (N+1 safe)
+- Configurable duration (1-1440 minutes)
+- Auto-expiry via scheduled job (every 5 min)
+- Notifications to approvers and requesters
+
+### Lateral Movement Detection
+
+MITRE T1021 detection: monitors concurrent session patterns across targets. If a user connects to more distinct targets than the threshold within a time window, the account is temporarily suspended and admins are alerted.
+
 ## Browser Extension Architecture
 
 ```mermaid
@@ -558,6 +638,10 @@ All layout state persists via `uiPreferencesStore` (Zustand + localStorage, per-
 
 - **Server:** Custom `AppError(message, statusCode)`, async handler wrapper, global error middleware
 - **Client:** `extractApiError(err, fallback)` utility, `useAsyncAction` hook for dialog forms
+
+### Native Client Integration (CLI)
+
+Arsenale Connect CLI (`tools/arsenale-cli/`) enables native SSH/RDP clients (PuTTY, mstsc, etc.) to connect through Arsenale's vault and gateway infrastructure. Uses RFC 8628 device authorization for CLI-to-web authentication. The CLI orchestrates credential injection, SSH proxy tokens, and .rdp file generation.
 
 ### Validation
 

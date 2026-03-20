@@ -2,7 +2,7 @@
 title: LLM Context
 description: Consolidated single-file context for LLM and bot consumption
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - README.md
   - CLAUDE.md
@@ -11,6 +11,9 @@ source-files:
   - server/prisma/schema.prisma
   - client/src/App.tsx
   - client/vite.config.ts
+  - server/src/services/keystrokeInspection.service.ts
+  - server/src/services/checkout.service.ts
+  - tools/arsenale-cli/main.go
 ---
 
 # Arsenale — LLM Context
@@ -25,7 +28,9 @@ Arsenale is a web-based remote access management platform for SSH, RDP, and VNC 
 
 ## Architecture Overview
 
-**Server (Express on :3001):** Layered architecture — Routes → Controllers → Services → Prisma ORM. 31 route files under `/api`. Socket.IO for SSH terminals (`/ssh`) and notifications (`/notifications`). Guacamole WebSocket on :3002 for RDP/VNC. Raw WebSocket tunnel broker on `/api/tunnel/connect`.
+**Server (Express on :3001):** Layered architecture — Routes → Controllers → Services → Prisma ORM. 40 route files under `/api`. Socket.IO for SSH terminals (`/ssh`) and notifications (`/notifications`). Guacamole WebSocket on :3002 for RDP/VNC. Raw WebSocket tunnel broker on `/api/tunnel/connect`.
+
+**New in 1.7.0:** Database Protocol Gateway (Oracle/MSSQL/DB2), web-based SQL client, database query auditing with SQL firewall, SSH keystroke inspection (real-time command blocking/alerting), credential checkout/check-in (PAM), automatic password rotation, lateral movement anomaly detection, pwned password checks, RD Gateway (MS-TSGU) for native RDP clients, SSH proxy for native SSH clients, and Arsenale Connect CLI for native client orchestration via RFC 8628 device auth.
 
 **Client (Vite on :3000):** React 19 SPA. 15 Zustand stores. Full-screen MUI Dialog pattern for overlays (preserves active sessions). 6 themes × 2 modes. PWA with Workbox.
 

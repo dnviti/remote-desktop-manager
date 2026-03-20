@@ -2,7 +2,7 @@
 title: API Reference
 description: Complete REST API endpoint reference, WebSocket namespaces, and client SDK documentation
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - server/src/routes/auth.routes.ts
   - server/src/routes/oauth.routes.ts
@@ -35,6 +35,15 @@ source-files:
   - server/src/routes/sync.routes.ts
   - server/src/routes/externalVault.routes.ts
   - server/src/routes/accessPolicy.routes.ts
+  - server/src/routes/checkout.routes.ts
+  - server/src/routes/sshProxy.routes.ts
+  - server/src/routes/rdGateway.routes.ts
+  - server/src/routes/cli.routes.ts
+  - server/src/routes/dbProxy.routes.ts
+  - server/src/routes/dbAudit.routes.ts
+  - server/src/routes/passwordRotation.routes.ts
+  - server/src/routes/dbTunnel.routes.ts
+  - server/src/routes/keystrokePolicy.routes.ts
 ---
 
 # API Reference
@@ -518,6 +527,111 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | `GET` | `/health` | Public | Simple health check (status + version) |
 | `GET` | `/ready` | Public | Readiness probe (DB + guacd) |
 
+## Credential Checkout (PAM) (`/api/checkouts`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/` | JWT | List checkout requests (filter by role/status) |
+| `POST` | `/` | JWT | Request credential checkout |
+| `GET` | `/:id` | JWT | Get checkout request details |
+| `POST` | `/:id/approve` | JWT | Approve pending checkout |
+| `POST` | `/:id/reject` | JWT | Reject pending checkout |
+| `POST` | `/:id/checkin` | JWT | Check in (return) credential |
+
+## Password Rotation (`/api/secrets`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/:id/rotation/enable` | JWT | Enable automatic rotation |
+| `POST` | `/:id/rotation/disable` | JWT | Disable rotation |
+| `POST` | `/:id/rotation/trigger` | JWT | Manually trigger rotation |
+| `GET` | `/:id/rotation/status` | JWT | Get rotation status |
+| `GET` | `/:id/rotation/history` | JWT | Get rotation history |
+
+## SSH Proxy (`/api/sessions/ssh-proxy`)
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/token` | JWT | Issue short-lived SSH proxy token |
+| `GET` | `/status` | JWT | Get SSH proxy status |
+
+## RD Gateway (`/api/rdgw`)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/config` | JWT + Tenant | ADMIN/OWNER | Get RD Gateway configuration |
+| `PUT` | `/config` | JWT + Tenant | ADMIN/OWNER | Update RD Gateway configuration |
+| `GET` | `/status` | JWT + Tenant | ADMIN/OWNER/OPERATOR | Get gateway status |
+| `GET` | `/connections/:connectionId/rdpfile` | JWT | — | Generate .rdp file for native client |
+
+## CLI Device Authorization (`/api/cli`)
+
+| Method | Path | Auth | Rate Limit | Description |
+|--------|------|------|------------|-------------|
+| `POST` | `/auth/device` | Public | 20/15min | Initiate device authorization (RFC 8628) |
+| `POST` | `/auth/device/token` | Public | 30/60s | Poll for device token |
+| `POST` | `/auth/device/authorize` | JWT | — | Approve device from web UI |
+| `GET` | `/connections` | JWT | — | List connections for CLI |
+
+## Database Proxy (`/api/sessions/database`)
+
+| Method | Path | Auth | Rate Limit | Description |
+|--------|------|------|------------|-------------|
+| `POST` | `/` | JWT | Session limit | Create database proxy session |
+| `POST` | `/:sessionId/end` | JWT | — | End proxy session |
+| `POST` | `/:sessionId/heartbeat` | JWT | — | Session heartbeat |
+| `POST` | `/:sessionId/query` | JWT | — | Execute SQL query |
+| `GET` | `/:sessionId/schema` | JWT | — | Get database schema |
+
+## Database Tunnels (`/api/sessions/db-tunnel`)
+
+| Method | Path | Auth | Rate Limit | Description |
+|--------|------|------|------------|-------------|
+| `POST` | `/` | JWT | Session limit | Open SSH-tunneled database connection |
+| `GET` | `/` | JWT | — | List active tunnels |
+| `POST` | `/:tunnelId/heartbeat` | JWT | — | Tunnel heartbeat |
+| `DELETE` | `/:tunnelId` | JWT | — | Close tunnel |
+
+## Database Audit & Firewall (`/api/db-audit`)
+
+### Audit Logs
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/logs` | JWT + Tenant | ADMIN/OWNER/AUDITOR | List database query audit logs |
+| `GET` | `/logs/connections` | JWT + Tenant | ADMIN/OWNER/AUDITOR | Audit logs by connection |
+| `GET` | `/logs/users` | JWT + Tenant | ADMIN/OWNER/AUDITOR | Audit logs by user |
+
+### SQL Firewall Rules
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/firewall-rules` | JWT + Tenant | ADMIN/OWNER/AUDITOR | List firewall rules |
+| `GET` | `/firewall-rules/:ruleId` | JWT + Tenant | ADMIN/OWNER/AUDITOR | Get firewall rule |
+| `POST` | `/firewall-rules` | JWT + Tenant | ADMIN/OWNER | Create firewall rule |
+| `PUT` | `/firewall-rules/:ruleId` | JWT + Tenant | ADMIN/OWNER | Update firewall rule |
+| `DELETE` | `/firewall-rules/:ruleId` | JWT + Tenant | ADMIN/OWNER | Delete firewall rule |
+
+### Data Masking Policies
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/masking-policies` | JWT + Tenant | ADMIN/OWNER/AUDITOR | List masking policies |
+| `GET` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER/AUDITOR | Get masking policy |
+| `POST` | `/masking-policies` | JWT + Tenant | ADMIN/OWNER | Create masking policy |
+| `PUT` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Update masking policy |
+| `DELETE` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Delete masking policy |
+
+## Keystroke Policies (`/api/keystroke-policies`)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/` | JWT + Tenant | ADMIN | List keystroke policies |
+| `GET` | `/:id` | JWT + Tenant | ADMIN | Get keystroke policy |
+| `POST` | `/` | JWT + Tenant | ADMIN | Create keystroke policy |
+| `PUT` | `/:id` | JWT + Tenant | ADMIN | Update keystroke policy |
+| `DELETE` | `/:id` | JWT + Tenant | ADMIN | Delete keystroke policy |
+
 ## WebSocket Namespaces
 
 ### SSH Terminal (`/ssh`)
@@ -570,6 +684,12 @@ Socket.IO namespace for real-time notifications.
 | `TENANT_INVITATION` | `{ tenantId, role }` | Tenant invitation received |
 | `RECORDING_READY` | `{ recordingId }` | Recording available |
 | `IMPOSSIBLE_TRAVEL_DETECTED` | `{ auditLogId }` | Suspicious login detected |
+| `SECRET_CHECKOUT_REQUESTED` | `{ checkoutId, secretId }` | Credential checkout requested |
+| `SECRET_CHECKOUT_APPROVED` | `{ checkoutId }` | Checkout approved |
+| `SECRET_CHECKOUT_DENIED` | `{ checkoutId }` | Checkout denied |
+| `SECRET_CHECKOUT_EXPIRED` | `{ checkoutId }` | Checkout expired |
+| `LATERAL_MOVEMENT_ALERT` | `{ userId, targets }` | Lateral movement anomaly detected |
+| `SESSION_TERMINATED_POLICY_VIOLATION` | `{ policyName }` | SSH session terminated by keystroke policy |
 
 ### Gateway Monitor (`/gateways`)
 
