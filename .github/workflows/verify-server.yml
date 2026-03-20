@@ -1,26 +1,6 @@
 name: Verify Server
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '!server/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'eslint.config.js'
-      - 'eslint.config.mjs'
-      - 'tsconfig.json'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '!server/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'eslint.config.js'
-      - 'eslint.config.mjs'
-      - 'tsconfig.json'
   workflow_dispatch:
   workflow_call:
 
@@ -32,7 +12,7 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - uses: actions/setup-node@v6
         with:

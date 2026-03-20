@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-03-20
+
+### Added
+- Database Protocol Gateway as managed container type (DBGW-2032)
+- Web-based database client as new connection tab type (DBUI-2033)
+- Database query auditing and SQL firewall (DBSEC-2034)
+- Enterprise database proxy support — Oracle TNS, MSSQL TDS, IBM DB2 (DBENT-2035)
+- Agentless database access via SSH port-forwarding (DBTCP-2036)
+- SSH Protocol Proxy with identity-based credential injection (SSHPRX-2037)
+- RD Gateway (MS-TSGU) protocol for native RDP client access (RDGW-2038)
+- Arsenale Connect CLI for native client orchestration via RFC 8628 device auth (NATCLI-2039)
+- Real-time SSH Keystroke Inspection & Alerting (SEC-175)
+- Temporary Credential Check-out / Check-in with approval workflow (PAM-111)
+- Automatic password rotation on target systems (PAM-112)
+- Lateral Movement Anomaly Detection — MITRE T1021 (SEC-113)
+- Pwned Password Check for vault secrets via HaveIBeenPwned k-Anonymity (SEC-112)
+- DLP Browser Hardening — disable DevTools, Source View & exfiltration shortcuts (SEC-301)
+- Per-type notification preferences with settings UI (NOTIF-310)
+- Do-not-disturb and quiet hours for notifications (NOTIF-330)
+- Desktop notifications via Web Notifications API (NOTIF-210)
+
+### Fixed
+- HTML escaping in PAM email notifications (RPAT-001)
+- BLOCK_AND_TERMINATE race condition in SSH keystroke inspection (RPAT-002)
+- Silent notification failure fallback with retry mechanism (RPAT-003)
+- Documented KeystrokeBuffer read/reset ordering contract (RPAT-004)
+- Documented intentional regex validation duplication as defense-in-depth (RPAT-005)
+
 ## [1.6.0] - 2026-03-16
 
 ### Added

@@ -18,6 +18,7 @@ const MAX_PATTERNS = 50;
 const regexPattern = z.string().min(1).max(MAX_PATTERN_LENGTH, `Pattern must not exceed ${MAX_PATTERN_LENGTH} characters`).refine(
   (val) => {
     try {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- Zod validation: testing if user-supplied string is a valid regex
       new RegExp(val);
       return true;
     } catch {

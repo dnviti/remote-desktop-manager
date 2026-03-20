@@ -18,7 +18,7 @@ import prisma from './lib/prisma';
 const program = new Command()
   .name('arsenale')
   .description('Arsenale server administration CLI')
-  .version('1.6.2');
+  .version('1.7.0');
 
 registerCommands(program);
 

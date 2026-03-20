@@ -454,7 +454,7 @@ export function setupSshHandler(io: Server) {
       if (!currentSession?.stream.writable) return;
 
       const writeAndRecord = () => {
-        currentSession!.stream.write(data);
+        currentSession?.stream.write(data);
         if (recordingWriter) recordingWriter.writeInput(data);
         // Throttled implicit heartbeat (at most once per 30s)
         const now = Date.now();
@@ -497,7 +497,7 @@ export function setupSshHandler(io: Server) {
                   });
 
                   notifyTenantAdmins(
-                    user.tenantId!,
+                    user.tenantId ?? '',
                     `SSH session terminated: user (ID: ${user.userId}) triggered keystroke policy "${match.policyName}"`,
                     currentConnectionId,
                   );

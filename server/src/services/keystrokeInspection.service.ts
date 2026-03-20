@@ -103,6 +103,7 @@ async function getCompiledPolicies(tenantId: string): Promise<CompiledPolicy[]> 
           logger.warn(`Skipping unsafe regex in keystroke policy ${row.id}: pattern rejected by safety check`);
           continue;
         }
+        // eslint-disable-next-line security/detect-non-literal-regexp -- Dynamic pattern from admin-configured keystroke policy, validated by isRegexSafe above
         patterns.push({ source: src, regex: new RegExp(src, 'i') });
       } catch {
         logger.warn(`Invalid regex in keystroke policy ${row.id}: pattern failed to compile`);
@@ -322,6 +323,7 @@ export async function createPolicy(
       throw err;
     }
     try {
+      // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
       new RegExp(pattern);
     } catch {
       const err = new Error(`Invalid regex pattern at index ${i}`) as Error & { statusCode: number };
@@ -384,6 +386,7 @@ export async function updatePolicy(
         throw err;
       }
       try {
+        // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
         new RegExp(pattern);
       } catch {
         const err = new Error(`Invalid regex pattern at index ${i}`) as Error & { statusCode: number };

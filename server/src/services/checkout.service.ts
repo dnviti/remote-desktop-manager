@@ -661,7 +661,7 @@ export async function processExpiredCheckouts(): Promise<number> {
     const resourceType = item.secretId ? 'secret' : 'connection';
     const targetName = item.secretId
       ? (secretNames.get(item.secretId) ?? 'a secret')
-      : (connectionNames.get(item.connectionId!) ?? 'a connection');
+      : (item.connectionId ? connectionNames.get(item.connectionId) ?? 'a connection' : 'a connection');
     const msg = `Your temporary access to ${resourceType} "${targetName}" has expired (auto check-in)`;
     sendCheckoutNotification(item.requesterId, 'SECRET_CHECKOUT_EXPIRED', msg, item.id);
   }

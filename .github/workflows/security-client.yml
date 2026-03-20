@@ -1,20 +1,6 @@
 name: Security Client
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'client/**'
-      - '!client/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-  pull_request:
-    branches: [main]
-    paths:
-      - 'client/**'
-      - '!client/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
   workflow_dispatch:
   workflow_call:
 
@@ -30,7 +16,7 @@ jobs:
   trivy-filesystem:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
 
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@0.35.0
