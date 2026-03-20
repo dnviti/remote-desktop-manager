@@ -2,7 +2,7 @@
 title: Deployment
 description: Docker containers, CI/CD pipelines, production setup, and infrastructure
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - compose.yml
   - compose.dev.yml
@@ -159,22 +159,9 @@ Multi-stage: tunnel-agent builder → Alpine 3.21 runtime:
 **Exposed ports:** 2222 (SSH), 8022 (key API)
 **User:** tunnel (non-root)
 
-### Database Proxy Gateway (`gateways/db-proxy/Dockerfile`)
+### Database Proxy Gateway (`gateways/db-proxy/`)
 
-Multi-stage build: tunnel-agent builder (Node 22-alpine) + Node 22-alpine runtime:
-
-1. Build tunnel-agent from TypeScript
-2. Install runtime dependencies (libaio, libnsl, unixODBC, FreeTDS, libxml2)
-3. Embed pre-built tunnel agent
-4. Copy Go protocol adapters
-5. Create non-root `dbproxy` user
-
-Protocol-aware proxy supporting PostgreSQL, MySQL, and MongoDB. Credentials are injected per-session from the Arsenale vault.
-
-**Exposed port:** 5432 (configurable via `DB_LISTEN_PORT`)
-**Health check:** Process-level (`/proc/1/status`, 30s interval, 10s start period)
-**User:** dbproxy (non-root)
-**Entry:** `/entrypoint.sh`
+Go-based protocol proxy supporting Oracle (TNS), MSSQL (TDS), and IBM DB2 protocols. Runs as a managed gateway container with API port for management and multiple protocol ports for database connections.
 
 ### RD Gateway (`gateways/rdgw/`)
 

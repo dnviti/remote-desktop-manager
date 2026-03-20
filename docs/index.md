@@ -2,7 +2,7 @@
 title: Documentation Index
 description: Landing page, table of contents, and project summary for Arsenale
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - README.md
   - CLAUDE.md

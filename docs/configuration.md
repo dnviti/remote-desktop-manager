@@ -2,7 +2,7 @@
 title: Configuration
 description: Environment variables, config files, feature flags, and service configuration
 generated-by: ctdf-docs
-generated-at: 2026-03-21T19:50:00Z
+generated-at: 2026-03-20T01:15:00Z
 source-files:
   - .env.example
   - server/src/config.ts
