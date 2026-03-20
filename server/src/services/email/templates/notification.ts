@@ -25,6 +25,15 @@ const SUBJECT_MAP: Record<NotificationType, string> = {
   [NotificationType.SESSION_TERMINATED_POLICY_VIOLATION]: 'Security Alert: SSH Session Terminated by Policy — Arsenale',
 };
 
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 function buildHtml(subject: string, message: string): string {
   return `<!DOCTYPE html>
 <html>
@@ -50,7 +59,7 @@ function buildHtml(subject: string, message: string): string {
     </div>
     <div class="body">
       <p>You have a new notification:</p>
-      <div class="message">${message.replace(/\n/g, '<br />')}</div>
+      <div class="message">${escapeHtml(message).replace(/\n/g, '<br />')}</div>
       <p>Log in to Arsenale to view more details.</p>
     </div>
     <div class="footer">

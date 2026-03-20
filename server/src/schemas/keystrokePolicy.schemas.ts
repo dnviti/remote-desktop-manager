@@ -2,6 +2,14 @@ import { z } from 'zod';
 
 export const keystrokePolicyActionEnum = z.enum(['BLOCK_AND_TERMINATE', 'ALERT_ONLY']);
 
+// Regex validation is intentionally duplicated across three layers (defense-in-depth):
+// 1. Zod schemas (here) — validates at API boundary before data enters the system
+// 2. Service layer (keystrokeInspection.service.ts createPolicy/updatePolicy) — validates
+//    at the business logic layer with ReDoS safety checks (isRegexSafe)
+// 3. Cache layer (keystrokeInspection.service.ts getCompiledPolicies) — validates at
+//    runtime when loading from DB, catching patterns that bypassed earlier checks
+// This redundancy is kept intentionally: each layer has a different trust boundary.
+
 /** Maximum length of a single regex pattern. */
 const MAX_PATTERN_LENGTH = 500;
 /** Maximum number of patterns per policy. */

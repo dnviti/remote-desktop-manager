@@ -139,6 +139,16 @@ export function invalidateCache(tenantId: string): void {
  * - Ctrl-U (kill line)
  * - Ctrl-C / Ctrl-D (reset line)
  * - Enter / newline (submit line, reset buffer)
+ *
+ * **Read/reset ordering contract:**
+ * After calling `feed(data)`, callers MUST follow this exact sequence:
+ *   1. `sawNewline()` — check if the input contained a line submission
+ *   2. `current()` — read the accumulated line (still in the buffer)
+ *   3. `reset()` — clear the buffer for the next line
+ * Calling `reset()` before `current()` loses the submitted line.
+ * Calling `sawNewline()` after another `feed()` returns the NEW feed's result.
+ * Each `feed()` resets the `_sawNewline` flag, so the window to read it is
+ * between the current `feed()` and the next one.
  */
 export class KeystrokeBuffer {
   private buffer = '';
