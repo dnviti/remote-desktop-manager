@@ -447,7 +447,7 @@ export function setupSshHandler(io: Server) {
         if (user.tenantId) {
           keystrokeBuffer.feed(data);
 
-          if (keystrokeBuffer.hasNewline(data)) {
+          if (keystrokeBuffer.sawNewline()) {
             const inputLine = keystrokeBuffer.current();
             keystrokeBuffer.reset();
 
@@ -459,7 +459,7 @@ export function setupSshHandler(io: Server) {
 
                   const sessionId = `${user.userId}:${socket.id}`;
 
-                  // Log the policy violation
+                  // Log the policy violation (matchedInput is already truncated/redacted by the service)
                   auditService.log({
                     userId: user.userId,
                     action: 'SESSION_TERMINATED_POLICY_VIOLATION',
@@ -475,10 +475,11 @@ export function setupSshHandler(io: Server) {
                     ipAddress: clientIp,
                   });
 
-                  // Notify tenant admins
+                  // Notify tenant admins — use userId instead of email to avoid PII leakage
+                  // if notifications are forwarded externally (email, webhooks)
                   notifyTenantAdmins(
                     user.tenantId!,
-                    `SSH session terminated: user ${user.email} triggered keystroke policy "${match.policyName}" (pattern: ${match.matchedPattern})`,
+                    `SSH session terminated: user (ID: ${user.userId}) triggered keystroke policy "${match.policyName}"`,
                     currentConnectionId,
                   );
 
