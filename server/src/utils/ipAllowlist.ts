@@ -1,5 +1,4 @@
 import * as net from 'net';
-import prisma from '../lib/prisma';
 
 /**
  * Strip the `::ffff:` IPv4-mapped IPv6 prefix if present.
@@ -118,6 +117,7 @@ export async function enforceIpAllowlist(
 ): Promise<{ flagged: boolean; blocked: boolean }> {
   if (!tenantId) return { flagged: false, blocked: false };
 
+  const { default: prisma } = await import('../lib/prisma');
   const tenant = await prisma.tenant.findUnique({
     where: { id: tenantId },
     select: { ipAllowlistEnabled: true, ipAllowlistMode: true, ipAllowlistEntries: true },
