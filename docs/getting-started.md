@@ -2,7 +2,7 @@
 title: Getting Started
 description: Installation, prerequisites, environment setup, and first run instructions
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - package.json
   - server/package.json
@@ -29,7 +29,7 @@ source-files:
 Optional:
 - **GeoLite2-City.mmdb** — MaxMind GeoIP database for impossible travel detection
 - **Twilio/AWS SNS/Vonage** account — SMS MFA
-- **SMTP server** or SendGrid/SES/Resend/Mailgun — Email notifications
+- **SMTP server** or SendGrid/SES/Resend/Mailgun — Only needed if you enable email verification (`EMAIL_VERIFY_REQUIRED=true`)
 
 ## Quick Start
 
@@ -141,9 +141,17 @@ npm run dev:client    # Vite on :3000
 
 Open `http://localhost:3000` in your browser.
 
-- Register a new account (self-signup is enabled by default)
+The default settings are optimized for a simplified first-run experience:
+
+- **No email provider needed** — email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`)
+- **LAN connections work out of the box** — private network access is allowed by default (`ALLOW_LOCAL_NETWORK=true`)
+- **Admin creates accounts** — self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`); the first user created via the startup wizard becomes the admin and can then create additional accounts from the admin panel
+
+To get started:
+
+- Complete the startup configuration wizard (creates the admin account)
 - Set up your vault password (encrypts all credentials)
-- Create your first SSH, RDP, or VNC connection
+- Create your first SSH, RDP, or VNC connection to a LAN or remote host
 
 ## Development Ports
 

@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-21T19:40:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts

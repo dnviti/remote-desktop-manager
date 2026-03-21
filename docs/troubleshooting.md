@@ -2,7 +2,7 @@
 title: Troubleshooting
 description: Common errors, debugging tips, and frequently asked questions
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - server/src/index.ts
   - server/src/middleware/error.middleware.ts
@@ -128,6 +128,24 @@ This is automatically done by `npm run predev`.
 
 **Fix:** Wait for lockout to expire, or adjust `ACCOUNT_LOCKOUT_THRESHOLD` and `ACCOUNT_LOCKOUT_DURATION_MS` in `.env`.
 
+### Self-Signup Not Working
+
+**Error:** Registration page not available or returns `403 Forbidden`
+
+**Cause:** Self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`). The admin must create user accounts.
+
+**Fix:** Either create accounts from the admin panel, or enable self-signup:
+- Set `SELF_SIGNUP_ENABLED=true` in `.env`, or
+- Toggle the setting in **Settings → System Settings** in the admin panel
+
+### Email Verification Blocking Login
+
+**Error:** User cannot log in because email is not verified, but no verification email was received
+
+**Cause:** Email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`). If it has been enabled without configuring an email provider, verification emails cannot be sent.
+
+**Fix:** Either disable email verification (`EMAIL_VERIFY_REQUIRED=false`) or configure an email provider (SMTP, SendGrid, SES, Resend, or Mailgun) in `.env`. See [Configuration — Email](configuration.md#email).
+
 ## Vault Issues
 
 ### Vault Won't Unlock
@@ -157,7 +175,7 @@ Users can also set per-user auto-lock via `PUT /api/vault/auto-lock`.
 1. Verify target host is reachable from the server
 2. Check credentials are correct (vault must be unlocked)
 3. If using a gateway, verify gateway health in the Gateway Manager
-4. Check `ALLOW_LOCAL_NETWORK` if connecting to private IPs (default: `false`)
+4. Check `ALLOW_LOCAL_NETWORK` if connecting to private IPs (default: `true`)
 5. Check DLP policies if copy/paste is blocked
 
 ### RDP/VNC Black Screen
