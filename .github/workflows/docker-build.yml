@@ -1,4 +1,4 @@
-name: Docker Server
+name: Docker Build
 
 on:
   push:
@@ -6,7 +6,9 @@ on:
     branches: [main]
     paths:
       - 'server/**'
+      - 'client/**'
       - '!server/**/*.md'
+      - '!client/**/*.md'
       - 'package.json'
       - 'package-lock.json'
       - 'eslint.config.js'
@@ -16,7 +18,9 @@ on:
     branches: [main, staging]
     paths:
       - 'server/**'
+      - 'client/**'
       - '!server/**/*.md'
+      - '!client/**/*.md'
       - 'package.json'
       - 'package-lock.json'
       - 'eslint.config.js'
@@ -24,34 +28,67 @@ on:
       - 'tsconfig.json'
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   REGISTRY: ghcr.io
 
 jobs:
-  verify:
-    uses: ./.github/workflows/verify-server.yml
+  # ── Gate: Verify ──────────────────────────────────────────────
+  verify-server:
+    uses: ./.github/workflows/verify.yml
+    with:
+      workspace: server
     permissions:
       contents: read
 
-  security:
-    uses: ./.github/workflows/security-server.yml
+  verify-client:
+    uses: ./.github/workflows/verify.yml
+    with:
+      workspace: client
+    permissions:
+      contents: read
+
+  # ── Gate: Security ────────────────────────────────────────────
+  security-server:
+    uses: ./.github/workflows/security.yml
+    with:
+      run-codeql: true
+      trivy-category: trivy-filesystem-server
     permissions:
       contents: read
       security-events: write
 
+  security-client:
+    uses: ./.github/workflows/security.yml
+    with:
+      run-codeql: false
+      trivy-category: trivy-filesystem-client
+    permissions:
+      contents: read
+      security-events: write
+
+  # ── Build, Scan & Push ───────────────────────────────────────
   build-and-scan:
-    needs: [verify, security]
+    needs: [verify-server, verify-client, security-server, security-client]
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       packages: write
       security-events: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - name: server
+            dockerfile: ./server/Dockerfile
+          - name: client
+            dockerfile: ./client/Dockerfile
+
+    concurrency:
+      group: docker-${{ matrix.service.name }}-${{ github.ref }}
+      cancel-in-progress: true
 
     steps:
       - name: Checkout repository
@@ -72,7 +109,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ${{ env.REGISTRY }}/${{ github.repository }}/server
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service.name }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -84,17 +121,17 @@ jobs:
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./server/Dockerfile
+          file: ${{ matrix.service.dockerfile }}
           push: false
           load: true
-          tags: arsenale-server:scan
-          cache-from: type=gha,scope=server
-          cache-to: type=gha,mode=max,scope=server
+          tags: arsenale-${{ matrix.service.name }}:scan
+          cache-from: type=gha,scope=${{ matrix.service.name }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service.name }}
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
-          image-ref: arsenale-server:scan
+          image-ref: arsenale-${{ matrix.service.name }}:scan
           format: sarif
           output: trivy-results.sarif
           severity: CRITICAL,HIGH
@@ -104,15 +141,15 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-server
+          category: trivy-${{ matrix.service.name }}
 
       - name: Push to registry
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./server/Dockerfile
+          file: ${{ matrix.service.dockerfile }}
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=server
+          cache-from: type=gha,scope=${{ matrix.service.name }}

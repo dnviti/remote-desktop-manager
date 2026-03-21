@@ -1,11 +1,28 @@
-name: Security Server
+name: Security
 
 on:
   workflow_dispatch:
+    inputs:
+      run-codeql:
+        description: 'Run CodeQL analysis'
+        required: false
+        type: boolean
+        default: true
   workflow_call:
+    inputs:
+      run-codeql:
+        description: 'Run CodeQL analysis'
+        required: false
+        type: boolean
+        default: false
+      trivy-category:
+        description: 'SARIF category for Trivy filesystem scan'
+        required: false
+        type: string
+        default: 'trivy-filesystem'
 
 concurrency:
-  group: security-server-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
+  group: security-${{ inputs.trivy-category || 'default' }}-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 env:
@@ -17,7 +34,7 @@ permissions:
 
 jobs:
   codeql-analysis:
-    if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_call'
+    if: inputs.run-codeql
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -64,4 +81,4 @@ jobs:
         if: always()
         with:
           sarif_file: trivy-fs-results.sarif
-          category: trivy-filesystem-server
+          category: ${{ inputs.trivy-category || 'trivy-filesystem' }}
