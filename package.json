@@ -52,6 +52,8 @@
     "security": "./scripts/security-scan.sh",
     "security:quick": "./scripts/security-scan.sh --quick",
     "security:docker": "./scripts/security-scan.sh --docker",
+    "codeql": "./scripts/codeql-scan.sh",
+    "codeql:full": "./scripts/codeql-scan.sh --full",
     "test:watch": "concurrently -n server,client -c blue,green \"cd server && npx vitest\" \"cd client && npx vitest\"",
     "verify": "npm run typecheck && npm run lint && npm run sast && npm run test -w server && npm run test -w client && npm run test -w gateways/tunnel-agent && npm run build",
     "cli": "npm run cli -w server --",

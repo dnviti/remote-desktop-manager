@@ -159,6 +159,9 @@ test_token*.mjs
 # Security scan artifacts
 trivy-*.sarif
 
+# CodeQL local scan artifacts
+.codeql/
+
 # task tracker (is for public consumption)
 # to-do.txt
 # progressing.txt
