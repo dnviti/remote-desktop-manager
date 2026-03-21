@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -17,6 +17,7 @@ source-files:
   - server/src/socket/tunnel.handler.ts
   - server/src/socket/notification.handler.ts
   - server/src/socket/gatewayMonitor.handler.ts
+  - server/src/config/passport.ts
   - server/src/services/keystrokeInspection.service.ts
   - server/src/services/checkout.service.ts
   - server/src/services/lateralMovement.service.ts
@@ -157,7 +158,7 @@ Middleware stack (in order):
 
 ### Route Mounting
 
-40 route files mounted under `/api`:
+42 route files mounted under `/api`:
 
 | Path | Purpose |
 |------|---------|
@@ -195,6 +196,7 @@ Middleware stack (in order):
 | `/api/db-audit` | Database query audit logs, SQL firewall rules, masking policies |
 | `/api/secrets` (rotation) | Password rotation enable/disable/trigger/status |
 | `/api/keystroke-policies` | SSH keystroke inspection policy CRUD |
+| `/api/admin/system-settings` | Runtime system settings management |
 
 ### Middleware
 

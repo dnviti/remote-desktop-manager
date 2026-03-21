@@ -2,7 +2,7 @@
 title: Getting Started
 description: Installation, prerequisites, environment setup, and first run instructions
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - package.json
   - server/package.json
