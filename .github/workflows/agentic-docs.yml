@@ -30,6 +30,9 @@ concurrency:
   group: agentic-docs
   cancel-in-progress: true
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Job 1: Build memory + static analysis (Python, zero tokens) ────────
   build-and-analyze:
