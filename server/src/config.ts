@@ -96,8 +96,8 @@ export const config = {
   vonageApiKey: process.env.VONAGE_API_KEY || '',
   vonageApiSecret: process.env.VONAGE_API_SECRET || '',
   vonageFromNumber: process.env.VONAGE_FROM_NUMBER || '',
-  emailVerifyRequired: process.env.EMAIL_VERIFY_REQUIRED !== 'false',
-  selfSignupEnabled: process.env.SELF_SIGNUP_ENABLED !== 'false',
+  emailVerifyRequired: process.env.EMAIL_VERIFY_REQUIRED === 'true',
+  selfSignupEnabled: process.env.SELF_SIGNUP_ENABLED === 'true',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
   oauth: {
     google: {

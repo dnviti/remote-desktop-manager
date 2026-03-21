@@ -3,7 +3,7 @@ import net from 'net';
 import os from 'os';
 import { AppError } from '../middleware/error.middleware';
 
-const ALLOW_LOCAL_NETWORK = process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() === 'true';
+const ALLOW_LOCAL_NETWORK = process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() !== 'false';
 
 const BLOCKED_MESSAGE = ALLOW_LOCAL_NETWORK
   ? 'Connections to loopback addresses are not allowed'
