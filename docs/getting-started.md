@@ -2,7 +2,7 @@
 title: Getting Started
 description: Installation, prerequisites, environment setup, and first run instructions
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - package.json
   - server/package.json
@@ -81,6 +81,19 @@ cp .env.example .env
 | `JWT_SECRET` | (generated in dev) | **Must be set in production** |
 | `GUACAMOLE_SECRET` | (generated in dev) | Shared secret for RDP/VNC tokens |
 | `CLIENT_URL` | `http://localhost:3000` | Client URL for CORS and verification links |
+
+**OAuth providers** (optional — leave `CLIENT_ID` empty to disable any provider):
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | (empty) | Google OAuth 2.0 |
+| `GOOGLE_HD` | (empty) | Restrict Google login to a hosted domain (e.g. `example.com`) |
+| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | (empty) | Microsoft OAuth 2.0 |
+| `MICROSOFT_TENANT_ID` | `common` | Azure AD tenant (`common`, `organizations`, or a specific tenant ID) |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | (empty) | GitHub OAuth |
+| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | (empty) | Generic OIDC (Authentik, Keycloak, Authelia, etc.) |
+
+See [Configuration](configuration.md) for the full list of OAuth, SAML, and LDAP variables.
 
 The `.env` file **must** live at the monorepo root, not inside `server/`. The Prisma CLI resolves its env path to `../.env` via `server/prisma.config.ts`.
 

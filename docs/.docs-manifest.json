@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-03-20T01:19:06.561582Z",
+  "generated_at": "2026-03-21T18:27:58.392847Z",
   "visual_richness": "tiny",
   "sections": [
     {
@@ -8,19 +8,15 @@
       "file": "index.md",
       "source_files": [
         {
-          "path": "README.md",
-          "hash": "0fcd27404fc36079c620b7234b743263f28386aff16ac706a41d6ec08d5b7f15"
-        },
-        {
           "path": "CLAUDE.md",
-          "hash": "19e40b1a5c158feeba611740ddbefdd3f98967887d2c3371a93b08fcf84297ce"
+          "hash": "3a25a885d69a2954bce4c069191e215269e77e940315441f6eecc5b0ed506028"
         },
         {
           "path": "package.json",
-          "hash": "4ae022d83b5d98d5a77eaefbe74247379411ab2813cf03f13c1698359efcb361"
+          "hash": "ec22fe359ff9d86bdabe0cab7875f2410856b0f72bdf27ad6aadb3679d11286f"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.557834Z"
+      "generated_at": "2026-03-21T18:27:58.391855Z"
     },
     {
       "name": "architecture",
@@ -28,94 +24,50 @@
       "source_files": [
         {
           "path": "server/src/index.ts",
-          "hash": "9389dd6b24d69818f421d0a499c03d708d324ae0960b447d4d7b1cd7e1070edb"
+          "hash": "17322cc936a3f7077743207cf796ebe3ea5d4ff2434cee58a1b04c58942ad164"
         },
         {
           "path": "server/src/app.ts",
-          "hash": "91047c1c8a88798761679227cd8895cb5e0c0a3b5e6bda257cedaf83154ff627"
+          "hash": "19a76051c619b48b06faa21f52ec6e62be2cb1fadcb757cde994ec67b4ea5025"
+        },
+        {
+          "path": "client/src/App.tsx",
+          "hash": "fa409eb9163370382e66b43ce350d80aaf32a14fc0b5ea39c91d52c01b19fad4"
+        },
+        {
+          "path": "client/vite.config.ts",
+          "hash": "bf454429902bbf9c7f39c3504f1e7e276da0f6a33905b59e63dd36ee5305f2a3"
+        },
+        {
+          "path": "server/src/socket/ssh.handler.ts",
+          "hash": "a350c262ff07850f938598e6431c643c20da6e2ce240a3ea5f8545b12a902583"
+        },
+        {
+          "path": "server/src/services/keystrokeInspection.service.ts",
+          "hash": "c8d0db655e7a9663d7e2c4f00c8e955add4bef6f25bbc1dc16f4071dad3e43dd"
+        },
+        {
+          "path": "server/src/services/checkout.service.ts",
+          "hash": "c692e1b532c3b80a187aa913bcadfb2f41e3a9faefd5dff95d85b5b63d16a98f"
+        },
+        {
+          "path": "server/src/services/passwordRotation.service.ts",
+          "hash": "d464f1fe69fc86f160dbcce1e4436b43d1cf51bbeade0da8183f65d6585fb275"
+        },
+        {
+          "path": "server/src/services/deviceAuth.service.ts",
+          "hash": "e8bc257d7f553433fa05c0adda36880c2e1161d253ed51e2eec54d0a7219777b"
+        },
+        {
+          "path": "server/src/config/passport.ts",
+          "hash": "d7043409fee058a1c93e111502e423861499945d8fdd2bb9f2313c576a74dad5"
         },
         {
           "path": "server/prisma/schema.prisma",
           "hash": "a4f84136307637a81d0f6615c7d561b2ee0c832227b329c3c6da03fb78421e6e"
-        },
-        {
-          "path": "client/src/main.tsx",
-          "hash": "ec4ae0f3846e719bc8abd09c7102dfdedb66291e452df67c5d958b760512ce8f"
-        },
-        {
-          "path": "client/src/App.tsx",
-          "hash": "d2d4dfd78a56b64bea6a433e35c35fcf3f4f0c9f7e9c9bb00fd3e5c78087078e"
-        },
-        {
-          "path": "client/vite.config.ts",
-          "hash": "cbabbce9cdd857ca085d51789a8b54ab290c785426ee41e6c1828a3c8ee1de43"
-        },
-        {
-          "path": "gateways/tunnel-agent/src/index.ts",
-          "hash": "961b6ee8585ca0fd22143a7a9644bcb39ab4be83759b1e3bf099906d769cacf2"
-        },
-        {
-          "path": "gateways/tunnel-agent/src/tunnel.ts",
-          "hash": "a2389ca03b9fe64aaf998120466ab14efb5a554babddebc52bc12e9142f5bd08"
-        },
-        {
-          "path": "gateways/tunnel-agent/src/protocol.ts",
-          "hash": "40fc6ca4a7801b3b697803cc2cdc55a26ca81b7a2bf89bd1141145cea20c0861"
-        },
-        {
-          "path": "server/src/socket/ssh.handler.ts",
-          "hash": "e12926eda33e807a2820a124be89e40dcbc341a161712be4f7680a3534996fa7"
-        },
-        {
-          "path": "server/src/socket/tunnel.handler.ts",
-          "hash": "2ff8141fc822d8b8639e2faba3e618a30a8537c18042226bd648c21995b0472e"
-        },
-        {
-          "path": "server/src/socket/notification.handler.ts",
-          "hash": "df0ecbc9c0663f3cba7ba91fbe501a97318ba1e955552779a87f117a4416020c"
-        },
-        {
-          "path": "server/src/services/keystrokeInspection.service.ts",
-          "hash": "17e8e046755bdd3d1ab3632219dc1d9730d0351379296d4795d0d31b2f008833"
-        },
-        {
-          "path": "server/src/services/checkout.service.ts",
-          "hash": "7daec8f0ab1fc13cd8a80a794c7a51805349935d8e4cdfcb79bfb3375822e7da"
-        },
-        {
-          "path": "server/src/services/lateralMovement.service.ts",
-          "hash": "920f26e46fabaaa809168ee65ad84976bbee93c24e5b3fc26c06c6ac4a25b9b2"
-        },
-        {
-          "path": "server/src/services/sshProxy.service.ts",
-          "hash": "e2302615bd594e9c63f0248e987f1d663678abbcd3135acc5f3e1119b98dcc02"
-        },
-        {
-          "path": "server/src/services/rdGateway.service.ts",
-          "hash": "0aaf8fc480f4e1c60a89ee32531da80d53e3135543c5d2d72d1dce5c9ee63771"
-        },
-        {
-          "path": "server/src/services/dbProxy.service.ts",
-          "hash": "7ac4321ccd1e41204a49221d77dff7772bc4239a0680e308d37ffb152c2f20f8"
-        },
-        {
-          "path": "server/src/services/dbTunnel.service.ts",
-          "hash": "4c44137df7acca6f3f646df8633bc18470c352ea7b97b13b027b476b3613d087"
-        },
-        {
-          "path": "server/src/services/passwordRotation.service.ts",
-          "hash": "069fe087ffb3953925e6730c506711e5fc873e95653b6daa7e32d18fdaa2ba00"
-        },
-        {
-          "path": "server/src/services/deviceAuth.service.ts",
-          "hash": "f45219d2f3b6f8056c78ff7fd127b42a900c1a9b86ada17b85d2b724579a5230"
-        },
-        {
-          "path": "tools/arsenale-cli/main.go",
-          "hash": "bafa620af8cd3d3bd086d4c2105b64f40eb3ab2b7679c67f0702958e4aa7b7c1"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.558857Z"
+      "generated_at": "2026-03-21T18:27:58.392227Z"
     },
     {
       "name": "getting-started",
@@ -123,42 +75,30 @@
       "source_files": [
         {
           "path": "package.json",
-          "hash": "4ae022d83b5d98d5a77eaefbe74247379411ab2813cf03f13c1698359efcb361"
+          "hash": "ec22fe359ff9d86bdabe0cab7875f2410856b0f72bdf27ad6aadb3679d11286f"
         },
         {
           "path": "server/package.json",
-          "hash": "f5128ae360c7089164cd1be6319b3a104959f744edf33f55edf1d71af58d4d49"
+          "hash": "a5a2658467fe6d5c84db41c8892261e3fb7d033a39a9b1dcf5d1bd0aec9203d7"
         },
         {
           "path": "client/package.json",
-          "hash": "59df15e8fefc74388a01c8c5e2d35a08682d776f65e07949f6fb86ed140b60b9"
+          "hash": "3101ea260f2b3c009378a97cdd2f752238dce88c07d52a8d41700af80cee3eca"
         },
         {
           "path": "gateways/tunnel-agent/package.json",
-          "hash": "f0d15a7f77dee136a14fa1c5f2352fda6bd41619e2a2d6f2a53f4fcf565dd885"
+          "hash": "3f96c9e110a3dbbe5f681cdcbca291c8806beadcdead9353d2ad70c1c1c3d983"
         },
         {
           "path": "extra-clients/browser-extensions/package.json",
-          "hash": "c37bac8b77ec87b8ba2298c1dbfcbb6202caa8996a0a1f884de1ea3d0d4a160b"
+          "hash": "3c57e109c76a8d82101732922303d327c2e943669edc4fc994f03cc9cd8158d2"
         },
         {
           "path": ".env.example",
-          "hash": "98652c17a817b9306a83b762eaecd55763cc0bf486cf5d9583765cbb5de6c684"
-        },
-        {
-          "path": "compose.dev.yml",
-          "hash": "91860d32432bb6ca98c36cf23c7063ef2d6c0880699be963cb06752de6945d8a"
-        },
-        {
-          "path": "Makefile",
-          "hash": "1d6118e1ae52add3f9d7665207c7a57c456738dbd3bbe684ddaf369ad45d1f25"
-        },
-        {
-          "path": "README.md",
-          "hash": "0fcd27404fc36079c620b7234b743263f28386aff16ac706a41d6ec08d5b7f15"
+          "hash": "a7f5780d6fd5230d3a3fb87fd9d174f8992c8369e35c38981b3ee21d8d95121b"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.559472Z"
+      "generated_at": "2026-03-21T18:27:58.392311Z"
     },
     {
       "name": "configuration",
@@ -166,102 +106,54 @@
       "source_files": [
         {
           "path": ".env.example",
-          "hash": "98652c17a817b9306a83b762eaecd55763cc0bf486cf5d9583765cbb5de6c684"
+          "hash": "a7f5780d6fd5230d3a3fb87fd9d174f8992c8369e35c38981b3ee21d8d95121b"
         },
         {
           "path": "server/src/config.ts",
-          "hash": "de936620929af90e93c8abaf390675102b785902158161f345cdff860aba7337"
-        },
-        {
-          "path": "server/prisma.config.ts",
-          "hash": "e0d36724fbe35e18ce57be4bce32a714f33da4d27ed893717b202ff190dfc9be"
+          "hash": "94be61e22fb09ec236d8e111a88c7f4af0a39090a9cddc1444aae5e517c14228"
         },
         {
           "path": "client/vite.config.ts",
-          "hash": "cbabbce9cdd857ca085d51789a8b54ab290c785426ee41e6c1828a3c8ee1de43"
-        },
-        {
-          "path": "eslint.config.mjs",
-          "hash": "44525eca626b5834e064cf785b5f425d1fb8380be0247816bb26116394206bac"
+          "hash": "bf454429902bbf9c7f39c3504f1e7e276da0f6a33905b59e63dd36ee5305f2a3"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.559663Z"
+      "generated_at": "2026-03-21T18:27:58.392352Z"
     },
     {
       "name": "api-reference",
       "file": "api-reference.md",
       "source_files": [
         {
+          "path": "server/src/app.ts",
+          "hash": "19a76051c619b48b06faa21f52ec6e62be2cb1fadcb757cde994ec67b4ea5025"
+        },
+        {
           "path": "server/src/routes/auth.routes.ts",
           "hash": "110ff92a64794ab0679f4dd884a5ad1a7fc364ad850eabd212978031f28fffc3"
         },
         {
-          "path": "server/src/routes/oauth.routes.ts",
-          "hash": "3373e8e39961980342192769d1425887fb9a57b0efcdf5626d7ee33b26dd86d6"
+          "path": "server/src/routes/connection.routes.ts",
+          "hash": ""
         },
         {
-          "path": "server/src/routes/saml.routes.ts",
-          "hash": "45dbf48d7dced1059c8070704a38a1b501c9c255053cdfab46654075c6c8f4de"
-        },
-        {
-          "path": "server/src/routes/connections.routes.ts",
-          "hash": "441a983cf2b8f63821db08329a3011a0cffc716be31cd04b7c40e648a54666d4"
-        },
-        {
-          "path": "server/src/routes/session.routes.ts",
-          "hash": "2e024559c6e8b565e155cc21171ed9b48dab881accba0042fc8ecc8134b70797"
-        },
-        {
-          "path": "server/src/routes/vault.routes.ts",
-          "hash": "fb14eb575bb4d5c81a5b130bb2e5a47116cdfa5c7b128a8e654fe8044645a9e0"
+          "path": "server/src/routes/folder.routes.ts",
+          "hash": ""
         },
         {
           "path": "server/src/routes/sharing.routes.ts",
           "hash": "72aa2538c821c044b3c738d08a7aab3e88d9f57e20b3569ea7a98adbefcc1107"
         },
         {
-          "path": "server/src/routes/folders.routes.ts",
-          "hash": "043353be1d692059b88a8c80812be05ccf11376793ba42a4e7ef2042bb434c9b"
+          "path": "server/src/routes/vault.routes.ts",
+          "hash": "fb14eb575bb4d5c81a5b130bb2e5a47116cdfa5c7b128a8e654fe8044645a9e0"
+        },
+        {
+          "path": "server/src/routes/oauth.routes.ts",
+          "hash": "3373e8e39961980342192769d1425887fb9a57b0efcdf5626d7ee33b26dd86d6"
         },
         {
           "path": "server/src/routes/secret.routes.ts",
           "hash": "0d6ad1a47e8bdd20c9aa118a7a432d3c2d2f9937020c71b408c46932a3d10c76"
-        },
-        {
-          "path": "server/src/routes/vault-folders.routes.ts",
-          "hash": "90d3ebc0d6c802e73652f1bf29d4b742b0479fef260b595672bbe76c7bead21b"
-        },
-        {
-          "path": "server/src/routes/user.routes.ts",
-          "hash": "cafd3eff8ef66a47b0e5952611a051daef427d0e5fb4cfc9891762b4c8e81622"
-        },
-        {
-          "path": "server/src/routes/twofa.routes.ts",
-          "hash": "487eaa01b7e14cbb27f2cf947f72ee16104f9f2818ee9eb58b65e7c0ca45e819"
-        },
-        {
-          "path": "server/src/routes/smsMfa.routes.ts",
-          "hash": "dd3e6cd3d91273fb813594177c809b5884e96d594c1912fc27e6092e4d0b5850"
-        },
-        {
-          "path": "server/src/routes/webauthn.routes.ts",
-          "hash": "44d3a3dec42a9a71ab9f6d5f79586ecf7e647f445b956bc362e76e9ee798407d"
-        },
-        {
-          "path": "server/src/routes/tenant.routes.ts",
-          "hash": "cd94163479ae038852e032e15ec54579af35756e3b39fe423a24c2fdf76181bf"
-        },
-        {
-          "path": "server/src/routes/team.routes.ts",
-          "hash": "e51918d59d424f2e085236581ab634fd93e8f6d14e41474dc470b63333ce0071"
-        },
-        {
-          "path": "server/src/routes/gateway.routes.ts",
-          "hash": "4a4a9328e5d4cd8c6c17c6613009ae827d9026297c41adfcfa3ff0915990c6a9"
-        },
-        {
-          "path": "server/src/routes/admin.routes.ts",
-          "hash": "05d0ba2ed0736848ef162759eb335c2989e8cdca745aa134ebad7a2a4203abe4"
         },
         {
           "path": "server/src/routes/audit.routes.ts",
@@ -272,170 +164,70 @@
           "hash": "2fcd9b42cfd7968695ad3c07f3f5a0cdc8951e1e1f35c6835d2328c7c9b5b1f8"
         },
         {
-          "path": "server/src/routes/notification.routes.ts",
-          "hash": "5ec3148a3569314fc5ce51cc6e85e5f6048456ffa0e264d63fd4007af2ddcaf0"
-        },
-        {
-          "path": "server/src/routes/files.routes.ts",
-          "hash": "bc491e4cb97d4b7e9cabb27ac3e82387b516b6ef1c85ef6a3b9f28b3e720aee4"
-        },
-        {
-          "path": "server/src/routes/tabs.routes.ts",
-          "hash": "72e246c014c7ca97eca8ac3f55115ce798df401c6e507564263f37fb2ae51f7f"
-        },
-        {
-          "path": "server/src/routes/publicShare.routes.ts",
-          "hash": "fbc3691b6d8e72ea13a07e164a2aad11e5b5ceabc993f9ee3c60851c0d4831fe"
-        },
-        {
-          "path": "server/src/routes/importExport.routes.ts",
-          "hash": "1728dcd89047213ebd0929bc5465642c0c157175bb4721e25a41f0364933ba8f"
-        },
-        {
-          "path": "server/src/routes/health.routes.ts",
-          "hash": "eee13ef80ce71e756cf53b680abecb6a58c72256184074fd67370ad49b333d16"
-        },
-        {
-          "path": "server/src/routes/geoip.routes.ts",
-          "hash": "754f77bb9215a0ae65a2bd410485e52b217dfe2820f905317218d1b550b0ce2e"
-        },
-        {
-          "path": "server/src/routes/ldap.routes.ts",
-          "hash": "caab585f4c572d7bfc8f6b523386882600f7d25e27c902ffae48a58df4b83b50"
-        },
-        {
-          "path": "server/src/routes/sync.routes.ts",
-          "hash": "9261b16959db99088ead72d6ced19bc277f2a558a0622adae4382189dd4c1f11"
-        },
-        {
-          "path": "server/src/routes/externalVault.routes.ts",
-          "hash": "c66f9950975b2f2da83b5d2cdca255416dd19c0aa6634baa62f4cd3d82abc51a"
-        },
-        {
-          "path": "server/src/routes/accessPolicy.routes.ts",
-          "hash": "186f34990c3334bc34cc069f3e84ed2d9afe626bb5800ae02d9fe3b5553a50c5"
-        },
-        {
-          "path": "server/src/routes/checkout.routes.ts",
-          "hash": "558dc775025c5c6bf61cb7a6ff451e97c5d5e853cf20cf98ad2f1f29fd9a4606"
-        },
-        {
-          "path": "server/src/routes/sshProxy.routes.ts",
-          "hash": "82515e4ec011d067d3e70b33537e5cb8aa47bc12493d6e59b5096f0f3205c9a6"
+          "path": "server/src/routes/tenant.routes.ts",
+          "hash": "cd94163479ae038852e032e15ec54579af35756e3b39fe423a24c2fdf76181bf"
         },
         {
           "path": "server/src/routes/rdGateway.routes.ts",
           "hash": "c9693162279642956fdf70d403ac963bd552d1b9243176865d6de012423e4d12"
         },
         {
-          "path": "server/src/routes/cli.routes.ts",
-          "hash": "7d15584717d54c905dc101742fb0662421e11bf757b1cadc1fcd8535c45a51f0"
+          "path": "server/src/routes/sshProxy.routes.ts",
+          "hash": "82515e4ec011d067d3e70b33537e5cb8aa47bc12493d6e59b5096f0f3205c9a6"
         },
         {
-          "path": "server/src/routes/dbProxy.routes.ts",
-          "hash": "a32417e776a18785cb14a961fceef65d0a1fc9e9c7e82f58139ee72a3976e22e"
+          "path": "server/src/routes/systemSettings.routes.ts",
+          "hash": "a32d5e29d9ac0d32a91616c445bc9df91852eede976bde06b963fabb93091108"
         },
         {
-          "path": "server/src/routes/dbAudit.routes.ts",
-          "hash": "11633ed7728d1876b26e5c778902fe873b644ef7a93cab8679c20f9c546e74e4"
+          "path": "server/src/routes/setup.routes.ts",
+          "hash": "5b1e4f8672059d2e46cb039a69ff43f7e7d14eb0d433c3577bb074dbb0da7a89"
         },
         {
-          "path": "server/src/routes/passwordRotation.routes.ts",
-          "hash": "dfe23e9d144326a507b2765b7517f6818828b55bf7197526c149def0a5844ae9"
-        },
-        {
-          "path": "server/src/routes/dbTunnel.routes.ts",
-          "hash": "5bfd2a2d0f1a694fda1df844c09a836564eeed6485b163aa7ed0ac296b2ca6f0"
-        },
-        {
-          "path": "server/src/routes/keystrokePolicy.routes.ts",
-          "hash": "6b66b845bc12a60e95e5e898358fa75e96bbc7f4d7df945a06985fbd5ca3800c"
+          "path": "server/src/socket/ssh.handler.ts",
+          "hash": "a350c262ff07850f938598e6431c643c20da6e2ce240a3ea5f8545b12a902583"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.560756Z"
+      "generated_at": "2026-03-21T18:27:58.392512Z"
     },
     {
       "name": "deployment",
       "file": "deployment.md",
       "source_files": [
         {
-          "path": "compose.yml",
-          "hash": "6f6512373c1ef71b0ab1252ae3801c2f332b364c8e78a0ae70fff10bfba56547"
-        },
-        {
-          "path": "compose.dev.yml",
-          "hash": "91860d32432bb6ca98c36cf23c7063ef2d6c0880699be963cb06752de6945d8a"
-        },
-        {
-          "path": "compose.demo.yml",
-          "hash": "ff38518050ed9f0b06f7e226483206a26733de9e513e4d35d8fad3cf89493ace"
-        },
-        {
           "path": "server/Dockerfile",
-          "hash": "cc4b968efa7b09bdddf353e4fe04ade022ac582c499ff42d00aa9967d178fa36"
+          "hash": "d68cf1ef09c14e2b19834af27a9d8eabb7fc6c41fd3422a22aa98ef6fe8555ef"
         },
         {
           "path": "client/Dockerfile",
-          "hash": "fa43c0ffb9aa6ab535dc8ec545e20b30b07d5998c20adf194b5c7d287796ac21"
-        },
-        {
-          "path": "gateways/guacd/Dockerfile",
-          "hash": "0aa2cb0e7cb3aca9f63c7cfe65745487880a59e253e4bc255c7880db823e6fb0"
-        },
-        {
-          "path": "gateways/guacenc/Dockerfile",
-          "hash": "225c8a77e45d58a557e5c592cb238ed40606c55b217cf780355a3c834b8ca335"
-        },
-        {
-          "path": "gateways/ssh-gateway/Dockerfile",
-          "hash": "541d5c021dc8af2c1fc97069691c3ea5607e4821f29a592cf29e65f1f96d74b9"
-        },
-        {
-          "path": "gateways/tunnel-agent/Dockerfile",
-          "hash": "a484e845a0c0b83d992bad1a282a59a595ffeb4711e861bd78e4f481e7481edb"
+          "hash": "318a8a56a8f71622274335bbbf175f3dfa3db4135624aa53c3c969e46104ad63"
         },
         {
           "path": "gateways/db-proxy/Dockerfile",
-          "hash": "beb406ab1365d8eefc5cb947fd51856fbf3929d6414410476a3094fa74487f49"
-        },
-        {
-          "path": "gateways/rdgw/Dockerfile",
-          "hash": "e68a03caf680af23aea976454d2750a7dbcd0167922569d790fd89640947ca4b"
-        },
-        {
-          "path": "tools/arsenale-cli/main.go",
-          "hash": "bafa620af8cd3d3bd086d4c2105b64f40eb3ab2b7679c67f0702958e4aa7b7c1"
-        },
-        {
-          "path": "client/nginx.conf",
-          "hash": "63f723b551de34a39b7aa6fb027ecb6affd4aad80a427261f9b36cbb4403001a"
-        },
-        {
-          "path": "client/nginx.main.conf",
-          "hash": "53b9c98fd6fd021a754b9b30f565af24e81500d6756304047deca8aa97c2cf9b"
-        },
-        {
-          "path": ".github/workflows/docker-server.yml",
-          "hash": "162b5ae9bd26a3ec58e58c917c4151a18e4bd68f4d66c9d439c0dd4de1fe5e84"
-        },
-        {
-          "path": ".github/workflows/docker-client.yml",
-          "hash": "3dde6fe2c17d6f7a03920b20aa1cc7446e3d5783872ad79db5fbf04eb1c33def"
-        },
-        {
-          "path": ".github/workflows/verify-server.yml",
-          "hash": "7d1c7f5c7096fb012bf46a98846f65f2f02b6f4aa0f8b899548bf46ec09015c3"
-        },
-        {
-          "path": ".github/workflows/verify-client.yml",
-          "hash": "0c3510604a194cb0dca1e08654441fb422c189bf8e24fb2de95bb04481f23e40"
+          "hash": "1e71b270e59d24cbeb66892b05faca60dd77715cd55f44ad4a2eff986eb80053"
         },
         {
           "path": ".github/workflows/release.yml",
-          "hash": "9e9fff7f8314e4ca7be7c59b1842d9341ff0146248934d0d93b8618ce2506841"
+          "hash": "9fd079a4824730e097ed3daaa0f925b700f08d916ca264d56393cc7b58199e7e"
+        },
+        {
+          "path": ".github/workflows/verify.yml",
+          "hash": "8bb797109ceaa2757775df92d4a431370d21b08a91bfb420709d878e094faa8a"
+        },
+        {
+          "path": ".github/workflows/docker-build.yml",
+          "hash": "db19cc8b4a0e26e7292324f62c06bd864a1b1cb1f21261f41f25ca587f2a545f"
+        },
+        {
+          "path": ".github/workflows/gateways-build.yml",
+          "hash": "64aca5b0b1db8dbc36f450c3a4abc0add5eb4828c28d0d5c2fe5be59b9161e96"
+        },
+        {
+          "path": ".github/workflows/security.yml",
+          "hash": "063589364fcd57e3f0183a8970581d7f074e24a339ed14c7ef598d7f6a0781ba"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.561216Z"
+      "generated_at": "2026-03-21T18:27:58.392584Z"
     },
     {
       "name": "development",
@@ -443,46 +235,30 @@
       "source_files": [
         {
           "path": "package.json",
-          "hash": "4ae022d83b5d98d5a77eaefbe74247379411ab2813cf03f13c1698359efcb361"
+          "hash": "ec22fe359ff9d86bdabe0cab7875f2410856b0f72bdf27ad6aadb3679d11286f"
         },
         {
           "path": "server/package.json",
-          "hash": "f5128ae360c7089164cd1be6319b3a104959f744edf33f55edf1d71af58d4d49"
+          "hash": "a5a2658467fe6d5c84db41c8892261e3fb7d033a39a9b1dcf5d1bd0aec9203d7"
         },
         {
           "path": "client/package.json",
-          "hash": "59df15e8fefc74388a01c8c5e2d35a08682d776f65e07949f6fb86ed140b60b9"
+          "hash": "3101ea260f2b3c009378a97cdd2f752238dce88c07d52a8d41700af80cee3eca"
         },
         {
           "path": "gateways/tunnel-agent/package.json",
-          "hash": "f0d15a7f77dee136a14fa1c5f2352fda6bd41619e2a2d6f2a53f4fcf565dd885"
+          "hash": "3f96c9e110a3dbbe5f681cdcbca291c8806beadcdead9353d2ad70c1c1c3d983"
         },
         {
           "path": "extra-clients/browser-extensions/package.json",
-          "hash": "c37bac8b77ec87b8ba2298c1dbfcbb6202caa8996a0a1f884de1ea3d0d4a160b"
-        },
-        {
-          "path": "eslint.config.mjs",
-          "hash": "44525eca626b5834e064cf785b5f425d1fb8380be0247816bb26116394206bac"
-        },
-        {
-          "path": "server/vitest.config.ts",
-          "hash": "585d54dd77be9c42a805a086aa3150245a15558b1b4f19f13eff0c02c2c76bce"
-        },
-        {
-          "path": "client/vitest.config.ts",
-          "hash": "3fd6733387613cb2ff83ee665cf7621b0a9dbbe9ab2f7cdccdd5d13b9f9be7e2"
+          "hash": "3c57e109c76a8d82101732922303d327c2e943669edc4fc994f03cc9cd8158d2"
         },
         {
           "path": "CLAUDE.md",
-          "hash": "19e40b1a5c158feeba611740ddbefdd3f98967887d2c3371a93b08fcf84297ce"
-        },
-        {
-          "path": "Makefile",
-          "hash": "1d6118e1ae52add3f9d7665207c7a57c456738dbd3bbe684ddaf369ad45d1f25"
+          "hash": "3a25a885d69a2954bce4c069191e215269e77e940315441f6eecc5b0ed506028"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.561328Z"
+      "generated_at": "2026-03-21T18:27:58.392651Z"
     },
     {
       "name": "troubleshooting",
@@ -490,81 +266,69 @@
       "source_files": [
         {
           "path": "server/src/index.ts",
-          "hash": "9389dd6b24d69818f421d0a499c03d708d324ae0960b447d4d7b1cd7e1070edb"
-        },
-        {
-          "path": "server/src/middleware/error.middleware.ts",
-          "hash": "ae407a1911546f278ad1715d4aaae09c570bd061280f3d7310144bfde6d9f28f"
-        },
-        {
-          "path": "server/src/middleware/auth.middleware.ts",
-          "hash": "10cb5166e2b044620c4d5b78173af4d50e8fcc9dc5121ec91ed4cbf1496d5df4"
-        },
-        {
-          "path": "client/src/api/auth.api.ts",
-          "hash": "19e5895040f1447350dce9c67f8192404fa16e0211215656719769f4b5ef2e02"
+          "hash": "17322cc936a3f7077743207cf796ebe3ea5d4ff2434cee58a1b04c58942ad164"
         },
         {
           "path": "server/src/config.ts",
-          "hash": "de936620929af90e93c8abaf390675102b785902158161f345cdff860aba7337"
+          "hash": "94be61e22fb09ec236d8e111a88c7f4af0a39090a9cddc1444aae5e517c14228"
         },
         {
           "path": ".env.example",
-          "hash": "98652c17a817b9306a83b762eaecd55763cc0bf486cf5d9583765cbb5de6c684"
+          "hash": "a7f5780d6fd5230d3a3fb87fd9d174f8992c8369e35c38981b3ee21d8d95121b"
         },
         {
           "path": "server/src/services/keystrokeInspection.service.ts",
-          "hash": "17e8e046755bdd3d1ab3632219dc1d9730d0351379296d4795d0d31b2f008833"
+          "hash": "c8d0db655e7a9663d7e2c4f00c8e955add4bef6f25bbc1dc16f4071dad3e43dd"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.561422Z"
+      "generated_at": "2026-03-21T18:27:58.392709Z"
     },
     {
       "name": "llm-context",
       "file": "llm-context.md",
       "source_files": [
         {
-          "path": "README.md",
-          "hash": "0fcd27404fc36079c620b7234b743263f28386aff16ac706a41d6ec08d5b7f15"
-        },
-        {
           "path": "CLAUDE.md",
-          "hash": "19e40b1a5c158feeba611740ddbefdd3f98967887d2c3371a93b08fcf84297ce"
+          "hash": "3a25a885d69a2954bce4c069191e215269e77e940315441f6eecc5b0ed506028"
         },
         {
           "path": "server/src/index.ts",
-          "hash": "9389dd6b24d69818f421d0a499c03d708d324ae0960b447d4d7b1cd7e1070edb"
+          "hash": "17322cc936a3f7077743207cf796ebe3ea5d4ff2434cee58a1b04c58942ad164"
         },
         {
           "path": "server/src/app.ts",
-          "hash": "91047c1c8a88798761679227cd8895cb5e0c0a3b5e6bda257cedaf83154ff627"
-        },
-        {
-          "path": "server/prisma/schema.prisma",
-          "hash": "a4f84136307637a81d0f6615c7d561b2ee0c832227b329c3c6da03fb78421e6e"
+          "hash": "19a76051c619b48b06faa21f52ec6e62be2cb1fadcb757cde994ec67b4ea5025"
         },
         {
           "path": "client/src/App.tsx",
-          "hash": "d2d4dfd78a56b64bea6a433e35c35fcf3f4f0c9f7e9c9bb00fd3e5c78087078e"
+          "hash": "fa409eb9163370382e66b43ce350d80aaf32a14fc0b5ea39c91d52c01b19fad4"
         },
         {
           "path": "client/vite.config.ts",
-          "hash": "cbabbce9cdd857ca085d51789a8b54ab290c785426ee41e6c1828a3c8ee1de43"
+          "hash": "bf454429902bbf9c7f39c3504f1e7e276da0f6a33905b59e63dd36ee5305f2a3"
         },
         {
           "path": "server/src/services/keystrokeInspection.service.ts",
-          "hash": "17e8e046755bdd3d1ab3632219dc1d9730d0351379296d4795d0d31b2f008833"
+          "hash": "c8d0db655e7a9663d7e2c4f00c8e955add4bef6f25bbc1dc16f4071dad3e43dd"
         },
         {
           "path": "server/src/services/checkout.service.ts",
-          "hash": "7daec8f0ab1fc13cd8a80a794c7a51805349935d8e4cdfcb79bfb3375822e7da"
+          "hash": "c692e1b532c3b80a187aa913bcadfb2f41e3a9faefd5dff95d85b5b63d16a98f"
         },
         {
-          "path": "tools/arsenale-cli/main.go",
-          "hash": "bafa620af8cd3d3bd086d4c2105b64f40eb3ab2b7679c67f0702958e4aa7b7c1"
+          "path": "server/src/config/passport.ts",
+          "hash": "d7043409fee058a1c93e111502e423861499945d8fdd2bb9f2313c576a74dad5"
+        },
+        {
+          "path": "server/src/routes/systemSettings.routes.ts",
+          "hash": "a32d5e29d9ac0d32a91616c445bc9df91852eede976bde06b963fabb93091108"
+        },
+        {
+          "path": "server/src/routes/setup.routes.ts",
+          "hash": "5b1e4f8672059d2e46cb039a69ff43f7e7d14eb0d433c3577bb074dbb0da7a89"
         }
       ],
-      "generated_at": "2026-03-20T01:19:06.561578Z"
+      "generated_at": "2026-03-21T18:27:58.392839Z"
     }
   ]
 }
