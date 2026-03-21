@@ -57,7 +57,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   // ── General ──────────────────────────────────────────────────────────────
   {
     key: 'EMAIL_VERIFY_REQUIRED', envVar: 'EMAIL_VERIFY_REQUIRED',
-    configPath: 'emailVerifyRequired', type: 'boolean', default: false,
+    configPath: 'emailVerifyRequired', type: 'boolean', default: true,
     group: 'general', label: 'Require Email Verification',
     description: 'Require email verification before allowing login.',
     minEditRole: 'ADMIN',
@@ -71,7 +71,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   },
   {
     key: 'ALLOW_LOCAL_NETWORK', envVar: 'ALLOW_LOCAL_NETWORK',
-    type: 'boolean', default: true,
+    type: 'boolean', default: false,
     group: 'general', label: 'Allow Local Network Connections',
     description: 'Allow connections to private/local network addresses (10.x, 172.16-31.x, 192.168.x).',
     minEditRole: 'ADMIN', restartRequired: true,

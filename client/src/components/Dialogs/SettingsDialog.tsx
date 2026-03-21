@@ -308,6 +308,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           {resolvedTab === 'administration' && (
             <Stack spacing={3}>
               <SelfSignupSection />
+              <SystemSettingsSection />
               <NativeSshSection />
               <IpAllowlistSection />
               <AccessPolicySection />
