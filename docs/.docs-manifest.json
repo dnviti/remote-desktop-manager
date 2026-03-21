@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-03-21T18:27:58.392847Z",
+  "generated_at": "2026-03-21T18:43:01.187250Z",
   "visual_richness": "tiny",
   "sections": [
     {
@@ -16,7 +16,7 @@
           "hash": "ec22fe359ff9d86bdabe0cab7875f2410856b0f72bdf27ad6aadb3679d11286f"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.391855Z"
+      "generated_at": "2026-03-21T18:43:01.185333Z"
     },
     {
       "name": "architecture",
@@ -28,7 +28,7 @@
         },
         {
           "path": "server/src/app.ts",
-          "hash": "19a76051c619b48b06faa21f52ec6e62be2cb1fadcb757cde994ec67b4ea5025"
+          "hash": "d2a7742150c3ac36fadf82ed98cc4b7d236fe96cce8129e51b626971fb511176"
         },
         {
           "path": "client/src/App.tsx",
@@ -67,7 +67,7 @@
           "hash": "a4f84136307637a81d0f6615c7d561b2ee0c832227b329c3c6da03fb78421e6e"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392227Z"
+      "generated_at": "2026-03-21T18:43:01.185764Z"
     },
     {
       "name": "getting-started",
@@ -102,7 +102,7 @@
           "hash": "a7f5780d6fd5230d3a3fb87fd9d174f8992c8369e35c38981b3ee21d8d95121b"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392311Z"
+      "generated_at": "2026-03-21T18:43:01.185956Z"
     },
     {
       "name": "configuration",
@@ -121,7 +121,7 @@
           "hash": "bf454429902bbf9c7f39c3504f1e7e276da0f6a33905b59e63dd36ee5305f2a3"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392352Z"
+      "generated_at": "2026-03-21T18:43:01.186053Z"
     },
     {
       "name": "api-reference",
@@ -129,7 +129,7 @@
       "source_files": [
         {
           "path": "server/src/app.ts",
-          "hash": "19a76051c619b48b06faa21f52ec6e62be2cb1fadcb757cde994ec67b4ea5025"
+          "hash": "d2a7742150c3ac36fadf82ed98cc4b7d236fe96cce8129e51b626971fb511176"
         },
         {
           "path": "server/src/routes/auth.routes.ts",
@@ -192,7 +192,7 @@
           "hash": "a350c262ff07850f938598e6431c643c20da6e2ce240a3ea5f8545b12a902583"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392512Z"
+      "generated_at": "2026-03-21T18:43:01.186446Z"
     },
     {
       "name": "deployment",
@@ -231,7 +231,7 @@
           "hash": "063589364fcd57e3f0183a8970581d7f074e24a339ed14c7ef598d7f6a0781ba"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392584Z"
+      "generated_at": "2026-03-21T18:43:01.186644Z"
     },
     {
       "name": "development",
@@ -262,7 +262,7 @@
           "hash": "3a25a885d69a2954bce4c069191e215269e77e940315441f6eecc5b0ed506028"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392651Z"
+      "generated_at": "2026-03-21T18:43:01.186803Z"
     },
     {
       "name": "troubleshooting",
@@ -285,7 +285,7 @@
           "hash": "c8d0db655e7a9663d7e2c4f00c8e955add4bef6f25bbc1dc16f4071dad3e43dd"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392709Z"
+      "generated_at": "2026-03-21T18:43:01.186940Z"
     },
     {
       "name": "llm-context",
@@ -301,7 +301,7 @@
         },
         {
           "path": "server/src/app.ts",
-          "hash": "19a76051c619b48b06faa21f52ec6e62be2cb1fadcb757cde994ec67b4ea5025"
+          "hash": "d2a7742150c3ac36fadf82ed98cc4b7d236fe96cce8129e51b626971fb511176"
         },
         {
           "path": "client/src/App.tsx",
@@ -332,7 +332,7 @@
           "hash": "5b1e4f8672059d2e46cb039a69ff43f7e7d14eb0d433c3577bb074dbb0da7a89"
         }
       ],
-      "generated_at": "2026-03-21T18:27:58.392839Z"
+      "generated_at": "2026-03-21T18:43:01.187244Z"
     }
   ]
 }

@@ -2,7 +2,7 @@
 title: LLM Context
 description: Consolidated single-file context for LLM and bot consumption
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - README.md
   - CLAUDE.md
