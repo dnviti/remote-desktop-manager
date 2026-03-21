@@ -374,19 +374,7 @@ export async function updatePolicy(
         err.statusCode = 400;
         throw err;
       }
-      if (!isRegexSafe(pattern)) {
-        const err = new Error(`Regex pattern at index ${i} was rejected by the safety check (possible ReDoS)`) as Error & { statusCode: number };
-        err.statusCode = 400;
-        throw err;
-      }
-      try {
-        // eslint-disable-next-line security/detect-non-literal-regexp -- Validating admin-supplied regex before persisting to DB
-        new RegExp(pattern);
-      } catch {
-        const err = new Error(`Invalid regex pattern at index ${i}`) as Error & { statusCode: number };
-        err.statusCode = 400;
-        throw err;
-      }
+      compileRegex(pattern, undefined, `pattern at index ${i}`);
     }
   }
 
