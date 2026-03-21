@@ -2,6 +2,7 @@ FROM node:22-alpine AS build
 
 WORKDIR /app
 
+COPY .npmrc* ./
 COPY client/package.json client/package-lock.json* ./
 RUN npm install
 
