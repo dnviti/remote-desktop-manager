@@ -1,11 +1,22 @@
-name: Verify Server
+name: Verify
 
 on:
   workflow_dispatch:
+    inputs:
+      workspace:
+        description: 'Workspace to verify (server or client)'
+        required: true
+        type: choice
+        options: [server, client]
   workflow_call:
+    inputs:
+      workspace:
+        description: 'Workspace to verify'
+        required: true
+        type: string
 
 concurrency:
-  group: verify-server-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
+  group: verify-${{ inputs.workspace }}-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 env:
@@ -29,10 +40,11 @@ jobs:
       - run: npm ci
 
       - name: Generate Prisma client
+        if: inputs.workspace == 'server'
         run: npm run db:generate
 
-      - name: Typecheck Server
-        run: npm run typecheck -w server
+      - name: Typecheck
+        run: npm run typecheck -w ${{ inputs.workspace }}
 
       - name: Lint
         run: npm run lint
@@ -40,5 +52,5 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=critical
 
-      - name: Build Server
-        run: npm run build -w server
+      - name: Build
+        run: npm run build -w ${{ inputs.workspace }}
