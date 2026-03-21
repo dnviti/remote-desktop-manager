@@ -19,6 +19,7 @@ jobs:
   codeql-analysis:
     if: github.event_name == 'pull_request' || github.event_name == 'schedule' || github.event_name == 'workflow_call'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     permissions:
       security-events: write
       contents: read
@@ -42,6 +43,7 @@ jobs:
 
   trivy-filesystem:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
 
