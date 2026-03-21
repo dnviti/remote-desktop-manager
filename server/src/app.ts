@@ -102,12 +102,11 @@ app.use('/api', (req, res, next) => {
   return validateCsrf(req, res, next);
 });
 
-// Peek at Authorization header to populate req.user for rate-limit keying.
-// This does NOT enforce auth — per-route authenticate() still handles that.
-app.use('/api', peekAuth);
-
-// Global rate limit for all API routes (per-route limiters still apply on top)
-app.use('/api', globalRateLimit);
+// Peek at Authorization header to populate req.user for rate-limit keying,
+// then apply the global rate limit. Chained in one registration so that
+// CodeQL sees rate limiting on the same handler that inspects the JWT.
+// peekAuth does NOT enforce auth — per-route authenticate() still handles that.
+app.use('/api', peekAuth, globalRateLimit);
 
 // Routes
 app.use('/api/setup', setupRoutes);
