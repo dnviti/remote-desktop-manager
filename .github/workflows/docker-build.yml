@@ -2,30 +2,30 @@ name: Docker Build
 
 on:
   push:
-    tags: ['v*']
-    branches: [main]
+    tags: ["v*"]
+    branches: [main, staging]
     paths:
-      - 'server/**'
-      - 'client/**'
-      - '!server/**/*.md'
-      - '!client/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'eslint.config.js'
-      - 'eslint.config.mjs'
-      - 'tsconfig.json'
+      - "server/**"
+      - "client/**"
+      - "!server/**/*.md"
+      - "!client/**/*.md"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.config.js"
+      - "eslint.config.mjs"
+      - "tsconfig.json"
   pull_request:
     branches: [main, staging]
     paths:
-      - 'server/**'
-      - 'client/**'
-      - '!server/**/*.md'
-      - '!client/**/*.md'
-      - 'package.json'
-      - 'package-lock.json'
-      - 'eslint.config.js'
-      - 'eslint.config.mjs'
-      - 'tsconfig.json'
+      - "server/**"
+      - "client/**"
+      - "!server/**/*.md"
+      - "!client/**/*.md"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.config.js"
+      - "eslint.config.mjs"
+      - "tsconfig.json"
   workflow_dispatch:
 
 env:
