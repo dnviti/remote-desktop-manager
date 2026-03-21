@@ -6,8 +6,9 @@
  * to prevent ReDoS and injection.
  */
 
-/** Detects nested quantifiers that can cause catastrophic backtracking. */
-const NESTED_QUANTIFIER_RE = /(\+|\*|\{[^}]+\})\s*(\+|\*|\?|\{[^}]+\})/;
+/** Detects nested quantifiers that can cause catastrophic backtracking.
+ *  Matches adjacent quantifiers (e.g. a++) and paren-wrapped ones (e.g. (a+)+). */
+const NESTED_QUANTIFIER_RE = /(\+|\*|\{[^}]+\})\s*\)?\s*(\+|\*|\?|\{[^}]+\})/;
 
 /** Maximum allowed pattern length. */
 export const MAX_REGEX_LENGTH = 500;
