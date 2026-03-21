@@ -26,11 +26,17 @@ const POLLING_INTERVAL = 5;
 // Characters used for the user code (no ambiguous chars like 0/O, 1/I/L)
 const USER_CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
+function uniformRandom(max: number): number {
+  const limit = 256 - (256 % max);
+  let b: number;
+  do { b = crypto.randomBytes(1)[0]; } while (b >= limit);
+  return b % max;
+}
+
 function generateUserCode(): string {
-  const bytes = crypto.randomBytes(USER_CODE_LENGTH);
   let code = '';
   for (let i = 0; i < USER_CODE_LENGTH; i++) {
-    code += USER_CODE_CHARS[bytes[i] % USER_CODE_CHARS.length];
+    code += USER_CODE_CHARS[uniformRandom(USER_CODE_CHARS.length)];
   }
   // Format as XXXX-XXXX for readability
   return `${code.slice(0, 4)}-${code.slice(4)}`;
