@@ -156,7 +156,9 @@ export function startLdapSyncJob(): void {
         ldap.syncUsers().catch((err) => {
           logger.error('[scheduler] Unhandled error in LDAP syncUsers:', err);
         }),
-      );
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import ldap.service:', err);
+      });
     },
     { timezone: 'UTC' },
   );
@@ -174,7 +176,9 @@ export function startCheckoutExpiryJob(): void {
         svc.processExpiredCheckouts().catch((err) => {
           logger.error('[scheduler] Unhandled error in processExpiredCheckouts:', err);
         }),
-      );
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import checkout.service:', err);
+      });
     },
     { timezone: 'UTC' },
   );
@@ -320,7 +324,9 @@ export function startPasswordRotationJob(): void {
         svc.processScheduledRotations().catch((err) => {
           logger.error('[scheduler] Unhandled error in processScheduledRotations:', err);
         }),
-      );
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import passwordRotation.service:', err);
+      });
     },
     { timezone: 'UTC' },
   );

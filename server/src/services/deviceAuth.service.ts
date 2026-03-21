@@ -11,6 +11,7 @@ import crypto from 'crypto';
 import prisma from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { issueTokens } from './auth.service';
+import { AppError } from '../middleware/error.middleware';
 
 const log = logger.child('deviceAuth');
 
@@ -51,20 +52,32 @@ export async function initiateDeviceAuth(clientUrl: string) {
   const userCode = generateUserCode();
   const expiresAt = new Date(Date.now() + DEVICE_CODE_TTL_SECONDS * 1000);
 
-  await prisma.deviceAuthCode.create({
-    data: {
-      deviceCode,
-      userCode,
-      expiresAt,
-      interval: POLLING_INTERVAL,
-    },
-  });
+  // Retry on userCode collision (unique constraint) — extremely unlikely but handled
+  const MAX_RETRIES = 3;
+  let finalUserCode = userCode;
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      await prisma.deviceAuthCode.create({
+        data: {
+          deviceCode,
+          userCode: finalUserCode,
+          expiresAt,
+          interval: POLLING_INTERVAL,
+        },
+      });
+      break;
+    } catch (err) {
+      const isUniqueViolation = (err as { code?: string }).code === 'P2002';
+      if (!isUniqueViolation || attempt === MAX_RETRIES - 1) throw err;
+      finalUserCode = generateUserCode();
+    }
+  }
 
-  log.verbose(`Device auth initiated: user_code=${userCode}`);
+  log.verbose(`Device auth initiated: user_code=${finalUserCode}`);
 
   return {
     device_code: deviceCode,
-    user_code: userCode,
+    user_code: finalUserCode,
     verification_uri: `${clientUrl}/device`,
     verification_uri_complete: `${clientUrl}/device?code=${userCode}`,
     expires_in: DEVICE_CODE_TTL_SECONDS,
@@ -88,16 +101,16 @@ export async function authorizeDevice(userId: string, userCode: string) {
   });
 
   if (!record) {
-    throw new Error('Invalid device code');
+    throw new AppError('Invalid device code', 404);
   }
 
   if (record.expiresAt < new Date()) {
     await prisma.deviceAuthCode.delete({ where: { id: record.id } });
-    throw new Error('Device code has expired');
+    throw new AppError('Device code has expired', 410);
   }
 
   if (record.authorized) {
-    throw new Error('Device code already authorized');
+    throw new AppError('Device code already authorized', 409);
   }
 
   await prisma.deviceAuthCode.update({
