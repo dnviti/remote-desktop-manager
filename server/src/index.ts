@@ -26,6 +26,7 @@ import { setupTunnelHandler } from './socket/tunnel.handler';
 import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
 import { cleanupIdleTunnels } from './services/rdGateway.service';
 import { cleanupExpiredDeviceCodes } from './services/deviceAuth.service';
+import { applySystemSettings } from './services/systemSettings.service';
 
 function freePort(port: number): void {
   try {
@@ -83,6 +84,7 @@ async function main() {
 
   await runDatabaseMigrations();
   await runStartupMigrations();
+  await applySystemSettings();
 
   // Recover orphaned sessions from previous server instance
   const recovered = await sessionService.recoverOrphanedSessions();
