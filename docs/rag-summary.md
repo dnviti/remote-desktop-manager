@@ -212,6 +212,8 @@ OAuth single sign-on supports Google, Microsoft, GitHub, any OIDC-compliant iden
 
 LDAP authentication allows organizations to authenticate users against an existing LDAP/Active Directory server. LDAP integration supports STARTTLS, TLS certificate validation, group-based access control, automatic user provisioning on first login, and periodic background synchronization to keep user attributes and group memberships current.
 
+A startup configuration wizard runs automatically on first install when the database has zero users and the `setupCompleted` AppConfig flag is not set. The wizard guides non-technical users through creating the initial admin account (with vault encryption setup and recovery key generation), naming the organization (tenant), and configuring optional settings like self-registration and SMTP email. All resources are created atomically, and the admin is automatically logged in with the vault unlocked after completion. The wizard is accessible at `/setup` without authentication and is protected by a zero-users precondition that prevents abuse after initial setup. Self-registration is disabled by default, making the wizard the primary onboarding path for new installations.
+
 Platform administrators can control self-registration (sign-up) via a toggle in the admin panel, which can also be locked at the environment level.
 
 Email verification supports multiple providers including SMTP, SendGrid, Amazon SES, Resend, and Mailgun, with automatic console logging in development environments. Administrators can view provider status and send test emails from the settings panel.

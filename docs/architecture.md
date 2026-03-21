@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-21T19:40:00Z
+generated-at: 2026-03-21T22:40:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -152,11 +152,13 @@ Middleware stack (in order):
 4. **Cookie Parser** — For refresh token cookies
 5. **Passport** — OAuth/SAML initialization
 6. **Request Logger** — Optional HTTP logging
-7. **CSRF Validation** — Double-submit cookie pattern (exempts login, register, extension clients)
+7. **CSRF Validation** — Double-submit cookie pattern (exempts login, register, OAuth code exchange, extension clients)
+8. **Peek Auth** — Lightweight JWT extraction from `Authorization` header for rate-limit keying (does not enforce auth)
+9. **Global Rate Limit** — IP-based rate limiting with authenticated user keying (skips whitelisted CIDRs)
 
 ### Route Mounting
 
-42 route files mounted under `/api`:
+43 route files mounted under `/api`:
 
 | Path | Purpose |
 |------|---------|
@@ -203,6 +205,8 @@ Middleware stack (in order):
 | JWT Auth | `auth.middleware.ts` | Token verification, IP/User-Agent binding, hijack detection |
 | Error Handler | `error.middleware.ts` | Custom `AppError` class, 500 fallback |
 | CSRF | `csrf.middleware.ts` | Double-submit cookies, timing-safe comparison |
+| Peek Auth | `peekAuth.middleware.ts` | Lightweight JWT extraction for rate-limit keying (non-blocking) |
+| Global Rate Limit | `globalRateLimit.middleware.ts` | IP/user-based rate limiting with CIDR whitelist |
 | Async Handler | `asyncHandler.ts` | Promise rejection wrapper |
 | Tenant | `tenant.middleware.ts` | Tenant extraction and role enforcement |
 | Team | `team.middleware.ts` | Team context middleware |

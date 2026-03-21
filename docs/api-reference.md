@@ -2,7 +2,7 @@
 title: API Reference
 description: Complete REST API endpoint reference, WebSocket namespaces, and client SDK documentation
 generated-by: ctdf-docs
-generated-at: 2026-03-21T19:40:00Z
+generated-at: 2026-03-21T22:40:00Z
 source-files:
   - server/src/routes/auth.routes.ts
   - server/src/routes/oauth.routes.ts
@@ -85,7 +85,7 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | `GET` | `/oauth/providers` | Public | List available OAuth providers |
 | `POST` | `/oauth/link-code` | JWT | Generate OAuth link code |
 | `GET` | `/oauth/link/:provider` | Public | Initiate OAuth account linking |
-| `POST` | `/oauth/exchange-code` | Public | Exchange OAuth code for tokens |
+| `POST` | `/oauth/exchange-code` | Public (CSRF-exempt) | Exchange OAuth code for tokens |
 | `GET` | `/oauth/accounts` | JWT | List linked OAuth accounts |
 | `DELETE` | `/oauth/link/:provider` | JWT | Unlink OAuth account |
 | `POST` | `/oauth/vault-setup` | JWT | Setup vault via OAuth flow |
