@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [1.7.0] - 2026-03-20
+## [1.7.0] - 2026-03-22
 
 ### Added
 - Database Protocol Gateway as managed container type (DBGW-2032)
@@ -27,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Per-type notification preferences with settings UI (NOTIF-310)
 - Do-not-disturb and quiet hours for notifications (NOTIF-330)
 - Desktop notifications via Web Notifications API (NOTIF-210)
+- Startup configuration wizard for first-time platform setup (SETUP-2041)
+- System settings admin panel (CFG-2040)
+- Global API rate limiter with tiered IP whitelist and JWT-based keying
+- Simplified default installation — sensible defaults for self-signup, email verification, and local network access
 
 ### Fixed
 - HTML escaping in PAM email notifications (RPAT-001)
@@ -34,6 +38,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Silent notification failure fallback with retry mechanism (RPAT-003)
 - Documented KeystrokeBuffer read/reset ordering contract (RPAT-004)
 - Documented intentional regex validation duplication as defense-in-depth (RPAT-005)
+- Exempt OAuth exchange-code from CSRF validation (#388)
+- Configurable tenant/domain for Microsoft and Google OAuth
+- Resolve CodeQL missing-rate-limiting alert on peekAuth middleware
+- Lazy-import prisma in ipAllowlist to fix test isolation
+- Eliminate biased cryptographic random in all services
+- Vite 8 compatibility, ESLint peer deps, and missing DB migrations
+
+### Security
+- Resolve all CodeQL security findings from PR #381
+- Local CodeQL security scanning support
+- CI pipeline reliability, security vulnerabilities, and dependency updates
+- Consolidated 11 CI workflows into 5 with matrix strategies
 
 ## [1.6.0] - 2026-03-16
 
