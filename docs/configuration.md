@@ -2,7 +2,7 @@
 title: Configuration
 description: Environment variables, config files, feature flags, and service configuration
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - .env.example
   - server/src/config.ts
@@ -163,8 +163,8 @@ Keystroke policies are managed per-tenant via the `/api/keystroke-policies` endp
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMAIL_PROVIDER` | `smtp` | Provider: smtp, sendgrid, ses, resend, mailgun |
-| `EMAIL_VERIFY_REQUIRED` | `true` | Enforce email verification |
-| `SELF_SIGNUP_ENABLED` | `true` | Allow self-registration |
+| `EMAIL_VERIFY_REQUIRED` | `false` | Enforce email verification |
+| `SELF_SIGNUP_ENABLED` | `false` | Allow self-registration |
 | `SMTP_HOST` | — | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | — | SMTP username |
@@ -194,7 +194,7 @@ Keystroke policies are managed per-tenant via the `/api/keystroke-policies` endp
 | `ACCOUNT_LOCKOUT_DURATION_MS` | `1800000` | Lockout duration (30 min) |
 | `MAX_CONCURRENT_SESSIONS` | `0` | Per-user session limit (0 = unlimited) |
 | `ABSOLUTE_SESSION_TIMEOUT_SECONDS` | `43200` | Absolute timeout (12 hours, 0 = disabled) |
-| `ALLOW_LOCAL_NETWORK` | `false` | Allow connections to private networks |
+| `ALLOW_LOCAL_NETWORK` | `true` | Allow connections to private networks |
 | `ALLOW_EXTERNAL_SHARING` | `false` | Enable cross-tenant sharing |
 
 ### WebAuthn
@@ -260,13 +260,13 @@ Features are controlled through environment variables and database settings:
 
 | Feature | Control | Default |
 |---------|---------|---------|
-| Self-signup | `SELF_SIGNUP_ENABLED` env + AppConfig DB | `true` |
-| Email verification | `EMAIL_VERIFY_REQUIRED` | `true` |
+| Self-signup | `SELF_SIGNUP_ENABLED` env + AppConfig DB | `false` |
+| Email verification | `EMAIL_VERIFY_REQUIRED` | `false` |
 | Session recording | `RECORDING_ENABLED` | `false` |
 | LDAP authentication | `LDAP_ENABLED` | `false` |
 | LDAP sync | `LDAP_SYNC_ENABLED` | `false` |
 | GeoIP tracking | `GEOIP_DB_PATH` (presence) | Disabled |
 | Impossible travel | `IMPOSSIBLE_TRAVEL_SPEED_KMH` > 0 | `900` km/h |
 | External sharing | `ALLOW_EXTERNAL_SHARING` | `false` |
-| Local network access | `ALLOW_LOCAL_NETWORK` | `false` |
+| Local network access | `ALLOW_LOCAL_NETWORK` | `true` |
 | CLI tool | `CLI_ENABLED` | `false` |

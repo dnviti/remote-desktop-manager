@@ -2,7 +2,7 @@
 title: LLM Context
 description: Consolidated single-file context for LLM and bot consumption
 generated-by: ctdf-docs
-generated-at: 2026-03-21T17:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - README.md
   - CLAUDE.md
@@ -99,6 +99,7 @@ Single `.env` file at monorepo root. Key categories:
 - **SMS:** `SMS_PROVIDER` (twilio/sns/vonage)
 - **Orchestration:** `ORCHESTRATOR_TYPE` (docker/podman/kubernetes/none)
 - **Recording:** `RECORDING_ENABLED`, `RECORDING_PATH`
+- **Defaults (simplified first-run):** `SELF_SIGNUP_ENABLED` (`false`), `EMAIL_VERIFY_REQUIRED` (`false`), `ALLOW_LOCAL_NETWORK` (`true`)
 - **Security:** Rate limits, account lockout, session timeouts, WebAuthn RP config
 
 ---
