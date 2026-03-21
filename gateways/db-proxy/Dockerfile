@@ -70,9 +70,10 @@ ENV DB_LISTEN_PORT=5432
 
 EXPOSE 5432
 
-# Health check: verify proxy is listening. Enterprise protocol adapters
-# expose their own health status via the adapter registry.
-HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=10s \
-  CMD nc -z localhost ${DB_LISTEN_PORT:-5432} || exit 1
+# Health check: disabled until the protocol-aware proxy binary is implemented.
+# The current entrypoint is a placeholder that does not open DB_LISTEN_PORT,
+# and busybox nc is not guaranteed on alpine. Re-enable once the proxy listens.
+# HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=10s \
+#   CMD nc -z localhost ${DB_LISTEN_PORT:-5432} || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

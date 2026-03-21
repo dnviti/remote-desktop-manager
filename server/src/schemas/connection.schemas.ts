@@ -51,7 +51,7 @@ export const createConnectionSchema = createConnectionBaseSchema.refine(
   { message: 'targetDbHost and targetDbPort are required for DB_TUNNEL connections' }
 );
 
-export type CreateConnectionInput = z.infer<typeof createConnectionBaseSchema>;
+export type CreateConnectionInput = z.infer<typeof createConnectionSchema>;
 
 const updateConnectionBaseSchema = z.object({
   name: z.string().min(1).optional(),
@@ -86,4 +86,4 @@ export const updateConnectionSchema = updateConnectionBaseSchema.refine(
   { message: 'externalVaultPath is required when externalVaultProviderId is set', path: ['externalVaultPath'] }
 );
 
-export type UpdateConnectionInput = z.infer<typeof updateConnectionBaseSchema>;
+export type UpdateConnectionInput = z.infer<typeof updateConnectionSchema>;

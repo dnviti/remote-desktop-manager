@@ -293,7 +293,7 @@ export async function createSecret(
   const plaintext = JSON.stringify(input.data);
   const encrypted = encrypt(plaintext, encryptionKey);
 
-  // Check password against HIBP (non-blocking — uses k-Anonymity)
+  // Check password against HIBP (k-Anonymity — only a hash prefix is sent)
   const passwordToCheck = extractPasswordFromPayload(input.data);
   const pwnedCount = passwordToCheck ? await checkPwnedPassword(passwordToCheck) : 0;
 
@@ -763,21 +763,36 @@ export async function checkAllSecretBreaches(
   let checked = 0;
   let pwned = 0;
 
-  for (const secretItem of secrets) {
-    // Only check types that have passwords
-    if (!['LOGIN', 'SSH_KEY', 'CERTIFICATE'].includes(secretItem.type)) continue;
+  // Filter to types that have passwords, then check with bounded concurrency
+  const secretsToCheck = secrets.filter((s) =>
+    ['LOGIN', 'SSH_KEY', 'CERTIFICATE'].includes(s.type)
+  );
 
-    try {
-      const result = await checkSecretBreach(userId, secretItem.id, tenantId);
-      checked++;
-      if (result.pwnedCount > 0) {
-        pwned++;
-        results.push({ id: secretItem.id, name: secretItem.name, pwnedCount: result.pwnedCount });
+  const CONCURRENCY_LIMIT = 5;
+  let currentIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const idx = currentIndex++;
+      if (idx >= secretsToCheck.length) break;
+      const secretItem = secretsToCheck[idx];
+
+      try {
+        const result = await checkSecretBreach(userId, secretItem.id, tenantId);
+        checked++;
+        if (result.pwnedCount > 0) {
+          pwned++;
+          results.push({ id: secretItem.id, name: secretItem.name, pwnedCount: result.pwnedCount });
+        }
+      } catch {
+        // Skip secrets we can't decrypt (e.g., locked scope)
       }
-    } catch {
-      // Skip secrets we can't decrypt (e.g., locked scope)
     }
-  }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY_LIMIT, secretsToCheck.length || 1) }, () => worker())
+  );
 
   return { checked, pwned, results };
 }
