@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma';
 import type { KeystrokePolicyAction } from '../lib/prisma';
 import { logger } from '../utils/logger';
-import { compileRegex } from '../utils/safeRegex';
+import { compileRegex, isRegexSafe, MAX_REGEX_LENGTH } from '../utils/safeRegex';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -27,26 +27,6 @@ export interface PolicyMatch {
   matchedInput: string;
 }
 
-// ---------------------------------------------------------------------------
-// Regex safety: reject patterns with nested quantifiers that cause catastrophic
-// backtracking (ReDoS). This is a heuristic check — not a full formal analysis.
-// ---------------------------------------------------------------------------
-
-const NESTED_QUANTIFIER_RE = /(\+|\*|\{)\s*\)(\+|\*|\?|\{)/;
-
-/**
- * Returns true if the regex pattern is considered safe from ReDoS.
- * Rejects patterns with nested quantifiers (e.g., (a+)+, (.*)*).
- */
-export function isRegexSafe(pattern: string): boolean {
-  if (NESTED_QUANTIFIER_RE.test(pattern)) return false;
-  // Reject patterns longer than the configured max
-  if (pattern.length > MAX_REGEX_PATTERN_LENGTH) return false;
-  return true;
-}
-
-/** Maximum length for a single regex pattern string. */
-export const MAX_REGEX_PATTERN_LENGTH = 500;
 /** Maximum number of regex patterns per policy. */
 export const MAX_PATTERNS_PER_POLICY = 50;
 /** Maximum number of cached tenants before eviction of oldest entries. */
@@ -100,14 +80,9 @@ async function getCompiledPolicies(tenantId: string): Promise<CompiledPolicy[]> 
     const patterns: { source: string; regex: RegExp }[] = [];
     for (const src of row.regexPatterns) {
       try {
-        if (!isRegexSafe(src)) {
-          logger.warn(`Skipping unsafe regex in keystroke policy ${row.id}: pattern rejected by safety check`);
-          continue;
-        }
-        // eslint-disable-next-line security/detect-non-literal-regexp -- Dynamic pattern from admin-configured keystroke policy, validated by isRegexSafe above
-        patterns.push({ source: src, regex: new RegExp(src, 'i') });
+        patterns.push({ source: src, regex: compileRegex(src, 'i', `keystroke policy ${row.id}`) });
       } catch {
-        logger.warn(`Invalid regex in keystroke policy ${row.id}: pattern failed to compile`);
+        logger.warn(`Skipping invalid/unsafe regex in keystroke policy ${row.id}: pattern rejected`);
       }
     }
     if (patterns.length > 0) {
@@ -313,8 +288,8 @@ export async function createPolicy(
   // Validate regex patterns at creation time
   for (let i = 0; i < data.regexPatterns.length; i++) {
     const pattern = data.regexPatterns[i];
-    if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
-      const err = new Error(`Regex pattern at index ${i} exceeds maximum length of ${MAX_REGEX_PATTERN_LENGTH} characters`) as Error & { statusCode: number };
+    if (pattern.length > MAX_REGEX_LENGTH) {
+      const err = new Error(`Regex pattern at index ${i} exceeds maximum length of ${MAX_REGEX_LENGTH} characters`) as Error & { statusCode: number };
       err.statusCode = 400;
       throw err;
     }
@@ -369,8 +344,8 @@ export async function updatePolicy(
     }
     for (let i = 0; i < data.regexPatterns.length; i++) {
       const pattern = data.regexPatterns[i];
-      if (pattern.length > MAX_REGEX_PATTERN_LENGTH) {
-        const err = new Error(`Regex pattern at index ${i} exceeds maximum length of ${MAX_REGEX_PATTERN_LENGTH} characters`) as Error & { statusCode: number };
+      if (pattern.length > MAX_REGEX_LENGTH) {
+        const err = new Error(`Regex pattern at index ${i} exceeds maximum length of ${MAX_REGEX_LENGTH} characters`) as Error & { statusCode: number };
         err.statusCode = 400;
         throw err;
       }
