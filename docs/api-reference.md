@@ -2,7 +2,7 @@
 title: API Reference
 description: Complete REST API endpoint reference, WebSocket namespaces, and client SDK documentation
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - server/src/routes/auth.routes.ts
   - server/src/routes/oauth.routes.ts
@@ -44,6 +44,8 @@ source-files:
   - server/src/routes/passwordRotation.routes.ts
   - server/src/routes/dbTunnel.routes.ts
   - server/src/routes/keystrokePolicy.routes.ts
+  - server/src/routes/systemSettings.routes.ts
+  - server/src/routes/setup.routes.ts
 ---
 
 # API Reference
@@ -621,6 +623,21 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | `POST` | `/masking-policies` | JWT + Tenant | ADMIN/OWNER | Create masking policy |
 | `PUT` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Update masking policy |
 | `DELETE` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Delete masking policy |
+
+## System Settings (`/api/admin/system-settings`)
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/` | JWT + Tenant | AUDITOR/ADMIN/OWNER | List all system settings |
+| `PUT` | `/:key` | JWT + Tenant | ADMIN/OWNER | Update a single setting |
+| `PUT` | `/` | JWT + Tenant | ADMIN/OWNER | Bulk update settings |
+
+## Setup Wizard (`/api/setup`)
+
+| Method | Path | Auth | Rate Limit | Description |
+|--------|------|------|------------|-------------|
+| `GET` | `/status` | Public | — | Check if initial setup is required |
+| `POST` | `/complete` | Public | 5/min | Complete first-time platform setup |
 
 ## Keystroke Policies (`/api/keystroke-policies`)
 

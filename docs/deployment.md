@@ -2,7 +2,7 @@
 title: Deployment
 description: Docker containers, CI/CD pipelines, production setup, and infrastructure
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - compose.yml
   - compose.dev.yml
@@ -18,10 +18,10 @@ source-files:
   - tools/arsenale-cli/main.go
   - client/nginx.conf
   - client/nginx.main.conf
-  - .github/workflows/docker-server.yml
-  - .github/workflows/docker-client.yml
-  - .github/workflows/verify-server.yml
-  - .github/workflows/verify-client.yml
+  - .github/workflows/verify.yml
+  - .github/workflows/docker-build.yml
+  - .github/workflows/gateways-build.yml
+  - .github/workflows/security.yml
   - .github/workflows/release.yml
 ---
 
@@ -115,8 +115,9 @@ Multi-stage build on `node:22-alpine`:
 2. Generate Prisma client from schema
 3. Compile TypeScript to `dist/`
 4. Prune to production dependencies
-5. Create non-root `appuser`
-6. Create `/guacd-drive` and `/recordings` directories
+5. Install `arsenale` CLI shim at `/usr/local/bin/arsenale`
+6. Create non-root `appuser`
+7. Create `/guacd-drive` and `/recordings` directories
 
 **Exposed ports:** 3001 (API), 3002 (Guacamole WS)
 **Health check:** `GET /api/health` (10s interval, 5 retries, 30s start period)
@@ -158,9 +159,22 @@ Multi-stage: tunnel-agent builder → Alpine 3.21 runtime:
 **Exposed ports:** 2222 (SSH), 8022 (key API)
 **User:** tunnel (non-root)
 
-### Database Proxy Gateway (`gateways/db-proxy/`)
+### Database Proxy Gateway (`gateways/db-proxy/Dockerfile`)
 
-Go-based protocol proxy supporting Oracle (TNS), MSSQL (TDS), and IBM DB2 protocols. Runs as a managed gateway container with API port for management and multiple protocol ports for database connections.
+Multi-stage build: tunnel-agent builder (Node 22-alpine) + Node 22-alpine runtime:
+
+1. Build tunnel-agent from TypeScript
+2. Install runtime dependencies (libaio, libnsl, unixODBC, FreeTDS, libxml2)
+3. Embed pre-built tunnel agent
+4. Copy Go protocol adapters
+5. Create non-root `dbproxy` user
+
+Protocol-aware proxy supporting PostgreSQL, MySQL, and MongoDB. Credentials are injected per-session from the Arsenale vault.
+
+**Exposed port:** 5432 (configurable via `DB_LISTEN_PORT`)
+**Health check:** Process-level (`/proc/1/status`, 30s interval, 10s start period)
+**User:** dbproxy (non-root)
+**Entry:** `/entrypoint.sh`
 
 ### RD Gateway (`gateways/rdgw/`)
 
@@ -215,7 +229,7 @@ Multi-stage: Node 22-alpine builder → Node 22-alpine runtime:
 
 ## CI/CD Pipelines
 
-### Verification Workflows
+### Verification Workflow
 
 ```mermaid
 flowchart LR
@@ -226,11 +240,7 @@ flowchart LR
     Audit --> Build["Build"]
 ```
 
-**verify-server.yml:** Triggers on server/ path changes. Steps: checkout → Node 22 → npm ci → db:generate → typecheck → lint → audit → build.
-
-**verify-client.yml:** Triggers on client/ path changes. Steps: checkout → Node 22 → npm ci → typecheck → lint → audit → build.
-
-Both cancel in-progress jobs on new pushes.
+**verify.yml:** Reusable workflow accepting a `workspace` input (`server` or `client`). Steps: checkout → Node 22 → npm ci → db:generate (server only) → typecheck → lint → audit → build. Called by `docker-build.yml` for both workspaces. Cancels in-progress jobs on new pushes.
 
 ### Docker Build Workflows
 
@@ -246,19 +256,19 @@ flowchart TD
     Trivy --> Push["Push to ghcr.io<br/>(tags only)"]
 ```
 
-**docker-server.yml / docker-client.yml:**
-1. Run verification workflow
-2. Run security scan (CodeQL)
-3. Build Docker image with Buildx
+**docker-build.yml:** Consolidated workflow for server and client images using a matrix strategy. Triggers on pushes to `main` and version tags, or PRs to `main`/`staging` touching `server/` or `client/` paths:
+1. Call `verify.yml` for both server and client workspaces
+2. Call `security.yml` (CodeQL for server, Trivy filesystem for both)
+3. Build Docker images with Buildx (matrix: server, client)
 4. Scan with Trivy (CRITICAL + HIGH severity)
 5. Upload SARIF results to GitHub Security
-6. Push to `ghcr.io/dnviti/arsenale/server` or `ghcr.io/dnviti/arsenale/client` (version tags only)
+6. Push to `ghcr.io/dnviti/arsenale/server` and `ghcr.io/dnviti/arsenale/client` (version tags only)
 
-**Gateway builds:** `guacd-build.yml`, `ssh-gateway-build.yml`, `guacenc-build.yml`, `tunnel-agent-build.yml` follow the same pattern.
+**gateways-build.yml:** Consolidated gateway workflow using a matrix strategy (guacd, guacenc, ssh-gateway, tunnel-agent). Triggers on `gateways/` path changes. Same build-scan-push pipeline with multi-arch support (linux/amd64, linux/arm64).
 
 ### Release Workflow
 
-**release.yml:** Triggers on version tag events. Creates GitHub Release with changelog.
+**release.yml:** Triggers on version tag pushes (`v*`). Creates a draft GitHub Release with auto-generated release notes. Tags containing `-beta` are marked as pre-releases.
 
 ### Registry
 
@@ -293,6 +303,7 @@ Server and client run natively via `npm run dev`.
 | Server | `wget /api/health` | 10s | 30s |
 | Client | Nginx `/health` | 10s | 5s |
 | SSH Gateway | `nc -z localhost $SSH_PORT` | 10s | — |
+| DB Proxy | `/proc/1/status` | 30s | 10s |
 
 ## Production Checklist
 

@@ -2,7 +2,7 @@
 title: Configuration
 description: Environment variables, config files, feature flags, and service configuration
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - .env.example
   - server/src/config.ts
@@ -108,8 +108,10 @@ Keystroke policies are managed per-tenant via the `/api/keystroke-policies` endp
 |----------|---------|-------------|
 | `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
+| `GOOGLE_HD` | — | Google hosted domain restriction (e.g. `example.com`) |
 | `MICROSOFT_CLIENT_ID` | — | Microsoft OAuth client ID |
 | `MICROSOFT_CLIENT_SECRET` | — | Microsoft OAuth client secret |
+| `MICROSOFT_TENANT_ID` | `common` | Azure AD tenant ID or `common` / `organizations` / `consumers` |
 | `GITHUB_CLIENT_ID` | — | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | — | GitHub OAuth client secret |
 

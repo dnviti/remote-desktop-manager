@@ -2,7 +2,7 @@
 title: Troubleshooting
 description: Common errors, debugging tips, and frequently asked questions
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - server/src/index.ts
   - server/src/middleware/error.middleware.ts
@@ -103,6 +103,22 @@ This is automatically done by `npm run predev`.
 - `CLIENT_URL` in `.env` doesn't match the actual client URL
 - OAuth callback URL in provider settings doesn't match
 - Missing or wrong `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_SECRET`, etc.
+
+### Microsoft OAuth Returns "User Not In Tenant"
+
+**Error:** Microsoft login fails with tenant validation error
+
+**Cause:** `MICROSOFT_TENANT_ID` is set to a specific Azure AD tenant ID, but the user's account belongs to a different tenant.
+
+**Fix:** Set `MICROSOFT_TENANT_ID=common` in `.env` to allow any Microsoft account, or verify the tenant ID matches your Azure AD directory. Default is `common` (all Microsoft accounts accepted).
+
+### Google OAuth Rejects Users Outside Domain
+
+**Error:** Google login fails for users not in the expected domain
+
+**Cause:** `GOOGLE_HD` (hosted domain) is set to restrict login to a specific Google Workspace domain.
+
+**Fix:** Clear `GOOGLE_HD` in `.env` to allow any Google account, or set it to your organization's domain (e.g., `GOOGLE_HD=example.com`). When set, only users with an email in that domain can authenticate via Google OAuth.
 
 ### Account Lockout
 

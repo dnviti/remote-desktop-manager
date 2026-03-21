@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-20T01:15:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -17,6 +17,7 @@ source-files:
   - server/src/socket/tunnel.handler.ts
   - server/src/socket/notification.handler.ts
   - server/src/socket/gatewayMonitor.handler.ts
+  - server/src/config/passport.ts
   - server/src/services/keystrokeInspection.service.ts
   - server/src/services/checkout.service.ts
   - server/src/services/lateralMovement.service.ts
@@ -130,14 +131,16 @@ On startup, the server:
 
 1. Runs `prisma migrate deploy` (automatic database migrations)
 2. Runs startup migrations (email verification, vault setup)
-3. Recovers orphaned sessions from previous server instances
-4. Initializes GeoIP database
-5. Creates HTTP server with Express app
-6. Attaches Socket.IO server (SSH terminal + notifications)
-7. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
-8. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
-9. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
-10. Registers graceful shutdown on SIGTERM/SIGINT
+3. Applies system settings from the database
+4. Recovers orphaned sessions from previous server instances
+5. Initializes GeoIP database
+6. Initializes Passport strategies (OAuth, SAML, OIDC discovery)
+7. Creates HTTP server with Express app
+8. Attaches Socket.IO server (SSH terminal + notifications)
+9. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
+10. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
+11. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
+12. Registers graceful shutdown on SIGTERM/SIGINT
 
 ### Express App (`server/src/app.ts`)
 
@@ -153,10 +156,11 @@ Middleware stack (in order):
 
 ### Route Mounting
 
-40 route files mounted under `/api`:
+42 route files mounted under `/api`:
 
 | Path | Purpose |
 |------|---------|
+| `/api/setup` | First-time platform setup wizard (public, rate-limited) |
 | `/api/auth` | Authentication (password, OAuth, SAML, MFA, token refresh) |
 | `/api/vault` | Vault unlock/lock/status, MFA vault unlock |
 | `/api/connections` | Connection CRUD, sharing, import/export |
@@ -190,6 +194,7 @@ Middleware stack (in order):
 | `/api/db-audit` | Database query audit logs, SQL firewall rules, masking policies |
 | `/api/secrets` (rotation) | Password rotation enable/disable/trigger/status |
 | `/api/keystroke-policies` | SSH keystroke inspection policy CRUD |
+| `/api/admin/system-settings` | Runtime system settings management |
 
 ### Middleware
 
@@ -318,7 +323,8 @@ erDiagram
 ```mermaid
 flowchart TD
     Router["React Router"]
-    Router --> Public["Public Routes"]
+    Router --> Setup["/setup → SetupWizardPage"]
+    Router --> Public["Public Routes (SetupGuard)"]
     Router --> Auth["AuthRoute"]
     Router --> Protected["ProtectedRoute"]
 
@@ -514,6 +520,13 @@ stateDiagram-v2
 - Refresh tokens stored in DB with family tracking (rotation detection)
 - Token binding: IP + User-Agent hash prevents token theft
 - Automatic refresh via Axios interceptor on 401
+
+**OAuth Provider Configuration:**
+- Google: optional `hd` parameter restricts login to a specific hosted domain (e.g. corporate Google Workspace)
+- Microsoft: configurable `tenant` parameter (defaults to `common`, can be set to a specific Azure AD tenant ID)
+- GitHub: standard OAuth2 with `user:email` scope
+- Generic OIDC: discovery-based with PKCE (S256), supports any OpenID Connect provider
+- SAML: supports IdP metadata, attribute mapping, and session index tracking
 
 ### Role-Based Access Control
 
