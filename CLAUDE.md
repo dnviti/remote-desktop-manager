@@ -36,6 +36,8 @@ npm run typecheck           # TypeScript type-check (both workspaces, no emit)
 npm run lint                # ESLint (both workspaces via root flat config)
 npm run lint:fix            # ESLint with auto-fix
 npm run sast                # npm audit (dependency vulnerability scan)
+npm run codeql              # Local CodeQL security scan (security-extended)
+npm run codeql:full         # Local CodeQL full scan (security-and-quality)
 
 # Docker
 npm run docker:dev          # Start guacd + PostgreSQL containers (required for dev)
@@ -52,7 +54,7 @@ TEST_FRAMEWORK="vitest"                  # Test runner
 TEST_COMMAND="npm run test"              # Run tests (all workspaces)
 TEST_FILE_PATTERN="**/*.test.{ts,tsx}"   # Test file pattern
 
-CI_RUNTIME_SETUP="uses: actions/setup-node@v4\nwith:\n  node-version: 22"
+CI_RUNTIME_SETUP="uses: actions/setup-node@v6\nwith:\n  node-version: 22"
 
 DEVELOPMENT_BRANCH="develop"
 STAGING_BRANCH="staging"
