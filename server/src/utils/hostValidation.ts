@@ -5,6 +5,12 @@ import { config } from '../config';
 import { AppError } from '../middleware/error.middleware';
 
 function getBlockedMessage(): string {
+  if (config.allowLoopback && config.allowLocalNetwork) {
+    return 'Connections to wildcard, link-local, or metadata addresses are not allowed';
+  }
+  if (config.allowLoopback) {
+    return 'Connections to local network addresses are not allowed';
+  }
   return config.allowLocalNetwork
     ? 'Connections to loopback addresses are not allowed'
     : 'Connections to loopback or local network addresses are not allowed';
@@ -22,17 +28,22 @@ function getLocalAddresses(): Set<string> {
   return addresses;
 }
 
-function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
-  // Loopback IPv6
+function isLoopbackIP(ip: string): boolean {
   if (ip === '::1') return true;
+  if (net.isIPv4(ip) && ip.split('.').map(Number)[0] === 127) return true;
+  return false;
+}
 
-  // Wildcard addresses
+function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
+  // Wildcard addresses (always blocked)
   if (ip === '0.0.0.0' || ip === '::' || ip === '[::]') return true;
+
+  // Loopback — blocked unless allowLoopback is enabled
+  if (isLoopbackIP(ip)) return !config.allowLoopback;
 
   // IPv4 checks
   if (net.isIPv4(ip)) {
     const parts = ip.split('.').map(Number);
-    if (parts[0] === 127) return true; // Loopback (always blocked)
     if (!config.allowLocalNetwork) {
       if (parts[0] === 10) return true; // 10.0.0.0/8
       if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
@@ -49,8 +60,11 @@ function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
     }
   }
 
-  // Local interface IPs (always blocked — prevents connecting to the server itself)
-  if (localAddresses.has(ip)) return true;
+  // Local interface IPs — but exempt loopback IPs when allowLoopback is enabled
+  if (localAddresses.has(ip)) {
+    if (config.allowLoopback && isLoopbackIP(ip)) return false;
+    return true;
+  }
 
   return false;
 }
@@ -58,8 +72,8 @@ function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
 export async function validateHost(host: string): Promise<void> {
   const normalized = host.trim().toLowerCase();
 
-  // Reject "localhost" string
-  if (normalized === 'localhost') {
+  // Reject "localhost" string — unless allowLoopback is enabled
+  if (normalized === 'localhost' && !config.allowLoopback) {
     throw new AppError(getBlockedMessage(), 400);
   }
 

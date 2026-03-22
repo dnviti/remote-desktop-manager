@@ -252,6 +252,8 @@ export const config = {
   },
   // Allow connections to private/local network addresses
   allowLocalNetwork: process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() !== 'false',
+  // Allow connections to loopback addresses (localhost, 127.x, ::1) — opt-in, secure by default
+  allowLoopback: process.env.ALLOW_LOOPBACK?.toLowerCase() === 'true',
   // Multi-tenancy — allow sharing connections with users outside the sharer's tenant
   allowExternalSharing: process.env.ALLOW_EXTERNAL_SHARING === 'true',
   webauthn: {
