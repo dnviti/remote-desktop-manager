@@ -37,43 +37,49 @@ function sanitize(value: unknown, depth = 0): unknown {
   return value;
 }
 
-function formatArgs(level: LogLevel, prefix: string, args: unknown[]): unknown[] {
+function stripNewlines(s: string): string { return s.replace(/[\n\r]/g, '\\n'); }
+
+function stringify(value: unknown): string {
+  if (typeof value === 'string') return stripNewlines(value);
+  if (value instanceof Error) return stripNewlines(value.stack ?? value.message);
+  try { return stripNewlines(JSON.stringify(value)); } catch { return stripNewlines(String(value)); }
+}
+
+function formatArgs(level: LogLevel, prefix: string, args: unknown[]): string {
   const sanitized = args.map(a => sanitize(a));
 
   if (config.logFormat === 'json') {
-    const message = sanitized.map(a =>
-      typeof a === 'string' ? a : JSON.stringify(a),
-    ).join(' ');
+    const message = sanitized.map(a => stringify(a)).join(' ');
     const entry: Record<string, unknown> = { level, message };
     if (config.logTimestamps) entry.timestamp = new Date().toISOString();
     if (prefix) entry.module = prefix;
-    return [JSON.stringify(entry)];
+    return JSON.stringify(entry).replace(/[\n\r]/g, '\\n');
   }
 
-  const parts: unknown[] = [];
+  const parts: string[] = [];
   if (config.logTimestamps) parts.push(new Date().toISOString());
   parts.push(`[${level.toUpperCase()}]`);
   if (prefix) parts.push(`[${prefix}]`);
-  parts.push(...sanitized);
-  return parts;
+  for (const s of sanitized) parts.push(stringify(s));
+  return parts.join(' ').replace(/[\n\r]/g, '\\n');
 }
 
 function createLogger(prefix = '') {
   return {
     error: (...args: unknown[]) => {
-      if (currentLevel() >= LEVELS.error) console.error(...formatArgs('error', prefix, args));
+      if (currentLevel() >= LEVELS.error) console.error(formatArgs('error', prefix, args));
     },
     warn: (...args: unknown[]) => {
-      if (currentLevel() >= LEVELS.warn) console.warn(...formatArgs('warn', prefix, args));
+      if (currentLevel() >= LEVELS.warn) console.warn(formatArgs('warn', prefix, args));
     },
     info: (...args: unknown[]) => {
-      if (currentLevel() >= LEVELS.info) console.log(...formatArgs('info', prefix, args));
+      if (currentLevel() >= LEVELS.info) console.log(formatArgs('info', prefix, args));
     },
     verbose: (...args: unknown[]) => {
-      if (currentLevel() >= LEVELS.verbose) console.log(...formatArgs('verbose', prefix, args));
+      if (currentLevel() >= LEVELS.verbose) console.log(formatArgs('verbose', prefix, args));
     },
     debug: (...args: unknown[]) => {
-      if (currentLevel() >= LEVELS.debug) console.debug(...formatArgs('debug', prefix, args));
+      if (currentLevel() >= LEVELS.debug) console.debug(formatArgs('debug', prefix, args));
     },
     child: (childPrefix: string) => createLogger(prefix ? `${prefix}:${childPrefix}` : childPrefix),
   };
