@@ -16,6 +16,24 @@ const mockNetworkInterfaces = vi.fn().mockReturnValue({
       cidr: '192.168.50.10/24',
     },
   ],
+  lo: [
+    {
+      address: '127.0.0.1',
+      netmask: '255.0.0.0',
+      family: 'IPv4',
+      mac: '00:00:00:00:00:00',
+      internal: true,
+      cidr: '127.0.0.1/8',
+    },
+    {
+      address: '::1',
+      netmask: 'ffff:ffff:ffff:ffff:ffff:ffff:ffff:ffff',
+      family: 'IPv6',
+      mac: '00:00:00:00:00:00',
+      internal: true,
+      cidr: '::1/128',
+    },
+  ],
 });
 
 vi.mock('os', async (importOriginal) => {
@@ -54,11 +72,12 @@ vi.mock('dns', async (importOriginal) => {
  * Helper to get a fresh validateHost with the desired ALLOW_LOCAL_NETWORK setting.
  * Because the module reads process.env at load time, we must reset modules and re-import.
  */
-async function loadValidateHost(allowLocalNetwork: boolean) {
+async function loadValidateHost(allowLocalNetwork: boolean, allowLoopback = false) {
   vi.resetModules();
   // Must set explicitly to 'false' rather than deleting, because dotenv
   // loads .env during module import and would re-set the value if the key is absent.
   process.env.ALLOW_LOCAL_NETWORK = allowLocalNetwork ? 'true' : 'false';
+  process.env.ALLOW_LOOPBACK = allowLoopback ? 'true' : 'false';
   const mod = await import('./hostValidation');
   return mod.validateHost;
 }
@@ -97,6 +116,22 @@ describe('hostValidation (ALLOW_LOCAL_NETWORK=false)', () => {
   it('rejects ::1 (IPv6 loopback)', async () => {
     await expect(validateHost('::1')).rejects.toThrow();
     await expect(validateHost('::1')).rejects.toHaveProperty(
+      'statusCode',
+      400
+    );
+  });
+
+  it('rejects [::1] (bracketed IPv6 loopback)', async () => {
+    await expect(validateHost('[::1]')).rejects.toThrow();
+    await expect(validateHost('[::1]')).rejects.toHaveProperty(
+      'statusCode',
+      400
+    );
+  });
+
+  it('rejects 0:0:0:0:0:0:0:1 (expanded IPv6 loopback)', async () => {
+    await expect(validateHost('0:0:0:0:0:0:0:1')).rejects.toThrow();
+    await expect(validateHost('0:0:0:0:0:0:0:1')).rejects.toHaveProperty(
       'statusCode',
       400
     );
@@ -150,9 +185,25 @@ describe('hostValidation (ALLOW_LOCAL_NETWORK=false)', () => {
     );
   });
 
+  it('rejects FE80::1 (uppercase IPv6 link-local)', async () => {
+    await expect(validateHost('FE80::1')).rejects.toThrow();
+    await expect(validateHost('FE80::1')).rejects.toHaveProperty(
+      'statusCode',
+      400
+    );
+  });
+
   it('rejects fd00::1 (IPv6 ULA)', async () => {
     await expect(validateHost('fd00::1')).rejects.toThrow();
     await expect(validateHost('fd00::1')).rejects.toHaveProperty(
+      'statusCode',
+      400
+    );
+  });
+
+  it('rejects FD00::1 (uppercase IPv6 ULA)', async () => {
+    await expect(validateHost('FD00::1')).rejects.toThrow();
+    await expect(validateHost('FD00::1')).rejects.toHaveProperty(
       'statusCode',
       400
     );
@@ -240,6 +291,14 @@ describe('hostValidation (ALLOW_LOCAL_NETWORK=true)', () => {
     await expect(validateHost('::1')).rejects.toThrow();
   });
 
+  it('still rejects [::1] (bracketed IPv6 loopback always blocked)', async () => {
+    await expect(validateHost('[::1]')).rejects.toThrow();
+  });
+
+  it('still rejects 0:0:0:0:0:0:0:1 (expanded IPv6 loopback always blocked)', async () => {
+    await expect(validateHost('0:0:0:0:0:0:0:1')).rejects.toThrow();
+  });
+
   it('still rejects 0.0.0.0 (wildcard always blocked)', async () => {
     await expect(validateHost('0.0.0.0')).rejects.toThrow();
   });
@@ -250,6 +309,10 @@ describe('hostValidation (ALLOW_LOCAL_NETWORK=true)', () => {
 
   it('still rejects fe80::1 (IPv6 link-local always blocked)', async () => {
     await expect(validateHost('fe80::1')).rejects.toThrow();
+  });
+
+  it('still rejects FE80::1 (uppercase IPv6 link-local always blocked)', async () => {
+    await expect(validateHost('FE80::1')).rejects.toThrow();
   });
 
   it('allows 10.0.0.1 (private ranges permitted)', async () => {
@@ -266,6 +329,156 @@ describe('hostValidation (ALLOW_LOCAL_NETWORK=true)', () => {
 
   it('allows fd00::1 (IPv6 ULA permitted)', async () => {
     await expect(validateHost('fd00::1')).resolves.toBeUndefined();
+  });
+
+  it('allows FD00::1 (uppercase IPv6 ULA permitted)', async () => {
+    await expect(validateHost('FD00::1')).resolves.toBeUndefined();
+  });
+
+  it('allows public IPs', async () => {
+    await expect(validateHost('8.8.8.8')).resolves.toBeUndefined();
+  });
+});
+
+describe('hostValidation (ALLOW_LOOPBACK=true, ALLOW_LOCAL_NETWORK=true)', () => {
+  let validateHost: (host: string) => Promise<void>;
+
+  beforeEach(async () => {
+    validateHost = await loadValidateHost(true, true);
+    mockResolve4.mockRejectedValue(new Error('ENOTFOUND'));
+    mockResolve6.mockRejectedValue(new Error('ENOTFOUND'));
+    mockLookup.mockRejectedValue(new Error('ENOTFOUND'));
+  });
+
+  it('allows "localhost" string', async () => {
+    await expect(validateHost('localhost')).resolves.toBeUndefined();
+  });
+
+  it('allows 127.0.0.1 (loopback)', async () => {
+    await expect(validateHost('127.0.0.1')).resolves.toBeUndefined();
+  });
+
+  it('allows 127.0.0.2 (loopback range)', async () => {
+    await expect(validateHost('127.0.0.2')).resolves.toBeUndefined();
+  });
+
+  it('allows ::1 (IPv6 loopback)', async () => {
+    await expect(validateHost('::1')).resolves.toBeUndefined();
+  });
+
+  it('allows [::1] (bracketed IPv6 loopback)', async () => {
+    await expect(validateHost('[::1]')).resolves.toBeUndefined();
+  });
+
+  it('allows 0:0:0:0:0:0:0:1 (expanded IPv6 loopback)', async () => {
+    await expect(validateHost('0:0:0:0:0:0:0:1')).resolves.toBeUndefined();
+  });
+
+  it('allows 10.0.0.1 (private range)', async () => {
+    await expect(validateHost('10.0.0.1')).resolves.toBeUndefined();
+  });
+
+  it('allows 192.168.1.1 (private range)', async () => {
+    await expect(validateHost('192.168.1.1')).resolves.toBeUndefined();
+  });
+
+  it('still rejects 0.0.0.0 (wildcard always blocked)', async () => {
+    await expect(validateHost('0.0.0.0')).rejects.toThrow();
+  });
+
+  it('still rejects :: (wildcard always blocked)', async () => {
+    await expect(validateHost('::')).rejects.toThrow();
+  });
+
+  it('still rejects 169.254.169.254 (link-local always blocked)', async () => {
+    await expect(validateHost('169.254.169.254')).rejects.toThrow();
+  });
+
+  it('still rejects fe80::1 (IPv6 link-local always blocked)', async () => {
+    await expect(validateHost('fe80::1')).rejects.toThrow();
+  });
+
+  it('still rejects FE80::1 (uppercase IPv6 link-local always blocked)', async () => {
+    await expect(validateHost('FE80::1')).rejects.toThrow();
+  });
+
+  it('allows public IPs', async () => {
+    await expect(validateHost('8.8.8.8')).resolves.toBeUndefined();
+  });
+
+  it('allows hostname that resolves to loopback', async () => {
+    mockResolve4.mockResolvedValue(['127.0.0.1']);
+    mockResolve6.mockRejectedValue(new Error('ENOTFOUND'));
+    mockLookup.mockRejectedValue(new Error('ENOTFOUND'));
+
+    await expect(validateHost('myapp.local')).resolves.toBeUndefined();
+  });
+});
+
+describe('hostValidation (ALLOW_LOOPBACK=true, ALLOW_LOCAL_NETWORK=false)', () => {
+  let validateHost: (host: string) => Promise<void>;
+
+  beforeEach(async () => {
+    validateHost = await loadValidateHost(false, true);
+    mockResolve4.mockRejectedValue(new Error('ENOTFOUND'));
+    mockResolve6.mockRejectedValue(new Error('ENOTFOUND'));
+    mockLookup.mockRejectedValue(new Error('ENOTFOUND'));
+  });
+
+  it('allows "localhost" string', async () => {
+    await expect(validateHost('localhost')).resolves.toBeUndefined();
+  });
+
+  it('allows 127.0.0.1 (loopback)', async () => {
+    await expect(validateHost('127.0.0.1')).resolves.toBeUndefined();
+  });
+
+  it('allows ::1 (IPv6 loopback)', async () => {
+    await expect(validateHost('::1')).resolves.toBeUndefined();
+  });
+
+  it('allows [::1] (bracketed IPv6 loopback)', async () => {
+    await expect(validateHost('[::1]')).resolves.toBeUndefined();
+  });
+
+  it('allows 0:0:0:0:0:0:0:1 (expanded IPv6 loopback)', async () => {
+    await expect(validateHost('0:0:0:0:0:0:0:1')).resolves.toBeUndefined();
+  });
+
+  it('rejects 10.0.0.1 (private range still blocked)', async () => {
+    await expect(validateHost('10.0.0.1')).rejects.toThrow();
+  });
+
+  it('rejects 172.16.0.1 (private range still blocked)', async () => {
+    await expect(validateHost('172.16.0.1')).rejects.toThrow();
+  });
+
+  it('rejects 192.168.1.1 (private range still blocked)', async () => {
+    await expect(validateHost('192.168.1.1')).rejects.toThrow();
+  });
+
+  it('rejects fd00::1 (IPv6 ULA still blocked)', async () => {
+    await expect(validateHost('fd00::1')).rejects.toThrow();
+  });
+
+  it('rejects FD00::1 (uppercase IPv6 ULA still blocked)', async () => {
+    await expect(validateHost('FD00::1')).rejects.toThrow();
+  });
+
+  it('still rejects 0.0.0.0 (wildcard always blocked)', async () => {
+    await expect(validateHost('0.0.0.0')).rejects.toThrow();
+  });
+
+  it('still rejects 169.254.169.254 (link-local always blocked)', async () => {
+    await expect(validateHost('169.254.169.254')).rejects.toThrow();
+  });
+
+  it('still rejects fe80::1 (IPv6 link-local always blocked)', async () => {
+    await expect(validateHost('fe80::1')).rejects.toThrow();
+  });
+
+  it('still rejects FE80::1 (uppercase IPv6 link-local always blocked)', async () => {
+    await expect(validateHost('FE80::1')).rejects.toThrow();
   });
 
   it('allows public IPs', async () => {
