@@ -325,7 +325,7 @@ export async function initializePassport(): Promise<void> {
           makeVerifyCallback('OIDC') as VerifyCallback,
         )
       );
-      logger.info(`OAuth: OIDC strategy registered (${config.oauth.oidc.providerName}, issuer: ${discovery.issuer})`);
+      logger.info('OAuth: OIDC strategy registered');
     } catch (err) {
       logger.warn('OIDC Discovery failed — OIDC provider will be unavailable:', err instanceof Error ? err.message : err);
     }
@@ -349,7 +349,7 @@ export async function initializePassport(): Promise<void> {
     );
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     passport.use(samlStrategy as any);
-    logger.info(`SAML: Strategy registered (${config.oauth.saml.providerName})`);
+    logger.info('OAuth: SAML strategy registered');
   }
 }
 

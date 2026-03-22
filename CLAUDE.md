@@ -195,6 +195,31 @@ This ensures deployments can be fully configured via `.env` / Docker Compose / K
 
 All connection credentials are encrypted at rest using AES-256-GCM. Each user has a master key derived from their password via Argon2. The master key is held in-memory server-side with a configurable TTL (vault sessions auto-expire). When the vault is locked, users must re-enter their password to decrypt credentials.
 
+### Logging Security (No Clear-Text Sensitive Data)
+
+**Never log sensitive data in clear text.** This is enforced by CodeQL (`js/clear-text-logging`) and must be followed in all new code.
+
+**What must NOT appear in log output:**
+- Passwords, temporary passwords, recovery keys, master keys
+- Tokens (JWT, access, refresh, API keys, reset tokens, verification codes)
+- OAuth client secrets, private keys, credentials
+- SMS/email bodies that may contain OTPs or credentials
+- Full error objects from Prisma or other ORMs (may embed query data with secrets)
+
+**Rules for all logger/console calls:**
+1. **Never pass raw error objects** to `logger.error()` — use `err instanceof Error ? err.message : 'Unknown error'` instead. Prisma and ORM errors can include query data containing passwords/tokens in their message/stack.
+2. **Never interpolate sensitive variables** in log template literals — use `[REDACTED]` placeholder instead.
+3. **Never log properties from sensitive config objects** (e.g., `config.oauth.*`) in log messages — CodeQL taints the entire object tree. Use static strings.
+4. **Dev-mode fallback logs** (email/SMS when no provider is configured) must redact all secrets, codes, tokens, and message bodies.
+5. **CLI commands** that intentionally display credentials (recovery keys, setup passwords) are acceptable but must use `console.log` directly — never route through the logger.
+
+**The logger (`server/src/utils/logger.ts`) provides defense-in-depth:**
+- `SENSITIVE_KEYS` set: redacts known sensitive object keys (password, token, secret, etc.)
+- `SENSITIVE_VALUE_PATTERNS`: regex-based scrubbing of JWT tokens, Bearer headers, and key=value pairs with sensitive names from Error messages and strings
+- All log methods pass arguments through `sanitize()` → `formatArgs()` before output
+
+**When adding new logger calls**, ask: "Could any argument contain a password, token, key, or credential — even transitively through an error object?" If yes, extract only the safe message string.
+
 ### Authentication
 
 JWT-based with access tokens (short-lived) and refresh tokens (stored in DB). The Axios client interceptor automatically refreshes expired access tokens. Socket.IO connections authenticate via JWT middleware.

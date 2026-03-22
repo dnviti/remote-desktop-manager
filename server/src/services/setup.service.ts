@@ -155,7 +155,7 @@ export async function completeSetup(data: SetupCompleteInput) {
     tenantInfo = await tenantService.createTenant(user.id, tenant.name);
     logger.info(`Setup wizard: created tenant "${tenant.name}" for admin ${admin.email}`);
   } catch (err) {
-    logger.error('Setup wizard: tenant creation failed:', err);
+    logger.error('Setup wizard: tenant creation failed:', err instanceof Error ? err.message : 'Unknown error');
     throw new Error('Admin user created but tenant creation failed. Please log in and create an organization manually.');
   }
 

@@ -139,7 +139,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
 
       res.redirect(`${config.clientUrl}/oauth/callback?code=${code}`);
     } catch (error) {
-      logger.error('SAML callback error:', error);
+      logger.error('SAML callback error:', error instanceof Error ? error.message : 'Unknown error');
       let errorCode = 'authentication_failed';
       if (error instanceof AppError && error.statusCode === 403) {
         errorCode = error.message.includes('disabled')

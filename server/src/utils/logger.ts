@@ -22,11 +22,36 @@ const SENSITIVE_KEYS = new Set([
   'oauth', 'existingoauth',
 ]);
 
+/**
+ * Patterns that indicate sensitive values embedded in strings (e.g. Prisma error messages,
+ * stack traces, or interpolated log messages). Each regex is replaced with a redacted label.
+ */
+const SENSITIVE_VALUE_PATTERNS: Array<[RegExp, string]> = [
+  // JWT tokens (eyJ...)
+  [/\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g, '[REDACTED_JWT]'],
+  // Bearer tokens in headers
+  [/Bearer\s+[A-Za-z0-9_.~+/=-]+/gi, 'Bearer [REDACTED]'],
+  // Key=value patterns for known sensitive keys (e.g. in Prisma error dumps)
+  [/(password|secret|token|apikey|privatekey|authorization|credential|accessToken|refreshToken|clientSecret)\s*[:=]\s*"[^"]*"/gi, '$1: "[REDACTED]"'],
+  [/(password|secret|token|apikey|privatekey|authorization|credential|accessToken|refreshToken|clientSecret)\s*[:=]\s*'[^']*'/gi, "$1: '[REDACTED]'"],
+];
+
+function scrubSensitiveValues(text: string): string {
+  let result = text;
+  for (const [pattern, replacement] of SENSITIVE_VALUE_PATTERNS) {
+    result = result.replace(pattern, replacement);
+  }
+  return result;
+}
+
 function sanitize(value: unknown, depth = 0): unknown {
   if (depth > 5 || value == null) return value;
-  if (value instanceof Error) return (value.stack ?? value.message).replace(/[\n\r]/g, '\\n');
+  if (value instanceof Error) {
+    const msg = scrubSensitiveValues(value.stack ?? value.message);
+    return msg.replace(/[\n\r]/g, '\\n');
+  }
   if (Array.isArray(value)) return value.map(v => sanitize(v, depth + 1));
-  if (typeof value === 'string') return value.replace(/[\n\r]/g, '\\n');
+  if (typeof value === 'string') return scrubSensitiveValues(value).replace(/[\n\r]/g, '\\n');
   if (typeof value === 'object') {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {

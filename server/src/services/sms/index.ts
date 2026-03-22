@@ -39,7 +39,7 @@ export async function sendSms(msg: SmsMessage): Promise<void> {
     logger.info('========================================');
     logger.info('SMS (dev mode — no provider configured):');
     logger.info(`  To: ${msg.to}`);
-    logger.info(`  Body: ${msg.body}`);
+    logger.info('  Body: [REDACTED]');
     logger.info('========================================');
     return;
   }

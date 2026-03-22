@@ -440,4 +440,4 @@ async function main() {
   process.on('SIGINT', shutdown);
 }
 
-main().catch((err) => logger.error(err));
+main().catch((err) => logger.error('Fatal startup error:', err instanceof Error ? err.message : 'Unknown error'));

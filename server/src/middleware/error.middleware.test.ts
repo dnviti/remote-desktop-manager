@@ -65,6 +65,6 @@ describe('errorHandler', () => {
 
     errorHandler(err, req, res, next);
 
-    expect(logger.error).toHaveBeenCalledWith('Unhandled error:', err);
+    expect(logger.error).toHaveBeenCalledWith('Unhandled error:', err.message);
   });
 });

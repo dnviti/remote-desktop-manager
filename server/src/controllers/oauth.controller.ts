@@ -123,7 +123,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
 
       res.redirect(`${config.clientUrl}/oauth/callback?code=${code}`);
     } catch (error) {
-      logger.error('OAuth callback error:', error);
+      logger.error('OAuth callback error:', error instanceof Error ? error.message : 'Unknown error');
       let errorCode = 'authentication_failed';
       if (error instanceof AppError && error.statusCode === 403) {
         errorCode = error.message.includes('disabled') ? 'account_disabled' : 'registration_disabled';
