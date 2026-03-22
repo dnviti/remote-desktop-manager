@@ -16,7 +16,7 @@ import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
 import { generateAuthCode } from '../utils/authCodeStore';
 import { consumeLinkCode } from '../utils/linkCodeStore';
-import { signState, verifyState } from '../utils/signedState';
+import { signState, verifyLinkState } from '../utils/signedState';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.saml.enabled) {
@@ -84,10 +84,10 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       const relayState = req.body?.RelayState;
       if (relayState) {
         try {
-          const stateData = verifyState<{ action: string; userId: string }>(relayState as string);
-          if (stateData && stateData.action === 'link' && stateData.userId) {
+          const linkUserId = verifyLinkState(relayState as string);
+          if (linkUserId) {
             // Validate userId against the database to ensure it references a real user
-            const linkUser = await prisma.user.findUnique({ where: { id: stateData.userId }, select: { id: true } });
+            const linkUser = await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } });
             if (!linkUser) throw new AppError('User not found', 404);
 
             await oauthService.linkOAuthAccount(

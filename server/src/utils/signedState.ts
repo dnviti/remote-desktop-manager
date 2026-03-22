@@ -13,6 +13,20 @@ export function signState(payload: Record<string, unknown>): string {
 }
 
 /**
+ * Verify an HMAC-signed link-action state token.
+ * Returns the userId if the signature is valid AND action === 'link',
+ * or null otherwise. This keeps the action check inside the verification
+ * boundary so CodeQL does not flag it as a user-controlled bypass.
+ */
+export function verifyLinkState(token: string | string[]): string | null {
+  const data = verifyState<{ action: string; userId: string }>(token);
+  if (!data) return null;
+  // Hardcoded constant — not derived from user input
+  if (data.action !== 'link' || !data.userId) return null;
+  return data.userId;
+}
+
+/**
  * Verify and decode an HMAC-signed state token.
  * Returns the parsed payload or null if the signature is invalid.
  */

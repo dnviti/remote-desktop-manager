@@ -16,7 +16,7 @@ import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
 import { generateAuthCode, consumeAuthCode } from '../utils/authCodeStore';
 import { generateLinkCode, consumeLinkCode } from '../utils/linkCodeStore';
-import { signState, verifyState } from '../utils/signedState';
+import { signState, verifyLinkState } from '../utils/signedState';
 import type { VaultSetupInput } from '../schemas/oauth.schemas';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
@@ -75,10 +75,10 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
       // Check if this is a link operation (HMAC-signed state prevents tampering)
       if (req.query.state) {
         try {
-          const stateData = verifyState<{ action: string; userId: string }>(req.query.state as string);
-          if (stateData && stateData.action === 'link' && stateData.userId) {
+          const linkUserId = verifyLinkState(req.query.state as string);
+          if (linkUserId) {
             // Validate userId against the database to ensure it references a real user
-            const linkUser = await prisma.user.findUnique({ where: { id: stateData.userId }, select: { id: true } });
+            const linkUser = await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } });
             if (!linkUser) throw new AppError('User not found', 404);
 
             await oauthService.linkOAuthAccount(linkUser.id, oauthProfile, oauthTokens);
