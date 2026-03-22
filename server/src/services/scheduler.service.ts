@@ -9,6 +9,8 @@ import * as auditService from './audit.service';
 let rotationTask: ScheduledTask | null = null;
 let ldapSyncTask: ScheduledTask | null = null;
 let membershipExpiryTask: ScheduledTask | null = null;
+let checkoutExpiryTask: ScheduledTask | null = null;
+let passwordRotationTask: ScheduledTask | null = null;
 
 export function startKeyRotationJob(): void {
   const cronExpr = config.keyRotationCron;
@@ -154,12 +156,36 @@ export function startLdapSyncJob(): void {
         ldap.syncUsers().catch((err) => {
           logger.error('[scheduler] Unhandled error in LDAP syncUsers:', err);
         }),
-      );
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import ldap.service:', err);
+      });
     },
     { timezone: 'UTC' },
   );
 
   logger.info(`[scheduler] LDAP sync job scheduled: "${cronExpr}" (UTC)`);
+}
+
+const CHECKOUT_EXPIRY_CRON = '*/5 * * * *'; // Every 5 minutes
+
+export function startCheckoutExpiryJob(): void {
+  checkoutExpiryTask = cron.schedule(
+    CHECKOUT_EXPIRY_CRON,
+    () => {
+      import('./checkout.service').then((svc) =>
+        svc.processExpiredCheckouts().catch((err) => {
+          logger.error('[scheduler] Unhandled error in processExpiredCheckouts:', err);
+        }),
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import checkout.service:', err);
+      });
+    },
+    { timezone: 'UTC' },
+  );
+
+  logger.info(
+    `[scheduler] Checkout expiry job scheduled: "${CHECKOUT_EXPIRY_CRON}" (UTC)`,
+  );
 }
 
 const MEMBERSHIP_EXPIRY_CRON = '*/5 * * * *';
@@ -287,6 +313,29 @@ export async function processExpiredMemberships(): Promise<void> {
   }
 }
 
+// Password rotation job: runs daily at 3 AM UTC
+const PASSWORD_ROTATION_CRON = '0 3 * * *';
+
+export function startPasswordRotationJob(): void {
+  passwordRotationTask = cron.schedule(
+    PASSWORD_ROTATION_CRON,
+    () => {
+      import('./passwordRotation.service').then((svc) =>
+        svc.processScheduledRotations().catch((err) => {
+          logger.error('[scheduler] Unhandled error in processScheduledRotations:', err);
+        }),
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import passwordRotation.service:', err);
+      });
+    },
+    { timezone: 'UTC' },
+  );
+
+  logger.info(
+    `[scheduler] Password rotation job scheduled: "${PASSWORD_ROTATION_CRON}" (UTC)`,
+  );
+}
+
 export function stopAllJobs(): void {
   if (rotationTask) {
     rotationTask.stop();
@@ -299,6 +348,14 @@ export function stopAllJobs(): void {
   if (membershipExpiryTask) {
     membershipExpiryTask.stop();
     membershipExpiryTask = null;
+  }
+  if (checkoutExpiryTask) {
+    checkoutExpiryTask.stop();
+    checkoutExpiryTask = null;
+  }
+  if (passwordRotationTask) {
+    passwordRotationTask.stop();
+    passwordRotationTask = null;
   }
   logger.info('[scheduler] All scheduled jobs stopped.');
 }

@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import RegisterPage from './pages/RegisterPage';
@@ -10,11 +10,13 @@ import RecordingPlayerPage from './pages/RecordingPlayerPage';
 import OAuthCallbackPage from './pages/OAuthCallbackPage';
 import VaultSetupPage from './pages/VaultSetupPage';
 import PublicSharePage from './pages/PublicSharePage';
+import SetupWizardPage from './pages/SetupWizardPage';
 import VaultLockedOverlay from './components/Overlays/VaultLockedOverlay';
 import PwaUpdateNotification from './components/common/PwaUpdateNotification';
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/authStore';
 import { useVaultStore } from './store/vaultStore';
+import { getSetupStatus } from './api/setup.api';
 
 function AuthRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
@@ -55,12 +57,33 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   );
 }
 
+/**
+ * Redirects to /setup if setup is required (zero users in DB).
+ * Wraps public routes like /login and /register.
+ */
+function SetupGuard({ children }: { children: React.ReactNode }) {
+  const [checking, setChecking] = useState(true);
+  const [setupRequired, setSetupRequired] = useState(false);
+
+  useEffect(() => {
+    getSetupStatus()
+      .then((s) => setSetupRequired(s.required))
+      .catch(() => { /* fail-open: server guard is authoritative */ })
+      .finally(() => setChecking(false));
+  }, []);
+
+  if (checking) return null;
+  if (setupRequired) return <Navigate to="/setup" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
+        <Route path="/setup" element={<SetupWizardPage />} />
+        <Route path="/login" element={<SetupGuard><LoginPage /></SetupGuard>} />
+        <Route path="/register" element={<SetupGuard><RegisterPage /></SetupGuard>} />
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/oauth/callback" element={<OAuthCallbackPage />} />

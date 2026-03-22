@@ -25,11 +25,13 @@ import {
   FolderShared as FolderSharedIcon,
   PlaylistPlay as PlaylistPlayIcon,
   History as HistoryIcon,
+  DesktopAccessDisabled as NativeRdpIcon,
 } from '@mui/icons-material';
 import { useTabsStore } from '../../store/tabsStore';
 import { ConnectionData } from '../../api/connections.api';
 import type { Folder } from '../../store/connectionsStore';
 import { openConnectionWindow } from '../../utils/openConnectionWindow';
+import { downloadRdpFile } from '../../api/rdGateway.api';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { alpha } from '@mui/material/styles';
@@ -190,6 +192,13 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
     onConnectAs(conn);
   };
 
+  const handleOpenNativeRdp = () => {
+    handleCloseMenu();
+    downloadRdpFile(conn.id, conn.name).catch(() => {
+      // Silently fail — user will see nothing downloaded
+    });
+  };
+
   const handleViewAuditLog = () => {
     handleCloseMenu();
     onViewAuditLog?.(conn);
@@ -286,6 +295,12 @@ export function ConnectionItem({ conn, depth, compact, draggable = false, onEdit
           <ListItemIcon><OpenInNewIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
           <ListItemText>Open in New Window</ListItemText>
         </MenuItem>
+        {conn.type === 'RDP' && (
+          <MenuItem onClick={handleOpenNativeRdp}>
+            <ListItemIcon><NativeRdpIcon fontSize="small" sx={{ color: 'action.active' }} /></ListItemIcon>
+            <ListItemText>Open with Native Client</ListItemText>
+          </MenuItem>
+        )}
         {conn.isOwner && onToggleFavorite && (
           <MenuItem onClick={() => { handleCloseMenu(); onToggleFavorite(conn); }}>
             <ListItemIcon>

@@ -20,7 +20,11 @@ import { getSocketClientIp } from '../utils/ip';
 import { computeBindingHash, getSocketUserAgent } from '../utils/tokenBinding';
 import prisma from '../lib/prisma';
 import { resolveDlpPolicy } from '../utils/dlp';
+import { checkLateralMovement } from '../services/lateralMovement.service';
 import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
+import { KeystrokeBuffer, inspect as inspectKeystroke } from '../services/keystrokeInspection.service';
+import { createNotificationAsync } from '../services/notification.service';
+import { NotificationType } from '../lib/prisma';
 
 interface ActiveTransfer {
   stream: NodeJS.ReadableStream | NodeJS.WritableStream;
@@ -31,6 +35,43 @@ interface ActiveTransfer {
 }
 
 const activeSessions = new Map<string, SshSession>();
+
+/**
+ * Notify all ADMIN+ members of a tenant about a keystroke policy violation.
+ */
+function notifyTenantAdmins(tenantId: string, message: string, connectionId?: string | null) {
+  const attempt = (retryCount: number) => {
+    prisma.tenantMember
+      .findMany({
+        where: {
+          tenantId,
+          role: { in: ['OWNER', 'ADMIN'] },
+          isActive: true,
+        },
+        select: { userId: true },
+      })
+      .then((members) => {
+        for (const member of members) {
+          createNotificationAsync({
+            userId: member.userId,
+            type: NotificationType.SESSION_TERMINATED_POLICY_VIOLATION,
+            message,
+            relatedId: connectionId ?? undefined,
+          });
+        }
+      })
+      .catch((err) => {
+        if (retryCount < 2) {
+          const delayMs = 1000 * (retryCount + 1);
+          logger.warn(`Notification delivery failed (attempt ${retryCount + 1}/3), retrying in ${delayMs}ms:`, err);
+          setTimeout(() => attempt(retryCount + 1), delayMs);
+        } else {
+          logger.error('Failed to notify tenant admins about policy violation after 3 attempts:', err);
+        }
+      });
+  };
+  attempt(0);
+}
 
 function sanitizePath(p: string): string {
   if (p.includes('\0')) throw new Error('Invalid path');
@@ -90,6 +131,7 @@ export function setupSshHandler(io: Server) {
     let recordingWriter: AsciicastWriter | null = null;
     let recordingId: string | null = null;
     let dlpPolicy: ResolvedDlpPolicy | null = null;
+    const keystrokeBuffer = new KeystrokeBuffer();
 
     async function ensureSftp(): Promise<SFTPWrapper> {
       if (sftpSession) return sftpSession;
@@ -144,6 +186,18 @@ export function setupSshHandler(io: Server) {
       try {
         if ((data.username && !data.password) || (!data.username && data.password)) {
           const msg = 'Both username and password must be provided together';
+          logSessionError(msg);
+          socket.emit('session:error', { message: msg });
+          return;
+        }
+
+        // Lateral movement anomaly detection (MITRE T1021)
+        const lmResult = await checkLateralMovement(user.userId, data.connectionId, clientIp);
+        if (!lmResult.allowed) {
+          const msg =
+            `Session denied: anomalous lateral movement detected. ` +
+            `${lmResult.distinctTargets} distinct targets in ${lmResult.windowMinutes} min ` +
+            `(threshold: ${lmResult.threshold}). Your account has been temporarily suspended.`;
           logSessionError(msg);
           socket.emit('session:error', { message: msg });
           return;
@@ -397,8 +451,10 @@ export function setupSshHandler(io: Server) {
     });
 
     socket.on('data', (data: string) => {
-      if (currentSession?.stream.writable) {
-        currentSession.stream.write(data);
+      if (!currentSession?.stream.writable) return;
+
+      const writeAndRecord = () => {
+        currentSession?.stream.write(data);
         if (recordingWriter) recordingWriter.writeInput(data);
         // Throttled implicit heartbeat (at most once per 30s)
         const now = Date.now();
@@ -406,7 +462,70 @@ export function setupSshHandler(io: Server) {
           lastActivityUpdate = now;
           sessionService.heartbeatBySocketId(socket.id).catch(() => {});
         }
+      };
+
+      // Keystroke inspection: buffer input and inspect on newlines.
+      // When a newline is detected, we await inspection BEFORE writing to the
+      // SSH stream so that BLOCK_AND_TERMINATE can prevent the command from
+      // reaching the remote host.
+      if (user.tenantId) {
+        keystrokeBuffer.feed(data);
+
+        if (keystrokeBuffer.sawNewline()) {
+          const inputLine = keystrokeBuffer.current();
+          keystrokeBuffer.reset();
+
+          if (inputLine.trim()) {
+            inspectKeystroke(user.tenantId, inputLine)
+              .then((match) => {
+                if (match) {
+                  const sessionId = `${user.userId}:${socket.id}`;
+
+                  auditService.log({
+                    userId: user.userId,
+                    action: 'SESSION_TERMINATED_POLICY_VIOLATION',
+                    targetType: 'Connection',
+                    targetId: currentConnectionId ?? undefined,
+                    details: {
+                      policyId: match.policyId,
+                      policyName: match.policyName,
+                      policyAction: match.action,
+                      matchedPattern: match.matchedPattern,
+                      matchedInput: match.matchedInput,
+                    },
+                    ipAddress: clientIp,
+                  });
+
+                  notifyTenantAdmins(
+                    user.tenantId ?? '',
+                    `SSH session terminated: user (ID: ${user.userId}) triggered keystroke policy "${match.policyName}"`,
+                    currentConnectionId,
+                  );
+
+                  if (match.action === 'BLOCK_AND_TERMINATE') {
+                    socket.emit('session:error', {
+                      message: 'Session terminated: input matched a security policy rule.',
+                    });
+                    cleanup(sessionId);
+                    return; // Do NOT forward the blocked command to the remote host
+                  }
+                }
+
+                // No block — forward data to the SSH stream
+                writeAndRecord();
+              })
+              .catch((err) => {
+                logger.error('Keystroke inspection error:', err);
+                // On inspection failure, still forward data to avoid freezing the session
+                writeAndRecord();
+              });
+            return; // Exit early — writeAndRecord is called from the async callback
+          }
+        }
       }
+
+      // No newline or no tenant — write immediately (interactive typing)
+      writeAndRecord();
     });
 
     // Explicit heartbeat from client

@@ -13,6 +13,7 @@ import {
 } from './crypto.service';
 import { resolveTeamKey } from './team.service';
 import * as permissionService from './permission.service';
+import { checkPwnedPassword, extractPasswordFromPayload } from './pwnedPassword.service';
 import type { EncryptedField, SecretPayload } from '../types';
 
 // --- Input / Output interfaces ---
@@ -229,6 +230,7 @@ function secretSummary(secret: any) {
     metadata: secret.metadata,
     tags: secret.tags,
     isFavorite: secret.isFavorite,
+    pwnedCount: secret.pwnedCount ?? 0,
     expiresAt: secret.expiresAt,
     currentVersion: secret.currentVersion,
     createdAt: secret.createdAt,
@@ -291,6 +293,10 @@ export async function createSecret(
   const plaintext = JSON.stringify(input.data);
   const encrypted = encrypt(plaintext, encryptionKey);
 
+  // Check password against HIBP (k-Anonymity — only a hash prefix is sent)
+  const passwordToCheck = extractPasswordFromPayload(input.data);
+  const pwnedCount = passwordToCheck ? await checkPwnedPassword(passwordToCheck) : 0;
+
   const secret = await prisma.$transaction(async (tx) => {
     const s = await tx.vaultSecret.create({
       data: {
@@ -312,6 +318,7 @@ export async function createSecret(
         dataTag: encrypted.tag,
         metadata: (input.metadata as Prisma.InputJsonValue) ?? undefined,
         tags: input.tags ?? [],
+        pwnedCount,
         expiresAt: input.expiresAt || null,
       },
     });
@@ -419,9 +426,14 @@ export async function updateSecret(
     const plaintext = JSON.stringify(input.data);
     const encrypted = encrypt(plaintext, encryptionKey);
 
+    // Re-check password against HIBP on update
+    const passwordToCheck = extractPasswordFromPayload(input.data);
+    const pwnedCount = passwordToCheck ? await checkPwnedPassword(passwordToCheck) : 0;
+
     data.encryptedData = encrypted.ciphertext;
     data.dataIV = encrypted.iv;
     data.dataTag = encrypted.tag;
+    data.pwnedCount = pwnedCount;
     data.currentVersion = secret.currentVersion + 1;
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -547,6 +559,7 @@ export async function listSecrets(
       metadata: true,
       tags: true,
       isFavorite: true,
+      pwnedCount: true,
       expiresAt: true,
       currentVersion: true,
       createdAt: true,
@@ -671,4 +684,115 @@ export async function restoreSecretVersion(
     currentVersion: updated.currentVersion,
     updatedAt: updated.updatedAt,
   };
+}
+
+// --- Pwned password breach check ---
+
+/**
+ * On-demand breach check for a single secret.
+ * Decrypts the secret, extracts the password, checks HIBP, and persists the result.
+ */
+export async function checkSecretBreach(
+  userId: string,
+  secretId: string,
+  tenantId?: string | null
+): Promise<{ pwnedCount: number }> {
+  const access = await permissionService.canViewSecret(userId, secretId, tenantId);
+  if (!access.allowed) throw new AppError('Secret not found', 404);
+
+  const secret = access.secret;
+
+  // Shared secrets: use shared encrypted data
+  let decryptedJson: string;
+  if (access.accessType === 'shared') {
+    const sharedRecord = await prisma.sharedSecret.findFirst({
+      where: { secretId, sharedWithUserId: userId },
+    });
+    if (!sharedRecord) throw new AppError('Secret not found', 404);
+
+    const personalKey = requireMasterKey(userId);
+    decryptedJson = decrypt(
+      { ciphertext: sharedRecord.encryptedData, iv: sharedRecord.dataIV, tag: sharedRecord.dataTag },
+      personalKey
+    );
+  } else {
+    const encryptionKey = await resolveSecretEncryptionKey(
+      userId,
+      secret.scope,
+      secret.teamId,
+      secret.tenantId
+    );
+    decryptedJson = decrypt(
+      { ciphertext: secret.encryptedData, iv: secret.dataIV, tag: secret.dataTag },
+      encryptionKey
+    );
+  }
+
+  const data: SecretPayload = JSON.parse(decryptedJson);
+  const passwordToCheck = extractPasswordFromPayload(data);
+
+  if (!passwordToCheck) {
+    // Secret type has no checkable password
+    return { pwnedCount: 0 };
+  }
+
+  const pwnedCount = await checkPwnedPassword(passwordToCheck);
+
+  // Persist the result (only if user is owner/manager, not shared)
+  if (access.accessType !== 'shared') {
+    await prisma.vaultSecret.update({
+      where: { id: secretId },
+      data: { pwnedCount },
+    });
+  }
+
+  return { pwnedCount };
+}
+
+/**
+ * Batch breach check for all secrets accessible to a user.
+ * Returns an array of { id, pwnedCount } for secrets that have checkable passwords.
+ */
+export async function checkAllSecretBreaches(
+  userId: string,
+  tenantId?: string | null
+): Promise<{ checked: number; pwned: number; results: Array<{ id: string; name: string; pwnedCount: number }> }> {
+  // Get all user's secrets (personal scope only for batch check)
+  const secrets = await listSecrets(userId, {}, tenantId);
+  const results: Array<{ id: string; name: string; pwnedCount: number }> = [];
+  let checked = 0;
+  let pwned = 0;
+
+  // Filter to types that have passwords, then check with bounded concurrency
+  const secretsToCheck = secrets.filter((s) =>
+    ['LOGIN', 'SSH_KEY', 'CERTIFICATE'].includes(s.type)
+  );
+
+  const CONCURRENCY_LIMIT = 5;
+  let currentIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const idx = currentIndex++;
+      if (idx >= secretsToCheck.length) break;
+      const secretItem = secretsToCheck[idx];
+
+      try {
+        const result = await checkSecretBreach(userId, secretItem.id, tenantId);
+        checked++;
+        if (result.pwnedCount > 0) {
+          pwned++;
+          results.push({ id: secretItem.id, name: secretItem.name, pwnedCount: result.pwnedCount });
+        }
+      } catch {
+        // Skip secrets we can't decrypt (e.g., locked scope)
+      }
+    }
+  };
+
+  await Promise.all(
+    Array.from({ length: Math.min(CONCURRENCY_LIMIT, secretsToCheck.length || 1) }, () => worker())
+  );
+
+  return { checked, pwned, results };
 }

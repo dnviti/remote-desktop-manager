@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Box, Typography, Chip, IconButton, Accordion, AccordionSummary,
-  AccordionDetails, Divider, Tooltip, Alert,
+  AccordionDetails, Divider, Tooltip, Alert, Button, CircularProgress,
 } from '@mui/material';
 import {
   Edit as EditIcon, Share as ShareIcon, Delete as DeleteIcon,
@@ -9,9 +9,11 @@ import {
   Visibility, VisibilityOff, ExpandMore as ExpandMoreIcon,
   VpnKey, Key, VerifiedUser, Api, Notes,
   OpenInNew as LinkIcon, Link as ExternalLinkIcon,
+  GppBad as BreachIcon, Security as SecurityIcon,
 } from '@mui/icons-material';
 import type { SecretDetail, SecretPayload, SecretType, SecretScope } from '../../api/secrets.api';
 import SecretVersionHistory from './SecretVersionHistory';
+import PasswordRotationPanel from './PasswordRotationPanel';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 
 const TYPE_ICONS: Record<SecretType, React.ReactNode> = {
@@ -46,6 +48,7 @@ interface SecretDetailViewProps {
   onDelete: () => void;
   onToggleFavorite: () => void;
   onRestore: () => void;
+  onCheckBreach?: (secretId: string) => Promise<number>;
 }
 
 function SensitiveField({ label, value }: { label: string; value: string }) {
@@ -192,7 +195,10 @@ export default function SecretDetailView({
   onDelete,
   onToggleFavorite,
   onRestore,
+  onCheckBreach,
 }: SecretDetailViewProps) {
+  const [breachChecking, setBreachChecking] = useState(false);
+
   const formatDate = (iso: string) =>
     new Date(iso).toLocaleDateString(undefined, {
       month: 'short', day: 'numeric', year: 'numeric',
@@ -206,6 +212,18 @@ export default function SecretDetailView({
   }, [secret.expiresAt]);
 
   const isReadOnly = secret.shared && secret.permission === 'READ_ONLY';
+
+  const hasCheckablePassword = ['LOGIN', 'SSH_KEY', 'CERTIFICATE'].includes(secret.type);
+
+  const handleCheckBreach = async () => {
+    if (!onCheckBreach) return;
+    setBreachChecking(true);
+    try {
+      await onCheckBreach(secret.id);
+    } finally {
+      setBreachChecking(false);
+    }
+  };
 
   return (
     <Box sx={{ p: 2, overflow: 'auto', height: '100%' }}>
@@ -245,6 +263,23 @@ export default function SecretDetailView({
         )}
       </Box>
 
+      {secret.pwnedCount > 0 && (
+        <Alert
+          severity="error"
+          icon={<BreachIcon />}
+          sx={{ mb: 2 }}
+          action={
+            !isReadOnly ? (
+              <Button color="error" size="small" onClick={onEdit}>
+                Rotate
+              </Button>
+            ) : undefined
+          }
+        >
+          Password found in {secret.pwnedCount.toLocaleString()} data breach(es). You should change this password immediately.
+        </Alert>
+      )}
+
       {daysUntilExpiry !== null && daysUntilExpiry <= 30 && (
         <Alert
           severity={daysUntilExpiry <= 0 ? 'error' : daysUntilExpiry <= 7 ? 'warning' : 'info'}
@@ -254,6 +289,20 @@ export default function SecretDetailView({
             ? 'This secret has expired. Update the credentials or the expiry date.'
             : `This secret expires in ${daysUntilExpiry} day(s). Consider rotating credentials.`}
         </Alert>
+      )}
+
+      {hasCheckablePassword && secret.pwnedCount === 0 && onCheckBreach && (
+        <Box sx={{ mb: 2 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={breachChecking ? <CircularProgress size={16} /> : <SecurityIcon />}
+            onClick={handleCheckBreach}
+            disabled={breachChecking}
+          >
+            {breachChecking ? 'Checking...' : 'Check for breaches'}
+          </Button>
+        </Box>
       )}
 
       {secret.description && (
@@ -293,6 +342,18 @@ export default function SecretDetailView({
           color={daysUntilExpiry <= 0 ? 'error' : daysUntilExpiry <= 7 ? 'error' : daysUntilExpiry <= 30 ? 'warning' : 'default'}
           sx={{ mt: 1 }}
         />
+      )}
+
+      {/* Password Rotation (LOGIN secrets only) */}
+      {secret.type === 'LOGIN' && (
+        <Accordion sx={{ mt: 2 }} disableGutters elevation={0} variant="outlined">
+          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+            <Typography variant="subtitle2">Password Rotation</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <PasswordRotationPanel secretId={secret.id} isReadOnly={isReadOnly} />
+          </AccordionDetails>
+        </Accordion>
       )}
 
       {/* Version history */}

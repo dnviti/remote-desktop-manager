@@ -2,7 +2,7 @@
 title: Documentation Index
 description: Landing page, table of contents, and project summary for Arsenale
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-21T17:00:00Z
 source-files:
   - README.md
   - CLAUDE.md
@@ -11,17 +11,18 @@ source-files:
 
 # Arsenale Documentation
 
-**Arsenale** is a web-based remote access management platform for SSH, RDP, and VNC connections. It provides encrypted credential storage, multi-tenant RBAC, session recording, gateway orchestration, and a zero-trust tunnel system.
+**Arsenale** is a web-based remote access management platform for SSH, RDP, VNC, and database connections. It provides encrypted credential storage, multi-tenant RBAC, session recording, gateway orchestration, a zero-trust tunnel system, and a native client CLI.
 
 ## Technology Stack
 
 | Layer | Technologies |
 |-------|-------------|
-| **Server** | Express, TypeScript, Prisma ORM, Socket.IO, ssh2, guacamole-lite |
+| **Server** | Express, TypeScript, Prisma ORM, Socket.IO, ssh2, guacamole-lite, node-rdpjs |
 | **Client** | React 19, Vite, Material-UI v7, Zustand, XTerm.js, guacamole-common-js |
 | **Database** | PostgreSQL 16 |
 | **Infrastructure** | Docker, Podman, Kubernetes |
 | **Extensions** | Chrome Extension (Manifest V3) |
+| **CLI** | Go, RFC 8628 Device Auth |
 
 ## Quick Start
 
@@ -46,6 +47,7 @@ Open `http://localhost:3000` — register, set up your vault, create connections
 | [Deployment](deployment.md) | Docker containers, CI/CD pipelines, production setup |
 | [Development](development.md) | Contributing, local dev, testing, branch strategy |
 | [Troubleshooting](troubleshooting.md) | Common errors, debugging tips, FAQ |
+| [Infrastructure Roadmap](infrastructure-roadmap.md) | Future microservices decomposition plan, phased approach |
 | [LLM Context](llm-context.md) | Consolidated single-file for AI/bot consumption |
 
 ## Key Features
@@ -64,9 +66,17 @@ Open `http://localhost:3000` — register, set up your vault, create connections
 - **Browser Extension:** Chrome extension for credential autofill
 - **PWA:** Progressive Web App with offline support
 - **6 Themes:** Editorial, Primer, Tanuki, Monokai, Solarized, OneDark (dark + light modes)
+- **Database Access:** PostgreSQL, MySQL, Oracle, MSSQL, DB2 — browser-based SQL client and SSH-tunneled connections
+- **SSH Keystroke Inspection:** Real-time command monitoring with configurable block/alert policies
+- **Credential Checkout:** Temporary credential check-out/check-in with approval workflow (PAM)
+- **Password Rotation:** Automatic credential rotation on target systems
+- **Lateral Movement Detection:** MITRE T1021 anomaly detection for multi-target access patterns
+- **Pwned Password Check:** HaveIBeenPwned integration for vault secret validation
+- **Native Client CLI:** Arsenale Connect CLI for SSH/RDP via native clients (PuTTY, mstsc)
+- **RD Gateway:** MS-TSGU protocol support for native RDP clients
 
 ## Repository
 
 - **GitHub:** [dnviti/arsenale](https://github.com/dnviti/arsenale)
 - **License:** Business Source License (BSL)
-- **Version:** 1.3.2
+- **Version:** 1.7.0

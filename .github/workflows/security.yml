@@ -1,0 +1,84 @@
+name: Security
+
+on:
+  workflow_dispatch:
+    inputs:
+      run-codeql:
+        description: 'Run CodeQL analysis'
+        required: false
+        type: boolean
+        default: true
+  workflow_call:
+    inputs:
+      run-codeql:
+        description: 'Run CodeQL analysis'
+        required: false
+        type: boolean
+        default: false
+      trivy-category:
+        description: 'SARIF category for Trivy filesystem scan'
+        required: false
+        type: string
+        default: 'trivy-filesystem'
+
+concurrency:
+  group: security-${{ inputs.trivy-category || 'default' }}-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  codeql-analysis:
+    if: inputs.run-codeql
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: javascript-typescript
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v4
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:javascript-typescript-server
+
+  trivy-filesystem:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: CRITICAL,HIGH
+          format: sarif
+          output: trivy-fs-results.sarif
+          trivyignores: .trivyignore.yaml
+          skip-dirs: node_modules
+
+      - name: Upload Trivy FS results to Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        with:
+          sarif_file: trivy-fs-results.sarif
+          category: ${{ inputs.trivy-category || 'trivy-filesystem' }}

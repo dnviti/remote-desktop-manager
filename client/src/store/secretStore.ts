@@ -7,6 +7,8 @@ import {
   deleteSecret as apiDeleteSecret,
   getTenantVaultStatus,
   initTenantVault as apiInitTenantVault,
+  checkSecretBreach as apiCheckSecretBreach,
+  checkAllSecretBreaches as apiCheckAllBreaches,
 } from '../api/secrets.api';
 import type {
   SecretListItem,
@@ -15,6 +17,7 @@ import type {
   CreateSecretInput,
   UpdateSecretInput,
   TenantVaultStatus,
+  BatchBreachCheckResult,
 } from '../api/secrets.api';
 import { listVaultFolders } from '../api/vault-folders.api';
 import type { VaultFolderData } from '../api/vault-folders.api';
@@ -27,6 +30,7 @@ interface SecretState {
   filters: SecretListFilters;
   tenantVaultStatus: TenantVaultStatus | null;
   expiringCount: number;
+  pwnedCount: number;
 
   // Vault folders
   vaultFolders: VaultFolderData[];
@@ -45,6 +49,9 @@ interface SecretState {
   fetchTenantVaultStatus: () => Promise<void>;
   initTenantVault: () => Promise<void>;
   fetchExpiringCount: () => Promise<void>;
+  fetchPwnedCount: () => Promise<void>;
+  checkSecretBreach: (secretId: string) => Promise<number>;
+  checkAllBreaches: () => Promise<BatchBreachCheckResult>;
 
   // Vault folder actions
   fetchVaultFolders: () => Promise<void>;
@@ -60,6 +67,7 @@ export const useSecretStore = create<SecretState>((set, get) => ({
   filters: {},
   tenantVaultStatus: null,
   expiringCount: 0,
+  pwnedCount: 0,
 
   // Vault folders
   vaultFolders: [],
@@ -166,6 +174,39 @@ export const useSecretStore = create<SecretState>((set, get) => ({
     } catch {
       // ignore — vault may be locked
     }
+  },
+
+  fetchPwnedCount: async () => {
+    try {
+      const allSecrets = await listSecrets({});
+      const count = allSecrets.filter((s) => s.pwnedCount > 0).length;
+      set({ pwnedCount: count });
+    } catch {
+      // ignore — vault may be locked
+    }
+  },
+
+  checkSecretBreach: async (secretId: string) => {
+    const result = await apiCheckSecretBreach(secretId);
+    // Update the secret in the list
+    set((state) => ({
+      secrets: state.secrets.map((s) =>
+        s.id === secretId ? { ...s, pwnedCount: result.pwnedCount } : s,
+      ),
+      selectedSecret:
+        state.selectedSecret?.id === secretId
+          ? { ...state.selectedSecret, pwnedCount: result.pwnedCount }
+          : state.selectedSecret,
+    }));
+    return result.pwnedCount;
+  },
+
+  checkAllBreaches: async () => {
+    const result = await apiCheckAllBreaches();
+    // Refresh list to get updated pwnedCount values
+    await get().fetchSecrets();
+    set({ pwnedCount: result.pwned });
+    return result;
   },
 
   // Vault folder actions

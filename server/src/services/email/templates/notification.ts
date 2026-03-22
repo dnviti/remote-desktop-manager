@@ -17,7 +17,22 @@ const SUBJECT_MAP: Record<NotificationType, string> = {
   [NotificationType.TENANT_INVITATION]: 'You have been invited to an organization — Arsenale',
   [NotificationType.RECORDING_READY]: 'Session recording is ready — Arsenale',
   [NotificationType.IMPOSSIBLE_TRAVEL_DETECTED]: 'Security Alert: Impossible Travel Detected — Arsenale',
+  [NotificationType.SECRET_CHECKOUT_REQUESTED]: 'Credential check-out requested — Arsenale',
+  [NotificationType.SECRET_CHECKOUT_APPROVED]: 'Credential check-out approved — Arsenale',
+  [NotificationType.SECRET_CHECKOUT_DENIED]: 'Credential check-out denied — Arsenale',
+  [NotificationType.SECRET_CHECKOUT_EXPIRED]: 'Credential check-out expired — Arsenale',
+  [NotificationType.LATERAL_MOVEMENT_ALERT]: 'Security Alert: Lateral Movement Anomaly Detected — Arsenale',
+  [NotificationType.SESSION_TERMINATED_POLICY_VIOLATION]: 'Security Alert: SSH Session Terminated by Policy — Arsenale',
 };
+
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 function buildHtml(subject: string, message: string): string {
   return `<!DOCTYPE html>
@@ -44,7 +59,7 @@ function buildHtml(subject: string, message: string): string {
     </div>
     <div class="body">
       <p>You have a new notification:</p>
-      <div class="message">${message.replace(/\n/g, '<br />')}</div>
+      <div class="message">${escapeHtml(message).replace(/\n/g, '<br />')}</div>
       <p>Log in to Arsenale to view more details.</p>
     </div>
     <div class="footer">

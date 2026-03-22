@@ -13,9 +13,11 @@ export function validatePhoneNumber(phone: string): boolean {
 }
 
 function generateOtp(): string {
-  const buffer = crypto.randomBytes(4);
-  const num = buffer.readUInt32BE(0) % 1_000_000;
-  return num.toString().padStart(OTP_LENGTH, '0');
+  const max = 1_000_000;
+  const limit = 2 ** 32 - (2 ** 32 % max); // reject values above largest even multiple
+  let num: number;
+  do { num = crypto.randomBytes(4).readUInt32BE(0); } while (num >= limit);
+  return (num % max).toString().padStart(OTP_LENGTH, '0');
 }
 
 function hashOtp(otp: string): string {

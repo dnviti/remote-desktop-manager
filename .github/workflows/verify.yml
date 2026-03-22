@@ -1,0 +1,56 @@
+name: Verify
+
+on:
+  workflow_dispatch:
+    inputs:
+      workspace:
+        description: 'Workspace to verify (server or client)'
+        required: true
+        type: choice
+        options: [server, client]
+  workflow_call:
+    inputs:
+      workspace:
+        description: 'Workspace to verify'
+        required: true
+        type: string
+
+concurrency:
+  group: verify-${{ inputs.workspace }}-${{ github.event_name == 'workflow_call' && 'call' || 'standalone' }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        if: inputs.workspace == 'server'
+        run: npm run db:generate
+
+      - name: Typecheck
+        run: npm run typecheck -w ${{ inputs.workspace }}
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Dependency audit
+        run: npm audit --audit-level=critical
+
+      - name: Build
+        run: npm run build -w ${{ inputs.workspace }}

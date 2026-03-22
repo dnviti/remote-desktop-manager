@@ -6,7 +6,7 @@ import {
   ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Keyboard, VpnKey, Cloud as CloudIcon } from '@mui/icons-material';
-import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy } from '../../api/connections.api';
+import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy, DbSettings, DbProtocol } from '../../api/connections.api';
 import { useConnectionsStore } from '../../store/connectionsStore';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
 import { mergeTerminalConfig } from '../../constants/terminalThemes';
@@ -37,7 +37,7 @@ interface ConnectionDialogProps {
 
 export default function ConnectionDialog({ open, onClose, connection, folderId, teamId }: ConnectionDialogProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC'>('SSH');
+  const [type, setType] = useState<'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL'>('SSH');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('22');
   const [username, setUsername] = useState('');
@@ -48,6 +48,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const [sshTerminalConfig, setSshTerminalConfig] = useState<Partial<SshTerminalConfig>>({});
   const [rdpSettings, setRdpSettings] = useState<Partial<RdpSettings>>({});
   const [vncSettings, setVncSettings] = useState<Partial<VncSettings>>({});
+  const [dbSettings, setDbSettings] = useState<Partial<DbSettings>>({});
   const [gatewayId, setGatewayId] = useState('');
   const [credentialMode, setCredentialMode] = useState<'manual' | 'keychain' | 'external-vault'>('manual');
   const [selectedSecretId, setSelectedSecretId] = useState<string | null>(null);
@@ -56,6 +57,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
   const [vaultProviders, setVaultProviders] = useState<VaultProviderData[]>([]);
   const [defaultConnectMode, setDefaultConnectMode] = useState<string>('');
   const [dlpPolicy, setDlpPolicy] = useState<DlpPolicy>({});
+  const [targetDbHost, setTargetDbHost] = useState('');
+  const [targetDbPort, setTargetDbPort] = useState('');
+  const [dbType, setDbType] = useState('');
   const { loading, error, setError, clearError, run } = useAsyncAction();
   const fetchConnections = useConnectionsStore((s) => s.fetchConnections);
   const userDefaults = useTerminalSettingsStore((s) => s.userDefaults);
@@ -94,6 +98,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setVncSettings(
         (connection.vncSettings as Partial<VncSettings>) ?? {}
       );
+      setDbSettings(
+        (connection.dbSettings as Partial<DbSettings>) ?? {}
+      );
       if (connection.externalVaultProviderId) {
         setCredentialMode('external-vault');
         setSelectedVaultProviderId(connection.externalVaultProviderId);
@@ -112,6 +119,9 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       }
       setDefaultConnectMode(connection.defaultCredentialMode ?? '');
       setDlpPolicy((connection.dlpPolicy as DlpPolicy) ?? {});
+      setTargetDbHost((connection as ConnectionData & { targetDbHost?: string }).targetDbHost ?? '');
+      setTargetDbPort((connection as ConnectionData & { targetDbPort?: number }).targetDbPort?.toString() ?? '');
+      setDbType((connection as ConnectionData & { dbType?: string }).dbType ?? '');
     } else if (open && !connection) {
       setName('');
       setType('SSH');
@@ -126,32 +136,47 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setSshTerminalConfig({});
       setRdpSettings({});
       setVncSettings({});
+      setDbSettings({});
       setCredentialMode('manual');
       setSelectedSecretId(null);
       setSelectedVaultProviderId(null);
       setVaultSecretPath('');
       setDefaultConnectMode('');
       setDlpPolicy({});
+      setTargetDbHost('');
+      setTargetDbPort('');
+      setDbType('');
     }
   }, [open, connection, fetchGateways, hasTenant]);
 
-  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC') => {
+  const handleTypeChange = (newType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL') => {
     setType(newType);
-    if (newType === 'SSH' && (port === '3389' || port === '5900')) setPort('22');
-    if (newType === 'RDP' && (port === '22' || port === '5900')) setPort('3389');
-    if (newType === 'VNC' && (port === '22' || port === '3389')) setPort('5900');
+    const knownPorts = ['22', '3389', '5900', '5432', '3306', '27017', '1521', '1433', '50000'];
+    if (newType === 'SSH' && knownPorts.includes(port)) setPort('22');
+    if (newType === 'RDP' && knownPorts.includes(port)) setPort('3389');
+    if (newType === 'VNC' && knownPorts.includes(port)) setPort('5900');
+    if (newType === 'DATABASE' && knownPorts.includes(port)) setPort('5432');
+    if (newType === 'DB_TUNNEL' && knownPorts.includes(port)) setPort('22');
     setGatewayId('');
+    if (newType === 'DATABASE') {
+      setDbSettings((prev) => ({ protocol: 'postgresql', ...prev }));
+    }
   };
 
   const availableGateways = gateways.filter((g) => {
-    if (type === 'SSH') return g.type === 'SSH_BASTION' || g.type === 'MANAGED_SSH';
+    if (type === 'SSH' || type === 'DB_TUNNEL') return g.type === 'SSH_BASTION' || g.type === 'MANAGED_SSH';
     if (type === 'RDP' || type === 'VNC') return g.type === 'GUACD';
+    if (type === 'DATABASE') return g.type === 'DB_PROXY';
     return false;
   });
 
   const handleSubmit = async () => {
     if (!name || !host) {
       setError('Name and host are required');
+      return;
+    }
+    if (type === 'DB_TUNNEL' && (!targetDbHost || !targetDbPort)) {
+      setError('Target database host and port are required for DB Tunnel connections');
       return;
     }
     if (credentialMode === 'keychain' && !selectedSecretId) {
@@ -189,9 +214,17 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'VNC' && {
             vncSettings: Object.keys(vncSettings).length > 0 ? vncSettings : null,
           }),
+          ...(type === 'DATABASE' && {
+            dbSettings: dbSettings.protocol ? dbSettings as DbSettings : null,
+          }),
           defaultCredentialMode: (defaultConnectMode as 'saved' | 'domain' | 'prompt') || null,
           ...((type === 'RDP' || type === 'VNC') && {
             dlpPolicy: Object.values(dlpPolicy).some(Boolean) ? dlpPolicy : null,
+          }),
+          ...(type === 'DB_TUNNEL' && {
+            targetDbHost: targetDbHost || null,
+            targetDbPort: targetDbPort ? parseInt(targetDbPort, 10) : null,
+            dbType: dbType || null,
           }),
         };
         if (credentialMode === 'manual') {
@@ -225,9 +258,17 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'VNC' && Object.keys(vncSettings).length > 0 && {
             vncSettings,
           }),
+          ...(type === 'DATABASE' && dbSettings.protocol && {
+            dbSettings: dbSettings as DbSettings,
+          }),
           ...(defaultConnectMode ? { defaultCredentialMode: defaultConnectMode as 'saved' | 'domain' | 'prompt' } : {}),
           ...((type === 'RDP' || type === 'VNC') && Object.values(dlpPolicy).some(Boolean) && {
             dlpPolicy,
+          }),
+          ...(type === 'DB_TUNNEL' && {
+            targetDbHost,
+            targetDbPort: parseInt(targetDbPort, 10),
+            ...(dbType ? { dbType } : {}),
           }),
         };
         await createConnection(data);
@@ -251,12 +292,16 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     setSshTerminalConfig({});
     setRdpSettings({});
     setVncSettings({});
+    setDbSettings({});
     setCredentialMode('manual');
     setSelectedSecretId(null);
     setSelectedVaultProviderId(null);
     setVaultSecretPath('');
     setDefaultConnectMode('');
     setDlpPolicy({});
+    setTargetDbHost('');
+    setTargetDbPort('');
+    setDbType('');
     clearError();
     onClose();
   };
@@ -279,12 +324,14 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
             <Select
               value={type}
               label="Type"
-              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC')}
+              onChange={(e) => handleTypeChange(e.target.value as 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL')}
               disabled={isEditMode}
             >
               <MenuItem value="SSH">SSH</MenuItem>
               <MenuItem value="RDP">RDP</MenuItem>
               <MenuItem value="VNC">VNC</MenuItem>
+              <MenuItem value="DATABASE">Database</MenuItem>
+              <MenuItem value="DB_TUNNEL">Database (SSH Tunnel)</MenuItem>
             </Select>
           </FormControl>
           {hasTenant && availableGateways.length > 0 && (
@@ -306,20 +353,60 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           )}
           <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField
-              label="Host"
+              label={type === 'DB_TUNNEL' ? 'Bastion Host' : 'Host'}
               value={host}
               onChange={(e) => setHost(e.target.value)}
               fullWidth
               required
             />
             <TextField
-              label="Port"
+              label={type === 'DB_TUNNEL' ? 'Bastion Port' : 'Port'}
               value={port}
               onChange={(e) => setPort(e.target.value)}
               type="number"
               sx={{ width: 120 }}
             />
           </Box>
+          {type === 'DB_TUNNEL' && (
+            <>
+              <Box sx={{ display: 'flex', gap: 2 }}>
+                <TextField
+                  label="Target DB Host"
+                  value={targetDbHost}
+                  onChange={(e) => setTargetDbHost(e.target.value)}
+                  fullWidth
+                  required
+                  placeholder="e.g. db.internal.example.com"
+                />
+                <TextField
+                  label="Target DB Port"
+                  value={targetDbPort}
+                  onChange={(e) => setTargetDbPort(e.target.value)}
+                  type="number"
+                  sx={{ width: 120 }}
+                  required
+                  placeholder="5432"
+                />
+              </Box>
+              <FormControl fullWidth>
+                <InputLabel>Database Type</InputLabel>
+                <Select
+                  value={dbType}
+                  label="Database Type"
+                  onChange={(e) => setDbType(e.target.value)}
+                >
+                  <MenuItem value="">Generic</MenuItem>
+                  <MenuItem value="postgresql">PostgreSQL</MenuItem>
+                  <MenuItem value="mysql">MySQL</MenuItem>
+                  <MenuItem value="mariadb">MariaDB</MenuItem>
+                  <MenuItem value="mongodb">MongoDB</MenuItem>
+                  <MenuItem value="redis">Redis</MenuItem>
+                  <MenuItem value="mssql">SQL Server</MenuItem>
+                  <MenuItem value="oracle">Oracle</MenuItem>
+                </Select>
+              </FormControl>
+            </>
+          )}
           <Box>
             <Typography variant="subtitle2" sx={{ mb: 1.5 }}>Credentials</Typography>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -374,7 +461,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                 <SecretPicker
                   value={selectedSecretId}
                   onChange={(id) => setSelectedSecretId(id)}
-                  connectionType={type}
+                  connectionType={type === 'DB_TUNNEL' ? 'SSH' : type}
                   error={!selectedSecretId && !!error}
                   initialName={connection?.credentialSecretName}
                   initialType={connection?.credentialSecretType as 'LOGIN' | 'SSH_KEY' | undefined}
@@ -489,6 +576,96 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                   resolvedDefaults={mergeVncConfig()}
                   enforcedFields={tenantEnforced?.vnc}
                 />
+              </AccordionDetails>
+            </Accordion>
+          )}
+          {type === 'DATABASE' && (
+            <Accordion variant="outlined" disableGutters defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography variant="subtitle2">Database Settings</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Database Protocol</InputLabel>
+                    <Select
+                      value={dbSettings.protocol ?? 'postgresql'}
+                      label="Database Protocol"
+                      onChange={(e) => {
+                        const proto = e.target.value as DbProtocol;
+                        setDbSettings({ protocol: proto });
+                        const protoPorts: Record<string, string> = { postgresql: '5432', mysql: '3306', mongodb: '27017', oracle: '1521', mssql: '1433', db2: '50000' };
+                        setPort(protoPorts[proto] ?? '5432');
+                      }}
+                    >
+                      <MenuItem value="postgresql">PostgreSQL</MenuItem>
+                      <MenuItem value="mysql">MySQL / MariaDB</MenuItem>
+                      <MenuItem value="mongodb">MongoDB</MenuItem>
+                      <MenuItem value="oracle">Oracle (TNS)</MenuItem>
+                      <MenuItem value="mssql">Microsoft SQL Server (TDS)</MenuItem>
+                      <MenuItem value="db2">IBM DB2 (DRDA)</MenuItem>
+                    </Select>
+                  </FormControl>
+                  <TextField
+                    label="Database Name (optional)"
+                    value={dbSettings.databaseName ?? ''}
+                    onChange={(e) => setDbSettings((prev) => ({ ...prev, databaseName: e.target.value || undefined }))}
+                    fullWidth
+                    placeholder="e.g. mydb"
+                  />
+                  {dbSettings.protocol === 'oracle' && (
+                    <>
+                      <TextField
+                        label="Oracle SID (optional)"
+                        value={dbSettings.oracleSid ?? ''}
+                        onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleSid: e.target.value || undefined, oracleServiceName: e.target.value ? undefined : prev.oracleServiceName }))}
+                        fullWidth
+                        placeholder="e.g. ORCL"
+                        helperText="Mutually exclusive with Service Name"
+                      />
+                      <TextField
+                        label="Oracle Service Name (optional)"
+                        value={dbSettings.oracleServiceName ?? ''}
+                        onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleServiceName: e.target.value || undefined, oracleSid: e.target.value ? undefined : prev.oracleSid }))}
+                        fullWidth
+                        placeholder="e.g. orcl.example.com"
+                        helperText="Mutually exclusive with SID"
+                      />
+                    </>
+                  )}
+                  {dbSettings.protocol === 'mssql' && (
+                    <>
+                      <TextField
+                        label="Instance Name (optional)"
+                        value={dbSettings.mssqlInstanceName ?? ''}
+                        onChange={(e) => setDbSettings((prev) => ({ ...prev, mssqlInstanceName: e.target.value || undefined }))}
+                        fullWidth
+                        placeholder="e.g. SQLEXPRESS"
+                      />
+                      <FormControl fullWidth>
+                        <InputLabel>Authentication Mode</InputLabel>
+                        <Select
+                          value={dbSettings.mssqlAuthMode ?? 'sql'}
+                          label="Authentication Mode"
+                          onChange={(e) => setDbSettings((prev) => ({ ...prev, mssqlAuthMode: e.target.value as 'sql' | 'windows' }))}
+                        >
+                          <MenuItem value="sql">SQL Server Authentication</MenuItem>
+                          <MenuItem value="windows">Windows Authentication (NTLM/Kerberos)</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </>
+                  )}
+                  {dbSettings.protocol === 'db2' && (
+                    <TextField
+                      label="Database Alias (optional)"
+                      value={dbSettings.db2DatabaseAlias ?? ''}
+                      onChange={(e) => setDbSettings((prev) => ({ ...prev, db2DatabaseAlias: e.target.value || undefined }))}
+                      fullWidth
+                      placeholder="e.g. SAMPLE"
+                      helperText="Alias as cataloged on the DB2 Connect gateway"
+                    />
+                  )}
+                </Box>
               </AccordionDetails>
             </Accordion>
           )}

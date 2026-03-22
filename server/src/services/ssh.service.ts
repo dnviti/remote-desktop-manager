@@ -173,6 +173,49 @@ export function createSshConnectionViaBastion(
   });
 }
 
+/**
+ * Creates an SSH connection in tunnel-only mode (no PTY allocation).
+ * Used for database tunneling where only port forwarding is needed.
+ */
+export function createSshTunnelConnection(
+  params: SshConnectionParams
+): Promise<Client> {
+  return new Promise((resolve, reject) => {
+    const client = new Client();
+
+    client.on('ready', () => {
+      resolve(client);
+    });
+
+    client.on('error', (err) => {
+      reject(err);
+    });
+
+    if (params.sock) {
+      client.connect({
+        sock: params.sock,
+        username: params.username,
+        ...(params.privateKey
+          ? { privateKey: params.privateKey, passphrase: params.passphrase }
+          : { password: params.password }),
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+      });
+    } else {
+      client.connect({
+        host: params.host,
+        port: params.port,
+        username: params.username,
+        ...(params.privateKey
+          ? { privateKey: params.privateKey, passphrase: params.passphrase }
+          : { password: params.password }),
+        readyTimeout: SSH_READY_TIMEOUT_MS,
+        keepaliveInterval: SSH_KEEPALIVE_INTERVAL_MS,
+      });
+    }
+  });
+}
+
 export function resizeSshTerminal(
   stream: ClientChannel,
   cols: number,

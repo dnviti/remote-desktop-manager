@@ -11,7 +11,7 @@ export interface ActiveSessionDTO {
   connectionPort: number;
   gatewayId: string | null;
   gatewayName: string | null;
-  protocol: 'SSH' | 'RDP';
+  protocol: 'SSH' | 'RDP' | 'VNC' | 'SSH_PROXY';
   status: 'ACTIVE' | 'IDLE' | 'CLOSED';
   startedAt: string;
   lastActivityAt: string;
@@ -20,7 +20,7 @@ export interface ActiveSessionDTO {
 }
 
 export interface SessionFilters {
-  protocol?: 'SSH' | 'RDP';
+  protocol?: 'SSH' | 'RDP' | 'VNC' | 'SSH_PROXY';
   status?: 'ACTIVE' | 'IDLE' | 'CLOSED';
   gatewayId?: string;
 }
@@ -52,4 +52,37 @@ export async function getSessionCountByGateway(): Promise<GatewaySessionCount[]>
 
 export async function terminateSession(sessionId: string): Promise<void> {
   await api.post(`/sessions/${sessionId}/terminate`);
+}
+
+// ---------------------------------------------------------------------------
+// SSH Proxy
+// ---------------------------------------------------------------------------
+
+export interface SshProxyTokenResponse {
+  token: string;
+  expiresIn: number;
+  connectionInstructions: {
+    command: string;
+    port: number;
+    host: string;
+    note: string;
+  };
+}
+
+export interface SshProxyStatus {
+  enabled: boolean;
+  port: number;
+  listening: boolean;
+  activeSessions: number;
+  allowedAuthMethods: string[];
+}
+
+export async function createSshProxyToken(connectionId: string): Promise<SshProxyTokenResponse> {
+  const { data } = await api.post('/sessions/ssh-proxy/token', { connectionId });
+  return data;
+}
+
+export async function getSshProxyStatus(): Promise<SshProxyStatus> {
+  const { data } = await api.get('/sessions/ssh-proxy/status');
+  return data;
 }

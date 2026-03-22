@@ -1,6 +1,6 @@
 {
   "name": "arsenale",
-  "version": "1.6.2",
+  "version": "1.7.0",
   "description": "Web-based remote desktop manager for SSH and RDP connections with encrypted vault, team sharing, and multi-tenant support",
   "author": "Daniele Viti <daniele@dnviti.dev>",
   "license": "BUSL-1.1",
@@ -52,6 +52,8 @@
     "security": "./scripts/security-scan.sh",
     "security:quick": "./scripts/security-scan.sh --quick",
     "security:docker": "./scripts/security-scan.sh --docker",
+    "codeql": "./scripts/codeql-scan.sh",
+    "codeql:full": "./scripts/codeql-scan.sh --full",
     "test:watch": "concurrently -n server,client -c blue,green \"cd server && npx vitest\" \"cd client && npx vitest\"",
     "verify": "npm run typecheck && npm run lint && npm run sast && npm run test -w server && npm run test -w client && npm run test -w gateways/tunnel-agent && npm run build",
     "cli": "npm run cli -w server --",
@@ -62,15 +64,16 @@
     "@hono/node-server": "1.19.11",
     "lodash": "4.17.23",
     "tar-fs": ">=2.1.4",
-    "tar-stream": ">=2.2.0"
+    "tar-stream": ">=2.2.0",
+    "serialize-javascript": ">=7.0.3"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",
-    "eslint": "^9.39.3",
+    "eslint": "^9.24.0",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "eslint-plugin-security": "^4.0.0",
-    "typescript-eslint": "^8.56.1",
+    "typescript-eslint": "^8.57.1",
     "wait-on": "^9.0.4"
   }
 }

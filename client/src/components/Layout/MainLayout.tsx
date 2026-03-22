@@ -14,6 +14,7 @@ import {
   LightMode,
   VpnKey as KeychainIcon,
   Videocam as VideocamIcon,
+  AccessTime as CheckoutIcon,
 } from '@mui/icons-material';
 import ConnectionTree from '../Sidebar/ConnectionTree';
 import TabBar from '../Tabs/TabBar';
@@ -32,6 +33,7 @@ const RecordingsDialog = lazy(() => import('../Recording/RecordingsDialog'));
 const ExportDialog = lazy(() => import('../Dialogs/ExportDialog'));
 const ImportDialog = lazy(() => import('../Dialogs/ImportDialog'));
 const GeoIpDialog = lazy(() => import('../Audit/GeoIpDialog'));
+const CheckoutDialog = lazy(() => import('../Dialogs/CheckoutDialog'));
 
 import TenantSwitcher from './TenantSwitcher';
 import NotificationBell from './NotificationBell';
@@ -71,6 +73,8 @@ export default function MainLayout() {
 
   const expiringCount = useSecretStore((s) => s.expiringCount);
   const fetchExpiringCount = useSecretStore((s) => s.fetchExpiringCount);
+  const pwnedCount = useSecretStore((s) => s.pwnedCount);
+  const fetchPwnedCount = useSecretStore((s) => s.fetchPwnedCount);
 
   useGatewayMonitor();
   useShareSync();
@@ -92,8 +96,9 @@ export default function MainLayout() {
   useEffect(() => {
     if (vaultUnlocked) {
       fetchExpiringCount();
+      fetchPwnedCount();
     }
-  }, [vaultUnlocked, fetchExpiringCount]);
+  }, [vaultUnlocked, fetchExpiringCount, fetchPwnedCount]);
 
   // PWA app shortcut deep-link: read ?action= query param to pre-open a dialog on mount (PWA-003)
   const [pwaAction] = useState(() => {
@@ -132,6 +137,7 @@ export default function MainLayout() {
   const [connectionAuditTarget, setConnectionAuditTarget] = useState<{ id: string; name: string } | null>(null);
   const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [geoIpTarget, setGeoIpTarget] = useState<string | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [linkedProvider, setLinkedProvider] = useState<string | null>(() => {
     const linked = new URLSearchParams(window.location.search).get('linked');
     if (linked) window.history.replaceState({}, '', '/');
@@ -153,6 +159,7 @@ export default function MainLayout() {
   const importDialogMounted = useLazyMount(importDialogOpen);
   const exportDialogMounted = useLazyMount(exportDialogOpen);
   const geoIpDialogMounted = useLazyMount(geoIpTarget);
+  const checkoutDialogMounted = useLazyMount(checkoutOpen);
 
   const handleOpenSettings = (tab?: string) => {
     setSettingsInitialTab(tab);
@@ -262,7 +269,7 @@ export default function MainLayout() {
             title="Keychain"
             sx={{ mr: 1, '&:hover': { bgcolor: (theme) => `${theme.palette.primary.main}14` } }}
           >
-            <Badge badgeContent={expiringCount} color="error" max={99}>
+            <Badge badgeContent={expiringCount + pwnedCount} color="error" max={99}>
               <KeychainIcon />
             </Badge>
           </IconButton>
@@ -307,6 +314,10 @@ export default function MainLayout() {
             <MenuItem onClick={() => { setAnchorEl(null); setRecordingsOpen(true); }} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
               <VideocamIcon fontSize="small" sx={{ mr: 1 }} />
               Recordings
+            </MenuItem>
+            <MenuItem onClick={() => { setAnchorEl(null); setCheckoutOpen(true); }} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+              <CheckoutIcon fontSize="small" sx={{ mr: 1 }} />
+              Credential Check-out
             </MenuItem>
             <MenuItem onClick={handleLogout} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>Logout</MenuItem>
           </Menu>
@@ -516,6 +527,14 @@ export default function MainLayout() {
             open={!!geoIpTarget}
             onClose={() => setGeoIpTarget(null)}
             ipAddress={geoIpTarget}
+          />
+        </Suspense>
+      )}
+      {checkoutDialogMounted && (
+        <Suspense fallback={null}>
+          <CheckoutDialog
+            open={checkoutOpen}
+            onClose={() => setCheckoutOpen(false)}
           />
         </Suspense>
       )}

@@ -258,14 +258,19 @@ async function discoverOidcEndpoints(issuerUrl: string): Promise<OidcDiscoveryDo
 
 export async function initializePassport(): Promise<void> {
   if (config.oauth.google.enabled) {
+    const googleOptions: Record<string, unknown> = {
+      clientID: config.oauth.google.clientId,
+      clientSecret: config.oauth.google.clientSecret,
+      callbackURL: config.oauth.google.callbackUrl,
+      scope: ['profile', 'email'],
+    };
+    if (config.oauth.google.hd) {
+      googleOptions.hd = config.oauth.google.hd;
+    }
     passport.use(
       new GoogleStrategy(
-        {
-          clientID: config.oauth.google.clientId,
-          clientSecret: config.oauth.google.clientSecret,
-          callbackURL: config.oauth.google.callbackUrl,
-          scope: ['profile', 'email'],
-        },
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        googleOptions as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         makeVerifyCallback('GOOGLE') as any
       )
@@ -281,7 +286,7 @@ export async function initializePassport(): Promise<void> {
           clientSecret: config.oauth.microsoft.clientSecret,
           callbackURL: config.oauth.microsoft.callbackUrl,
           scope: ['user.read'],
-          tenant: 'common',
+          tenant: config.oauth.microsoft.tenantId,
         },
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         makeVerifyCallback('MICROSOFT') as any

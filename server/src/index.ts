@@ -8,7 +8,7 @@ import { initializePassport } from './config/passport';
 import { setupSocketIO } from './socket';
 import { logger, toGuacamoleLogLevel } from './utils/logger';
 import prisma from './lib/prisma';
-import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, stopAllJobs } from './services/scheduler.service';
+import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startCheckoutExpiryJob, startPasswordRotationJob, stopAllJobs } from './services/scheduler.service';
 import { startAllSyncJobs, stopAllSyncJobs } from './services/syncScheduler.service';
 import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
 import { cleanupExpiredShares } from './services/externalShare.service';
@@ -23,6 +23,10 @@ import * as autoscalerService from './services/autoscaler.service';
 import { completeGuacRecording, cleanupExpiredRecordings } from './services/recording.service';
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
+import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
+import { cleanupIdleTunnels } from './services/rdGateway.service';
+import { cleanupExpiredDeviceCodes } from './services/deviceAuth.service';
+import { applySystemSettings } from './services/systemSettings.service';
 
 function freePort(port: number): void {
   try {
@@ -80,6 +84,7 @@ async function main() {
 
   await runDatabaseMigrations();
   await runStartupMigrations();
+  await applySystemSettings();
 
   // Recover orphaned sessions from previous server instance
   const recovered = await sessionService.recoverOrphanedSessions();
@@ -98,6 +103,9 @@ async function main() {
   // Setup zero-trust tunnel WebSocket endpoint
   setupTunnelHandler(server);
 
+  // Start SSH protocol proxy (if enabled)
+  startSshProxyServer();
+
   // Initialize session cleanup with Socket.IO reference
   initSessionCleanup(io);
 
@@ -105,6 +113,8 @@ async function main() {
   startKeyRotationJob();
   startLdapSyncJob();
   startMembershipExpiryJob();
+  startCheckoutExpiryJob();
+  startPasswordRotationJob();
   startAllSyncJobs().catch((err) => {
     logger.error('Failed to start sync jobs:', err);
   });
@@ -200,6 +210,21 @@ async function main() {
       logger.error('Recording cleanup failed:', err);
     });
   }, 24 * 60 * 60 * 1000);
+
+  // Cleanup idle RD Gateway tunnels every minute
+  setInterval(() => {
+    cleanupIdleTunnels(config.sessionInactivityTimeoutSeconds).catch((err) => {
+      logger.error('RD Gateway tunnel cleanup failed:', err);
+    });
+  }, 60 * 1000);
+
+  // Cleanup expired device auth codes every 5 minutes
+  setInterval(() => {
+    cleanupExpiredDeviceCodes().catch((err) => {
+      logger.error('Device auth code cleanup failed:', err);
+    });
+  }, 5 * 60 * 1000);
+
 
   // Setup guacamole-lite for RDP
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -369,6 +394,9 @@ async function main() {
     } catch (err) {
       logger.error('Failed to close sessions on shutdown:', err);
     }
+
+    // Stop SSH proxy server
+    stopSshProxyServer();
 
     if (guacServer) {
       try {

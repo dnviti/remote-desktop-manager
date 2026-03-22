@@ -2,13 +2,14 @@
 title: Troubleshooting
 description: Common errors, debugging tips, and frequently asked questions
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - server/src/index.ts
   - server/src/middleware/error.middleware.ts
   - server/src/middleware/auth.middleware.ts
   - client/src/api/auth.api.ts
   - server/src/config.ts
+  - server/src/services/keystrokeInspection.service.ts
   - .env.example
 ---
 
@@ -103,6 +104,22 @@ This is automatically done by `npm run predev`.
 - OAuth callback URL in provider settings doesn't match
 - Missing or wrong `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_SECRET`, etc.
 
+### Microsoft OAuth Returns "User Not In Tenant"
+
+**Error:** Microsoft login fails with tenant validation error
+
+**Cause:** `MICROSOFT_TENANT_ID` is set to a specific Azure AD tenant ID, but the user's account belongs to a different tenant.
+
+**Fix:** Set `MICROSOFT_TENANT_ID=common` in `.env` to allow any Microsoft account, or verify the tenant ID matches your Azure AD directory. Default is `common` (all Microsoft accounts accepted).
+
+### Google OAuth Rejects Users Outside Domain
+
+**Error:** Google login fails for users not in the expected domain
+
+**Cause:** `GOOGLE_HD` (hosted domain) is set to restrict login to a specific Google Workspace domain.
+
+**Fix:** Clear `GOOGLE_HD` in `.env` to allow any Google account, or set it to your organization's domain (e.g., `GOOGLE_HD=example.com`). When set, only users with an email in that domain can authenticate via Google OAuth.
+
 ### Account Lockout
 
 **Error:** `Account locked` after too many failed attempts
@@ -110,6 +127,24 @@ This is automatically done by `npm run predev`.
 **Default:** 10 failed attempts → 30 minute lockout.
 
 **Fix:** Wait for lockout to expire, or adjust `ACCOUNT_LOCKOUT_THRESHOLD` and `ACCOUNT_LOCKOUT_DURATION_MS` in `.env`.
+
+### Self-Signup Not Working
+
+**Error:** Registration page not available or returns `403 Forbidden`
+
+**Cause:** Self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`). The admin must create user accounts.
+
+**Fix:** Either create accounts from the admin panel, or enable self-signup:
+- Set `SELF_SIGNUP_ENABLED=true` in `.env`, or
+- Toggle the setting in **Settings → System Settings** in the admin panel
+
+### Email Verification Blocking Login
+
+**Error:** User cannot log in because email is not verified, but no verification email was received
+
+**Cause:** Email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`). If it has been enabled without configuring an email provider, verification emails cannot be sent.
+
+**Fix:** Either disable email verification (`EMAIL_VERIFY_REQUIRED=false`) or configure an email provider (SMTP, SendGrid, SES, Resend, or Mailgun) in `.env`. See [Configuration — Email](configuration.md#email).
 
 ## Vault Issues
 
@@ -140,7 +175,7 @@ Users can also set per-user auto-lock via `PUT /api/vault/auto-lock`.
 1. Verify target host is reachable from the server
 2. Check credentials are correct (vault must be unlocked)
 3. If using a gateway, verify gateway health in the Gateway Manager
-4. Check `ALLOW_LOCAL_NETWORK` if connecting to private IPs (default: `false`)
+4. Check `ALLOW_LOCAL_NETWORK` if connecting to private IPs (default: `true`)
 5. Check DLP policies if copy/paste is blocked
 
 ### RDP/VNC Black Screen
@@ -271,6 +306,37 @@ For Podman, ensure the socket path is correct: `PODMAN_SOCKET_PATH=$XDG_RUNTIME_
 1. Large number of concurrent SSH sessions (each holds a stream buffer)
 2. Vault sessions accumulating (check `VAULT_TTL_MINUTES`)
 3. Node.js default heap size too low: `NODE_OPTIONS=--max-old-space-size=4096`
+
+## Keystroke Policy Issues
+
+### Policy Not Matching
+
+**Symptom:** SSH commands not being caught by keystroke policies.
+
+**Causes and fixes:**
+1. Policy not enabled: verify `enabled: true` in policy settings
+2. Regex pattern error: check pattern validity in the API response
+3. Cache delay: policies refresh every 30 seconds — wait and retry
+4. ReDoS safety: patterns with nested quantifiers are automatically rejected
+
+### Session Terminated Unexpectedly
+
+**Symptom:** SSH session closed with "input matched a security policy rule"
+
+**Cause:** A `BLOCK_AND_TERMINATE` keystroke policy matched the entered command.
+
+**Fix:** Review keystroke policies in Settings → Keystroke Policies. Check audit log for the matched pattern.
+
+## Database Connection Issues
+
+### Database Proxy Not Connecting
+
+**Symptom:** Database sessions fail to establish via the proxy gateway.
+
+**Causes and fixes:**
+1. DB proxy container not running: check gateway status in Settings → Gateways
+2. Wrong protocol ports: verify Oracle (1521), MSSQL (1433), DB2 (50000) configuration
+3. Network connectivity: ensure the proxy container can reach the target database server
 
 ## FAQ
 

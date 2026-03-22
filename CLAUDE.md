@@ -6,6 +6,47 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Always respond and work in English, even if the user's prompt is written in another language.
 
+## Workflow & Principles
+
+### Core Principles
+
+- **Simplicity First:** Make every change as simple as possible. Impact minimal code.
+- **No Laziness:** Find root causes. No temporary fixes. Senior developer standards.
+- **Minimal Impact:** Only touch what's necessary. No side effects introducing new bugs.
+
+### Plan Mode Default
+
+Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions). If something goes sideways, STOP and re-plan immediately. Use plan mode for verification steps, not just building. Write detailed specs upfront to reduce ambiguity.
+
+### Subagent Strategy
+
+Use subagents liberally to keep the main context window clean. Offload research, exploration, and parallel analysis to subagents. For complex problems, throw more compute at it via subagents. One task per subagent for focused execution.
+
+### Self-Improvement Loop
+
+After ANY correction from the user: update `tasks/lessons.md` with the pattern. Write rules that prevent the same mistake. Ruthlessly iterate on these lessons until the mistake rate drops. Review lessons at session start for the relevant project.
+
+### Verification Before Done
+
+Never mark a task complete without proving it works. Diff behavior between `main` and your changes when relevant. Ask yourself: "Would a staff engineer approve this?" Run tests, check logs, demonstrate correctness. `npm run verify` must pass before closing any task.
+
+### Demand Elegance (Balanced)
+
+For non-trivial changes: pause and ask "is there a more elegant way?" If a fix feels hacky: "Knowing everything I know now, implement the elegant solution." Skip this for simple, obvious fixes — don't over-engineer. Challenge your own work before presenting it.
+
+### Autonomous Bug Fixing
+
+When given a bug report: just fix it. Don't ask for hand-holding. Point at logs, errors, failing tests — then resolve them. Zero context switching required from the user. Go fix failing CI tests without being told how.
+
+### Task Execution Workflow
+
+1. **Plan First:** Write plan to `tasks/todo.md` with checkable items
+2. **Verify Plan:** Check in with the user before starting implementation
+3. **Track Progress:** Mark items complete as you go
+4. **Explain Changes:** High-level summary at each step
+5. **Document Results:** Add review section to `tasks/todo.md`
+6. **Capture Lessons:** Update `tasks/lessons.md` after corrections
+
 ## Development Commands
 
 ```bash
@@ -36,11 +77,34 @@ npm run typecheck           # TypeScript type-check (both workspaces, no emit)
 npm run lint                # ESLint (both workspaces via root flat config)
 npm run lint:fix            # ESLint with auto-fix
 npm run sast                # npm audit (dependency vulnerability scan)
+npm run codeql              # Local CodeQL security scan (security-extended)
+npm run codeql:full         # Local CodeQL full scan (security-and-quality)
 
 # Docker
 npm run docker:dev          # Start guacd + PostgreSQL containers (required for dev)
 npm run docker:dev:down     # Stop dev containers
 npm run docker:prod         # Full production stack (requires .env.production)
+
+# CodeClaw Configuration
+DEV_PORTS="3000 3001 3002"               # Client, Server, Guacamole WebSocket
+START_COMMAND="npm run dev"              # Command to start dev server
+PREDEV_COMMAND="npm run predev"          # Pre-start setup (Docker + Prisma generate)
+VERIFY_COMMAND="npm run verify"          # Quality gate (typecheck → lint → audit → test → build)
+
+TEST_FRAMEWORK="vitest"                  # Test runner
+TEST_COMMAND="npm run test"              # Run tests (all workspaces)
+TEST_FILE_PATTERN="**/*.test.{ts,tsx}"   # Test file pattern
+
+CI_RUNTIME_SETUP="uses: actions/setup-node@v6\nwith:\n  node-version: 22"
+
+DEVELOPMENT_BRANCH="develop"
+STAGING_BRANCH="staging"
+PRODUCTION_BRANCH="main"
+
+PACKAGE_JSON_PATHS="package.json client/package.json server/package.json gateways/tunnel-agent/package.json extra-clients/browser-extensions/package.json"
+CHANGELOG_FILE="CHANGELOG.md"
+TAG_PREFIX="v"
+GITHUB_REPO_URL="https://github.com/dnviti/arsenale"
 ```
 
 **Important:** `npm run verify` must pass before closing any task. It runs typecheck, lint, dependency audit, and build in sequence.
@@ -65,6 +129,7 @@ When bumping the app version, update all four `package.json` files and regenerat
 | `extra-clients/browser-extensions/manifest.json` | `"version"` |
 | `server/src/cli.ts` | `.version('X.Y.Z')` |
 | `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
+| `docs/index.md` | `Version:` line at bottom |
 
 After editing the package.json files, run `npm install --package-lock-only` to update `package-lock.json`. All versions must always be kept in sync.
 
@@ -109,6 +174,16 @@ Layered architecture: **Routes → Controllers → Services → Prisma ORM**
 - `extra-clients/browser-extensions/src/lib/` — Shared utilities: account storage, API client, auth, vault/secrets/connections API wrappers
 
 ## Key Patterns
+
+### Configuration Strategy
+
+All application configuration **must** use environment variables as the primary source of truth. The UI Settings panel provides a user-friendly way to view and adjust settings, but environment variables always take precedence:
+
+- **Env var set** → value is used as-is and the corresponding UI field shows it as a preset/override (read-only or visually distinguished).
+- **Env var unset** → the UI setting is editable and its value is persisted to the database.
+- **New features** must define their configuration as env vars in `server/src/config.ts` first, with sensible defaults. If the setting should also be adjustable at runtime via the UI, add a corresponding tenant/system setting that the env var overrides.
+
+This ensures deployments can be fully configured via `.env` / Docker Compose / Kubernetes ConfigMaps without requiring UI interaction, while still allowing runtime tuning through the Settings panel.
 
 ### Real-Time Connections
 
@@ -266,7 +341,7 @@ Tasks can be grouped into planned releases via `releases.json` at the project ro
 
 **Task branch workflow:** `/task-pick` must always create a dedicated branch (`task/<code>`) from `develop` and, upon completion, open a pull request targeting `develop` via `gh pr create --base develop`. Never merge directly into `develop` without a PR.
 
-<!-- CTDF:START -->
+<!-- CodeClaw:START -->
 ## Key Patterns
 
 ### Task Files
@@ -331,7 +406,7 @@ This framework supports **Windows, macOS, and Linux** with automatic OS detectio
 
 ### Python Command Auto-Detection
 
-All scripts and skills reference `python3`. On Windows where only `python` is available, CTDF auto-detects the correct command:
+All scripts and skills reference `python3`. On Windows where only `python` is available, CodeClaw auto-detects the correct command:
 
 - **Auto-detection:** `platform_utils.detect_python_cmd()` tries `python3` first, then `python`, verifying each is Python 3.x via `shutil.which()`.
 - **Manual override:** Set `python_command` in `config/project-config.json` to skip auto-detection (e.g., `"python_command": "python"`).
@@ -349,7 +424,7 @@ All scripts and skills reference `python3`. On Windows where only `python` is av
 
 - **PowerShell Core (pwsh):** Required for shell-expansion features (e.g., inline file reading in agent invocations). Install from https://github.com/PowerShell/PowerShell. The legacy `cmd.exe` has limited support — commands that rely on inline expansion will fall back to direct Python file reading.
 - **Long path support:** Enable long paths in the Windows registry or via Group Policy if your project has deeply nested directories. Run: `New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force`
-- **Line endings:** Configure Git to handle line endings automatically: `git config --global core.autocrlf true`. CTDF text files use LF; Git will convert on checkout/commit.
+- **Line endings:** Configure Git to handle line endings automatically: `git config --global core.autocrlf true`. CodeClaw text files use LF; Git will convert on checkout/commit.
 - **Symlink permissions:** If your project uses symlinks, enable Developer Mode in Windows Settings or grant `SeCreateSymbolicLinkPrivilege` to your user account.
 
 ### Troubleshooting (Windows)
@@ -357,14 +432,14 @@ All scripts and skills reference `python3`. On Windows where only `python` is av
 | Issue | Solution |
 |-------|----------|
 | `python3` not found | Install Python 3 from python.org and ensure "Add to PATH" is checked. Or set `python_command` in project config. |
-| `cp -r` fails | All CTDF scripts use `shutil.copytree()` instead. If you see this error, update to the latest CTDF version. |
-| `$(cat file)` fails in cmd.exe | CTDF uses direct file reading in Python. For manual commands, use PowerShell: `$(Get-Content -Raw file)` |
+| `cp -r` fails | All CodeClaw scripts use `shutil.copytree()` instead. If you see this error, update to the latest CodeClaw version. |
+| `$(cat file)` fails in cmd.exe | CodeClaw uses direct file reading in Python. For manual commands, use PowerShell: `$(Get-Content -Raw file)` |
 | Port check fails | Ensure `netstat` is available (built into Windows). Run as Administrator if needed. |
 | Permission denied on kill | Run the terminal as Administrator for `taskkill` operations. |
 
 ### Vector Memory (opt-in)
 
-CTDF includes an optional vector memory layer that indexes source code, tasks, and generated documents for semantic search. It is **disabled by default** and requires optional dependencies.
+CodeClaw includes an optional vector memory layer that indexes source code, tasks, and generated documents for semantic search. It is **disabled by default** and requires optional dependencies.
 
 | Component | Purpose |
 |-----------|---------|
@@ -387,4 +462,4 @@ CTDF includes an optional vector memory layer that indexes source code, tasks, a
 - `index_path`: Index storage path (default: `".claude/memory/vectors"`)
 
 Vectors are stored in `.claude/memory/vectors/` (auto-added to `.gitignore`).
-<!-- CTDF:END -->
+<!-- CodeClaw:END -->

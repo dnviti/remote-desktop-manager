@@ -3,9 +3,10 @@ import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../
 import * as userService from '../services/user.service';
 import * as domainService from '../services/domain.service';
 import * as identityVerification from '../services/identityVerification.service';
+import * as notificationService from '../services/notification.service';
 import * as auditService from '../services/audit.service';
 import { getClientIp } from '../utils/ip';
-import type { UpdateProfileInput, ChangePasswordInput, InitiateEmailChangeInput, ConfirmEmailChangeInput, InitiateIdentityInput, ConfirmIdentityInput, UploadAvatarInput, UserSearchInput, UpdateDomainProfileInput } from '../schemas/user.schemas';
+import type { UpdateProfileInput, ChangePasswordInput, InitiateEmailChangeInput, ConfirmEmailChangeInput, InitiateIdentityInput, ConfirmIdentityInput, UploadAvatarInput, UserSearchInput, UpdateDomainProfileInput, UpdateNotificationScheduleInput } from '../schemas/user.schemas';
 import type { SshTerminalConfig, RdpSettings } from '../schemas/common.schemas';
 
 /** Roles allowed to perform tenant-wide user searches. */
@@ -150,4 +151,19 @@ export async function clearDomainProfile(req: AuthRequest, res: Response) {
     ipAddress: getClientIp(req),
   });
   res.json({ success: true });
+}
+
+// --- Notification Schedule (DND / Quiet Hours) ---
+
+export async function getNotificationSchedule(req: AuthRequest, res: Response) {
+  assertAuthenticated(req);
+  const schedule = await notificationService.getNotificationSchedule(req.user.userId);
+  res.json(schedule);
+}
+
+export async function updateNotificationSchedule(req: AuthRequest, res: Response) {
+  assertAuthenticated(req);
+  const data = req.body as UpdateNotificationScheduleInput;
+  const schedule = await notificationService.updateNotificationSchedule(req.user.userId, data);
+  res.json(schedule);
 }

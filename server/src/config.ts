@@ -96,8 +96,8 @@ export const config = {
   vonageApiKey: process.env.VONAGE_API_KEY || '',
   vonageApiSecret: process.env.VONAGE_API_SECRET || '',
   vonageFromNumber: process.env.VONAGE_FROM_NUMBER || '',
-  emailVerifyRequired: process.env.EMAIL_VERIFY_REQUIRED !== 'false',
-  selfSignupEnabled: process.env.SELF_SIGNUP_ENABLED !== 'false',
+  emailVerifyRequired: process.env.EMAIL_VERIFY_REQUIRED === 'true',
+  selfSignupEnabled: process.env.SELF_SIGNUP_ENABLED === 'true',
   clientUrl: process.env.CLIENT_URL || 'http://localhost:3000',
   oauth: {
     google: {
@@ -105,12 +105,14 @@ export const config = {
       clientId: process.env.GOOGLE_CLIENT_ID || '',
       clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
       callbackUrl: process.env.GOOGLE_CALLBACK_URL || 'http://localhost:3001/api/auth/oauth/google/callback',
+      hd: process.env.GOOGLE_HD || '',
     },
     microsoft: {
       enabled: !!process.env.MICROSOFT_CLIENT_ID,
       clientId: process.env.MICROSOFT_CLIENT_ID || '',
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
       callbackUrl: process.env.MICROSOFT_CALLBACK_URL || 'http://localhost:3001/api/auth/oauth/microsoft/callback',
+      tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
     },
     github: {
       enabled: !!process.env.GITHUB_CLIENT_ID,
@@ -163,6 +165,14 @@ export const config = {
   oauthAccountRateLimitMaxAttempts: parseInt(process.env.OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS || '15', 10),
   oauthLinkRateLimitWindowMs: parseInt(process.env.OAUTH_LINK_RATE_LIMIT_WINDOW_MS || String(15 * 60 * 1000), 10),
   oauthLinkRateLimitMaxAttempts: parseInt(process.env.OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS || '10', 10),
+  // IP-based whitelist for global rate limiter bypass (loopback + RFC 1918 by default)
+  rateLimitWhitelistCidrs: (() => {
+    const val = process.env.RATE_LIMIT_WHITELIST_CIDRS;
+    if (val !== undefined) {
+      return val.trim() === '' ? [] : val.split(',').map(s => s.trim()).filter(Boolean);
+    }
+    return ['127.0.0.1/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
+  })(),
   sessionHeartbeatIntervalMs: parseInt(process.env.SESSION_HEARTBEAT_INTERVAL_MS || String(30 * 1000), 10),
   sessionIdleThresholdMinutes: parseInt(process.env.SESSION_IDLE_THRESHOLD_MINUTES || '5', 10),
   sessionCleanupRetentionDays: parseInt(process.env.SESSION_CLEANUP_RETENTION_DAYS || '30', 10),
@@ -181,6 +191,7 @@ export const config = {
   orchestratorK8sNamespace: process.env.ORCHESTRATOR_K8S_NAMESPACE || 'arsenale',
   orchestratorSshGatewayImage: process.env.ORCHESTRATOR_SSH_GATEWAY_IMAGE || 'ghcr.io/dnviti/arsenale/ssh-gateway:latest',
   orchestratorGuacdImage: process.env.ORCHESTRATOR_GUACD_IMAGE || 'guacamole/guacd:1.6.0',
+  orchestratorDbProxyImage: process.env.ORCHESTRATOR_DB_PROXY_IMAGE || 'ghcr.io/dnviti/arsenale/db-proxy:latest',
   // Session recording
   recordingEnabled: process.env.RECORDING_ENABLED === 'true',
   recordingPath: path.resolve(process.env.RECORDING_PATH || '/recordings'),
@@ -198,6 +209,11 @@ export const config = {
   geoipDbPath: process.env.GEOIP_DB_PATH ? path.resolve(process.env.GEOIP_DB_PATH) : '',
   // Impossible travel detection — maximum plausible speed in km/h (default: 900, faster than commercial aviation)
   impossibleTravelSpeedKmh: parseInt(process.env.IMPOSSIBLE_TRAVEL_SPEED_KMH || '900', 10),
+  // Lateral movement anomaly detection (MITRE T1021)
+  lateralMovementEnabled: process.env.LATERAL_MOVEMENT_DETECTION_ENABLED !== 'false',
+  lateralMovementMaxDistinctTargets: parseInt(process.env.LATERAL_MOVEMENT_MAX_DISTINCT_TARGETS || '10', 10),
+  lateralMovementWindowMinutes: parseInt(process.env.LATERAL_MOVEMENT_WINDOW_MINUTES || '5', 10),
+  lateralMovementLockoutMinutes: parseInt(process.env.LATERAL_MOVEMENT_LOCKOUT_MINUTES || '30', 10),
   // Reverse proxy trust depth for Express.
   // Controls how `req.ip` is resolved from X-Forwarded-For.
   // false = disabled, true = trust all, number = hop count to trust.
@@ -240,5 +256,15 @@ export const config = {
     rpId: process.env.WEBAUTHN_RP_ID || 'localhost',
     rpOrigin: process.env.WEBAUTHN_RP_ORIGIN || 'http://localhost:3000',
     rpName: process.env.WEBAUTHN_RP_NAME || 'Arsenale',
+  },
+  // SSH Protocol Proxy
+  sshProxy: {
+    enabled: process.env.SSH_PROXY_ENABLED === 'true',
+    port: parseInt(process.env.SSH_PROXY_PORT || '2222', 10),
+    hostKey: process.env.SSH_PROXY_HOST_KEY || '',
+    allowedAuthMethods: (process.env.SSH_PROXY_AUTH_METHODS || 'token,keyboard-interactive').split(',').filter(Boolean) as Array<'token' | 'keyboard-interactive' | 'certificate'>,
+    tokenTtlSeconds: parseInt(process.env.SSH_PROXY_TOKEN_TTL_SECONDS || '300', 10),
+    caPublicKeyPath: process.env.SSH_PROXY_CA_PUBLIC_KEY || '',
+    keystrokeRecording: process.env.SSH_PROXY_KEYSTROKE_RECORDING === 'true',
   },
 };

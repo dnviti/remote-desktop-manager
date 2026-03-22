@@ -2,7 +2,7 @@
 title: Development
 description: Contributing guide, local development setup, testing, code quality, and branch strategy
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-21T22:40:00Z
 source-files:
   - package.json
   - server/package.json
@@ -261,7 +261,7 @@ arsenale/
 │   │   ├── routes/                  # Route definitions (31 files)
 │   │   ├── controllers/             # Request handlers
 │   │   ├── services/                # Business logic
-│   │   ├── middleware/              # Auth, CSRF, validation, rate limiting
+│   │   ├── middleware/              # Auth, CSRF, peekAuth, rate limiting, validation
 │   │   ├── socket/                  # Socket.IO + WebSocket handlers
 │   │   ├── schemas/                 # Zod validation schemas
 │   │   └── types/                   # Shared TypeScript types

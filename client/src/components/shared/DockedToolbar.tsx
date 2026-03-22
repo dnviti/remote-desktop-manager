@@ -29,6 +29,8 @@ export interface ToolbarAction {
   hidden?: boolean;
   /** Disable this action */
   disabled?: boolean;
+  /** Badge text (e.g., tunnel health status) */
+  badge?: string;
 }
 
 interface DockedToolbarProps {

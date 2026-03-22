@@ -2,7 +2,7 @@
 title: Configuration
 description: Environment variables, config files, feature flags, and service configuration
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-21T19:50:00Z
 source-files:
   - .env.example
   - server/src/config.ts
@@ -81,6 +81,25 @@ Never create a separate `server/.env` — all env vars are loaded from the root.
 | `KEY_ROTATION_CRON` | `0 2 * * *` | SSH key rotation schedule (daily 02:00 UTC) |
 | `KEY_ROTATION_ADVANCE_DAYS` | `7` | Rotation trigger threshold |
 
+## Database Access
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DB_PROXY_ENABLED` | `false` | Enable database protocol gateway |
+| `DB_PROXY_HOST` | `localhost` | DB proxy container host |
+| `DB_PROXY_API_PORT` | `8080` | DB proxy management API port |
+
+## SSH Keystroke Inspection
+
+Keystroke policies are managed per-tenant via the `/api/keystroke-policies` endpoint. Policies define regex patterns matched against SSH input with two actions: `BLOCK_AND_TERMINATE` (prevents command execution and kills session) or `ALERT_ONLY` (logs and notifies but allows execution). Policy cache refreshes every 30 seconds.
+
+## Credential Checkout (PAM)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| Checkout request duration | 1-1440 min | Configurable per-request |
+| Expiry check interval | 5 min | Cron job for auto-expiry |
+
 ## Authentication Providers
 
 ### OAuth
@@ -89,8 +108,10 @@ Never create a separate `server/.env` — all env vars are loaded from the root.
 |----------|---------|-------------|
 | `GOOGLE_CLIENT_ID` | — | Google OAuth client ID |
 | `GOOGLE_CLIENT_SECRET` | — | Google OAuth client secret |
+| `GOOGLE_HD` | — | Google hosted domain restriction (e.g. `example.com`) |
 | `MICROSOFT_CLIENT_ID` | — | Microsoft OAuth client ID |
 | `MICROSOFT_CLIENT_SECRET` | — | Microsoft OAuth client secret |
+| `MICROSOFT_TENANT_ID` | `common` | Azure AD tenant ID or `common` / `organizations` / `consumers` |
 | `GITHUB_CLIENT_ID` | — | GitHub OAuth client ID |
 | `GITHUB_CLIENT_SECRET` | — | GitHub OAuth client secret |
 
@@ -142,8 +163,8 @@ Never create a separate `server/.env` — all env vars are loaded from the root.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `EMAIL_PROVIDER` | `smtp` | Provider: smtp, sendgrid, ses, resend, mailgun |
-| `EMAIL_VERIFY_REQUIRED` | `true` | Enforce email verification |
-| `SELF_SIGNUP_ENABLED` | `true` | Allow self-registration |
+| `EMAIL_VERIFY_REQUIRED` | `false` | Enforce email verification |
+| `SELF_SIGNUP_ENABLED` | `false` | Allow self-registration |
 | `SMTP_HOST` | — | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | — | SMTP username |
@@ -173,7 +194,7 @@ Never create a separate `server/.env` — all env vars are loaded from the root.
 | `ACCOUNT_LOCKOUT_DURATION_MS` | `1800000` | Lockout duration (30 min) |
 | `MAX_CONCURRENT_SESSIONS` | `0` | Per-user session limit (0 = unlimited) |
 | `ABSOLUTE_SESSION_TIMEOUT_SECONDS` | `43200` | Absolute timeout (12 hours, 0 = disabled) |
-| `ALLOW_LOCAL_NETWORK` | `false` | Allow connections to private networks |
+| `ALLOW_LOCAL_NETWORK` | `true` | Allow connections to private networks |
 | `ALLOW_EXTERNAL_SHARING` | `false` | Enable cross-tenant sharing |
 
 ### WebAuthn
@@ -239,13 +260,13 @@ Features are controlled through environment variables and database settings:
 
 | Feature | Control | Default |
 |---------|---------|---------|
-| Self-signup | `SELF_SIGNUP_ENABLED` env + AppConfig DB | `true` |
-| Email verification | `EMAIL_VERIFY_REQUIRED` | `true` |
+| Self-signup | `SELF_SIGNUP_ENABLED` env + AppConfig DB | `false` |
+| Email verification | `EMAIL_VERIFY_REQUIRED` | `false` |
 | Session recording | `RECORDING_ENABLED` | `false` |
 | LDAP authentication | `LDAP_ENABLED` | `false` |
 | LDAP sync | `LDAP_SYNC_ENABLED` | `false` |
 | GeoIP tracking | `GEOIP_DB_PATH` (presence) | Disabled |
 | Impossible travel | `IMPOSSIBLE_TRAVEL_SPEED_KMH` > 0 | `900` km/h |
 | External sharing | `ALLOW_EXTERNAL_SHARING` | `false` |
-| Local network access | `ALLOW_LOCAL_NETWORK` | `false` |
+| Local network access | `ALLOW_LOCAL_NETWORK` | `true` |
 | CLI tool | `CLI_ENABLED` | `false` |

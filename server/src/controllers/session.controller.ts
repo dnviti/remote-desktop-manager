@@ -19,6 +19,7 @@ import { AppError } from '../middleware/error.middleware';
 import { forceDisconnectSession } from '../services/sessionCleanup.service';
 import { config } from '../config';
 import { startRecording, buildRecordingPath } from '../services/recording.service';
+import { checkLateralMovement } from '../services/lateralMovement.service';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
 import type { SessionInput } from '../schemas/session.schemas';
@@ -40,6 +41,17 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     const parsed = req.body as SessionInput;
     connectionId = parsed.connectionId;
     const { username: overrideUser, password: overridePass, domain: overrideDomain } = parsed;
+
+    // Lateral movement anomaly detection (MITRE T1021)
+    const lmResult = await checkLateralMovement(req.user.userId, connectionId, getClientIp(req));
+    if (!lmResult.allowed) {
+      throw new AppError(
+        'Session denied: anomalous lateral movement detected. ' +
+        `${lmResult.distinctTargets} distinct targets in ${lmResult.windowMinutes} min ` +
+        `(threshold: ${lmResult.threshold}). Your account has been temporarily suspended.`,
+        403,
+      );
+    }
 
     const conn = await getConnection(req.user.userId, connectionId, req.user.tenantId);
     connHost = conn.host;
@@ -273,6 +285,17 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
     connectionId = parsed.connectionId;
     const { username: _overrideUser, password: overridePass } = parsed;
 
+    // Lateral movement anomaly detection (MITRE T1021)
+    const lmResult = await checkLateralMovement(req.user.userId, connectionId, getClientIp(req));
+    if (!lmResult.allowed) {
+      throw new AppError(
+        'Session denied: anomalous lateral movement detected. ' +
+        `${lmResult.distinctTargets} distinct targets in ${lmResult.windowMinutes} min ` +
+        `(threshold: ${lmResult.threshold}). Your account has been temporarily suspended.`,
+        403,
+      );
+    }
+
     const conn = await getConnection(req.user.userId, connectionId, req.user.tenantId);
     connHost = conn.host;
     connPort = conn.port;
@@ -504,7 +527,7 @@ export async function listActiveSessions(req: AuthRequest, res: Response) {
 
   const sessions = await sessionService.getActiveSessions({
     tenantId: req.user.tenantId,
-    protocol: protocol === 'SSH' ? 'SSH' : protocol === 'RDP' ? 'RDP' : protocol === 'VNC' ? 'VNC' : undefined,
+    protocol: protocol === 'SSH' ? 'SSH' : protocol === 'RDP' ? 'RDP' : protocol === 'VNC' ? 'VNC' : protocol === 'DATABASE' ? 'DATABASE' : protocol === 'DB_TUNNEL' ? 'DB_TUNNEL' : undefined,
     gatewayId,
   });
   res.json(sessions);

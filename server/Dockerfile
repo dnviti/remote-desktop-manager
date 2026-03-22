@@ -4,6 +4,7 @@ RUN apk update && apk upgrade --no-cache
 
 WORKDIR /app
 
+COPY .npmrc* ./
 COPY server/package.json ./
 COPY package-lock.json ./
 RUN npm install --production=false

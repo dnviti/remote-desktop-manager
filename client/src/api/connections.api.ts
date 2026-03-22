@@ -17,9 +17,26 @@ export interface ResolvedDlpPolicy {
   disableUpload: boolean;
 }
 
+export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2';
+
+export interface DbSettings {
+  protocol: DbProtocol;
+  databaseName?: string;
+  /** Oracle: SID for the target instance (mutually exclusive with serviceName). */
+  oracleSid?: string;
+  /** Oracle: Service name for the target instance. */
+  oracleServiceName?: string;
+  /** MSSQL: Named instance (e.g. "SQLEXPRESS"). */
+  mssqlInstanceName?: string;
+  /** MSSQL: Authentication mode — "sql" for SQL auth, "windows" for NTLM/Kerberos. */
+  mssqlAuthMode?: 'sql' | 'windows';
+  /** DB2: Database alias as cataloged on the DB2 Connect gateway. */
+  db2DatabaseAlias?: string;
+}
+
 export interface ConnectionInput {
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host: string;
   port: number;
   username?: string;
@@ -36,14 +53,19 @@ export interface ConnectionInput {
   sshTerminalConfig?: Partial<SshTerminalConfig>;
   rdpSettings?: Partial<RdpSettings>;
   vncSettings?: Partial<VncSettings>;
+  dbSettings?: DbSettings;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
+  // DB_TUNNEL-specific fields
+  targetDbHost?: string;
+  targetDbPort?: number;
+  dbType?: string;
 }
 
 export interface ConnectionData {
   id: string;
   name: string;
-  type: 'RDP' | 'SSH' | 'VNC';
+  type: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host: string;
   port: number;
   folderId: string | null;
@@ -63,8 +85,14 @@ export interface ConnectionData {
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
   rdpSettings?: Partial<RdpSettings> | null;
   vncSettings?: Partial<VncSettings> | null;
+  dbSettings?: DbSettings | null;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
+  // DB_TUNNEL-specific fields
+  targetDbHost?: string | null;
+  targetDbPort?: number | null;
+  dbType?: string | null;
+  bastionConnectionId?: string | null;
   isOwner: boolean;
   permission?: string;
   sharedBy?: string;
@@ -90,7 +118,7 @@ export async function createConnection(payload: ConnectionInput): Promise<Connec
 
 export interface ConnectionUpdate {
   name?: string;
-  type?: 'RDP' | 'SSH' | 'VNC';
+  type?: 'RDP' | 'SSH' | 'VNC' | 'DATABASE' | 'DB_TUNNEL';
   host?: string;
   port?: number;
   username?: string;
@@ -106,8 +134,13 @@ export interface ConnectionUpdate {
   sshTerminalConfig?: Partial<SshTerminalConfig> | null;
   rdpSettings?: Partial<RdpSettings> | null;
   vncSettings?: Partial<VncSettings> | null;
+  dbSettings?: DbSettings | null;
   defaultCredentialMode?: 'saved' | 'domain' | 'prompt' | null;
   dlpPolicy?: DlpPolicy | null;
+  // DB_TUNNEL-specific fields
+  targetDbHost?: string | null;
+  targetDbPort?: number | null;
+  dbType?: string | null;
 }
 
 export async function updateConnection(

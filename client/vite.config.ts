@@ -133,24 +133,27 @@ export default defineConfig({
   ],
   build: {
     chunkSizeWarningLimit: 700,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
-        manualChunks: {
-          'vendor-react': [
-            'react',
-            'react-dom',
-            'react-router-dom',
-            'react-router',
-          ],
-          'vendor-mui': [
-            '@mui/material',
-            '@emotion/react',
-            '@emotion/styled',
-          ],
-          'vendor-mui-icons': ['@mui/icons-material'],
-          'vendor-terminal': ['@xterm/xterm', '@xterm/addon-fit'],
-          'vendor-guacamole': ['@glokon/guacamole-common-js'],
-          'vendor-network': ['axios', 'socket.io-client'],
+        manualChunks(id) {
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
+            return 'vendor-react';
+          }
+          if (id.includes('node_modules/@mui/material') || id.includes('node_modules/@emotion/')) {
+            return 'vendor-mui';
+          }
+          if (id.includes('node_modules/@mui/icons-material')) {
+            return 'vendor-mui-icons';
+          }
+          if (id.includes('node_modules/@xterm/')) {
+            return 'vendor-terminal';
+          }
+          if (id.includes('node_modules/@glokon/guacamole-common-js')) {
+            return 'vendor-guacamole';
+          }
+          if (id.includes('node_modules/axios') || id.includes('node_modules/socket.io-client')) {
+            return 'vendor-network';
+          }
         },
       },
     },

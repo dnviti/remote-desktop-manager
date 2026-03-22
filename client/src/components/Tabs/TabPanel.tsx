@@ -3,6 +3,7 @@ import { useTabsStore } from '../../store/tabsStore';
 import SshTerminal from '../Terminal/SshTerminal';
 import RdpViewer from '../RDP/RdpViewer';
 import VncViewer from '../VNC/VncViewer';
+import DbEditor from '../DatabaseClient/DbEditor';
 
 export default function TabPanel() {
   const tabs = useTabsStore((s) => s.tabs);
@@ -44,6 +45,8 @@ export default function TabPanel() {
             <SshTerminal connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} credentials={tab.credentials} sshTerminalConfig={tab.connection.sshTerminalConfig} />
           ) : tab.connection.type === 'VNC' ? (
             <VncViewer connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} credentials={tab.credentials} />
+          ) : tab.connection.type === 'DATABASE' ? (
+            <DbEditor connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} credentials={tab.credentials} />
           ) : (
             <RdpViewer connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} enableDrive={tab.connection.enableDrive} credentials={tab.credentials} />
           )}

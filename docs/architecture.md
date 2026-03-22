@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-17T10:00:00Z
+generated-at: 2026-03-21T22:40:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -17,6 +17,17 @@ source-files:
   - server/src/socket/tunnel.handler.ts
   - server/src/socket/notification.handler.ts
   - server/src/socket/gatewayMonitor.handler.ts
+  - server/src/config/passport.ts
+  - server/src/services/keystrokeInspection.service.ts
+  - server/src/services/checkout.service.ts
+  - server/src/services/lateralMovement.service.ts
+  - server/src/services/sshProxy.service.ts
+  - server/src/services/rdGateway.service.ts
+  - server/src/services/dbProxy.service.ts
+  - server/src/services/dbTunnel.service.ts
+  - server/src/services/passwordRotation.service.ts
+  - server/src/services/deviceAuth.service.ts
+  - tools/arsenale-cli/main.go
 ---
 
 # Architecture
@@ -51,6 +62,12 @@ flowchart TD
         SSHGw["SSH Gateway<br/>Port 2222"]
         GuacEnc["guacenc<br/>Recording Processor"]
         TunnelAgent["Tunnel Agent"]
+        DBProxy["DB Proxy Gateway<br/>Oracle/MSSQL/DB2"]
+        RDGateway["RD Gateway<br/>MS-TSGU Protocol"]
+    end
+
+    subgraph Tools["Tools"]
+        CLI["Arsenale Connect CLI<br/>Native Client Orchestration"]
     end
 
     subgraph External["External Integrations"]
@@ -76,6 +93,9 @@ flowchart TD
     API --> Email
     API --> SMS
     GuacEnc -->|Convert Recordings| GuacD
+    API --> DBProxy
+    API --> RDGateway
+    CLI -->|Device Auth + REST| API
 ```
 
 ## Monorepo Structure
@@ -111,14 +131,16 @@ On startup, the server:
 
 1. Runs `prisma migrate deploy` (automatic database migrations)
 2. Runs startup migrations (email verification, vault setup)
-3. Recovers orphaned sessions from previous server instances
-4. Initializes GeoIP database
-5. Creates HTTP server with Express app
-6. Attaches Socket.IO server (SSH terminal + notifications)
-7. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
-8. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
-9. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
-10. Registers graceful shutdown on SIGTERM/SIGINT
+3. Applies system settings from the database
+4. Recovers orphaned sessions from previous server instances
+5. Initializes GeoIP database
+6. Initializes Passport strategies (OAuth, SAML, OIDC discovery)
+7. Creates HTTP server with Express app
+8. Attaches Socket.IO server (SSH terminal + notifications)
+9. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
+10. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
+11. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
+12. Registers graceful shutdown on SIGTERM/SIGINT
 
 ### Express App (`server/src/app.ts`)
 
@@ -130,14 +152,17 @@ Middleware stack (in order):
 4. **Cookie Parser** — For refresh token cookies
 5. **Passport** — OAuth/SAML initialization
 6. **Request Logger** — Optional HTTP logging
-7. **CSRF Validation** — Double-submit cookie pattern (exempts login, register, extension clients)
+7. **CSRF Validation** — Double-submit cookie pattern (exempts login, register, OAuth code exchange, extension clients)
+8. **Peek Auth** — Lightweight JWT extraction from `Authorization` header for rate-limit keying (does not enforce auth)
+9. **Global Rate Limit** — IP-based rate limiting with authenticated user keying (skips whitelisted CIDRs)
 
 ### Route Mounting
 
-31 route files mounted under `/api`:
+43 route files mounted under `/api`:
 
 | Path | Purpose |
 |------|---------|
+| `/api/setup` | First-time platform setup wizard (public, rate-limited) |
 | `/api/auth` | Authentication (password, OAuth, SAML, MFA, token refresh) |
 | `/api/vault` | Vault unlock/lock/status, MFA vault unlock |
 | `/api/connections` | Connection CRUD, sharing, import/export |
@@ -162,6 +187,16 @@ Middleware stack (in order):
 | `/api/health` | Readiness/liveness probes |
 | `/api/geoip` | IP geolocation lookup |
 | `/api/tabs` | Persisted open tabs |
+| `/api/checkouts` | Credential checkout/check-in (PAM) |
+| `/api/sessions/ssh-proxy` | SSH proxy token issuance for native clients |
+| `/api/rdgw` | RD Gateway (MS-TSGU) configuration and .rdp file generation |
+| `/api/cli` | CLI device authorization (RFC 8628) |
+| `/api/sessions/database` | Database proxy sessions and query execution |
+| `/api/sessions/db-tunnel` | SSH-tunneled database connections |
+| `/api/db-audit` | Database query audit logs, SQL firewall rules, masking policies |
+| `/api/secrets` (rotation) | Password rotation enable/disable/trigger/status |
+| `/api/keystroke-policies` | SSH keystroke inspection policy CRUD |
+| `/api/admin/system-settings` | Runtime system settings management |
 
 ### Middleware
 
@@ -170,6 +205,8 @@ Middleware stack (in order):
 | JWT Auth | `auth.middleware.ts` | Token verification, IP/User-Agent binding, hijack detection |
 | Error Handler | `error.middleware.ts` | Custom `AppError` class, 500 fallback |
 | CSRF | `csrf.middleware.ts` | Double-submit cookies, timing-safe comparison |
+| Peek Auth | `peekAuth.middleware.ts` | Lightweight JWT extraction for rate-limit keying (non-blocking) |
+| Global Rate Limit | `globalRateLimit.middleware.ts` | IP/user-based rate limiting with CIDR whitelist |
 | Async Handler | `asyncHandler.ts` | Promise rejection wrapper |
 | Tenant | `tenant.middleware.ts` | Tenant extraction and role enforcement |
 | Team | `team.middleware.ts` | Team context middleware |
@@ -182,7 +219,7 @@ Middleware stack (in order):
 | Namespace | Handler | Purpose |
 |-----------|---------|---------|
 | `/ssh` | `ssh.handler.ts` | SSH terminal sessions via ssh2, SFTP file browser, session recording (asciicast), DLP enforcement |
-| `/notifications` | `notification.handler.ts` | Real-time events (share, secret, recording, impossible travel) |
+| `/notifications` | `notification.handler.ts` | Real-time events (share, secret, recording, impossible travel, checkout approval, lateral movement, keystroke violations) |
 | `/gateways` | `gatewayMonitor.handler.ts` | Gateway health, instance state, scaling updates |
 
 ### WebSocket Tunnel
@@ -206,10 +243,12 @@ Middleware stack (in order):
 | Closed Session Cleanup | Daily | Clean up closed session records |
 | Expiring Secrets Check | 6 hours | Notify about expiring secrets |
 | Membership Expiry Check | Periodic | Check and enforce membership expiry |
+| Checkout Expiry | 5 minutes | Auto-expire approved checkouts past TTL |
+| Password Rotation | Cron-based | Rotate credentials on target systems |
 
 ## Database Schema
 
-32 Prisma models across 6 domains:
+40+ Prisma models across 6 domains:
 
 ```mermaid
 erDiagram
@@ -262,12 +301,14 @@ erDiagram
 |------|--------|
 | TenantRole | OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST |
 | TeamRole | TEAM_ADMIN, TEAM_EDITOR, TEAM_VIEWER |
-| ConnectionType | RDP, SSH, VNC |
+| ConnectionType | RDP, SSH, VNC, DATABASE, DB_TUNNEL |
 | SecretType | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
 | SecretScope | PERSONAL, TEAM, TENANT |
-| GatewayType | GUACD, SSH_BASTION, MANAGED_SSH |
+| GatewayType | GUACD, SSH_BASTION, MANAGED_SSH, DB_PROXY |
 | SessionStatus | ACTIVE, IDLE, CLOSED |
 | ManagedInstanceStatus | PROVISIONING, RUNNING, STOPPED, ERROR, REMOVING |
+| CheckoutStatus | PENDING, APPROVED, REJECTED, EXPIRED, CHECKED_IN |
+| KeystrokePolicyAction | BLOCK_AND_TERMINATE, ALERT_ONLY |
 
 ## Client Architecture
 
@@ -286,7 +327,8 @@ erDiagram
 ```mermaid
 flowchart TD
     Router["React Router"]
-    Router --> Public["Public Routes"]
+    Router --> Setup["/setup → SetupWizardPage"]
+    Router --> Public["Public Routes (SetupGuard)"]
     Router --> Auth["AuthRoute"]
     Router --> Protected["ProtectedRoute"]
 
@@ -483,6 +525,13 @@ stateDiagram-v2
 - Token binding: IP + User-Agent hash prevents token theft
 - Automatic refresh via Axios interceptor on 401
 
+**OAuth Provider Configuration:**
+- Google: optional `hd` parameter restricts login to a specific hosted domain (e.g. corporate Google Workspace)
+- Microsoft: configurable `tenant` parameter (defaults to `common`, can be set to a specific Azure AD tenant ID)
+- GitHub: standard OAuth2 with `user:email` scope
+- Generic OIDC: discovery-based with PKCE (S256), supports any OpenID Connect provider
+- SAML: supports IdP metadata, attribute mapping, and session index tracking
+
 ### Role-Based Access Control
 
 ```mermaid
@@ -509,6 +558,54 @@ flowchart TD
 - Impossible travel detection (speed > 900 km/h between logins)
 - IP allowlist (flag or block mode per tenant)
 - DLP policies (disable copy/paste/upload/download per tenant or connection)
+
+### SSH Keystroke Inspection
+
+Real-time keystroke inspection monitors SSH sessions for policy-violating commands:
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant SSHHandler as SSH Handler
+    participant Buffer as KeystrokeBuffer
+    participant Inspector as Inspection Service
+    participant Target as SSH Target
+
+    User->>SSHHandler: Keystroke data
+    SSHHandler->>Buffer: feed(data)
+    alt No newline
+        SSHHandler->>Target: Forward immediately
+    else Newline detected
+        Buffer-->>SSHHandler: sawNewline() = true
+        SSHHandler->>Inspector: inspect(tenantId, inputLine)
+        alt No match
+            Inspector-->>SSHHandler: null
+            SSHHandler->>Target: Forward data
+        else BLOCK_AND_TERMINATE
+            Inspector-->>SSHHandler: PolicyMatch
+            SSHHandler->>User: Session terminated
+            Note over SSHHandler: Audit log + admin notification
+        else ALERT_ONLY
+            Inspector-->>SSHHandler: PolicyMatch
+            SSHHandler->>Target: Forward data
+            Note over SSHHandler: Audit log + admin notification
+        end
+    end
+```
+
+### Credential Checkout (PAM)
+
+Temporary credential check-out/check-in with approval workflow:
+- Request -> Approve/Reject -> Use -> Check-in/Expire
+- Atomic status transitions (TOCTOU-safe)
+- Batch resource name resolution (N+1 safe)
+- Configurable duration (1-1440 minutes)
+- Auto-expiry via scheduled job (every 5 min)
+- Notifications to approvers and requesters
+
+### Lateral Movement Detection
+
+MITRE T1021 detection: monitors concurrent session patterns across targets. If a user connects to more distinct targets than the threshold within a time window, the account is temporarily suspended and admins are alerted.
 
 ## Browser Extension Architecture
 
@@ -558,6 +655,10 @@ All layout state persists via `uiPreferencesStore` (Zustand + localStorage, per-
 
 - **Server:** Custom `AppError(message, statusCode)`, async handler wrapper, global error middleware
 - **Client:** `extractApiError(err, fallback)` utility, `useAsyncAction` hook for dialog forms
+
+### Native Client Integration (CLI)
+
+Arsenale Connect CLI (`tools/arsenale-cli/`) enables native SSH/RDP clients (PuTTY, mstsc, etc.) to connect through Arsenale's vault and gateway infrastructure. Uses RFC 8628 device authorization for CLI-to-web authentication. The CLI orchestrates credential injection, SSH proxy tokens, and .rdp file generation.
 
 ### Validation
 

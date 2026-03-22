@@ -8,6 +8,7 @@ import {
   updateProfileSchema, changePasswordSchema, initiateEmailChangeSchema,
   confirmEmailChangeSchema, initiateIdentitySchema, confirmIdentitySchema,
   uploadAvatarSchema, userSearchSchema, updateDomainProfileSchema,
+  updateNotificationScheduleSchema,
 } from '../schemas/user.schemas';
 import { sshTerminalConfigSchema, rdpSettingsSchema } from '../schemas/common.schemas';
 import * as userController from '../controllers/user.controller';
@@ -34,6 +35,10 @@ router.post('/avatar', validate(uploadAvatarSchema), asyncHandler(userController
 router.get('/domain-profile', asyncHandler(userController.getDomainProfile));
 router.put('/domain-profile', validate(updateDomainProfileSchema), asyncHandler(userController.updateDomainProfile));
 router.delete('/domain-profile', asyncHandler(userController.clearDomainProfile));
+
+// Notification schedule (DND / quiet hours)
+router.get('/notification-schedule', asyncHandler(userController.getNotificationSchedule));
+router.put('/notification-schedule', validate(updateNotificationScheduleSchema), asyncHandler(userController.updateNotificationSchedule));
 
 // Identity verification & sensitive operations
 router.post('/email-change/initiate', identityVerificationLimiter, validate(initiateEmailChangeSchema), asyncHandler(userController.initiateEmailChange));
