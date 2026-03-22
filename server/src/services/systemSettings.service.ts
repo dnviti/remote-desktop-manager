@@ -82,6 +82,13 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     minEditRole: 'ADMIN',
   },
   {
+    key: 'ALLOW_LOOPBACK', envVar: 'ALLOW_LOOPBACK',
+    configPath: 'allowLoopback', type: 'boolean', default: false,
+    group: 'general', label: 'Allow Loopback Connections',
+    description: 'Allow connections to loopback addresses (localhost, 127.x.x.x, ::1). Wildcard and link-local remain blocked.',
+    minEditRole: 'ADMIN',
+  },
+  {
     key: 'CLI_ENABLED', envVar: 'CLI_ENABLED',
     type: 'boolean', default: false,
     group: 'general', label: 'CLI Enabled',
