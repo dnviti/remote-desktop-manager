@@ -47,6 +47,7 @@ Open `http://localhost:3000` — register, set up your vault, create connections
 | [Deployment](deployment.md) | Docker containers, CI/CD pipelines, production setup |
 | [Development](development.md) | Contributing, local dev, testing, branch strategy |
 | [Troubleshooting](troubleshooting.md) | Common errors, debugging tips, FAQ |
+| [Infrastructure Roadmap](infrastructure-roadmap.md) | Future microservices decomposition plan, phased approach |
 | [LLM Context](llm-context.md) | Consolidated single-file for AI/bot consumption |
 
 ## Key Features
