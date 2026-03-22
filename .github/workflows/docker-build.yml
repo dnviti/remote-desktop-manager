@@ -3,7 +3,7 @@ name: Docker Build
 on:
   push:
     tags: ["v*"]
-    branches: [main, staging]
+    branches: [main]
     paths:
       - "server/**"
       - "client/**"

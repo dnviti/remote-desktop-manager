@@ -3,7 +3,7 @@ name: Gateways — Build & Scan
 on:
   push:
     tags: ["v*"]
-    branches: [main, staging]
+    branches: [main]
     paths:
       - "gateways/**"
   pull_request:
