@@ -24,8 +24,9 @@ const SENSITIVE_KEYS = new Set([
 
 function sanitize(value: unknown, depth = 0): unknown {
   if (depth > 5 || value == null) return value;
-  if (value instanceof Error) return value;
+  if (value instanceof Error) return (value.stack ?? value.message).replace(/[\n\r]/g, '\\n');
   if (Array.isArray(value)) return value.map(v => sanitize(v, depth + 1));
+  if (typeof value === 'string') return value.replace(/[\n\r]/g, '\\n');
   if (typeof value === 'object') {
     const result: Record<string, unknown> = {};
     for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
@@ -41,7 +42,7 @@ function formatArgs(level: LogLevel, prefix: string, args: unknown[]): unknown[]
 
   if (config.logFormat === 'json') {
     const message = sanitized.map(a =>
-      typeof a === 'string' ? a : (a instanceof Error ? a.stack ?? a.message : JSON.stringify(a)),
+      typeof a === 'string' ? a : JSON.stringify(a),
     ).join(' ');
     const entry: Record<string, unknown> = { level, message };
     if (config.logTimestamps) entry.timestamp = new Date().toISOString();
