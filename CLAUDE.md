@@ -14,6 +14,7 @@ Always respond and work in English, even if the user's prompt is written in anot
 - **No Laziness:** Find root causes. No temporary fixes. Senior developer standards.
 - **Minimal Impact:** Only touch what's necessary. No side effects introducing new bugs.
 - **Always Ask Before Commit/Push:** Never run `git commit` or `git push` without explicitly asking the user for confirmation first. Present the list of staged files and the proposed commit message, then wait for approval.
+- **Protected Branches — No Direct Commits:** Never commit or push directly to `main`, `staging`, or `develop`. Always work on a dedicated branch (e.g., `task/`, `fix/`, `chore/`, `feat/`) and use pull requests to merge into those standard branches. `main`, `staging`, and `develop` are pull-only — never push to them.
 
 ### Plan Mode Default
 
