@@ -15,8 +15,7 @@ import { getClientIp } from '../utils/ip';
 import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
 import { generateAuthCode } from '../utils/authCodeStore';
-import { consumeLinkCode } from '../utils/linkCodeStore';
-import { signState, verifyLinkState } from '../utils/signedState';
+import { consumeLinkCode, generateRelayCode, consumeRelayCode } from '../utils/linkCodeStore';
 
 export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   if (!config.oauth.saml.enabled) {
@@ -54,7 +53,7 @@ export function initiateSamlLink(req: Request, res: Response, next: NextFunction
     return next(new AppError('SAML provider not available', 400));
   }
 
-  const relayState = signState({ action: 'link', userId });
+  const relayState = generateRelayCode(userId);
 
   passport.authenticate('saml', {
     session: false,
@@ -80,13 +79,12 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       const { oauthProfile, oauthTokens, samlAttributes: rawSamlAttrs } = data;
       const samlAttributes = rawSamlAttrs as Prisma.InputJsonValue | undefined;
 
-      // Check for link operation via RelayState (HMAC-signed to prevent tampering)
+      // Check for link operation via RelayState (server-side relay code)
       const relayState = req.body?.RelayState;
       if (relayState) {
         try {
-          const linkUserId = verifyLinkState(relayState as string);
-          // Database lookup converts user-derived ID to server-controlled record;
-          // the guard condition below uses the DB result, not the tainted input.
+          // userId comes from server-side store, not from user input
+          const linkUserId = consumeRelayCode(relayState as string);
           const linkUser = linkUserId
             ? await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } })
             : null;

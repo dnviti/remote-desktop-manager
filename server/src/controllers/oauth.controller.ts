@@ -15,8 +15,7 @@ import { getClientIp } from '../utils/ip';
 import { enforceIpAllowlist } from '../utils/ipAllowlist';
 import { getRequestBinding } from '../utils/tokenBinding';
 import { generateAuthCode, consumeAuthCode } from '../utils/authCodeStore';
-import { generateLinkCode, consumeLinkCode } from '../utils/linkCodeStore';
-import { signState, verifyLinkState } from '../utils/signedState';
+import { generateLinkCode, consumeLinkCode, generateRelayCode, consumeRelayCode } from '../utils/linkCodeStore';
 import type { VaultSetupInput } from '../schemas/oauth.schemas';
 
 type OAuthProvider = 'google' | 'microsoft' | 'github' | 'oidc';
@@ -72,12 +71,11 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
 
       const { oauthProfile, oauthTokens } = data;
 
-      // Check if this is a link operation (HMAC-signed state prevents tampering)
+      // Check if this is a link operation (server-side relay code)
       if (req.query.state) {
         try {
-          const linkUserId = verifyLinkState(req.query.state as string);
-          // Database lookup converts user-derived ID to server-controlled record;
-          // the guard condition below uses the DB result, not the tainted input.
+          // userId comes from server-side store, not from user input
+          const linkUserId = consumeRelayCode(req.query.state as string);
           const linkUser = linkUserId
             ? await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } })
             : null;
@@ -179,7 +177,7 @@ export function initiateLinkOAuth(req: Request, res: Response, next: NextFunctio
     return next(new AppError('OAuth provider not available', 400));
   }
 
-  const state = signState({ action: 'link', userId });
+  const state = generateRelayCode(userId);
 
   passport.authenticate(provider, {
     scope: getScopes(provider),
