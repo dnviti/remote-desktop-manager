@@ -13,9 +13,34 @@ type LogLevel = keyof typeof LEVELS;
 
 function currentLevel(): number { return LEVELS[config.logLevel] ?? LEVELS.info; }
 
+const SENSITIVE_KEYS = new Set([
+  'password', 'temporarypassword', 'newpassword', 'oldpassword',
+  'secret', 'clientsecret',
+  'token', 'accesstoken', 'refreshtoken', 'idtoken', 'access_token', 'refresh_token', 'id_token',
+  'authorization', 'apikey', 'privatekey',
+  'credential', 'credentials',
+  'oauth', 'existingoauth',
+]);
+
+function sanitize(value: unknown, depth = 0): unknown {
+  if (depth > 5 || value == null) return value;
+  if (value instanceof Error) return value;
+  if (Array.isArray(value)) return value.map(v => sanitize(v, depth + 1));
+  if (typeof value === 'object') {
+    const result: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      result[k] = SENSITIVE_KEYS.has(k.toLowerCase()) ? '[REDACTED]' : sanitize(v, depth + 1);
+    }
+    return result;
+  }
+  return value;
+}
+
 function formatArgs(level: LogLevel, prefix: string, args: unknown[]): unknown[] {
+  const sanitized = args.map(a => sanitize(a));
+
   if (config.logFormat === 'json') {
-    const message = args.map(a =>
+    const message = sanitized.map(a =>
       typeof a === 'string' ? a : (a instanceof Error ? a.stack ?? a.message : JSON.stringify(a)),
     ).join(' ');
     const entry: Record<string, unknown> = { level, message };
@@ -28,7 +53,7 @@ function formatArgs(level: LogLevel, prefix: string, args: unknown[]): unknown[]
   if (config.logTimestamps) parts.push(new Date().toISOString());
   parts.push(`[${level.toUpperCase()}]`);
   if (prefix) parts.push(`[${prefix}]`);
-  parts.push(...args);
+  parts.push(...sanitized);
   return parts;
 }
 

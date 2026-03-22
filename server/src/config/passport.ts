@@ -193,8 +193,7 @@ class OidcStrategy extends passport.Strategy {
     });
 
     if (!tokenResponse.ok) {
-      const errorBody = await tokenResponse.text();
-      logger.error('OIDC token exchange failed:', errorBody);
+      logger.error('OIDC token exchange failed:', tokenResponse.status, tokenResponse.statusText);
       (this as any).fail({ message: 'Token exchange failed' }, 401); // eslint-disable-line @typescript-eslint/no-explicit-any
       return;
     }
@@ -211,7 +210,7 @@ class OidcStrategy extends passport.Strategy {
     });
 
     if (!userinfoResponse.ok) {
-      logger.error('OIDC userinfo fetch failed:', await userinfoResponse.text());
+      logger.error('OIDC userinfo fetch failed:', userinfoResponse.status, userinfoResponse.statusText);
       (this as any).fail({ message: 'Failed to fetch user info' }, 401); // eslint-disable-line @typescript-eslint/no-explicit-any
       return;
     }
