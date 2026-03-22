@@ -266,7 +266,7 @@ export async function importConnectionsFromCsv(
     });
 
     try {
-      const name = rowData.get(columnMapping.name || '') || '';
+      let name = rowData.get(columnMapping.name || '') || '';
       const host = rowData.get(columnMapping.host || '') || '';
       const portStr = rowData.get(columnMapping.port || '') || '22';
       const typeStr = rowData.get(columnMapping.type || '') || 'SSH';
@@ -318,6 +318,7 @@ export async function importConnectionsFromCsv(
           counter++;
         }
         rowData.set(columnMapping.name || '', newName);
+        name = newName;
       }
 
       const input: CreateConnectionInput = {

@@ -409,7 +409,7 @@ export async function convertToVideo(
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
-const SAFE_PATH_COMPONENT = /^[a-zA-Z0-9._-]+$/;
+const SAFE_PATH_COMPONENT = /^(?!\.\.?$)[a-zA-Z0-9._-]+$/;
 
 export function buildRecordingPath(
   userId: string,
@@ -429,7 +429,12 @@ export function buildRecordingPath(
   const dir = path.join(config.recordingPath, subdir, userId);
   const result = path.join(dir, `${connectionId}-${protocol.toLowerCase()}-${timestamp}.${ext}`);
   // Belt-and-suspenders: ensure resolved path stays within recording root
-  if (!path.resolve(result).startsWith(path.resolve(config.recordingPath))) {
+  // Use path.relative() instead of startsWith() to prevent prefix-collision bypass
+  // (e.g. /recordings vs /recordings_evil)
+  const recordingRoot = path.resolve(config.recordingPath);
+  const resolvedResult = path.resolve(result);
+  const relative = path.relative(recordingRoot, resolvedResult);
+  if (relative.startsWith('..') || path.isAbsolute(relative)) {
     throw new AppError('Recording path escapes allowed directory', 400);
   }
   return result;

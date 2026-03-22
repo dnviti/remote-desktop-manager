@@ -213,8 +213,9 @@ const MAX_MONITOR_INTERVAL_MS = 300_000; // 5 minutes
 const DEFAULT_MONITOR_INTERVAL_MS = 30_000; // 30 seconds
 
 /**
- * Clamp an interval to safe bounds and return a server-controlled value.
- * The returned number is always derived from constants, never from the input directly.
+ * Clamp an interval to safe bounds with rounding.
+ * Out-of-range values are replaced by a defined constant (default, min, or max).
+ * In-range values are rounded to the nearest integer via toFixed(0).
  */
 function clampInterval(ms: number): number {
   if (!Number.isFinite(ms) || ms <= 0) return DEFAULT_MONITOR_INTERVAL_MS;
