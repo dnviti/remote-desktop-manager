@@ -157,6 +157,6 @@ export async function inferDomainFromSaml(
       where: { id: userId },
       data: { domainName, domainUsername },
     });
-    log.info(`Auto-inferred domain identity for user ${userId}: ${domainName}\\${domainUsername}`);
+    log.info(`Auto-inferred domain identity: ${domainName}\\${domainUsername}`);
   }
 }
