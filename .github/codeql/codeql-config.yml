@@ -22,3 +22,9 @@ query-filters:
   # schema exploration (table names, column names are part of the SQL structure).
   - exclude:
       id: js/sql-injection
+  # js/regex-injection in safeRegex.ts is by design: admin users create SQL firewall
+  # rules and data masking policies with regex patterns. compileRegex() validates via
+  # isRegexSafe() which rejects nested quantifiers (ReDoS) and patterns > 500 chars.
+  # The feature requires dynamic regex — escaping metacharacters would break it.
+  - exclude:
+      id: js/regex-injection
