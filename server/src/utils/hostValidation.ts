@@ -6,14 +6,14 @@ import { AppError } from '../middleware/error.middleware';
 
 function getBlockedMessage(): string {
   if (config.allowLoopback && config.allowLocalNetwork) {
-    return 'Connections to wildcard, link-local, or metadata addresses are not allowed';
+    return 'Connections to wildcard, link-local, metadata, or server interface addresses are not allowed';
   }
   if (config.allowLoopback) {
-    return 'Connections to local network addresses are not allowed';
+    return 'Connections to local network, wildcard, link-local, metadata, or server interface addresses are not allowed';
   }
   return config.allowLocalNetwork
-    ? 'Connections to loopback addresses are not allowed'
-    : 'Connections to loopback or local network addresses are not allowed';
+    ? 'Connections to loopback, wildcard, link-local, metadata, or server interface addresses are not allowed'
+    : 'Connections to loopback, local network, wildcard, link-local, metadata, or server interface addresses are not allowed';
 }
 
 function getLocalAddresses(): Set<string> {
