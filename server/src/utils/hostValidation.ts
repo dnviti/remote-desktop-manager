@@ -28,15 +28,83 @@ function getLocalAddresses(): Set<string> {
   return addresses;
 }
 
+/**
+ * Expand an IPv6 address into 8 numeric groups (16-bit each).
+ * Handles :: shorthand and zone IDs. Returns null for invalid/IPv4-suffixed addresses.
+ */
+function expandIPv6(ip: string): number[] | null {
+  const addr = ip.replace(/%.*$/, '');
+  if (/\d+\.\d+\.\d+\.\d+$/.test(addr)) return null;
+
+  const sides = addr.split('::');
+  if (sides.length > 2) return null;
+
+  let groups: number[];
+  if (sides.length === 2) {
+    const left = sides[0] ? sides[0].split(':').map(s => parseInt(s, 16)) : [];
+    const right = sides[1] ? sides[1].split(':').map(s => parseInt(s, 16)) : [];
+    const fill = 8 - left.length - right.length;
+    if (fill < 0) return null;
+    groups = [...left, ...Array(fill).fill(0) as number[], ...right];
+  } else {
+    groups = addr.split(':').map(s => parseInt(s, 16));
+  }
+
+  return groups.length === 8 && groups.every(g => !isNaN(g)) ? groups : null;
+}
+
+/**
+ * Extract the IPv4 address from an IPv4-mapped IPv6 address.
+ * Handles both dotted (::ffff:127.0.0.1) and hex (::ffff:7f00:1) forms.
+ * Returns the original IP if not a mapped address.
+ */
+function extractIPv4FromMapped(ip: string): string {
+  if (!net.isIPv6(ip)) return ip;
+
+  const dottedMatch = ip.match(/^::ffff:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/i);
+  if (dottedMatch) return dottedMatch[1];
+
+  const hexMatch = ip.match(/^::ffff:([0-9a-f]{1,4}):([0-9a-f]{1,4})$/i);
+  if (hexMatch) {
+    const hi = parseInt(hexMatch[1], 16);
+    const lo = parseInt(hexMatch[2], 16);
+    return `${(hi >> 8) & 0xff}.${hi & 0xff}.${(lo >> 8) & 0xff}.${lo & 0xff}`;
+  }
+
+  return ip;
+}
+
+/**
+ * Check if an IP is a loopback address. Handles all IPv6 representations
+ * (::1, 0:0:0:0:0:0:0:1) and IPv4-mapped loopback (::ffff:127.0.0.1).
+ */
 function isLoopbackIP(ip: string): boolean {
-  if (ip === '::1') return true;
-  if (net.isIPv4(ip) && ip.split('.').map(Number)[0] === 127) return true;
+  const effective = extractIPv4FromMapped(ip);
+  if (effective !== ip) return isLoopbackIP(effective);
+
+  if (net.isIPv4(ip)) return ip.split('.').map(Number)[0] === 127;
+
+  if (net.isIPv6(ip)) {
+    const groups = expandIPv6(ip);
+    if (groups && groups.slice(0, 7).every(g => g === 0) && groups[7] === 1) return true;
+  }
+
   return false;
 }
 
 function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
-  // Wildcard addresses (always blocked)
-  if (ip === '0.0.0.0' || ip === '::' || ip === '[::]') return true;
+  // Normalize IPv4-mapped IPv6 (e.g. ::ffff:192.168.1.1) to plain IPv4
+  const effectiveIP = extractIPv4FromMapped(ip);
+  if (effectiveIP !== ip) {
+    return isForbiddenIP(effectiveIP, localAddresses);
+  }
+
+  // Wildcard addresses (always blocked) — handles expanded form too
+  if (ip === '0.0.0.0' || ip === '[::]') return true;
+  if (net.isIPv6(ip)) {
+    const groups = expandIPv6(ip);
+    if (groups && groups.every(g => g === 0)) return true;
+  }
 
   // Loopback — blocked unless allowLoopback is enabled
   if (isLoopbackIP(ip)) return !config.allowLoopback;
