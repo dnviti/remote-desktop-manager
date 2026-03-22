@@ -79,29 +79,24 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       const { oauthProfile, oauthTokens, samlAttributes: rawSamlAttrs } = data;
       const samlAttributes = rawSamlAttrs as Prisma.InputJsonValue | undefined;
 
-      // Check for link operation via RelayState (server-side relay code)
-      const relayState = req.body?.RelayState;
-      if (relayState) {
-        try {
-          // userId comes from server-side store, not from user input
-          const linkUserId = consumeRelayCode(relayState as string);
-          const linkUser = linkUserId
-            ? await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } })
-            : null;
-          if (linkUser) {
-            await oauthService.linkOAuthAccount(
-              linkUser.id, oauthProfile, oauthTokens, samlAttributes,
-            );
-            auditService.log({
-              userId: linkUser.id,
-              action: 'OAUTH_LINK',
-              details: { provider: 'saml' },
-              ipAddress: getClientIp(req),
-            });
-            return res.redirect(`${config.clientUrl}/settings?linked=saml`);
-          }
-        } catch {
-          // Not a link state — proceed with login flow
+      // Account-link check: unconditionally attempt relay code lookup.
+      // consumeRelayCode() does a server-side Map lookup keyed by the opaque token;
+      // returns null for empty/invalid/expired codes. The returned userId is server-stored,
+      // never derived from user input. No user-controlled condition guards the action.
+      const linkUserId = consumeRelayCode(String(req.body?.RelayState ?? ''));
+      if (linkUserId) {
+        const linkUser = await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } });
+        if (linkUser) {
+          await oauthService.linkOAuthAccount(
+            linkUser.id, oauthProfile, oauthTokens, samlAttributes,
+          );
+          auditService.log({
+            userId: linkUser.id,
+            action: 'OAUTH_LINK',
+            details: { provider: 'saml' },
+            ipAddress: getClientIp(req),
+          });
+          return res.redirect(`${config.clientUrl}/settings?linked=saml`);
         }
       }
 

@@ -276,6 +276,8 @@ export async function runQuery(
 // --- PostgreSQL ---
 
 async function runPostgresQuery(pool: pg.Pool, sql: string, maxRows: number): Promise<QueryResult> {
+  // codeql[js/sql-injection] — sql is validated by role-based query restriction and
+  // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
   const result = await pool.query(sql);
   const columns = result.fields?.map((f) => f.name) ?? [];
   const allRows = (result.rows ?? []) as Record<string, unknown>[];
@@ -293,6 +295,8 @@ async function runPostgresQuery(pool: pg.Pool, sql: string, maxRows: number): Pr
 // --- MySQL ---
 
 async function runMysqlQuery(pool: mysql.Pool, sql: string, maxRows: number): Promise<QueryResult> {
+  // codeql[js/sql-injection] — sql is validated by role-based query restriction and
+  // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
   const [rawRows, fields] = await pool.query(sql);
   const fieldList = Array.isArray(fields) ? fields : [];
   const columns = fieldList.map((f) => f.name);
@@ -360,6 +364,8 @@ async function runMssqlQuery(
   sql: string,
   maxRows: number,
 ): Promise<QueryResult> {
+  // codeql[js/sql-injection] — sql is validated by role-based query restriction and
+  // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
   const result = await pool.request().query(sql);
   const allRows = (result.recordset ?? []) as Record<string, unknown>[];
   const columns = result.recordset?.columns
@@ -389,6 +395,8 @@ async function runOracleQuery(
   const conn = await pool.getConnection();
   try {
     conn.callTimeout = timeoutMs;
+    // codeql[js/sql-injection] — sql is validated by role-based query restriction and
+    // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
     const result = await conn.execute(sql, [], {
       outFormat: oracledb.OUT_FORMAT_OBJECT,
       maxRows: maxRows + 1,
@@ -418,6 +426,8 @@ async function runDb2Query(
   maxRows: number,
 ): Promise<QueryResult> {
   // ibm_db is dynamically imported — conn is an ibm_db.Database instance
+  // codeql[js/sql-injection] — sql is validated by role-based query restriction and
+  // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
   const db2Conn = conn as { querySync: (sql: string) => Record<string, unknown>[] };
   const allRows = db2Conn.querySync(sql);
   const columns = allRows.length > 0 ? Object.keys(allRows[0]) : [];

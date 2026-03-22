@@ -37,6 +37,20 @@ describe('parseCSV', () => {
       ['3', '4'],
     ]);
   });
+
+  it('throws when CSV exceeds MAX_CSV_LINES', () => {
+    const lines = ['h1,h2'];
+    for (let i = 0; i < 100_001; i++) {
+      lines.push(`a${i},b${i}`);
+    }
+    expect(() => parseCSV(lines.join('\n'))).toThrow('CSV exceeds maximum of 100000 lines');
+  });
+
+  it('throws when a single line exceeds MAX_CSV_LINE_LENGTH', () => {
+    const longValue = 'x'.repeat(1_048_577);
+    const csv = `header\n${longValue}`;
+    expect(() => parseCSV(csv)).toThrow('CSV line exceeds maximum length of 1048576 characters');
+  });
 });
 
 describe('generateCSV', () => {

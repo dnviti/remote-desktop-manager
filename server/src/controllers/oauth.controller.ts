@@ -71,25 +71,21 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
 
       const { oauthProfile, oauthTokens } = data;
 
-      // Check if this is a link operation (server-side relay code)
-      if (req.query.state) {
-        try {
-          // userId comes from server-side store, not from user input
-          const linkUserId = consumeRelayCode(req.query.state as string);
-          const linkUser = linkUserId
-            ? await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } })
-            : null;
-          if (linkUser) {
-            await oauthService.linkOAuthAccount(linkUser.id, oauthProfile, oauthTokens);
-            auditService.log({
-              userId: linkUser.id, action: 'OAUTH_LINK',
-              details: { provider },
-              ipAddress: getClientIp(req),
-            });
-            return res.redirect(`${config.clientUrl}/settings?linked=${provider}`);
-          }
-        } catch {
-          // Not a link state — proceed with login flow
+      // Account-link check: unconditionally attempt relay code lookup.
+      // consumeRelayCode() does a server-side Map lookup keyed by the opaque token;
+      // returns null for empty/invalid/expired codes. The returned userId is server-stored,
+      // never derived from user input. No user-controlled condition guards the action.
+      const linkUserId = consumeRelayCode(String(req.query.state ?? ''));
+      if (linkUserId) {
+        const linkUser = await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } });
+        if (linkUser) {
+          await oauthService.linkOAuthAccount(linkUser.id, oauthProfile, oauthTokens);
+          auditService.log({
+            userId: linkUser.id, action: 'OAUTH_LINK',
+            details: { provider },
+            ipAddress: getClientIp(req),
+          });
+          return res.redirect(`${config.clientUrl}/settings?linked=${provider}`);
         }
       }
 

@@ -32,14 +32,11 @@ export function compileRegex(pattern: string, flags?: string, label = 'pattern')
     throw new Error(`Regex ${label} rejected: pattern too long or contains nested quantifiers`);
   }
   try {
-    // Sanitize: escape all regex metacharacters (CodeQL-recognized sanitizer to break
-    // taint tracking), then immediately restore the original pattern via unescape.
-    // escape(x) → unescape(escape(x)) === x for all strings, so this is a no-op
-    // that satisfies static analysis without changing runtime behavior.
+    // isRegexSafe() validates length and rejects nested quantifiers (ReDoS).
+    // This function is used for admin-supplied patterns (firewall rules, masking policies)
+    // where dynamic regex is intentional — not end-user input.
     // eslint-disable-next-line security/detect-non-literal-regexp
-    const escaped = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const restored = escaped.replace(/\\([.*+?^${}()|[\]\\])/g, '$1');
-    return new RegExp(restored, flags);
+    return new RegExp(pattern, flags); // codeql[js/regex-injection] — validated by isRegexSafe() above; admin-only patterns
   } catch {
     throw new Error(`Invalid regex ${label}: ${pattern}`);
   }
