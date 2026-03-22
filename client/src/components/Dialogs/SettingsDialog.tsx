@@ -48,6 +48,8 @@ import OAuthProvidersAdminSection from '../Settings/OAuthProvidersAdminSection';
 import AccessPolicySection from '../Settings/AccessPolicySection';
 import NativeSshSection from '../Settings/NativeSshSection';
 import RdGatewayConfigSection from '../Settings/RdGatewayConfigSection';
+import DbFirewallSection from '../Settings/DbFirewallSection';
+import DbMaskingSection from '../Settings/DbMaskingSection';
 import AppearanceSection from '../Settings/AppearanceSection';
 import NotificationPreferencesSection from '../Settings/NotificationPreferencesSection';
 import NotificationsSection from '../Settings/NotificationsSection';
@@ -317,6 +319,8 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
               <EmailProviderSection />
               <LdapConfigSection />
               <SamlConfigSection />
+              <DbFirewallSection />
+              <DbMaskingSection />
               <TenantAuditLogSection onViewUserProfile={onViewUserProfile} onGeoIpClick={onGeoIpClick} />
             </Stack>
           )}
