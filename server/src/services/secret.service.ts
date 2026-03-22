@@ -465,13 +465,14 @@ export async function updateSecret(
     });
 
     // Re-check password against HIBP in the background (fire-and-forget)
+    // Gate the update on the version we just wrote to avoid races with newer updates
     const passwordToCheck = extractPasswordFromPayload(input.data);
     if (passwordToCheck) {
       checkPwnedPassword(passwordToCheck)
         .then((pwnedCount) => {
           if (pwnedCount > 0) {
-            return prisma.vaultSecret.update({
-              where: { id: secretId },
+            return prisma.vaultSecret.updateMany({
+              where: { id: secretId, currentVersion: updated.currentVersion },
               data: { pwnedCount },
             });
           }

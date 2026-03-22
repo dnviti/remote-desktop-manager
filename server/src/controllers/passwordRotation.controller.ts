@@ -7,7 +7,7 @@ import type { EnableRotationInput } from '../schemas/passwordRotation.schemas';
 
 export async function enableRotation(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = req.params.id;
+  const secretId = req.params.id as string;
   const { intervalDays } = req.body as EnableRotationInput;
 
   await passwordRotationService.enableRotation(
@@ -31,7 +31,7 @@ export async function enableRotation(req: AuthRequest, res: Response) {
 
 export async function disableRotation(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = req.params.id;
+  const secretId = req.params.id as string;
 
   await passwordRotationService.disableRotation(
     req.user.userId,
@@ -53,7 +53,7 @@ export async function disableRotation(req: AuthRequest, res: Response) {
 
 export async function triggerRotation(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = req.params.id;
+  const secretId = req.params.id as string;
 
   const result = await passwordRotationService.rotatePassword(
     secretId,
@@ -66,7 +66,7 @@ export async function triggerRotation(req: AuthRequest, res: Response) {
 
 export async function getRotationStatus(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = req.params.id;
+  const { secretId } = req.body as { secretId: string };
 
   const status = await passwordRotationService.getRotationStatus(secretId);
   res.json(status);
@@ -74,8 +74,8 @@ export async function getRotationStatus(req: AuthRequest, res: Response) {
 
 export async function getRotationHistory(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const secretId = req.params.id;
-  const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 20;
+  const { secretId } = req.body as { secretId: string };
+  const limit = req.body.limit ? parseInt(String(req.body.limit), 10) : 20;
 
   const history = await passwordRotationService.getRotationHistory(secretId, limit);
   res.json(history);

@@ -31,16 +31,14 @@ router.post(
 );
 
 // Get rotation status for a secret
-router.get(
-  '/:id/rotation/status',
-  validateUuidParam(),
+router.post(
+  '/rotation/status',
   asyncHandler(passwordRotationController.getRotationStatus),
 );
 
 // Get rotation history for a secret
-router.get(
-  '/:id/rotation/history',
-  validateUuidParam(),
+router.post(
+  '/rotation/history',
   asyncHandler(passwordRotationController.getRotationHistory),
 );
 
