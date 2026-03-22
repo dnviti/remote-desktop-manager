@@ -5,7 +5,7 @@ import { AuthPayload } from '../types';
 import { verifyJwt } from '../utils/jwt';
 import { AppError } from '../middleware/error.middleware';
 import { OAuthCallbackData, getSamlMetadata } from '../config/passport';
-import { Prisma } from '../lib/prisma';
+import prisma, { Prisma } from '../lib/prisma';
 import * as oauthService from '../services/oauth.service';
 import * as auditService from '../services/audit.service';
 import { issueTokens } from '../services/auth.service';
@@ -86,11 +86,15 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
         try {
           const stateData = verifyState<{ action: string; userId: string }>(relayState as string);
           if (stateData && stateData.action === 'link' && stateData.userId) {
+            // Validate userId against the database to ensure it references a real user
+            const linkUser = await prisma.user.findUnique({ where: { id: stateData.userId }, select: { id: true } });
+            if (!linkUser) throw new AppError('User not found', 404);
+
             await oauthService.linkOAuthAccount(
-              stateData.userId, oauthProfile, oauthTokens, samlAttributes,
+              linkUser.id, oauthProfile, oauthTokens, samlAttributes,
             );
             auditService.log({
-              userId: stateData.userId,
+              userId: linkUser.id,
               action: 'OAUTH_LINK',
               details: { provider: 'saml' },
               ipAddress: getClientIp(req),

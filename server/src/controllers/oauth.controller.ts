@@ -5,6 +5,7 @@ import { AuthPayload, AuthRequest, assertAuthenticated } from '../types';
 import { verifyJwt } from '../utils/jwt';
 import { AppError } from '../middleware/error.middleware';
 import { OAuthCallbackData } from '../config/passport';
+import prisma from '../lib/prisma';
 import * as oauthService from '../services/oauth.service';
 import * as auditService from '../services/audit.service';
 import { issueTokens } from '../services/auth.service';
@@ -76,9 +77,13 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
         try {
           const stateData = verifyState<{ action: string; userId: string }>(req.query.state as string);
           if (stateData && stateData.action === 'link' && stateData.userId) {
-            await oauthService.linkOAuthAccount(stateData.userId, oauthProfile, oauthTokens);
+            // Validate userId against the database to ensure it references a real user
+            const linkUser = await prisma.user.findUnique({ where: { id: stateData.userId }, select: { id: true } });
+            if (!linkUser) throw new AppError('User not found', 404);
+
+            await oauthService.linkOAuthAccount(linkUser.id, oauthProfile, oauthTokens);
             auditService.log({
-              userId: stateData.userId, action: 'OAUTH_LINK',
+              userId: linkUser.id, action: 'OAUTH_LINK',
               details: { provider },
               ipAddress: getClientIp(req),
             });
