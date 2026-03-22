@@ -59,7 +59,6 @@ export function getAndDeleteChallenge(userId: string): string | null {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-const { rpId, rpOrigin, rpName } = config.webauthn;
 
 function toCredentialInfo(c: {
   id: string;
@@ -86,6 +85,7 @@ function toCredentialInfo(c: {
 // ---------------------------------------------------------------------------
 
 export async function generateRegistrationOpts(userId: string) {
+  const { rpId, rpName } = config.webauthn;
   const user = await prisma.user.findUniqueOrThrow({
     where: { id: userId },
     select: { email: true, username: true, webauthnCredentials: { select: { credentialId: true, transports: true } } },
@@ -118,6 +118,7 @@ export async function verifyRegistration(
   credential: RegistrationResponseJSON,
   friendlyName?: string,
 ) {
+  const { rpId, rpOrigin } = config.webauthn;
   const expectedChallenge = getAndDeleteChallenge(userId);
   if (!expectedChallenge) throw new AppError('Challenge expired or not found. Please try again.', 400);
 
@@ -161,6 +162,7 @@ export async function verifyRegistration(
 // ---------------------------------------------------------------------------
 
 export async function generateAuthenticationOpts(userId: string) {
+  const { rpId } = config.webauthn;
   const credentials = await prisma.webAuthnCredential.findMany({
     where: { userId },
     select: { credentialId: true, transports: true },
@@ -183,6 +185,7 @@ export async function verifyAuthentication(
   userId: string,
   credential: AuthenticationResponseJSON,
 ) {
+  const { rpId, rpOrigin } = config.webauthn;
   const expectedChallenge = getAndDeleteChallenge(userId);
   if (!expectedChallenge) throw new AppError('Challenge expired or not found. Please try again.', 400);
 
@@ -229,6 +232,7 @@ export async function verifyAuthenticationWithChallenge(
   credential: AuthenticationResponseJSON,
   options: Record<string, unknown>,
 ) {
+  const { rpId, rpOrigin } = config.webauthn;
   const expectedChallenge = (options as { challenge?: string }).challenge;
   if (!expectedChallenge) throw new AppError('Missing WebAuthn challenge.', 400);
 

@@ -11,7 +11,7 @@ const LEVELS = {
 
 type LogLevel = keyof typeof LEVELS;
 
-const currentLevel: number = LEVELS[config.logLevel] ?? LEVELS.info;
+function currentLevel(): number { return LEVELS[config.logLevel] ?? LEVELS.info; }
 
 function formatArgs(level: LogLevel, prefix: string, args: unknown[]): unknown[] {
   if (config.logFormat === 'json') {
@@ -35,19 +35,19 @@ function formatArgs(level: LogLevel, prefix: string, args: unknown[]): unknown[]
 function createLogger(prefix = '') {
   return {
     error: (...args: unknown[]) => {
-      if (currentLevel >= LEVELS.error) console.error(...formatArgs('error', prefix, args));
+      if (currentLevel() >= LEVELS.error) console.error(...formatArgs('error', prefix, args));
     },
     warn: (...args: unknown[]) => {
-      if (currentLevel >= LEVELS.warn) console.warn(...formatArgs('warn', prefix, args));
+      if (currentLevel() >= LEVELS.warn) console.warn(...formatArgs('warn', prefix, args));
     },
     info: (...args: unknown[]) => {
-      if (currentLevel >= LEVELS.info) console.log(...formatArgs('info', prefix, args));
+      if (currentLevel() >= LEVELS.info) console.log(...formatArgs('info', prefix, args));
     },
     verbose: (...args: unknown[]) => {
-      if (currentLevel >= LEVELS.verbose) console.log(...formatArgs('verbose', prefix, args));
+      if (currentLevel() >= LEVELS.verbose) console.log(...formatArgs('verbose', prefix, args));
     },
     debug: (...args: unknown[]) => {
-      if (currentLevel >= LEVELS.debug) console.debug(...formatArgs('debug', prefix, args));
+      if (currentLevel() >= LEVELS.debug) console.debug(...formatArgs('debug', prefix, args));
     },
     child: (childPrefix: string) => createLogger(prefix ? `${prefix}:${childPrefix}` : childPrefix),
   };

@@ -570,6 +570,14 @@ export function stopSshProxyServer(): void {
 }
 
 /**
+ * Stop and restart the SSH proxy server with current config values.
+ */
+export function restartSshProxy(): void {
+  stopSshProxyServer();
+  if (config.sshProxy.enabled) startSshProxyServer();
+}
+
+/**
  * Get the count of active proxy sessions.
  */
 export function getActiveProxySessionCount(): number {

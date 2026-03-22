@@ -53,3 +53,16 @@ export async function bulkUpdateSystemSettings(
   }>('/admin/system-settings', { updates });
   return data;
 }
+
+export interface DbStatusResponse {
+  host: string;
+  port: number;
+  database: string;
+  connected: boolean;
+  version: string | null;
+}
+
+export async function getAdminDbStatus(): Promise<DbStatusResponse> {
+  const { data } = await api.get<DbStatusResponse>('/admin/system-settings/db-status');
+  return data;
+}

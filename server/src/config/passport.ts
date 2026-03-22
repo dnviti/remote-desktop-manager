@@ -354,6 +354,17 @@ export async function initializePassport(): Promise<void> {
   }
 }
 
+/**
+ * Unregister all OAuth/SSO strategies and re-register with current config values.
+ * Called by configReloader when any OAuth/SAML/LDAP setting changes.
+ */
+export async function reloadPassportStrategies(): Promise<void> {
+  for (const name of ['google', 'microsoft', 'github', 'oidc', 'saml']) {
+    try { passport.unuse(name); } catch { /* strategy wasn't registered */ }
+  }
+  await initializePassport();
+}
+
 // --- SAML verify callback ---
 
 function makeSamlVerifyCallback() {

@@ -2,6 +2,7 @@ import prisma from '../lib/prisma';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import { AppError } from '../middleware/error.middleware';
+import { onSettingChanged } from './configReloader.service';
 import type { TenantRoleType } from '../types';
 
 // ---------------------------------------------------------------------------
@@ -75,17 +76,17 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   },
   {
     key: 'ALLOW_LOCAL_NETWORK', envVar: 'ALLOW_LOCAL_NETWORK',
-    type: 'boolean', default: true,
+    configPath: 'allowLocalNetwork', type: 'boolean', default: true,
     group: 'general', label: 'Allow Local Network Connections',
     description: 'Allow connections to private/local network addresses (10.x, 172.16-31.x, 192.168.x).',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'CLI_ENABLED', envVar: 'CLI_ENABLED',
     type: 'boolean', default: false,
     group: 'general', label: 'CLI Enabled',
     description: 'Enable the arsenale CLI tool inside the container.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
 
   // ── Logging ──────────────────────────────────────────────────────────────
@@ -95,7 +96,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     options: ['error', 'warn', 'info', 'verbose', 'debug'],
     group: 'logging', label: 'Log Level',
     description: 'Server log verbosity level.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'LOG_FORMAT', envVar: 'LOG_FORMAT',
@@ -103,28 +104,28 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     options: ['text', 'json'],
     group: 'logging', label: 'Log Format',
     description: 'Log output format.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'LOG_TIMESTAMPS', envVar: 'LOG_TIMESTAMPS',
     configPath: 'logTimestamps', type: 'boolean', default: true,
     group: 'logging', label: 'Include Timestamps',
     description: 'Include ISO-8601 timestamps in log output.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'LOG_HTTP_REQUESTS', envVar: 'LOG_HTTP_REQUESTS',
     configPath: 'logHttpRequests', type: 'boolean', default: false,
     group: 'logging', label: 'Log HTTP Requests',
     description: 'Log HTTP requests (method, url, status, duration).',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'LOG_GUACAMOLE', envVar: 'LOG_GUACAMOLE',
     configPath: 'logGuacamole', type: 'boolean', default: true,
     group: 'logging', label: 'Log Guacamole',
     description: 'Enable guacamole-lite (RDP/VNC tunnel) logs.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
 
   // ── Rate Limiting ────────────────────────────────────────────────────────
@@ -133,49 +134,49 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     type: 'number', default: 60000,
     group: 'rate-limiting', label: 'Global Rate Limit Window (ms)',
     description: 'Sliding window duration for the global API rate limiter.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'GLOBAL_RATE_LIMIT_MAX_AUTHENTICATED', envVar: 'GLOBAL_RATE_LIMIT_MAX_AUTHENTICATED',
     type: 'number', default: 200,
     group: 'rate-limiting', label: 'Global Max Requests (Authenticated)',
     description: 'Maximum API requests per window for authenticated users.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'GLOBAL_RATE_LIMIT_MAX_ANONYMOUS', envVar: 'GLOBAL_RATE_LIMIT_MAX_ANONYMOUS',
     type: 'number', default: 60,
     group: 'rate-limiting', label: 'Global Max Requests (Anonymous)',
     description: 'Maximum API requests per window for anonymous users.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'LOGIN_RATE_LIMIT_WINDOW_MS', envVar: 'LOGIN_RATE_LIMIT_WINDOW_MS',
     configPath: 'loginRateLimitWindowMs', type: 'number', default: 900000,
     group: 'rate-limiting', label: 'Login Rate Limit Window (ms)',
     description: 'Sliding window duration for login attempts.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'LOGIN_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'LOGIN_RATE_LIMIT_MAX_ATTEMPTS',
     configPath: 'loginRateLimitMaxAttempts', type: 'number', default: 5,
     group: 'rate-limiting', label: 'Login Max Attempts',
     description: 'Maximum login attempts per IP within the window.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'ACCOUNT_LOCKOUT_THRESHOLD', envVar: 'ACCOUNT_LOCKOUT_THRESHOLD',
     configPath: 'accountLockoutThreshold', type: 'number', default: 10,
     group: 'rate-limiting', label: 'Account Lockout Threshold',
     description: 'Consecutive failed logins before account lockout.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'ACCOUNT_LOCKOUT_DURATION_MS', envVar: 'ACCOUNT_LOCKOUT_DURATION_MS',
     configPath: 'accountLockoutDurationMs', type: 'number', default: 1800000,
     group: 'rate-limiting', label: 'Account Lockout Duration (ms)',
     description: 'How long an account stays locked after exceeding the threshold.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'RATE_LIMIT_WHITELIST_CIDRS', envVar: 'RATE_LIMIT_WHITELIST_CIDRS',
@@ -183,7 +184,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     default: '127.0.0.1/8,::1/128,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16',
     group: 'rate-limiting', label: 'Rate Limit Whitelist CIDRs',
     description: 'Comma-separated CIDR ranges that bypass the global rate limiter.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
 
   // ── Session Defaults ─────────────────────────────────────────────────────
@@ -213,21 +214,21 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     configPath: 'sessionHeartbeatIntervalMs', type: 'number', default: 30000,
     group: 'sessions', label: 'Heartbeat Interval (ms)',
     description: 'How often clients send a heartbeat to keep sessions alive.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'SESSION_IDLE_THRESHOLD_MINUTES', envVar: 'SESSION_IDLE_THRESHOLD_MINUTES',
     configPath: 'sessionIdleThresholdMinutes', type: 'number', default: 5,
     group: 'sessions', label: 'Idle Threshold (min)',
     description: 'Minutes without heartbeat before marking a session as idle.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'SESSION_CLEANUP_RETENTION_DAYS', envVar: 'SESSION_CLEANUP_RETENTION_DAYS',
     configPath: 'sessionCleanupRetentionDays', type: 'number', default: 30,
     group: 'sessions', label: 'Cleanup Retention (days)',
     description: 'Days to retain closed session records before purging.',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
 
   // ── Security Detection ───────────────────────────────────────────────────
@@ -280,23 +281,23 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     configPath: 'fileUploadMaxSize', type: 'number', default: 10485760,
     group: 'storage', label: 'Max File Upload Size (bytes)',
     description: 'Maximum size per uploaded file (default: 10 MB).',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'USER_DRIVE_QUOTA', envVar: 'USER_DRIVE_QUOTA',
     configPath: 'userDriveQuota', type: 'number', default: 104857600,
     group: 'storage', label: 'User Drive Quota (bytes)',
     description: 'Maximum storage per user (default: 100 MB).',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
   {
     key: 'SFTP_MAX_FILE_SIZE', envVar: 'SFTP_MAX_FILE_SIZE',
     configPath: 'sftpMaxFileSize', type: 'number', default: 104857600,
     group: 'storage', label: 'SFTP Max File Size (bytes)',
     description: 'Maximum SFTP transfer size (default: 100 MB).',
-    minEditRole: 'ADMIN', restartRequired: true,
+    minEditRole: 'ADMIN',
   },
-  { key: 'SFTP_CHUNK_SIZE', envVar: 'SFTP_CHUNK_SIZE', configPath: 'sftpChunkSize', type: 'number', default: 65536, group: 'storage', label: 'SFTP Chunk Size (bytes)', description: 'SFTP transfer chunk size (default: 64 KB).', minEditRole: 'ADMIN', restartRequired: true },
+  { key: 'SFTP_CHUNK_SIZE', envVar: 'SFTP_CHUNK_SIZE', configPath: 'sftpChunkSize', type: 'number', default: 65536, group: 'storage', label: 'SFTP Chunk Size (bytes)', description: 'SFTP transfer chunk size (default: 64 KB).', minEditRole: 'ADMIN' },
 
   // ── Vault Defaults ───────────────────────────────────────────────────────
   {
@@ -311,16 +312,16 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
     configPath: 'vaultRateLimitWindowMs', type: 'number', default: 60000,
     group: 'vault', label: 'Vault Unlock Rate Limit Window (ms)',
     description: 'Sliding window duration for vault unlock attempts.',
-    minEditRole: 'OWNER', restartRequired: true,
+    minEditRole: 'OWNER',
   },
   {
     key: 'VAULT_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'VAULT_RATE_LIMIT_MAX_ATTEMPTS',
     configPath: 'vaultRateLimitMaxAttempts', type: 'number', default: 5,
     group: 'vault', label: 'Vault Unlock Max Attempts',
     description: 'Maximum vault unlock attempts per window.',
-    minEditRole: 'OWNER', restartRequired: true,
+    minEditRole: 'OWNER',
   },
-  { key: 'VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'vaultMfaRateLimitMaxAttempts', type: 'number', default: 10, group: 'vault', label: 'Vault MFA Max Attempts', description: 'Maximum MFA attempts per vault unlock window.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'vaultMfaRateLimitMaxAttempts', type: 'number', default: 10, group: 'vault', label: 'Vault MFA Max Attempts', description: 'Maximum MFA attempts per vault unlock window.', minEditRole: 'OWNER' },
 
   // ── JWT & Tokens ─────────────────────────────────────────────────────────
   { key: 'JWT_EXPIRES_IN', envVar: 'JWT_EXPIRES_IN', configPath: 'jwtExpiresIn', type: 'string', default: '15m', group: 'jwt', label: 'Access Token Expiration', description: 'JWT access token lifetime (e.g., 15m, 1h, 2d).', minEditRole: 'OWNER' },
@@ -333,16 +334,16 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   { key: 'GUACENC_TIMEOUT_MS', envVar: 'GUACENC_TIMEOUT_MS', configPath: 'guacencTimeoutMs', type: 'number', default: 120000, group: 'recording', label: 'Guacenc Timeout (ms)', description: 'Timeout for guacenc video conversion requests.', minEditRole: 'ADMIN' },
 
   // ── Key Rotation ─────────────────────────────────────────────────────────
-  { key: 'KEY_ROTATION_CRON', envVar: 'KEY_ROTATION_CRON', configPath: 'keyRotationCron', type: 'string', default: '0 2 * * *', group: 'key-rotation', label: 'Key Rotation Schedule (cron)', description: 'Cron expression for the SSH key rotation check job.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'KEY_ROTATION_ADVANCE_DAYS', envVar: 'KEY_ROTATION_ADVANCE_DAYS', configPath: 'keyRotationAdvanceDays', type: 'number', default: 7, group: 'key-rotation', label: 'Rotation Advance (days)', description: 'How many days before expiration to trigger key rotation.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'KEY_ROTATION_CRON', envVar: 'KEY_ROTATION_CRON', configPath: 'keyRotationCron', type: 'string', default: '0 2 * * *', group: 'key-rotation', label: 'Key Rotation Schedule (cron)', description: 'Cron expression for the SSH key rotation check job.', minEditRole: 'OWNER' },
+  { key: 'KEY_ROTATION_ADVANCE_DAYS', envVar: 'KEY_ROTATION_ADVANCE_DAYS', configPath: 'keyRotationAdvanceDays', type: 'number', default: 7, group: 'key-rotation', label: 'Rotation Advance (days)', description: 'How many days before expiration to trigger key rotation.', minEditRole: 'OWNER' },
 
   // ── WebAuthn RP ──────────────────────────────────────────────────────────
-  { key: 'WEBAUTHN_RP_ID', envVar: 'WEBAUTHN_RP_ID', configPath: 'webauthn.rpId', type: 'string', default: 'localhost', group: 'webauthn', label: 'Relying Party ID', description: 'WebAuthn relying party identifier (usually the domain name).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'WEBAUTHN_RP_ORIGIN', envVar: 'WEBAUTHN_RP_ORIGIN', configPath: 'webauthn.rpOrigin', type: 'string', default: 'http://localhost:3000', group: 'webauthn', label: 'Relying Party Origin', description: 'Exact origin expected by the browser (scheme + domain + port).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'WEBAUTHN_RP_NAME', envVar: 'WEBAUTHN_RP_NAME', configPath: 'webauthn.rpName', type: 'string', default: 'Arsenale', group: 'webauthn', label: 'Relying Party Name', description: 'Human-readable name shown in browser/authenticator prompts.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'WEBAUTHN_RP_ID', envVar: 'WEBAUTHN_RP_ID', configPath: 'webauthn.rpId', type: 'string', default: 'localhost', group: 'webauthn', label: 'Relying Party ID', description: 'WebAuthn relying party identifier (usually the domain name).', minEditRole: 'OWNER' },
+  { key: 'WEBAUTHN_RP_ORIGIN', envVar: 'WEBAUTHN_RP_ORIGIN', configPath: 'webauthn.rpOrigin', type: 'string', default: 'http://localhost:3000', group: 'webauthn', label: 'Relying Party Origin', description: 'Exact origin expected by the browser (scheme + domain + port).', minEditRole: 'OWNER' },
+  { key: 'WEBAUTHN_RP_NAME', envVar: 'WEBAUTHN_RP_NAME', configPath: 'webauthn.rpName', type: 'string', default: 'Arsenale', group: 'webauthn', label: 'Relying Party Name', description: 'Human-readable name shown in browser/authenticator prompts.', minEditRole: 'OWNER' },
 
   // ── Email Provider ───────────────────────────────────────────────────────
-  { key: 'EMAIL_PROVIDER', envVar: 'EMAIL_PROVIDER', configPath: 'emailProvider', type: 'select', default: 'smtp', options: ['smtp', 'sendgrid', 'ses', 'resend', 'mailgun'], group: 'email', label: 'Email Provider', description: 'Email delivery provider.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'EMAIL_PROVIDER', envVar: 'EMAIL_PROVIDER', configPath: 'emailProvider', type: 'select', default: 'smtp', options: ['smtp', 'sendgrid', 'ses', 'resend', 'mailgun'], group: 'email', label: 'Email Provider', description: 'Email delivery provider.', minEditRole: 'OWNER' },
   { key: 'SMTP_HOST', envVar: 'SMTP_HOST', configPath: 'smtpHost', type: 'string', default: '', group: 'email', label: 'SMTP Host', description: 'SMTP server hostname.', minEditRole: 'OWNER' },
   { key: 'SMTP_PORT', envVar: 'SMTP_PORT', configPath: 'smtpPort', type: 'number', default: 587, group: 'email', label: 'SMTP Port', description: 'SMTP server port.', minEditRole: 'OWNER' },
   { key: 'SMTP_USER', envVar: 'SMTP_USER', configPath: 'smtpUser', type: 'string', default: '', group: 'email', label: 'SMTP User', description: 'SMTP authentication username.', minEditRole: 'OWNER' },
@@ -358,7 +359,7 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   { key: 'MAILGUN_REGION', envVar: 'MAILGUN_REGION', configPath: 'mailgunRegion', type: 'select', default: 'us', options: ['us', 'eu'], group: 'email', label: 'Mailgun Region', description: 'Mailgun API region.', minEditRole: 'OWNER' },
 
   // ── SMS Provider ───────────────────────────────────────────────────────
-  { key: 'SMS_PROVIDER', envVar: 'SMS_PROVIDER', configPath: 'smsProvider', type: 'select', default: '', options: ['', 'twilio', 'sns', 'vonage'], group: 'sms', label: 'SMS Provider', description: 'SMS delivery provider (empty = disabled, dev mode logs OTP to console).', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'SMS_PROVIDER', envVar: 'SMS_PROVIDER', configPath: 'smsProvider', type: 'select', default: '', options: ['', 'twilio', 'sns', 'vonage'], group: 'sms', label: 'SMS Provider', description: 'SMS delivery provider (empty = disabled, dev mode logs OTP to console).', minEditRole: 'OWNER' },
   { key: 'TWILIO_ACCOUNT_SID', envVar: 'TWILIO_ACCOUNT_SID', configPath: 'twilioAccountSid', type: 'string', default: '', group: 'sms', label: 'Twilio Account SID', description: 'Twilio account identifier (not a secret).', minEditRole: 'OWNER' },
   { key: 'TWILIO_AUTH_TOKEN', envVar: 'TWILIO_AUTH_TOKEN', configPath: 'twilioAuthToken', type: 'string', default: '', group: 'sms', label: 'Twilio Auth Token', description: 'Twilio authentication token.', minEditRole: 'OWNER', sensitive: true },
   { key: 'TWILIO_FROM_NUMBER', envVar: 'TWILIO_FROM_NUMBER', configPath: 'twilioFromNumber', type: 'string', default: '', group: 'sms', label: 'Twilio From Number', description: 'Phone number to send SMS from (e.g., +1234567890).', minEditRole: 'OWNER' },
@@ -370,85 +371,85 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   { key: 'VONAGE_FROM_NUMBER', envVar: 'VONAGE_FROM_NUMBER', configPath: 'vonageFromNumber', type: 'string', default: '', group: 'sms', label: 'Vonage From Number', description: 'Phone number or sender ID for Vonage SMS.', minEditRole: 'OWNER' },
 
   // ── SSH Proxy ────────────────────────────────────────────────────────────
-  { key: 'SSH_PROXY_ENABLED', envVar: 'SSH_PROXY_ENABLED', configPath: 'sshProxy.enabled', type: 'boolean', default: false, group: 'ssh-proxy', label: 'SSH Proxy Enabled', description: 'Enable the native SSH protocol proxy.', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'SSH_PROXY_PORT', envVar: 'SSH_PROXY_PORT', configPath: 'sshProxy.port', type: 'number', default: 2222, group: 'ssh-proxy', label: 'SSH Proxy Port', description: 'Port the SSH proxy listens on.', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'SSH_PROXY_AUTH_METHODS', envVar: 'SSH_PROXY_AUTH_METHODS', configPath: 'sshProxy.allowedAuthMethods', type: 'string', default: 'token,keyboard-interactive', group: 'ssh-proxy', label: 'SSH Proxy Auth Methods', description: 'Comma-separated allowed auth methods (token, keyboard-interactive, certificate).', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'SSH_PROXY_TOKEN_TTL_SECONDS', envVar: 'SSH_PROXY_TOKEN_TTL_SECONDS', configPath: 'sshProxy.tokenTtlSeconds', type: 'number', default: 300, group: 'ssh-proxy', label: 'SSH Token TTL (s)', description: 'SSH proxy authentication token lifetime.', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'SSH_PROXY_KEYSTROKE_RECORDING', envVar: 'SSH_PROXY_KEYSTROKE_RECORDING', configPath: 'sshProxy.keystrokeRecording', type: 'boolean', default: false, group: 'ssh-proxy', label: 'Keystroke Recording', description: 'Record keystrokes for SSH proxy sessions.', minEditRole: 'ADMIN', restartRequired: true },
+  { key: 'SSH_PROXY_ENABLED', envVar: 'SSH_PROXY_ENABLED', configPath: 'sshProxy.enabled', type: 'boolean', default: false, group: 'ssh-proxy', label: 'SSH Proxy Enabled', description: 'Enable the native SSH protocol proxy.', minEditRole: 'ADMIN' },
+  { key: 'SSH_PROXY_PORT', envVar: 'SSH_PROXY_PORT', configPath: 'sshProxy.port', type: 'number', default: 2222, group: 'ssh-proxy', label: 'SSH Proxy Port', description: 'Port the SSH proxy listens on.', minEditRole: 'ADMIN' },
+  { key: 'SSH_PROXY_AUTH_METHODS', envVar: 'SSH_PROXY_AUTH_METHODS', configPath: 'sshProxy.allowedAuthMethods', type: 'string', default: 'token,keyboard-interactive', group: 'ssh-proxy', label: 'SSH Proxy Auth Methods', description: 'Comma-separated allowed auth methods (token, keyboard-interactive, certificate).', minEditRole: 'ADMIN' },
+  { key: 'SSH_PROXY_TOKEN_TTL_SECONDS', envVar: 'SSH_PROXY_TOKEN_TTL_SECONDS', configPath: 'sshProxy.tokenTtlSeconds', type: 'number', default: 300, group: 'ssh-proxy', label: 'SSH Token TTL (s)', description: 'SSH proxy authentication token lifetime.', minEditRole: 'ADMIN' },
+  { key: 'SSH_PROXY_KEYSTROKE_RECORDING', envVar: 'SSH_PROXY_KEYSTROKE_RECORDING', configPath: 'sshProxy.keystrokeRecording', type: 'boolean', default: false, group: 'ssh-proxy', label: 'Keystroke Recording', description: 'Record keystrokes for SSH proxy sessions.', minEditRole: 'ADMIN' },
 
   // ── Orchestration ────────────────────────────────────────────────────────
-  { key: 'ORCHESTRATOR_TYPE', envVar: 'ORCHESTRATOR_TYPE', configPath: 'orchestratorType', type: 'select', default: '', options: ['', 'docker', 'podman', 'kubernetes', 'none'], group: 'orchestration', label: 'Orchestrator Type', description: 'Container orchestrator (empty = auto-detect).', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'ORCHESTRATOR_SSH_GATEWAY_IMAGE', envVar: 'ORCHESTRATOR_SSH_GATEWAY_IMAGE', configPath: 'orchestratorSshGatewayImage', type: 'string', default: 'ghcr.io/dnviti/arsenale/ssh-gateway:latest', group: 'orchestration', label: 'SSH Gateway Image', description: 'Container image for managed SSH gateways.', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'ORCHESTRATOR_GUACD_IMAGE', envVar: 'ORCHESTRATOR_GUACD_IMAGE', configPath: 'orchestratorGuacdImage', type: 'string', default: 'guacamole/guacd:1.6.0', group: 'orchestration', label: 'Guacd Image', description: 'Container image for Guacamole daemon.', minEditRole: 'ADMIN', restartRequired: true },
-  { key: 'ORCHESTRATOR_DB_PROXY_IMAGE', envVar: 'ORCHESTRATOR_DB_PROXY_IMAGE', configPath: 'orchestratorDbProxyImage', type: 'string', default: 'ghcr.io/dnviti/arsenale/db-proxy:latest', group: 'orchestration', label: 'DB Proxy Image', description: 'Container image for database proxy.', minEditRole: 'ADMIN', restartRequired: true },
+  { key: 'ORCHESTRATOR_TYPE', envVar: 'ORCHESTRATOR_TYPE', configPath: 'orchestratorType', type: 'select', default: '', options: ['', 'docker', 'podman', 'kubernetes', 'none'], group: 'orchestration', label: 'Orchestrator Type', description: 'Container orchestrator (empty = auto-detect).', minEditRole: 'ADMIN' },
+  { key: 'ORCHESTRATOR_SSH_GATEWAY_IMAGE', envVar: 'ORCHESTRATOR_SSH_GATEWAY_IMAGE', configPath: 'orchestratorSshGatewayImage', type: 'string', default: 'ghcr.io/dnviti/arsenale/ssh-gateway:latest', group: 'orchestration', label: 'SSH Gateway Image', description: 'Container image for managed SSH gateways.', minEditRole: 'ADMIN' },
+  { key: 'ORCHESTRATOR_GUACD_IMAGE', envVar: 'ORCHESTRATOR_GUACD_IMAGE', configPath: 'orchestratorGuacdImage', type: 'string', default: 'guacamole/guacd:1.6.0', group: 'orchestration', label: 'Guacd Image', description: 'Container image for Guacamole daemon.', minEditRole: 'ADMIN' },
+  { key: 'ORCHESTRATOR_DB_PROXY_IMAGE', envVar: 'ORCHESTRATOR_DB_PROXY_IMAGE', configPath: 'orchestratorDbProxyImage', type: 'string', default: 'ghcr.io/dnviti/arsenale/db-proxy:latest', group: 'orchestration', label: 'DB Proxy Image', description: 'Container image for database proxy.', minEditRole: 'ADMIN' },
 
   // ── OAuth: Google ──────────────────────────────────────────────────────
-  { key: 'GOOGLE_CLIENT_ID', envVar: 'GOOGLE_CLIENT_ID', configPath: 'oauth.google.clientId', type: 'string', default: '', group: 'oauth-google', label: 'Client ID', description: 'OAuth client ID from Google Cloud Console. Setting this enables Google login.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'GOOGLE_CLIENT_SECRET', envVar: 'GOOGLE_CLIENT_SECRET', configPath: 'oauth.google.clientSecret', type: 'string', default: '', group: 'oauth-google', label: 'Client Secret', description: 'OAuth client secret from Google Cloud Console.', minEditRole: 'OWNER', restartRequired: true, sensitive: true },
-  { key: 'GOOGLE_CALLBACK_URL', envVar: 'GOOGLE_CALLBACK_URL', configPath: 'oauth.google.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/google/callback', group: 'oauth-google', label: 'Callback URL', description: 'OAuth redirect URI (must match Google Console).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'GOOGLE_HD', envVar: 'GOOGLE_HD', configPath: 'oauth.google.hd', type: 'string', default: '', group: 'oauth-google', label: 'Hosted Domain (hd)', description: 'Restrict login to a specific Google Workspace domain (e.g., example.com). Leave empty for any domain.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'GOOGLE_CLIENT_ID', envVar: 'GOOGLE_CLIENT_ID', configPath: 'oauth.google.clientId', type: 'string', default: '', group: 'oauth-google', label: 'Client ID', description: 'OAuth client ID from Google Cloud Console. Setting this enables Google login.', minEditRole: 'OWNER' },
+  { key: 'GOOGLE_CLIENT_SECRET', envVar: 'GOOGLE_CLIENT_SECRET', configPath: 'oauth.google.clientSecret', type: 'string', default: '', group: 'oauth-google', label: 'Client Secret', description: 'OAuth client secret from Google Cloud Console.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'GOOGLE_CALLBACK_URL', envVar: 'GOOGLE_CALLBACK_URL', configPath: 'oauth.google.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/google/callback', group: 'oauth-google', label: 'Callback URL', description: 'OAuth redirect URI (must match Google Console).', minEditRole: 'OWNER' },
+  { key: 'GOOGLE_HD', envVar: 'GOOGLE_HD', configPath: 'oauth.google.hd', type: 'string', default: '', group: 'oauth-google', label: 'Hosted Domain (hd)', description: 'Restrict login to a specific Google Workspace domain (e.g., example.com). Leave empty for any domain.', minEditRole: 'OWNER' },
 
   // ── OAuth: Microsoft ───────────────────────────────────────────────────
-  { key: 'MICROSOFT_CLIENT_ID', envVar: 'MICROSOFT_CLIENT_ID', configPath: 'oauth.microsoft.clientId', type: 'string', default: '', group: 'oauth-microsoft', label: 'Client ID', description: 'Application (client) ID from Azure AD. Setting this enables Microsoft login.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'MICROSOFT_CLIENT_SECRET', envVar: 'MICROSOFT_CLIENT_SECRET', configPath: 'oauth.microsoft.clientSecret', type: 'string', default: '', group: 'oauth-microsoft', label: 'Client Secret', description: 'Client secret from Azure AD.', minEditRole: 'OWNER', restartRequired: true, sensitive: true },
-  { key: 'MICROSOFT_CALLBACK_URL', envVar: 'MICROSOFT_CALLBACK_URL', configPath: 'oauth.microsoft.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/microsoft/callback', group: 'oauth-microsoft', label: 'Callback URL', description: 'OAuth redirect URI (must match Azure AD app registration).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'MICROSOFT_TENANT_ID', envVar: 'MICROSOFT_TENANT_ID', configPath: 'oauth.microsoft.tenantId', type: 'string', default: 'common', group: 'oauth-microsoft', label: 'Tenant ID', description: 'Azure AD tenant ID. Use "common" for multi-tenant, or a specific tenant UUID.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'MICROSOFT_CLIENT_ID', envVar: 'MICROSOFT_CLIENT_ID', configPath: 'oauth.microsoft.clientId', type: 'string', default: '', group: 'oauth-microsoft', label: 'Client ID', description: 'Application (client) ID from Azure AD. Setting this enables Microsoft login.', minEditRole: 'OWNER' },
+  { key: 'MICROSOFT_CLIENT_SECRET', envVar: 'MICROSOFT_CLIENT_SECRET', configPath: 'oauth.microsoft.clientSecret', type: 'string', default: '', group: 'oauth-microsoft', label: 'Client Secret', description: 'Client secret from Azure AD.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'MICROSOFT_CALLBACK_URL', envVar: 'MICROSOFT_CALLBACK_URL', configPath: 'oauth.microsoft.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/microsoft/callback', group: 'oauth-microsoft', label: 'Callback URL', description: 'OAuth redirect URI (must match Azure AD app registration).', minEditRole: 'OWNER' },
+  { key: 'MICROSOFT_TENANT_ID', envVar: 'MICROSOFT_TENANT_ID', configPath: 'oauth.microsoft.tenantId', type: 'string', default: 'common', group: 'oauth-microsoft', label: 'Tenant ID', description: 'Azure AD tenant ID. Use "common" for multi-tenant, or a specific tenant UUID.', minEditRole: 'OWNER' },
 
   // ── OAuth: GitHub ──────────────────────────────────────────────────────
-  { key: 'GITHUB_CLIENT_ID', envVar: 'GITHUB_CLIENT_ID', configPath: 'oauth.github.clientId', type: 'string', default: '', group: 'oauth-github', label: 'Client ID', description: 'OAuth App client ID from GitHub. Setting this enables GitHub login.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'GITHUB_CLIENT_SECRET', envVar: 'GITHUB_CLIENT_SECRET', configPath: 'oauth.github.clientSecret', type: 'string', default: '', group: 'oauth-github', label: 'Client Secret', description: 'OAuth App client secret from GitHub.', minEditRole: 'OWNER', restartRequired: true, sensitive: true },
-  { key: 'GITHUB_CALLBACK_URL', envVar: 'GITHUB_CALLBACK_URL', configPath: 'oauth.github.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/github/callback', group: 'oauth-github', label: 'Callback URL', description: 'OAuth redirect URI (must match GitHub app settings).', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'GITHUB_CLIENT_ID', envVar: 'GITHUB_CLIENT_ID', configPath: 'oauth.github.clientId', type: 'string', default: '', group: 'oauth-github', label: 'Client ID', description: 'OAuth App client ID from GitHub. Setting this enables GitHub login.', minEditRole: 'OWNER' },
+  { key: 'GITHUB_CLIENT_SECRET', envVar: 'GITHUB_CLIENT_SECRET', configPath: 'oauth.github.clientSecret', type: 'string', default: '', group: 'oauth-github', label: 'Client Secret', description: 'OAuth App client secret from GitHub.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'GITHUB_CALLBACK_URL', envVar: 'GITHUB_CALLBACK_URL', configPath: 'oauth.github.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/github/callback', group: 'oauth-github', label: 'Callback URL', description: 'OAuth redirect URI (must match GitHub app settings).', minEditRole: 'OWNER' },
 
   // ── OAuth: OIDC ────────────────────────────────────────────────────────
-  { key: 'OIDC_PROVIDER_NAME', envVar: 'OIDC_PROVIDER_NAME', configPath: 'oauth.oidc.providerName', type: 'string', default: 'SSO', group: 'oauth-oidc', label: 'Provider Name', description: 'Human-readable label shown on the login button (e.g., "Authentik", "Keycloak").', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OIDC_ISSUER_URL', envVar: 'OIDC_ISSUER_URL', configPath: 'oauth.oidc.issuerUrl', type: 'string', default: '', group: 'oauth-oidc', label: 'Issuer URL', description: 'OIDC issuer base URL for discovery (e.g., https://auth.example.com/realms/main).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OIDC_CLIENT_ID', envVar: 'OIDC_CLIENT_ID', configPath: 'oauth.oidc.clientId', type: 'string', default: '', group: 'oauth-oidc', label: 'Client ID', description: 'OIDC client identifier. Setting this enables OIDC login.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OIDC_CLIENT_SECRET', envVar: 'OIDC_CLIENT_SECRET', configPath: 'oauth.oidc.clientSecret', type: 'string', default: '', group: 'oauth-oidc', label: 'Client Secret', description: 'OIDC client secret.', minEditRole: 'OWNER', restartRequired: true, sensitive: true },
-  { key: 'OIDC_CALLBACK_URL', envVar: 'OIDC_CALLBACK_URL', configPath: 'oauth.oidc.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/oidc/callback', group: 'oauth-oidc', label: 'Callback URL', description: 'OIDC redirect URI (must match IdP client configuration).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OIDC_SCOPES', envVar: 'OIDC_SCOPES', configPath: 'oauth.oidc.scopes', type: 'string', default: 'openid profile email', group: 'oauth-oidc', label: 'Scopes', description: 'Space-separated OIDC scopes to request.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'OIDC_PROVIDER_NAME', envVar: 'OIDC_PROVIDER_NAME', configPath: 'oauth.oidc.providerName', type: 'string', default: 'SSO', group: 'oauth-oidc', label: 'Provider Name', description: 'Human-readable label shown on the login button (e.g., "Authentik", "Keycloak").', minEditRole: 'OWNER' },
+  { key: 'OIDC_ISSUER_URL', envVar: 'OIDC_ISSUER_URL', configPath: 'oauth.oidc.issuerUrl', type: 'string', default: '', group: 'oauth-oidc', label: 'Issuer URL', description: 'OIDC issuer base URL for discovery (e.g., https://auth.example.com/realms/main).', minEditRole: 'OWNER' },
+  { key: 'OIDC_CLIENT_ID', envVar: 'OIDC_CLIENT_ID', configPath: 'oauth.oidc.clientId', type: 'string', default: '', group: 'oauth-oidc', label: 'Client ID', description: 'OIDC client identifier. Setting this enables OIDC login.', minEditRole: 'OWNER' },
+  { key: 'OIDC_CLIENT_SECRET', envVar: 'OIDC_CLIENT_SECRET', configPath: 'oauth.oidc.clientSecret', type: 'string', default: '', group: 'oauth-oidc', label: 'Client Secret', description: 'OIDC client secret.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'OIDC_CALLBACK_URL', envVar: 'OIDC_CALLBACK_URL', configPath: 'oauth.oidc.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/oauth/oidc/callback', group: 'oauth-oidc', label: 'Callback URL', description: 'OIDC redirect URI (must match IdP client configuration).', minEditRole: 'OWNER' },
+  { key: 'OIDC_SCOPES', envVar: 'OIDC_SCOPES', configPath: 'oauth.oidc.scopes', type: 'string', default: 'openid profile email', group: 'oauth-oidc', label: 'Scopes', description: 'Space-separated OIDC scopes to request.', minEditRole: 'OWNER' },
 
   // ── OAuth: SAML ────────────────────────────────────────────────────────
-  { key: 'SAML_PROVIDER_NAME', envVar: 'SAML_PROVIDER_NAME', configPath: 'oauth.saml.providerName', type: 'string', default: 'SAML SSO', group: 'oauth-saml', label: 'Provider Name', description: 'Human-readable label shown on the login button.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'SAML_ENTRY_POINT', envVar: 'SAML_ENTRY_POINT', configPath: 'oauth.saml.entryPoint', type: 'string', default: '', group: 'oauth-saml', label: 'Entry Point URL', description: 'IdP SSO URL. Setting this enables SAML login.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'SAML_ISSUER', envVar: 'SAML_ISSUER', configPath: 'oauth.saml.issuer', type: 'string', default: 'arsenale', group: 'oauth-saml', label: 'Issuer / Entity ID', description: 'Service Provider entity ID sent to the IdP.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'SAML_CALLBACK_URL', envVar: 'SAML_CALLBACK_URL', configPath: 'oauth.saml.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/saml/callback', group: 'oauth-saml', label: 'Callback URL (ACS)', description: 'Assertion Consumer Service URL (must match IdP config).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'SAML_CERT', envVar: 'SAML_CERT', configPath: 'oauth.saml.cert', type: 'string', default: '', group: 'oauth-saml', label: 'IdP Certificate', description: 'PEM-encoded X.509 certificate of the IdP for signature verification.', minEditRole: 'OWNER', restartRequired: true, sensitive: true },
-  { key: 'SAML_METADATA_URL', envVar: 'SAML_METADATA_URL', configPath: 'oauth.saml.metadataUrl', type: 'string', default: '', group: 'oauth-saml', label: 'Metadata URL', description: 'IdP metadata URL for automatic configuration.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'SAML_WANT_AUTHN_RESPONSE_SIGNED', envVar: 'SAML_WANT_AUTHN_RESPONSE_SIGNED', configPath: 'oauth.saml.wantAuthnResponseSigned', type: 'boolean', default: true, group: 'oauth-saml', label: 'Require Signed Response', description: 'Require the IdP to sign the SAML response.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'SAML_PROVIDER_NAME', envVar: 'SAML_PROVIDER_NAME', configPath: 'oauth.saml.providerName', type: 'string', default: 'SAML SSO', group: 'oauth-saml', label: 'Provider Name', description: 'Human-readable label shown on the login button.', minEditRole: 'OWNER' },
+  { key: 'SAML_ENTRY_POINT', envVar: 'SAML_ENTRY_POINT', configPath: 'oauth.saml.entryPoint', type: 'string', default: '', group: 'oauth-saml', label: 'Entry Point URL', description: 'IdP SSO URL. Setting this enables SAML login.', minEditRole: 'OWNER' },
+  { key: 'SAML_ISSUER', envVar: 'SAML_ISSUER', configPath: 'oauth.saml.issuer', type: 'string', default: 'arsenale', group: 'oauth-saml', label: 'Issuer / Entity ID', description: 'Service Provider entity ID sent to the IdP.', minEditRole: 'OWNER' },
+  { key: 'SAML_CALLBACK_URL', envVar: 'SAML_CALLBACK_URL', configPath: 'oauth.saml.callbackUrl', type: 'string', default: 'http://localhost:3001/api/auth/saml/callback', group: 'oauth-saml', label: 'Callback URL (ACS)', description: 'Assertion Consumer Service URL (must match IdP config).', minEditRole: 'OWNER' },
+  { key: 'SAML_CERT', envVar: 'SAML_CERT', configPath: 'oauth.saml.cert', type: 'string', default: '', group: 'oauth-saml', label: 'IdP Certificate', description: 'PEM-encoded X.509 certificate of the IdP for signature verification.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'SAML_METADATA_URL', envVar: 'SAML_METADATA_URL', configPath: 'oauth.saml.metadataUrl', type: 'string', default: '', group: 'oauth-saml', label: 'Metadata URL', description: 'IdP metadata URL for automatic configuration.', minEditRole: 'OWNER' },
+  { key: 'SAML_WANT_AUTHN_RESPONSE_SIGNED', envVar: 'SAML_WANT_AUTHN_RESPONSE_SIGNED', configPath: 'oauth.saml.wantAuthnResponseSigned', type: 'boolean', default: true, group: 'oauth-saml', label: 'Require Signed Response', description: 'Require the IdP to sign the SAML response.', minEditRole: 'OWNER' },
 
   // ── Rate Limiting: Advanced ─────────────────────────────────────────────
-  { key: 'SESSION_RATE_LIMIT_WINDOW_MS', envVar: 'SESSION_RATE_LIMIT_WINDOW_MS', configPath: 'sessionRateLimitWindowMs', type: 'number', default: 60000, group: 'rate-limiting-advanced', label: 'Session Rate Limit Window (ms)', description: 'Sliding window for session creation attempts.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'SESSION_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'SESSION_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'sessionRateLimitMaxAttempts', type: 'number', default: 20, group: 'rate-limiting-advanced', label: 'Session Rate Limit Max', description: 'Max session creation attempts per window.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OAUTH_FLOW_RATE_LIMIT_WINDOW_MS', envVar: 'OAUTH_FLOW_RATE_LIMIT_WINDOW_MS', configPath: 'oauthFlowRateLimitWindowMs', type: 'number', default: 900000, group: 'rate-limiting-advanced', label: 'OAuth Flow Rate Limit Window (ms)', description: 'Sliding window for OAuth login flow attempts.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OAUTH_FLOW_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'OAUTH_FLOW_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'oauthFlowRateLimitMaxAttempts', type: 'number', default: 20, group: 'rate-limiting-advanced', label: 'OAuth Flow Rate Limit Max', description: 'Max OAuth flow attempts per window.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OAUTH_ACCOUNT_RATE_LIMIT_WINDOW_MS', envVar: 'OAUTH_ACCOUNT_RATE_LIMIT_WINDOW_MS', configPath: 'oauthAccountRateLimitWindowMs', type: 'number', default: 60000, group: 'rate-limiting-advanced', label: 'OAuth Account Rate Limit Window (ms)', description: 'Sliding window for OAuth account operations.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'oauthAccountRateLimitMaxAttempts', type: 'number', default: 15, group: 'rate-limiting-advanced', label: 'OAuth Account Rate Limit Max', description: 'Max OAuth account operations per window.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OAUTH_LINK_RATE_LIMIT_WINDOW_MS', envVar: 'OAUTH_LINK_RATE_LIMIT_WINDOW_MS', configPath: 'oauthLinkRateLimitWindowMs', type: 'number', default: 900000, group: 'rate-limiting-advanced', label: 'OAuth Link Rate Limit Window (ms)', description: 'Sliding window for OAuth account linking.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'oauthLinkRateLimitMaxAttempts', type: 'number', default: 10, group: 'rate-limiting-advanced', label: 'OAuth Link Rate Limit Max', description: 'Max OAuth account link attempts per window.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'SESSION_RATE_LIMIT_WINDOW_MS', envVar: 'SESSION_RATE_LIMIT_WINDOW_MS', configPath: 'sessionRateLimitWindowMs', type: 'number', default: 60000, group: 'rate-limiting-advanced', label: 'Session Rate Limit Window (ms)', description: 'Sliding window for session creation attempts.', minEditRole: 'OWNER' },
+  { key: 'SESSION_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'SESSION_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'sessionRateLimitMaxAttempts', type: 'number', default: 20, group: 'rate-limiting-advanced', label: 'Session Rate Limit Max', description: 'Max session creation attempts per window.', minEditRole: 'OWNER' },
+  { key: 'OAUTH_FLOW_RATE_LIMIT_WINDOW_MS', envVar: 'OAUTH_FLOW_RATE_LIMIT_WINDOW_MS', configPath: 'oauthFlowRateLimitWindowMs', type: 'number', default: 900000, group: 'rate-limiting-advanced', label: 'OAuth Flow Rate Limit Window (ms)', description: 'Sliding window for OAuth login flow attempts.', minEditRole: 'OWNER' },
+  { key: 'OAUTH_FLOW_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'OAUTH_FLOW_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'oauthFlowRateLimitMaxAttempts', type: 'number', default: 20, group: 'rate-limiting-advanced', label: 'OAuth Flow Rate Limit Max', description: 'Max OAuth flow attempts per window.', minEditRole: 'OWNER' },
+  { key: 'OAUTH_ACCOUNT_RATE_LIMIT_WINDOW_MS', envVar: 'OAUTH_ACCOUNT_RATE_LIMIT_WINDOW_MS', configPath: 'oauthAccountRateLimitWindowMs', type: 'number', default: 60000, group: 'rate-limiting-advanced', label: 'OAuth Account Rate Limit Window (ms)', description: 'Sliding window for OAuth account operations.', minEditRole: 'OWNER' },
+  { key: 'OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'oauthAccountRateLimitMaxAttempts', type: 'number', default: 15, group: 'rate-limiting-advanced', label: 'OAuth Account Rate Limit Max', description: 'Max OAuth account operations per window.', minEditRole: 'OWNER' },
+  { key: 'OAUTH_LINK_RATE_LIMIT_WINDOW_MS', envVar: 'OAUTH_LINK_RATE_LIMIT_WINDOW_MS', configPath: 'oauthLinkRateLimitWindowMs', type: 'number', default: 900000, group: 'rate-limiting-advanced', label: 'OAuth Link Rate Limit Window (ms)', description: 'Sliding window for OAuth account linking.', minEditRole: 'OWNER' },
+  { key: 'OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS', envVar: 'OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS', configPath: 'oauthLinkRateLimitMaxAttempts', type: 'number', default: 10, group: 'rate-limiting-advanced', label: 'OAuth Link Rate Limit Max', description: 'Max OAuth account link attempts per window.', minEditRole: 'OWNER' },
 
   // ── LDAP ────────────────────────────────────────────────────────────────
-  { key: 'LDAP_ENABLED', envVar: 'LDAP_ENABLED', configPath: 'ldap.enabled', type: 'boolean', default: false, group: 'ldap', label: 'LDAP Enabled', description: 'Enable LDAP/FreeIPA authentication provider.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_PROVIDER_NAME', envVar: 'LDAP_PROVIDER_NAME', configPath: 'ldap.providerName', type: 'string', default: 'LDAP', group: 'ldap', label: 'Provider Name', description: 'Human-readable label shown on the login button.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_SERVER_URL', envVar: 'LDAP_SERVER_URL', configPath: 'ldap.serverUrl', type: 'string', default: '', group: 'ldap', label: 'Server URL', description: 'LDAP server URL (e.g., ldaps://ldap.example.com:636).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_BASE_DN', envVar: 'LDAP_BASE_DN', configPath: 'ldap.baseDn', type: 'string', default: '', group: 'ldap', label: 'Base DN', description: 'Base distinguished name for LDAP searches.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_BIND_DN', envVar: 'LDAP_BIND_DN', configPath: 'ldap.bindDn', type: 'string', default: '', group: 'ldap', label: 'Bind DN', description: 'Distinguished name for LDAP bind (service account).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_BIND_PASSWORD', envVar: 'LDAP_BIND_PASSWORD', configPath: 'ldap.bindPassword', type: 'string', default: '', group: 'ldap', label: 'Bind Password', description: 'Password for the LDAP bind account.', minEditRole: 'OWNER', restartRequired: true, sensitive: true },
-  { key: 'LDAP_USER_SEARCH_FILTER', envVar: 'LDAP_USER_SEARCH_FILTER', configPath: 'ldap.userSearchFilter', type: 'string', default: '(uid={{username}})', group: 'ldap', label: 'User Search Filter', description: 'LDAP filter for user lookup. Use {{username}} as placeholder.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_USER_SEARCH_BASE', envVar: 'LDAP_USER_SEARCH_BASE', configPath: 'ldap.userSearchBase', type: 'string', default: '', group: 'ldap', label: 'User Search Base', description: 'Base DN for user searches (defaults to Base DN if empty).', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_DISPLAY_NAME_ATTR', envVar: 'LDAP_DISPLAY_NAME_ATTR', configPath: 'ldap.displayNameAttr', type: 'string', default: 'displayName', group: 'ldap', label: 'Display Name Attribute', description: 'LDAP attribute for the user display name.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_EMAIL_ATTR', envVar: 'LDAP_EMAIL_ATTR', configPath: 'ldap.emailAttr', type: 'string', default: 'mail', group: 'ldap', label: 'Email Attribute', description: 'LDAP attribute for the user email address.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_UID_ATTR', envVar: 'LDAP_UID_ATTR', configPath: 'ldap.uidAttr', type: 'string', default: 'uid', group: 'ldap', label: 'UID Attribute', description: 'LDAP attribute for the unique user identifier.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_GROUP_BASE_DN', envVar: 'LDAP_GROUP_BASE_DN', configPath: 'ldap.groupBaseDn', type: 'string', default: '', group: 'ldap', label: 'Group Base DN', description: 'Base DN for group searches.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_GROUP_SEARCH_FILTER', envVar: 'LDAP_GROUP_SEARCH_FILTER', configPath: 'ldap.groupSearchFilter', type: 'string', default: '(objectClass=groupOfNames)', group: 'ldap', label: 'Group Search Filter', description: 'LDAP filter for group lookup.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_GROUP_MEMBER_ATTR', envVar: 'LDAP_GROUP_MEMBER_ATTR', configPath: 'ldap.groupMemberAttr', type: 'string', default: 'member', group: 'ldap', label: 'Group Member Attribute', description: 'LDAP attribute listing group members.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_GROUP_NAME_ATTR', envVar: 'LDAP_GROUP_NAME_ATTR', configPath: 'ldap.groupNameAttr', type: 'string', default: 'cn', group: 'ldap', label: 'Group Name Attribute', description: 'LDAP attribute for the group name.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_ALLOWED_GROUPS', envVar: 'LDAP_ALLOWED_GROUPS', configPath: 'ldap.allowedGroups', type: 'string', default: '', group: 'ldap', label: 'Allowed Groups', description: 'Comma-separated list of groups allowed to log in. Empty = all groups.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_STARTTLS', envVar: 'LDAP_STARTTLS', configPath: 'ldap.starttls', type: 'boolean', default: false, group: 'ldap', label: 'StartTLS', description: 'Upgrade the connection to TLS via STARTTLS.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_TLS_REJECT_UNAUTHORIZED', envVar: 'LDAP_TLS_REJECT_UNAUTHORIZED', configPath: 'ldap.tlsRejectUnauthorized', type: 'boolean', default: true, group: 'ldap', label: 'TLS Reject Unauthorized', description: 'Reject connections with invalid TLS certificates.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_SYNC_ENABLED', envVar: 'LDAP_SYNC_ENABLED', configPath: 'ldap.syncEnabled', type: 'boolean', default: false, group: 'ldap', label: 'Sync Enabled', description: 'Enable periodic LDAP user/group synchronization.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_SYNC_CRON', envVar: 'LDAP_SYNC_CRON', configPath: 'ldap.syncCron', type: 'string', default: '0 */6 * * *', group: 'ldap', label: 'Sync Schedule (cron)', description: 'Cron expression for LDAP synchronization.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_AUTO_PROVISION', envVar: 'LDAP_AUTO_PROVISION', configPath: 'ldap.autoProvision', type: 'boolean', default: true, group: 'ldap', label: 'Auto Provision Users', description: 'Automatically create users on first LDAP login.', minEditRole: 'OWNER', restartRequired: true },
-  { key: 'LDAP_DEFAULT_TENANT_ID', envVar: 'LDAP_DEFAULT_TENANT_ID', configPath: 'ldap.defaultTenantId', type: 'string', default: '', group: 'ldap', label: 'Default Tenant ID', description: 'Tenant to assign auto-provisioned LDAP users to.', minEditRole: 'OWNER', restartRequired: true },
+  { key: 'LDAP_ENABLED', envVar: 'LDAP_ENABLED', configPath: 'ldap.enabled', type: 'boolean', default: false, group: 'ldap', label: 'LDAP Enabled', description: 'Enable LDAP/FreeIPA authentication provider.', minEditRole: 'OWNER' },
+  { key: 'LDAP_PROVIDER_NAME', envVar: 'LDAP_PROVIDER_NAME', configPath: 'ldap.providerName', type: 'string', default: 'LDAP', group: 'ldap', label: 'Provider Name', description: 'Human-readable label shown on the login button.', minEditRole: 'OWNER' },
+  { key: 'LDAP_SERVER_URL', envVar: 'LDAP_SERVER_URL', configPath: 'ldap.serverUrl', type: 'string', default: '', group: 'ldap', label: 'Server URL', description: 'LDAP server URL (e.g., ldaps://ldap.example.com:636).', minEditRole: 'OWNER' },
+  { key: 'LDAP_BASE_DN', envVar: 'LDAP_BASE_DN', configPath: 'ldap.baseDn', type: 'string', default: '', group: 'ldap', label: 'Base DN', description: 'Base distinguished name for LDAP searches.', minEditRole: 'OWNER' },
+  { key: 'LDAP_BIND_DN', envVar: 'LDAP_BIND_DN', configPath: 'ldap.bindDn', type: 'string', default: '', group: 'ldap', label: 'Bind DN', description: 'Distinguished name for LDAP bind (service account).', minEditRole: 'OWNER' },
+  { key: 'LDAP_BIND_PASSWORD', envVar: 'LDAP_BIND_PASSWORD', configPath: 'ldap.bindPassword', type: 'string', default: '', group: 'ldap', label: 'Bind Password', description: 'Password for the LDAP bind account.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'LDAP_USER_SEARCH_FILTER', envVar: 'LDAP_USER_SEARCH_FILTER', configPath: 'ldap.userSearchFilter', type: 'string', default: '(uid={{username}})', group: 'ldap', label: 'User Search Filter', description: 'LDAP filter for user lookup. Use {{username}} as placeholder.', minEditRole: 'OWNER' },
+  { key: 'LDAP_USER_SEARCH_BASE', envVar: 'LDAP_USER_SEARCH_BASE', configPath: 'ldap.userSearchBase', type: 'string', default: '', group: 'ldap', label: 'User Search Base', description: 'Base DN for user searches (defaults to Base DN if empty).', minEditRole: 'OWNER' },
+  { key: 'LDAP_DISPLAY_NAME_ATTR', envVar: 'LDAP_DISPLAY_NAME_ATTR', configPath: 'ldap.displayNameAttr', type: 'string', default: 'displayName', group: 'ldap', label: 'Display Name Attribute', description: 'LDAP attribute for the user display name.', minEditRole: 'OWNER' },
+  { key: 'LDAP_EMAIL_ATTR', envVar: 'LDAP_EMAIL_ATTR', configPath: 'ldap.emailAttr', type: 'string', default: 'mail', group: 'ldap', label: 'Email Attribute', description: 'LDAP attribute for the user email address.', minEditRole: 'OWNER' },
+  { key: 'LDAP_UID_ATTR', envVar: 'LDAP_UID_ATTR', configPath: 'ldap.uidAttr', type: 'string', default: 'uid', group: 'ldap', label: 'UID Attribute', description: 'LDAP attribute for the unique user identifier.', minEditRole: 'OWNER' },
+  { key: 'LDAP_GROUP_BASE_DN', envVar: 'LDAP_GROUP_BASE_DN', configPath: 'ldap.groupBaseDn', type: 'string', default: '', group: 'ldap', label: 'Group Base DN', description: 'Base DN for group searches.', minEditRole: 'OWNER' },
+  { key: 'LDAP_GROUP_SEARCH_FILTER', envVar: 'LDAP_GROUP_SEARCH_FILTER', configPath: 'ldap.groupSearchFilter', type: 'string', default: '(objectClass=groupOfNames)', group: 'ldap', label: 'Group Search Filter', description: 'LDAP filter for group lookup.', minEditRole: 'OWNER' },
+  { key: 'LDAP_GROUP_MEMBER_ATTR', envVar: 'LDAP_GROUP_MEMBER_ATTR', configPath: 'ldap.groupMemberAttr', type: 'string', default: 'member', group: 'ldap', label: 'Group Member Attribute', description: 'LDAP attribute listing group members.', minEditRole: 'OWNER' },
+  { key: 'LDAP_GROUP_NAME_ATTR', envVar: 'LDAP_GROUP_NAME_ATTR', configPath: 'ldap.groupNameAttr', type: 'string', default: 'cn', group: 'ldap', label: 'Group Name Attribute', description: 'LDAP attribute for the group name.', minEditRole: 'OWNER' },
+  { key: 'LDAP_ALLOWED_GROUPS', envVar: 'LDAP_ALLOWED_GROUPS', configPath: 'ldap.allowedGroups', type: 'string', default: '', group: 'ldap', label: 'Allowed Groups', description: 'Comma-separated list of groups allowed to log in. Empty = all groups.', minEditRole: 'OWNER' },
+  { key: 'LDAP_STARTTLS', envVar: 'LDAP_STARTTLS', configPath: 'ldap.starttls', type: 'boolean', default: false, group: 'ldap', label: 'StartTLS', description: 'Upgrade the connection to TLS via STARTTLS.', minEditRole: 'OWNER' },
+  { key: 'LDAP_TLS_REJECT_UNAUTHORIZED', envVar: 'LDAP_TLS_REJECT_UNAUTHORIZED', configPath: 'ldap.tlsRejectUnauthorized', type: 'boolean', default: true, group: 'ldap', label: 'TLS Reject Unauthorized', description: 'Reject connections with invalid TLS certificates.', minEditRole: 'OWNER' },
+  { key: 'LDAP_SYNC_ENABLED', envVar: 'LDAP_SYNC_ENABLED', configPath: 'ldap.syncEnabled', type: 'boolean', default: false, group: 'ldap', label: 'Sync Enabled', description: 'Enable periodic LDAP user/group synchronization.', minEditRole: 'OWNER' },
+  { key: 'LDAP_SYNC_CRON', envVar: 'LDAP_SYNC_CRON', configPath: 'ldap.syncCron', type: 'string', default: '0 */6 * * *', group: 'ldap', label: 'Sync Schedule (cron)', description: 'Cron expression for LDAP synchronization.', minEditRole: 'OWNER' },
+  { key: 'LDAP_AUTO_PROVISION', envVar: 'LDAP_AUTO_PROVISION', configPath: 'ldap.autoProvision', type: 'boolean', default: true, group: 'ldap', label: 'Auto Provision Users', description: 'Automatically create users on first LDAP login.', minEditRole: 'OWNER' },
+  { key: 'LDAP_DEFAULT_TENANT_ID', envVar: 'LDAP_DEFAULT_TENANT_ID', configPath: 'ldap.defaultTenantId', type: 'string', default: '', group: 'ldap', label: 'Default Tenant ID', description: 'Tenant to assign auto-provisioned LDAP users to.', minEditRole: 'OWNER' },
 ];
 
 // Group metadata for UI display ordering and labels
@@ -619,6 +620,10 @@ export async function setSetting(
   }
 
   invalidateCache(key);
+
+  // Trigger live reload for the affected setting group
+  await onSettingChanged(def.group);
+
   return { key, value, source: 'db' };
 }
 

@@ -1,13 +1,14 @@
 import dns from 'dns';
 import net from 'net';
 import os from 'os';
+import { config } from '../config';
 import { AppError } from '../middleware/error.middleware';
 
-const ALLOW_LOCAL_NETWORK = process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() !== 'false';
-
-const BLOCKED_MESSAGE = ALLOW_LOCAL_NETWORK
-  ? 'Connections to loopback addresses are not allowed'
-  : 'Connections to loopback or local network addresses are not allowed';
+function getBlockedMessage(): string {
+  return config.allowLocalNetwork
+    ? 'Connections to loopback addresses are not allowed'
+    : 'Connections to loopback or local network addresses are not allowed';
+}
 
 function getLocalAddresses(): Set<string> {
   const addresses = new Set<string>();
@@ -32,7 +33,7 @@ function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
   if (net.isIPv4(ip)) {
     const parts = ip.split('.').map(Number);
     if (parts[0] === 127) return true; // Loopback (always blocked)
-    if (!ALLOW_LOCAL_NETWORK) {
+    if (!config.allowLocalNetwork) {
       if (parts[0] === 10) return true; // 10.0.0.0/8
       if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
       if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
@@ -43,7 +44,7 @@ function isForbiddenIP(ip: string, localAddresses: Set<string>): boolean {
   // IPv6 checks
   if (net.isIPv6(ip)) {
     if (ip.startsWith('fe80:') || ip.startsWith('fe80::')) return true; // Link-local (always blocked)
-    if (!ALLOW_LOCAL_NETWORK) {
+    if (!config.allowLocalNetwork) {
       if (ip.startsWith('fc') || ip.startsWith('fd')) return true; // ULA
     }
   }
@@ -59,7 +60,7 @@ export async function validateHost(host: string): Promise<void> {
 
   // Reject "localhost" string
   if (normalized === 'localhost') {
-    throw new AppError(BLOCKED_MESSAGE, 400);
+    throw new AppError(getBlockedMessage(), 400);
   }
 
   const localAddresses = getLocalAddresses();
@@ -67,7 +68,7 @@ export async function validateHost(host: string): Promise<void> {
   // If it's already an IP, check directly
   if (net.isIP(host)) {
     if (isForbiddenIP(host, localAddresses)) {
-      throw new AppError(BLOCKED_MESSAGE, 400);
+      throw new AppError(getBlockedMessage(), 400);
     }
     return;
   }
@@ -92,7 +93,7 @@ export async function validateHost(host: string): Promise<void> {
 
     for (const ip of allIPs) {
       if (isForbiddenIP(ip, localAddresses)) {
-        throw new AppError(BLOCKED_MESSAGE, 400);
+        throw new AppError(getBlockedMessage(), 400);
       }
     }
   } catch (err) {

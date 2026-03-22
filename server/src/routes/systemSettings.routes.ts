@@ -17,6 +17,13 @@ router.get(
   asyncHandler(controller.getAllSettings),
 );
 
+// Database connection status (ADMIN, OWNER)
+router.get(
+  '/db-status',
+  requireTenantRoleAny('ADMIN', 'OWNER'),
+  asyncHandler(controller.getDbStatus),
+);
+
 // Write single: ADMIN, OWNER (per-setting role check in service)
 router.put(
   '/:key',

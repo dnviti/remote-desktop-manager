@@ -36,6 +36,9 @@ function getSendFn(): SendFn | null {
   return cachedSendFn;
 }
 
+/** Reset cached provider so the next sendEmail() re-creates it from current config. */
+export function resetEmailProvider(): void { cachedSendFn = undefined; }
+
 export async function sendEmail(msg: EmailMessage): Promise<void> {
   const send = getSendFn();
   if (!send) {

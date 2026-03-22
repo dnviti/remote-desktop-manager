@@ -11,13 +11,18 @@ import {
   Visibility as VisibilityIcon,
   VisibilityOff as VisibilityOffIcon,
 } from '@mui/icons-material';
-import { completeSetup, type SetupCompleteData } from '../api/setup.api';
+import {
+  Storage as StorageIcon,
+  CheckCircle as CheckCircleIcon,
+  Cancel as CancelIcon,
+} from '@mui/icons-material';
+import { completeSetup, getDbStatus, type SetupCompleteData, type DbStatusResponse } from '../api/setup.api';
 import { useAuthStore } from '../store/authStore';
 import { useVaultStore } from '../store/vaultStore';
 import PasswordStrengthMeter from '../components/common/PasswordStrengthMeter';
 import { extractApiError } from '../utils/apiError';
 
-const STEPS = ['Welcome', 'Administrator', 'Organization', 'Settings', 'Complete'];
+const STEPS = ['Welcome', 'Database', 'Administrator', 'Organization', 'Settings', 'Complete'];
 
 export default function SetupWizardPage() {
   const navigate = useNavigate();
@@ -28,7 +33,23 @@ export default function SetupWizardPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Step 1: Admin
+  // Step 1: Database
+  const [dbStatus, setDbStatus] = useState<DbStatusResponse | null>(null);
+  const [dbLoading, setDbLoading] = useState(false);
+
+  const testDbConnection = async () => {
+    setDbLoading(true);
+    try {
+      const status = await getDbStatus();
+      setDbStatus(status);
+    } catch {
+      setDbStatus({ host: '', port: 0, database: '', connected: false, version: null });
+    } finally {
+      setDbLoading(false);
+    }
+  };
+
+  // Step 2: Admin
   const [adminEmail, setAdminEmail] = useState('');
   const [adminUsername, setAdminUsername] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
@@ -75,13 +96,14 @@ export default function SetupWizardPage() {
   const canProceed = (): boolean => {
     switch (activeStep) {
       case 0: return true; // Welcome
-      case 1: // Admin
+      case 1: return dbStatus?.connected === true; // Database
+      case 2: // Admin
         return adminEmail.length > 0
           && adminPassword.length >= 10
           && adminPassword === confirmPassword;
-      case 2: // Organization
+      case 3: // Organization
         return tenantName.length > 0;
-      case 3: return true; // Settings (all optional)
+      case 4: return true; // Settings (all optional)
       default: return false;
     }
   };
@@ -89,8 +111,8 @@ export default function SetupWizardPage() {
   const handleNext = async () => {
     setError('');
 
-    // On the Settings step (3), submit everything
-    if (activeStep === 3) {
+    // On the Settings step (4), submit everything
+    if (activeStep === 4) {
       setLoading(true);
       try {
         const body: SetupCompleteData = {
@@ -131,7 +153,7 @@ export default function SetupWizardPage() {
         });
         setVaultUnlocked(true);
 
-        setActiveStep(4);
+        setActiveStep(5);
       } catch (err) {
         setError(extractApiError(err, 'Setup failed. Please try again.'));
       } finally {
@@ -188,6 +210,7 @@ export default function SetupWizardPage() {
               Here's what we'll do:
             </Typography>
             <Typography component="ul" variant="body2" color="text.secondary" sx={{ pl: 2, '& li': { mb: 0.5 } }}>
+              <li><strong>Verify database connection</strong> — confirm the PostgreSQL database is reachable</li>
               <li><strong>Create an administrator account</strong> — your first user with full platform control</li>
               <li><strong>Create an organization</strong> — a workspace for your teams, connections, and policies</li>
               <li><strong>Configure basic settings</strong> — choose who can join and optionally set up email notifications</li>
@@ -198,8 +221,50 @@ export default function SetupWizardPage() {
           </Box>
         )}
 
-        {/* Step 1: Administrator Account */}
+        {/* Step 1: Database */}
         {activeStep === 1 && (
+          <Box>
+            <Typography variant="h6" gutterBottom>
+              <StorageIcon sx={{ verticalAlign: 'middle', mr: 1 }} />
+              Database Connection
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Verify the PostgreSQL database connection. These values are configured via the DATABASE_URL environment variable.
+              To change them, update your .env file and restart the server.
+            </Typography>
+
+            {dbStatus && (
+              <Box sx={{ mb: 2 }}>
+                <TextField label="Host" value={dbStatus.host || '(not set)'} fullWidth size="small" sx={{ mb: 1.5 }} slotProps={{ input: { readOnly: true } }} />
+                <TextField label="Port" value={String(dbStatus.port)} fullWidth size="small" sx={{ mb: 1.5 }} slotProps={{ input: { readOnly: true } }} />
+                <TextField label="Database" value={dbStatus.database || '(not set)'} fullWidth size="small" sx={{ mb: 1.5 }} slotProps={{ input: { readOnly: true } }} />
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mt: 1 }}>
+                  {dbStatus.connected
+                    ? <><CheckCircleIcon color="success" /><Typography color="success.main">Connected</Typography></>
+                    : <><CancelIcon color="error" /><Typography color="error">Connection failed</Typography></>
+                  }
+                </Box>
+                {dbStatus.version && (
+                  <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+                    {dbStatus.version}
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            <Button
+              variant="outlined"
+              onClick={testDbConnection}
+              disabled={dbLoading}
+              startIcon={dbLoading ? <CircularProgress size={16} /> : <StorageIcon />}
+            >
+              {dbStatus ? 'Retest Connection' : 'Test Connection'}
+            </Button>
+          </Box>
+        )}
+
+        {/* Step 2: Administrator Account */}
+        {activeStep === 2 && (
           <Box>
             <Typography variant="h6" gutterBottom>Create Administrator Account</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -258,8 +323,8 @@ export default function SetupWizardPage() {
           </Box>
         )}
 
-        {/* Step 2: Organization */}
-        {activeStep === 2 && (
+        {/* Step 3: Organization */}
+        {activeStep === 3 && (
           <Box>
             <Typography variant="h6" gutterBottom>Create Your Organization</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -279,7 +344,7 @@ export default function SetupWizardPage() {
         )}
 
         {/* Step 3: Platform Settings */}
-        {activeStep === 3 && (
+        {activeStep === 4 && (
           <Box>
             <Typography variant="h6" gutterBottom>Platform Settings</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
@@ -369,8 +434,8 @@ export default function SetupWizardPage() {
           </Box>
         )}
 
-        {/* Step 4: Complete / Recovery Key */}
-        {activeStep === 4 && (
+        {/* Step 5: Complete / Recovery Key */}
+        {activeStep === 5 && (
           <Box>
             <Typography variant="h6" gutterBottom>Setup Complete</Typography>
             <Alert severity="success" sx={{ mb: 2 }}>
@@ -423,7 +488,7 @@ export default function SetupWizardPage() {
 
         {/* Navigation buttons */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-          {activeStep > 0 && activeStep < 4 ? (
+          {activeStep > 0 && activeStep < 5 ? (
             <Button onClick={handleBack} disabled={loading}>
               Back
             </Button>
@@ -431,14 +496,14 @@ export default function SetupWizardPage() {
             <Box />
           )}
 
-          {activeStep < 4 ? (
+          {activeStep < 5 ? (
             <Button
               variant="contained"
               onClick={handleNext}
               disabled={!canProceed() || loading}
               startIcon={loading ? <CircularProgress size={16} /> : undefined}
             >
-              {activeStep === 3 ? 'Complete Setup' : 'Next'}
+              {activeStep === 4 ? 'Complete Setup' : 'Next'}
             </Button>
           ) : (
             <Button variant="contained" onClick={handleGetStarted}>

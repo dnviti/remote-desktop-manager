@@ -89,7 +89,10 @@ app.use(cors({
 app.use(express.json({ limit: '500kb' }));
 app.use(cookieParser());
 app.use(passport.initialize());
-if (config.logHttpRequests) app.use(requestLogger);
+app.use((req, res, next) => {
+  if (config.logHttpRequests) return requestLogger(req, res, next);
+  next();
+});
 
 // Global CSRF validation for all state-changing requests (after CORS, before routes)
 app.use('/api', (req, res, next) => {

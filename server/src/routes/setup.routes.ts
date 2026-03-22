@@ -18,6 +18,9 @@ const setupRateLimiter = rateLimit({
 // GET /api/setup/status — Check if setup is required (public, no auth)
 router.get('/status', asyncHandler(setupController.getSetupStatus));
 
+// GET /api/setup/db-status — Database connection status (public, no auth)
+router.get('/db-status', asyncHandler(setupController.getDbStatus));
+
 // POST /api/setup/complete — Complete initial setup (public, no auth, rate-limited)
 router.post(
   '/complete',

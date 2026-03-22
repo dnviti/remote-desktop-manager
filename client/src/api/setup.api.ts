@@ -53,3 +53,16 @@ export async function completeSetup(body: SetupCompleteData): Promise<SetupCompl
   const { data } = await api.post<SetupCompleteResponse>('/setup/complete', body);
   return data;
 }
+
+export interface DbStatusResponse {
+  host: string;
+  port: number;
+  database: string;
+  connected: boolean;
+  version: string | null;
+}
+
+export async function getDbStatus(): Promise<DbStatusResponse> {
+  const { data } = await api.get<DbStatusResponse>('/setup/db-status');
+  return data;
+}

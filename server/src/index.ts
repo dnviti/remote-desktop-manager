@@ -23,10 +23,15 @@ import * as autoscalerService from './services/autoscaler.service';
 import { completeGuacRecording, cleanupExpiredRecordings } from './services/recording.service';
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
-import { startSshProxyServer, stopSshProxyServer } from './services/sshProxy.service';
+import { startSshProxyServer, stopSshProxyServer, restartSshProxy } from './services/sshProxy.service';
 import { cleanupIdleTunnels } from './services/rdGateway.service';
 import { cleanupExpiredDeviceCodes } from './services/deviceAuth.service';
 import { applySystemSettings } from './services/systemSettings.service';
+import { registerReload } from './services/configReloader.service';
+import { reloadPassportStrategies } from './config/passport';
+import { reloadKeyRotationJob, reloadLdapSyncJob } from './services/scheduler.service';
+import { resetEmailProvider } from './services/email';
+import { resetSmsProvider } from './services/sms';
 
 function freePort(port: number): void {
   try {
@@ -118,6 +123,16 @@ async function main() {
   startAllSyncJobs().catch((err) => {
     logger.error('Failed to start sync jobs:', err);
   });
+
+  // Register live-reload callbacks for system settings
+  for (const g of ['oauth-google', 'oauth-microsoft', 'oauth-github', 'oauth-oidc', 'oauth-saml']) {
+    registerReload(g, reloadPassportStrategies);
+  }
+  registerReload('ldap', reloadLdapSyncJob);
+  registerReload('key-rotation', reloadKeyRotationJob);
+  registerReload('ssh-proxy', restartSshProxy);
+  registerReload('email', resetEmailProvider);
+  registerReload('sms', resetSmsProvider);
 
   // Start gateway health monitors
   startAllMonitors();

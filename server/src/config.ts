@@ -250,6 +250,8 @@ export const config = {
     autoProvision: process.env.LDAP_AUTO_PROVISION !== 'false',
     defaultTenantId: process.env.LDAP_DEFAULT_TENANT_ID || '',
   },
+  // Allow connections to private/local network addresses
+  allowLocalNetwork: process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() !== 'false',
   // Multi-tenancy — allow sharing connections with users outside the sharer's tenant
   allowExternalSharing: process.env.ALLOW_EXTERNAL_SHARING === 'true',
   webauthn: {

@@ -3,6 +3,7 @@ import type { AuthRequest } from '../types';
 import { assertTenantAuthenticated } from '../types';
 import * as systemSettingsService from '../services/systemSettings.service';
 import { SETTINGS_REGISTRY } from '../services/systemSettings.service';
+import * as setupService from '../services/setup.service';
 import * as auditService from '../services/audit.service';
 import { getClientIp } from '../utils/ip';
 
@@ -55,4 +56,9 @@ export async function bulkUpdateSettings(req: AuthRequest, res: Response, _next:
   }
 
   res.json({ results });
+}
+
+export async function getDbStatus(_req: AuthRequest, res: Response, _next: NextFunction) {
+  const status = await setupService.getDbStatus();
+  res.json(status);
 }

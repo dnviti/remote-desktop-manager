@@ -336,6 +336,16 @@ export function startPasswordRotationJob(): void {
   );
 }
 
+export function reloadKeyRotationJob(): void {
+  if (rotationTask) { rotationTask.stop(); rotationTask = null; }
+  startKeyRotationJob();
+}
+
+export function reloadLdapSyncJob(): void {
+  if (ldapSyncTask) { ldapSyncTask.stop(); ldapSyncTask = null; }
+  startLdapSyncJob();
+}
+
 export function stopAllJobs(): void {
   if (rotationTask) {
     rotationTask.stop();

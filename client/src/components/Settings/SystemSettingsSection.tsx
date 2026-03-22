@@ -1,12 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   Card, CardContent, Typography, CircularProgress, Alert, Accordion,
-  AccordionSummary, AccordionDetails, Box, Divider, Chip,
+  AccordionSummary, AccordionDetails, Box, Divider, Chip, Button,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import TuneIcon from '@mui/icons-material/Tune';
-import { getSystemSettings } from '../../api/systemSettings.api';
-import type { SettingValue, SettingGroup } from '../../api/systemSettings.api';
+import StorageIcon from '@mui/icons-material/Storage';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import { getSystemSettings, getAdminDbStatus } from '../../api/systemSettings.api';
+import type { SettingValue, SettingGroup, DbStatusResponse } from '../../api/systemSettings.api';
 import { extractApiError } from '../../utils/apiError';
 import SettingField from './SettingField';
 
@@ -15,12 +19,18 @@ export default function SystemSettingsSection() {
   const [groups, setGroups] = useState<SettingGroup[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [dbStatus, setDbStatus] = useState<DbStatusResponse | null>(null);
+
+  const refreshDbStatus = useCallback(() => {
+    getAdminDbStatus().then(setDbStatus).catch(() => {});
+  }, []);
 
   useEffect(() => {
-    getSystemSettings()
-      .then((data) => {
+    Promise.all([getSystemSettings(), getAdminDbStatus().catch(() => null)])
+      .then(([data, db]) => {
         setSettings(data.settings);
         setGroups(data.groups);
+        if (db) setDbStatus(db);
         setLoading(false);
       })
       .catch((err) => {
@@ -84,9 +94,42 @@ export default function SystemSettingsSection() {
         </Box>
 
         <Alert severity="info" sx={{ mb: 2 }}>
-          Settings locked by environment variables are read-only. Changes to settings marked
-          with a restart icon take effect after the server is restarted.
+          Settings locked by environment variables are read-only. All other changes take effect immediately.
         </Alert>
+
+        {/* Database connection status (read-only) */}
+        {dbStatus && (
+          <Accordion disableGutters variant="outlined" sx={{ mb: 1 }}>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <StorageIcon fontSize="small" />
+                <Typography variant="body1" fontWeight="medium">Database</Typography>
+                <Chip
+                  icon={dbStatus.connected ? <CheckCircleIcon /> : <CancelIcon />}
+                  label={dbStatus.connected ? 'Connected' : 'Disconnected'}
+                  color={dbStatus.connected ? 'success' : 'error'}
+                  size="small"
+                  variant="outlined"
+                />
+              </Box>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="body2"><strong>Host:</strong> {dbStatus.host || '—'}</Typography>
+                <Typography variant="body2"><strong>Port:</strong> {dbStatus.port}</Typography>
+                <Typography variant="body2"><strong>Database:</strong> {dbStatus.database || '—'}</Typography>
+                {dbStatus.version && (
+                  <Typography variant="caption" color="text.secondary">{dbStatus.version}</Typography>
+                )}
+                <Box sx={{ mt: 1 }}>
+                  <Button size="small" startIcon={<RefreshIcon />} onClick={refreshDbStatus}>
+                    Refresh
+                  </Button>
+                </Box>
+              </Box>
+            </AccordionDetails>
+          </Accordion>
+        )}
 
         {sortedGroups.map((group) => {
           const groupSettings = grouped.get(group.key) || [];

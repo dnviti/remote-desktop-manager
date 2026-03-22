@@ -182,3 +182,33 @@ export async function completeSetup(data: SetupCompleteInput) {
     tenantMemberships: tokens.tenantMemberships,
   };
 }
+
+/**
+ * Get database connection status by parsing DATABASE_URL and testing connectivity.
+ */
+export async function getDbStatus(): Promise<{
+  host: string;
+  port: number;
+  database: string;
+  connected: boolean;
+  version: string | null;
+}> {
+  const dbUrl = process.env.DATABASE_URL || '';
+  let host = '', port = 5432, database = '';
+  try {
+    const url = new URL(dbUrl);
+    host = url.hostname;
+    port = parseInt(url.port || '5432', 10);
+    database = url.pathname.replace(/^\//, '');
+  } catch { /* invalid URL */ }
+
+  let connected = false;
+  let version: string | null = null;
+  try {
+    const result = await prisma.$queryRawUnsafe<[{ version: string }]>('SELECT version()');
+    connected = true;
+    version = result[0]?.version || null;
+  } catch { /* connection failed */ }
+
+  return { host, port, database, connected, version };
+}

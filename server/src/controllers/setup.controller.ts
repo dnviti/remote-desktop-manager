@@ -10,6 +10,11 @@ export async function getSetupStatus(_req: Request, res: Response) {
   res.json({ required });
 }
 
+export async function getDbStatus(_req: Request, res: Response) {
+  const status = await setupService.getDbStatus();
+  res.json(status);
+}
+
 export async function completeSetup(req: Request, res: Response, next: NextFunction) {
   try {
     const required = await setupService.isSetupRequired();
