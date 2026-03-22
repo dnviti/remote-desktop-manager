@@ -212,11 +212,13 @@ export async function createGateway(
 
   log.debug(`Created gateway ${gateway.id} (${input.type}) in tenant ${tenantId}`);
 
-  const isManagedPublished = input.publishPorts && (input.type === 'MANAGED_SSH' || input.type === 'GUACD' || input.type === 'DB_PROXY');
-  if ((input.monitoringEnabled ?? true) && isManagedPublished) {
-    startInstanceMonitor(gateway.id, tenantId, input.monitorIntervalMs ?? 5000);
-  } else if ((input.monitoringEnabled ?? true) && !isManagedPublished) {
-    startMonitor(gateway.id, input.host, input.port, tenantId, input.monitorIntervalMs ?? 5000);
+  // Use persisted values from the database result instead of raw input
+  // to ensure we operate on the actual stored state.
+  const isManagedPublished = gateway.publishPorts && (gateway.type === 'MANAGED_SSH' || gateway.type === 'GUACD' || gateway.type === 'DB_PROXY');
+  if (gateway.monitoringEnabled && isManagedPublished) {
+    startInstanceMonitor(gateway.id, tenantId, gateway.monitorIntervalMs);
+  } else if (gateway.monitoringEnabled && !isManagedPublished) {
+    startMonitor(gateway.id, gateway.host, gateway.port, tenantId, gateway.monitorIntervalMs);
   }
 
   return gateway;
