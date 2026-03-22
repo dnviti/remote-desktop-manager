@@ -179,6 +179,11 @@ export const config = {
   sessionInactivityTimeoutSeconds: parseInt(process.env.SESSION_INACTIVITY_TIMEOUT_SECONDS || '3600', 10),
   maxConcurrentSessions: parseInt(process.env.MAX_CONCURRENT_SESSIONS || '0', 10),
   absoluteSessionTimeoutSeconds: parseInt(process.env.ABSOLUTE_SESSION_TIMEOUT_SECONDS || '43200', 10),
+  // Database query execution
+  dbQueryTimeoutMs: parseInt(process.env.DB_QUERY_TIMEOUT_MS || '30000', 10),
+  dbQueryMaxRows: parseInt(process.env.DB_QUERY_MAX_ROWS || '10000', 10),
+  dbPoolMaxConnections: parseInt(process.env.DB_POOL_MAX_CONNECTIONS || '3', 10),
+  dbPoolIdleTimeoutMs: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '60000', 10),
   // Container orchestrator
   orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'podman' | 'kubernetes' | 'none',
   dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',

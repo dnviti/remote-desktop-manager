@@ -16,6 +16,7 @@ import { cleanupExpiredTokens, cleanupAbsolutelyTimedOutFamilies } from './servi
 import { checkExpiringSecrets } from './services/secretExpiry.service';
 import { markServerReady } from './services/health.service';
 import * as sessionService from './services/session.service';
+import { destroyAllPools as destroyAllDbPools } from './services/dbQueryExecutor.service';
 import { initSessionCleanup, checkAndCloseInactiveSessions } from './services/sessionCleanup.service';
 import { detectOrchestrator, OrchestratorType } from './orchestrator';
 import * as managedGatewayService from './services/managedGateway.service';
@@ -417,6 +418,9 @@ async function main() {
     } catch (err) {
       logger.error('Failed to close sessions on shutdown:', err);
     }
+
+    // Close all DB query executor pools
+    await destroyAllDbPools();
 
     // Stop SSH proxy server
     stopSshProxyServer();

@@ -14,6 +14,7 @@ export interface DbQueryResult {
   rows: Record<string, unknown>[];
   rowCount: number;
   durationMs: number;
+  truncated: boolean;
 }
 
 export interface DbSchemaInfo {

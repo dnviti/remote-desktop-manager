@@ -16,6 +16,7 @@ interface DbResultsTableProps {
   rows: Record<string, unknown>[];
   rowCount: number;
   durationMs: number;
+  truncated?: boolean;
   maxHeight?: number | string;
 }
 
@@ -24,6 +25,7 @@ export default function DbResultsTable({
   rows,
   rowCount,
   durationMs,
+  truncated,
   maxHeight = 400,
 }: DbResultsTableProps) {
   const displayRows = useMemo(() => rows.slice(0, 1000), [rows]);
@@ -43,7 +45,8 @@ export default function DbResultsTable({
       <Box sx={{ px: 1, py: 0.5, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Typography variant="caption" color="text.secondary">
           {rowCount} row(s) returned in {durationMs}ms
-          {rows.length > 1000 && ` (showing first 1000)`}
+          {truncated && ' (results truncated by server limit)'}
+          {rows.length > 1000 && ' (showing first 1000)'}
         </Typography>
       </Box>
       <TableContainer

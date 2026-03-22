@@ -3,6 +3,7 @@ import { AppError } from '../middleware/error.middleware';
 import { getConnectionCredentials } from './connection.service';
 import * as sessionService from './session.service';
 import * as auditService from './audit.service';
+import * as dbQueryExecutor from './dbQueryExecutor.service';
 import { selectInstance } from './loadBalancer.service';
 import { getDefaultGateway } from './gateway.service';
 import { isTunnelConnected, createTcpProxy } from './tunnel.service';
@@ -154,6 +155,8 @@ export async function createDbProxySession(params: {
       dbProtocol,
       databaseName,
       username,
+      resolvedHost: proxyHost,
+      resolvedPort: proxyPort,
     },
     routingDecision,
   });
@@ -201,6 +204,7 @@ export async function endDbProxySession(
     throw new AppError('Session already closed', 410);
   }
 
+  await dbQueryExecutor.destroyPool(sessionId);
   await sessionService.endSession(sessionId, 'client_disconnect');
   log.info(`DB proxy session ${sessionId} ended`);
 }

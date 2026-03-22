@@ -5,7 +5,7 @@ import {
   Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, FormControl, InputLabel,
   Select, MenuItem, Switch, FormControlLabel, Alert,
-  CircularProgress, Tooltip,
+  CircularProgress, Tooltip, Divider, ListSubheader,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -25,11 +25,155 @@ const ACTION_COLORS: Record<FirewallAction, 'error' | 'warning' | 'info'> = {
   LOG: 'info',
 };
 
+// ---------------------------------------------------------------------------
+// Preset rule templates
+// ---------------------------------------------------------------------------
+
+interface RuleTemplate {
+  name: string;
+  pattern: string;
+  action: FirewallAction;
+  description: string;
+  category: string;
+}
+
+const RULE_TEMPLATES: RuleTemplate[] = [
+  // --- Destructive DDL ---
+  {
+    category: 'Destructive Operations',
+    name: 'Block DROP TABLE',
+    pattern: '\\bDROP\\s+TABLE\\b',
+    action: 'BLOCK',
+    description: 'Prevents dropping database tables',
+  },
+  {
+    category: 'Destructive Operations',
+    name: 'Block TRUNCATE',
+    pattern: '\\bTRUNCATE\\b',
+    action: 'BLOCK',
+    description: 'Prevents truncating tables (deletes all rows without logging)',
+  },
+  {
+    category: 'Destructive Operations',
+    name: 'Block DROP DATABASE',
+    pattern: '\\bDROP\\s+DATABASE\\b',
+    action: 'BLOCK',
+    description: 'Prevents dropping entire databases',
+  },
+  {
+    category: 'Destructive Operations',
+    name: 'Block DROP SCHEMA',
+    pattern: '\\bDROP\\s+SCHEMA\\b',
+    action: 'BLOCK',
+    description: 'Prevents dropping database schemas',
+  },
+  // --- Data Modification ---
+  {
+    category: 'Data Modification',
+    name: 'Alert DELETE without WHERE',
+    pattern: '^\\s*DELETE\\s+FROM\\s+\\S+\\s*;?\\s*$',
+    action: 'ALERT',
+    description: 'Alerts when a DELETE statement has no WHERE clause (deletes all rows)',
+  },
+  {
+    category: 'Data Modification',
+    name: 'Alert UPDATE without WHERE',
+    pattern: '^\\s*UPDATE\\s+\\S+\\s+SET\\s+.*(?<!WHERE\\s+.*)\\s*;?\\s*$',
+    action: 'ALERT',
+    description: 'Alerts when an UPDATE statement has no WHERE clause (updates all rows)',
+  },
+  {
+    category: 'Data Modification',
+    name: 'Log all INSERT statements',
+    pattern: '\\bINSERT\\s+INTO\\b',
+    action: 'LOG',
+    description: 'Logs all INSERT operations for audit purposes',
+  },
+  // --- Schema Changes ---
+  {
+    category: 'Schema Changes',
+    name: 'Alert ALTER TABLE',
+    pattern: '\\bALTER\\s+TABLE\\b',
+    action: 'ALERT',
+    description: 'Alerts on table schema modifications (add/drop columns, rename)',
+  },
+  {
+    category: 'Schema Changes',
+    name: 'Block CREATE/DROP INDEX',
+    pattern: '\\b(CREATE|DROP)\\s+(UNIQUE\\s+)?INDEX\\b',
+    action: 'BLOCK',
+    description: 'Prevents index modifications that can impact performance',
+  },
+  {
+    category: 'Schema Changes',
+    name: 'Alert GRANT/REVOKE',
+    pattern: '\\b(GRANT|REVOKE)\\b',
+    action: 'ALERT',
+    description: 'Alerts when database permissions are being modified',
+  },
+  // --- Security ---
+  {
+    category: 'Security',
+    name: 'Block SQL comment injection',
+    pattern: '(--|/\\*|\\*/)',
+    action: 'BLOCK',
+    description: 'Blocks queries containing SQL comment syntax often used in injection attacks',
+  },
+  {
+    category: 'Security',
+    name: 'Block UNION-based injection',
+    pattern: '\\bUNION\\s+(ALL\\s+)?SELECT\\b',
+    action: 'BLOCK',
+    description: 'Blocks UNION SELECT patterns commonly used in SQL injection',
+  },
+  {
+    category: 'Security',
+    name: 'Block system table access',
+    pattern: '\\b(pg_catalog|information_schema|sys\\.objects|sysobjects|mysql\\.user)\\b',
+    action: 'BLOCK',
+    description: 'Blocks direct access to system catalog tables',
+  },
+  // --- Performance ---
+  {
+    category: 'Performance',
+    name: 'Alert SELECT * (bulk read)',
+    pattern: '^\\s*SELECT\\s+\\*\\s+FROM\\s+\\S+\\s*;?\\s*$',
+    action: 'ALERT',
+    description: 'Alerts on unfiltered SELECT * queries that may return large result sets',
+  },
+  {
+    category: 'Performance',
+    name: 'Alert CROSS JOIN',
+    pattern: '\\bCROSS\\s+JOIN\\b',
+    action: 'ALERT',
+    description: 'Alerts on CROSS JOIN which produces cartesian products',
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Regex validation helper
+// ---------------------------------------------------------------------------
+
+function validateRegex(pattern: string): string | null {
+  if (!pattern.trim()) return 'Pattern is required';
+  try {
+    new RegExp(pattern, 'i');
+    return null;
+  } catch (err) {
+    return err instanceof SyntaxError ? err.message : 'Invalid regular expression';
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export default function DbFirewallSection() {
   const [rules, setRules] = useState<FirewallRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [editOpen, setEditOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<FirewallRule | null>(null);
+  const [patternError, setPatternError] = useState<string | null>(null);
   const [formData, setFormData] = useState<FirewallRuleInput>({
     name: '',
     pattern: '',
@@ -60,6 +204,7 @@ export default function DbFirewallSection() {
   const handleOpenCreate = () => {
     setEditingRule(null);
     setFormData({ name: '', pattern: '', action: 'BLOCK', scope: '', description: '', enabled: true, priority: 0 });
+    setPatternError(null);
     clearError();
     setEditOpen(true);
   };
@@ -75,11 +220,41 @@ export default function DbFirewallSection() {
       enabled: rule.enabled,
       priority: rule.priority,
     });
+    setPatternError(null);
     clearError();
     setEditOpen(true);
   };
 
+  const handlePatternChange = (value: string) => {
+    setFormData({ ...formData, pattern: value });
+    if (value.trim()) {
+      setPatternError(validateRegex(value));
+    } else {
+      setPatternError(null);
+    }
+  };
+
+  const handleApplyTemplate = (templateValue: string) => {
+    const template = RULE_TEMPLATES.find((t) => t.name === templateValue);
+    if (!template) return;
+    setFormData({
+      ...formData,
+      name: template.name,
+      pattern: template.pattern,
+      action: template.action,
+      description: template.description,
+    });
+    setPatternError(validateRegex(template.pattern));
+  };
+
   const handleSave = async () => {
+    // Validate regex before saving
+    const regexErr = validateRegex(formData.pattern);
+    if (regexErr) {
+      setPatternError(regexErr);
+      return;
+    }
+
     const ok = await run(async () => {
       if (editingRule) {
         await updateFirewallRule(editingRule.id, formData);
@@ -100,6 +275,24 @@ export default function DbFirewallSection() {
       fetchRules();
     }, 'Failed to delete firewall rule');
   };
+
+  // Group templates by category for the Select menu
+  const templateMenuItems: React.ReactNode[] = [];
+  let lastCategory = '';
+  for (const t of RULE_TEMPLATES) {
+    if (t.category !== lastCategory) {
+      templateMenuItems.push(<ListSubheader key={`cat-${t.category}`}>{t.category}</ListSubheader>);
+      lastCategory = t.category;
+    }
+    templateMenuItems.push(
+      <MenuItem key={t.name} value={t.name}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+          <Chip label={t.action} color={ACTION_COLORS[t.action]} size="small" sx={{ minWidth: 56 }} />
+          <Typography variant="body2">{t.name}</Typography>
+        </Box>
+      </MenuItem>,
+    );
+  }
 
   return (
     <Card variant="outlined">
@@ -171,6 +364,24 @@ export default function DbFirewallSection() {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
+
+            {/* Template selector — only shown when creating */}
+            {!editingRule && (
+              <>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Start from template (optional)</InputLabel>
+                  <Select
+                    value=""
+                    label="Start from template (optional)"
+                    onChange={(e) => handleApplyTemplate(e.target.value)}
+                  >
+                    {templateMenuItems}
+                  </Select>
+                </FormControl>
+                <Divider />
+              </>
+            )}
+
             <TextField
               label="Name"
               size="small"
@@ -185,8 +396,9 @@ export default function DbFirewallSection() {
               fullWidth
               required
               value={formData.pattern}
-              onChange={(e) => setFormData({ ...formData, pattern: e.target.value })}
-              helperText="Regular expression pattern to match against SQL queries"
+              onChange={(e) => handlePatternChange(e.target.value)}
+              error={!!patternError}
+              helperText={patternError || 'Regular expression pattern to match against SQL queries (case-insensitive)'}
               slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
             />
             <FormControl size="small" fullWidth>
@@ -242,7 +454,7 @@ export default function DbFirewallSection() {
           <Button
             variant="contained"
             onClick={handleSave}
-            disabled={saving || !formData.name || !formData.pattern}
+            disabled={saving || !formData.name || !formData.pattern || !!patternError}
           >
             {saving ? <CircularProgress size={20} /> : editingRule ? 'Update' : 'Create'}
           </Button>

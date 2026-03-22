@@ -716,6 +716,8 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
                               <TableCell>
                                 {entry.blocked ? (
                                   <Chip label="Blocked" color="error" size="small" />
+                                ) : entry.blockReason ? (
+                                  <Chip label="Alert" color="warning" size="small" />
                                 ) : (
                                   <Chip label="OK" color="success" size="small" variant="outlined" />
                                 )}
@@ -743,10 +745,14 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
                                     <Box sx={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 1 }}>
                                       <Typography variant="body2" fontWeight={600} color="text.secondary">Rows Affected</Typography>
                                       <Typography variant="body2">{entry.rowsAffected ?? '\u2014'}</Typography>
-                                      {entry.blocked && entry.blockReason && (
+                                      {entry.blockReason && (
                                         <>
-                                          <Typography variant="body2" fontWeight={600} color="text.secondary">Block Reason</Typography>
-                                          <Typography variant="body2" color="error.main">{entry.blockReason}</Typography>
+                                          <Typography variant="body2" fontWeight={600} color="text.secondary">
+                                            {entry.blocked ? 'Block Reason' : 'Firewall Alert'}
+                                          </Typography>
+                                          <Typography variant="body2" color={entry.blocked ? 'error.main' : 'warning.main'}>
+                                            {entry.blockReason}
+                                          </Typography>
                                         </>
                                       )}
                                     </Box>

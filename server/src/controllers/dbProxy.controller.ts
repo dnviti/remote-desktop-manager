@@ -108,7 +108,8 @@ export async function getSchema(req: AuthRequest, res: Response, next: NextFunct
   try {
     assertAuthenticated(req);
     const sessionId = req.params.sessionId as string;
-    const schema = await dbSessionService.getSchema(req.user.userId, sessionId);
+    const tenantId = req.user.tenantId as string;
+    const schema = await dbSessionService.getSchema(req.user.userId, sessionId, tenantId);
     res.json(schema);
   } catch (err) {
     next(err);

@@ -144,6 +144,7 @@ export default function DbEditor({
         rows: [],
         rowCount: 0,
         durationMs: 0,
+        truncated: false,
       });
       setError(extractApiError(err, 'Query execution failed'));
     } finally {
@@ -450,6 +451,7 @@ export default function DbEditor({
                 rows={queryResult.rows}
                 rowCount={queryResult.rowCount}
                 durationMs={queryResult.durationMs}
+                truncated={queryResult.truncated}
               />
             )}
 
