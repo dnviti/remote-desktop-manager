@@ -281,7 +281,6 @@ export async function executeQuery(params: {
   );
 
   const executionTimeMs = rawResult.durationMs;
-  const totalDurationMs = Date.now() - startTime;
 
   // --- Data masking ---
   const maskingPolicies = await dataMasking.getActivePolicies(tenantId);
@@ -307,6 +306,8 @@ export async function executeQuery(params: {
     rowsAffected: rawResult.rowCount,
     executionTimeMs,
   });
+
+  const totalDurationMs = Date.now() - startTime;
 
   auditService.log({
     userId,

@@ -270,15 +270,15 @@ export async function runQuery(
       default:
         throw new AppError('Unsupported protocol', 400);
     }
+    result.durationMs = Date.now() - startTime;
   } catch (err) {
     if (err instanceof AppError) throw err;
     const message = err instanceof Error ? err.message : 'Query execution failed';
     throw new AppError(message, 400);
+  } finally {
+    const elapsed = Date.now() - startTime;
+    log.debug?.(`Query executed in ${elapsed}ms for session ${managed.sessionId}`);
   }
-
-  const elapsed = Date.now() - startTime;
-  log.debug?.(`Query executed in ${elapsed}ms for session ${managed.sessionId}`);
-  result.durationMs = elapsed;
   return result;
 }
 
