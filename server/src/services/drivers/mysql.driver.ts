@@ -240,5 +240,6 @@ export async function getRowCount(pool: mysql.Pool, table: string): Promise<Intr
 
 export async function getVersion(pool: mysql.Pool): Promise<IntrospectionResult> {
   const [rows] = await pool.query('SELECT VERSION() AS version');
-  return { supported: true, data: (rows as Record<string, unknown>[])[0] };
+  const arr = rows as Record<string, unknown>[];
+  return { supported: true, data: arr[0] ?? { version: 'Unknown' } };
 }

@@ -959,6 +959,7 @@ export default function DbEditor({
                 quickSuggestions: true,
                 tabSize: 2,
                 renderLineHighlight: 'line',
+                fixedOverflowWidgets: true,
                 scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
                 padding: { top: 8, bottom: 8 },
                 placeholder: 'Enter SQL query here... (Ctrl+Enter to execute)',
