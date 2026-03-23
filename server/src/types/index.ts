@@ -132,14 +132,26 @@ export interface VncSettings {
 }
 
 export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2';
+export type OracleConnectionType = 'basic' | 'tns' | 'custom';
+export type OracleRole = 'normal' | 'sysdba' | 'sysoper' | 'sysasm' | 'sysbackup' | 'sysdg' | 'syskm' | 'sysrac';
 
 export interface DbSettings {
   protocol: DbProtocol;
   databaseName?: string;
-  /** Oracle: SID for the target instance (mutually exclusive with serviceName). */
+  /** Oracle: connection mode (defaults to 'basic' for backward compat). */
+  oracleConnectionType?: OracleConnectionType;
+  /** Oracle Basic: SID for the target instance (mutually exclusive with serviceName). */
   oracleSid?: string;
-  /** Oracle: Service name for the target instance. */
+  /** Oracle Basic: Service name for the target instance. */
   oracleServiceName?: string;
+  /** Oracle: privilege role for the connection. */
+  oracleRole?: OracleRole;
+  /** Oracle TNS: alias name resolved via TNS_ADMIN / tnsnames.ora. */
+  oracleTnsAlias?: string;
+  /** Oracle TNS: full TNS descriptor string. */
+  oracleTnsDescriptor?: string;
+  /** Oracle Custom: raw connect string passed directly to the driver. */
+  oracleConnectString?: string;
   /** MSSQL: Named instance (e.g. "SQLEXPRESS"). */
   mssqlInstanceName?: string;
   /** MSSQL: Authentication mode — "sql" for SQL auth, "windows" for NTLM/Kerberos. */

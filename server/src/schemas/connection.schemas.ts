@@ -4,10 +4,18 @@ import { sshTerminalConfigSchema, rdpSettingsSchema, vncSettingsSchema, dlpPolic
 const dbSettingsSchema = z.object({
   protocol: z.enum(['postgresql', 'mysql', 'mongodb', 'oracle', 'mssql', 'db2']),
   databaseName: z.string().max(255).optional(),
+  // Oracle
+  oracleConnectionType: z.enum(['basic', 'tns', 'custom']).optional(),
   oracleSid: z.string().max(255).optional(),
   oracleServiceName: z.string().max(255).optional(),
+  oracleRole: z.enum(['normal', 'sysdba', 'sysoper', 'sysasm', 'sysbackup', 'sysdg', 'syskm', 'sysrac']).optional(),
+  oracleTnsAlias: z.string().max(255).optional(),
+  oracleTnsDescriptor: z.string().max(4000).optional(),
+  oracleConnectString: z.string().max(4000).optional(),
+  // MSSQL
   mssqlInstanceName: z.string().max(255).optional(),
   mssqlAuthMode: z.enum(['sql', 'windows']).optional(),
+  // DB2
   db2DatabaseAlias: z.string().max(255).optional(),
 }).optional();
 

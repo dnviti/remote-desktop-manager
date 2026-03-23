@@ -6,7 +6,7 @@ import {
   ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import { ExpandMore as ExpandMoreIcon, Keyboard, VpnKey, Cloud as CloudIcon } from '@mui/icons-material';
-import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy, DbSettings, DbProtocol } from '../../api/connections.api';
+import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy, DbSettings, DbProtocol, OracleConnectionType, OracleRole } from '../../api/connections.api';
 import { useConnectionsStore } from '../../store/connectionsStore';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
 import { mergeTerminalConfig } from '../../constants/terminalThemes';
@@ -593,7 +593,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                       label="Database Protocol"
                       onChange={(e) => {
                         const proto = e.target.value as DbProtocol;
-                        setDbSettings({ protocol: proto });
+                        setDbSettings({ protocol: proto, ...(proto === 'oracle' ? { oracleConnectionType: 'basic' as OracleConnectionType } : {}) });
                         const protoPorts: Record<string, string> = { postgresql: '5432', mysql: '3306', mongodb: '27017', oracle: '1521', mssql: '1433', db2: '50000' };
                         setPort(protoPorts[proto] ?? '5432');
                       }}
@@ -615,22 +615,126 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                   />
                   {dbSettings.protocol === 'oracle' && (
                     <>
-                      <TextField
-                        label="Oracle SID (optional)"
-                        value={dbSettings.oracleSid ?? ''}
-                        onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleSid: e.target.value || undefined, oracleServiceName: e.target.value ? undefined : prev.oracleServiceName }))}
+                      {/* Connection type toggle: Basic | TNS | Custom */}
+                      <ToggleButtonGroup
+                        value={dbSettings.oracleConnectionType ?? 'basic'}
+                        exclusive
+                        size="small"
+                        onChange={(_e, val) => {
+                          if (!val) return;
+                          setDbSettings((prev) => ({
+                            protocol: 'oracle' as DbProtocol,
+                            databaseName: prev.databaseName,
+                            oracleConnectionType: val as OracleConnectionType,
+                            oracleRole: prev.oracleRole,
+                            // Keep only fields relevant to the selected mode
+                            ...(val === 'basic' ? { oracleSid: prev.oracleSid, oracleServiceName: prev.oracleServiceName } : {}),
+                            ...(val === 'tns' ? { oracleTnsAlias: prev.oracleTnsAlias, oracleTnsDescriptor: prev.oracleTnsDescriptor } : {}),
+                            ...(val === 'custom' ? { oracleConnectString: prev.oracleConnectString } : {}),
+                          }));
+                        }}
                         fullWidth
-                        placeholder="e.g. ORCL"
-                        helperText="Mutually exclusive with Service Name"
-                      />
-                      <TextField
-                        label="Oracle Service Name (optional)"
-                        value={dbSettings.oracleServiceName ?? ''}
-                        onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleServiceName: e.target.value || undefined, oracleSid: e.target.value ? undefined : prev.oracleSid }))}
-                        fullWidth
-                        placeholder="e.g. orcl.example.com"
-                        helperText="Mutually exclusive with SID"
-                      />
+                      >
+                        <ToggleButton value="basic">Basic</ToggleButton>
+                        <ToggleButton value="tns">TNS</ToggleButton>
+                        <ToggleButton value="custom">Custom</ToggleButton>
+                      </ToggleButtonGroup>
+
+                      {/* Basic mode */}
+                      {(dbSettings.oracleConnectionType ?? 'basic') === 'basic' && (
+                        <Box sx={{ display: 'flex', gap: 1.5 }}>
+                          <FormControl sx={{ minWidth: 160 }}>
+                            <InputLabel>Identifier Type</InputLabel>
+                            <Select
+                              value={dbSettings.oracleSid ? 'sid' : 'service'}
+                              label="Identifier Type"
+                              onChange={(e) => {
+                                if (e.target.value === 'sid') {
+                                  setDbSettings((prev) => ({ ...prev, oracleSid: prev.oracleServiceName || prev.oracleSid || '', oracleServiceName: undefined }));
+                                } else {
+                                  setDbSettings((prev) => ({ ...prev, oracleServiceName: prev.oracleSid || prev.oracleServiceName || '', oracleSid: undefined }));
+                                }
+                              }}
+                            >
+                              <MenuItem value="service">Service Name</MenuItem>
+                              <MenuItem value="sid">SID</MenuItem>
+                            </Select>
+                          </FormControl>
+                          <TextField
+                            label={dbSettings.oracleSid !== undefined ? 'SID' : 'Service Name'}
+                            value={dbSettings.oracleSid ?? dbSettings.oracleServiceName ?? ''}
+                            onChange={(e) => {
+                              const val = e.target.value || undefined;
+                              if (dbSettings.oracleSid !== undefined) {
+                                setDbSettings((prev) => ({ ...prev, oracleSid: val }));
+                              } else {
+                                setDbSettings((prev) => ({ ...prev, oracleServiceName: val }));
+                              }
+                            }}
+                            fullWidth
+                            placeholder={dbSettings.oracleSid !== undefined ? 'e.g. ORCL' : 'e.g. FREEPDB1'}
+                          />
+                        </Box>
+                      )}
+
+                      {/* TNS mode */}
+                      {dbSettings.oracleConnectionType === 'tns' && (
+                        <>
+                          <TextField
+                            label="TNS Alias"
+                            value={dbSettings.oracleTnsAlias ?? ''}
+                            onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleTnsAlias: e.target.value || undefined }))}
+                            fullWidth
+                            placeholder="e.g. MYDB"
+                            helperText="Alias from tnsnames.ora (resolved via TNS_ADMIN)"
+                          />
+                          <TextField
+                            label="TNS Descriptor"
+                            value={dbSettings.oracleTnsDescriptor ?? ''}
+                            onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleTnsDescriptor: e.target.value || undefined }))}
+                            fullWidth
+                            multiline
+                            minRows={2}
+                            maxRows={6}
+                            placeholder="(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=...))(CONNECT_DATA=(SERVICE_NAME=...)))"
+                            helperText="Full TNS descriptor (overrides alias if both provided)"
+                          />
+                        </>
+                      )}
+
+                      {/* Custom mode */}
+                      {dbSettings.oracleConnectionType === 'custom' && (
+                        <TextField
+                          label="Connect String"
+                          value={dbSettings.oracleConnectString ?? ''}
+                          onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleConnectString: e.target.value || undefined }))}
+                          fullWidth
+                          multiline
+                          minRows={2}
+                          maxRows={6}
+                          placeholder="host:port/service_name or full TNS descriptor"
+                          helperText="Raw connect string passed directly to the Oracle driver"
+                        />
+                      )}
+
+                      {/* Oracle Role (all modes) */}
+                      <FormControl fullWidth>
+                        <InputLabel>Role</InputLabel>
+                        <Select
+                          value={dbSettings.oracleRole ?? 'normal'}
+                          label="Role"
+                          onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleRole: (e.target.value === 'normal' ? undefined : e.target.value) as OracleRole | undefined }))}
+                        >
+                          <MenuItem value="normal">Normal</MenuItem>
+                          <MenuItem value="sysdba">SYSDBA</MenuItem>
+                          <MenuItem value="sysoper">SYSOPER</MenuItem>
+                          <MenuItem value="sysasm">SYSASM</MenuItem>
+                          <MenuItem value="sysbackup">SYSBACKUP</MenuItem>
+                          <MenuItem value="sysdg">SYSDG</MenuItem>
+                          <MenuItem value="syskm">SYSKM</MenuItem>
+                          <MenuItem value="sysrac">SYSRAC</MenuItem>
+                        </Select>
+                      </FormControl>
                     </>
                   )}
                   {dbSettings.protocol === 'mssql' && (

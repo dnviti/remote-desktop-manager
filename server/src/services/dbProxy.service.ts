@@ -157,6 +157,17 @@ export async function createDbProxySession(params: {
       username,
       resolvedHost: proxyHost,
       resolvedPort: proxyPort,
+      // Propagate DB-specific settings so pool creation can reconstruct DbSettings
+      ...(dbSettings.oracleConnectionType && { oracleConnectionType: dbSettings.oracleConnectionType }),
+      ...(dbSettings.oracleSid && { oracleSid: dbSettings.oracleSid }),
+      ...(dbSettings.oracleServiceName && { oracleServiceName: dbSettings.oracleServiceName }),
+      ...(dbSettings.oracleRole && { oracleRole: dbSettings.oracleRole }),
+      ...(dbSettings.oracleTnsAlias && { oracleTnsAlias: dbSettings.oracleTnsAlias }),
+      ...(dbSettings.oracleTnsDescriptor && { oracleTnsDescriptor: dbSettings.oracleTnsDescriptor }),
+      ...(dbSettings.oracleConnectString && { oracleConnectString: dbSettings.oracleConnectString }),
+      ...(dbSettings.mssqlInstanceName && { mssqlInstanceName: dbSettings.mssqlInstanceName }),
+      ...(dbSettings.mssqlAuthMode && { mssqlAuthMode: dbSettings.mssqlAuthMode }),
+      ...(dbSettings.db2DatabaseAlias && { db2DatabaseAlias: dbSettings.db2DatabaseAlias }),
     },
     routingDecision,
   });

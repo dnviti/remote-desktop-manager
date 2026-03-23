@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Box,
   Typography,
@@ -10,6 +10,9 @@ import {
   IconButton,
   Tooltip,
   Divider,
+  Menu,
+  MenuItem,
+  ListItemIcon as MenuItemIcon,
 } from '@mui/material';
 import {
   TableChart as TableIcon,
@@ -19,8 +22,21 @@ import {
   ExpandMore,
   Refresh as RefreshIcon,
   ChevronLeft as CollapseIcon,
+  PlayArrow as SelectIcon,
+  ViewList as SelectAllIcon,
+  Functions as CountIcon,
+  Add as InsertIcon,
+  Edit as UpdateIcon,
+  DeleteOutline as DeleteIcon,
+  LayersClear as DropIcon,
+  ContentCopy as CopyIcon,
+  FilterList as WhereIcon,
+  Sort as OrderIcon,
+  GroupWork as GroupIcon,
 } from '@mui/icons-material';
-import type { DbTableInfo } from '../../api/database.api';
+import type { DbTableInfo, DbColumnInfo } from '../../api/database.api';
+
+type DbProtocolHint = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2' | string;
 
 interface DbSchemaBrowserProps {
   tables: DbTableInfo[];
@@ -28,7 +44,36 @@ interface DbSchemaBrowserProps {
   onClose: () => void;
   onRefresh: () => void;
   onTableClick?: (tableName: string, schemaName: string) => void;
+  onInsertSql?: (sql: string) => void;
+  dbProtocol?: DbProtocolHint;
   loading?: boolean;
+}
+
+interface MenuState {
+  anchor: HTMLElement;
+  table: DbTableInfo;
+  column?: DbColumnInfo;
+  schema: string;
+}
+
+function qualifiedName(schema: string, table: string): string {
+  return (schema === 'public' || schema === 'dbo') ? table : `${schema}.${table}`;
+}
+
+function copyToClipboard(text: string) {
+  try { navigator?.clipboard?.writeText(text); } catch { /* ignore */ }
+}
+
+/** Protocol-aware row limit clause. */
+function rowLimit(protocol: DbProtocolHint | undefined, n = 100): string {
+  switch (protocol) {
+    case 'oracle':
+      return `FETCH FIRST ${n} ROWS ONLY`;
+    case 'mssql':
+      return `-- TOP ${n} (add to SELECT)`;
+    default:
+      return `LIMIT ${n}`;
+  }
 }
 
 export default function DbSchemaBrowser({
@@ -37,9 +82,30 @@ export default function DbSchemaBrowser({
   onClose,
   onRefresh,
   onTableClick,
+  onInsertSql,
+  dbProtocol,
   loading = false,
 }: DbSchemaBrowserProps) {
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
+  const [menu, setMenu] = useState<MenuState | null>(null);
+
+  const closeMenu = useCallback(() => setMenu(null), []);
+
+  const insertSql = useCallback((sql: string) => {
+    onInsertSql?.(sql);
+    setMenu(null);
+  }, [onInsertSql]);
+
+  const handleContextMenu = useCallback((
+    e: React.MouseEvent<HTMLElement>,
+    table: DbTableInfo,
+    schema: string,
+    column?: DbColumnInfo,
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setMenu({ anchor: e.currentTarget, table, schema, column });
+  }, []);
 
   if (!open) return null;
 
@@ -54,6 +120,15 @@ export default function DbSchemaBrowser({
     acc[schema].push(table);
     return acc;
   }, {});
+
+  // --- Context menu SQL generators ---
+  const qn = menu ? qualifiedName(menu.schema, menu.table.name) : '';
+  const cols = menu?.table.columns ?? [];
+  const colNames = cols.map((c) => c.name).join(', ');
+  const colPlaceholders = cols.map(() => '?').join(', ');
+  const colSetters = cols.map((c) => `${c.name} = ?`).join(', ');
+  const limit = rowLimit(dbProtocol);
+  const selectPrefix = dbProtocol === 'mssql' ? 'SELECT TOP 100' : 'SELECT';
 
   return (
     <Box
@@ -127,6 +202,7 @@ export default function DbSchemaBrowser({
                     <ListItemButton
                       onClick={() => toggleTable(tableKey)}
                       onDoubleClick={() => onTableClick?.(table.name, schemaName)}
+                      onContextMenu={(e) => handleContextMenu(e, table, schemaName)}
                       sx={{ py: 0.25, pl: 2 }}
                     >
                       <ListItemIcon sx={{ minWidth: 28 }}>
@@ -150,7 +226,11 @@ export default function DbSchemaBrowser({
                     <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                       <List dense disablePadding>
                         {table.columns.map((col) => (
-                          <ListItemButton key={col.name} sx={{ py: 0, pl: 5 }}>
+                          <ListItemButton
+                            key={col.name}
+                            sx={{ py: 0, pl: 5 }}
+                            onContextMenu={(e) => handleContextMenu(e, table, schemaName, col)}
+                          >
                             <ListItemIcon sx={{ minWidth: 24 }}>
                               {col.isPrimaryKey ? (
                                 <KeyIcon sx={{ fontSize: 12, color: 'warning.main' }} />
@@ -181,6 +261,87 @@ export default function DbSchemaBrowser({
           </Box>
         ))}
       </Box>
+
+      {/* Context menu */}
+      <Menu
+        open={Boolean(menu)}
+        anchorEl={menu?.anchor}
+        onClose={closeMenu}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'left' }}
+        slotProps={{ paper: { sx: { minWidth: 220, maxWidth: 320 } } }}
+      >
+        {/* Column-specific options (shown first when a column is right-clicked) */}
+        {menu?.column && [
+          <MenuItem key="copy-col" onClick={() => { copyToClipboard(menu.column!.name); closeMenu(); }}>
+            <MenuItemIcon><CopyIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>Copy column name</ListItemText>
+          </MenuItem>,
+          <MenuItem key="select-distinct" onClick={() => insertSql(`SELECT DISTINCT ${menu.column!.name}\nFROM ${qn};`)}>
+            <MenuItemIcon><SelectIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>SELECT DISTINCT</ListItemText>
+          </MenuItem>,
+          <MenuItem key="where" onClick={() => { copyToClipboard(`WHERE ${menu.column!.name} = ?`); closeMenu(); }}>
+            <MenuItemIcon><WhereIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>Copy WHERE clause</ListItemText>
+          </MenuItem>,
+          <MenuItem key="order-by" onClick={() => { copyToClipboard(`ORDER BY ${menu.column!.name} ASC`); closeMenu(); }}>
+            <MenuItemIcon><OrderIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>Copy ORDER BY</ListItemText>
+          </MenuItem>,
+          <MenuItem key="group-count" onClick={() => insertSql(`SELECT ${menu.column!.name}, COUNT(*)\nFROM ${qn}\nGROUP BY ${menu.column!.name}\nORDER BY COUNT(*) DESC;`)}>
+            <MenuItemIcon><GroupIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>GROUP BY + COUNT</ListItemText>
+          </MenuItem>,
+          <Divider key="col-divider" />,
+        ]}
+
+        {/* Table-level options */}
+        <MenuItem onClick={() => insertSql(`${selectPrefix} *\nFROM ${qn}\n${limit};`)}>
+          <MenuItemIcon><SelectAllIcon fontSize="small" /></MenuItemIcon>
+          <ListItemText>SELECT *</ListItemText>
+        </MenuItem>
+        {cols.length > 0 && (
+          <MenuItem onClick={() => insertSql(`${selectPrefix} ${colNames}\nFROM ${qn}\n${limit};`)}>
+            <MenuItemIcon><SelectIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>SELECT columns</ListItemText>
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => insertSql(`SELECT COUNT(*)\nFROM ${qn};`)}>
+          <MenuItemIcon><CountIcon fontSize="small" /></MenuItemIcon>
+          <ListItemText>COUNT(*)</ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        {cols.length > 0 && (
+          <MenuItem onClick={() => insertSql(`INSERT INTO ${qn} (${colNames})\nVALUES (${colPlaceholders});`)}>
+            <MenuItemIcon><InsertIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>INSERT template</ListItemText>
+          </MenuItem>
+        )}
+        {cols.length > 0 && (
+          <MenuItem onClick={() => insertSql(`UPDATE ${qn}\nSET ${colSetters}\nWHERE ...;`)}>
+            <MenuItemIcon><UpdateIcon fontSize="small" /></MenuItemIcon>
+            <ListItemText>UPDATE template</ListItemText>
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => insertSql(`DELETE FROM ${qn}\nWHERE ...;`)}>
+          <MenuItemIcon><DeleteIcon fontSize="small" /></MenuItemIcon>
+          <ListItemText>DELETE template</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => insertSql(`DROP TABLE ${qn};`)}>
+          <MenuItemIcon><DropIcon fontSize="small" /></MenuItemIcon>
+          <ListItemText>DROP TABLE</ListItemText>
+        </MenuItem>
+
+        <Divider />
+
+        <MenuItem onClick={() => { copyToClipboard(qn); closeMenu(); }}>
+          <MenuItemIcon><CopyIcon fontSize="small" /></MenuItemIcon>
+          <ListItemText>Copy table name</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }

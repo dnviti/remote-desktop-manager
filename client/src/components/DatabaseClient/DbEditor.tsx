@@ -208,10 +208,20 @@ export default function DbEditor({
   // Handle table click from schema browser — insert SELECT query
   const handleTableClick = useCallback((tableName: string, schemaName: string) => {
     const qualifiedName = schemaName === 'public' ? tableName : `${schemaName}.${tableName}`;
+    const limit = protocol === 'oracle' ? 'FETCH FIRST 100 ROWS ONLY'
+      : protocol === 'mssql' ? '-- use SELECT TOP 100'
+      : 'LIMIT 100';
     setSqlValue((prev) => {
       if (prev.trim()) return prev;
-      return `SELECT * FROM ${qualifiedName} LIMIT 100;`;
+      return protocol === 'mssql'
+        ? `SELECT TOP 100 * FROM ${qualifiedName};`
+        : `SELECT * FROM ${qualifiedName}\n${limit};`;
     });
+  }, [protocol]);
+
+  // Handle generated SQL from schema browser context menu
+  const handleInsertSql = useCallback((sql: string) => {
+    setSqlValue((prev) => prev.trim() ? `${prev}\n${sql}` : sql);
   }, []);
 
   const openSaveDialog = useCallback(() => {
@@ -553,6 +563,8 @@ export default function DbEditor({
           onClose={() => setPref('dbSchemaBrowserOpen', false)}
           onRefresh={handleRefreshSchema}
           onTableClick={handleTableClick}
+          onInsertSql={handleInsertSql}
+          dbProtocol={protocol}
           loading={schemaLoading}
         />
 
