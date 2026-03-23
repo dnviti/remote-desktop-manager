@@ -60,6 +60,7 @@ model Tenant {
   tenantVaultMembers TenantVaultMember[]
   syncProfiles       SyncProfile[]
   externalVaultProviders ExternalVaultProvider[]
+  aiConfig           TenantAiConfig?
 }
 
 model Team {
@@ -697,6 +698,7 @@ enum AuditAction {
   KEYSTROKE_POLICY_CREATE
   KEYSTROKE_POLICY_UPDATE
   KEYSTROKE_POLICY_DELETE
+  AI_QUERY_GENERATED
 }
 
 model AuditLog {
@@ -1368,4 +1370,22 @@ model KeystrokePolicy {
 
   @@index([tenantId])
   @@index([tenantId, enabled])
+}
+
+model TenantAiConfig {
+  id                  String   @id @default(uuid())
+  tenantId            String   @unique
+  provider            String   @default("none")
+  encryptedApiKey     String?
+  apiKeyIV            String?
+  apiKeyTag           String?
+  modelId             String   @default("claude-sonnet-4-20250514")
+  baseUrl             String?
+  maxTokensPerRequest Int      @default(4000)
+  dailyRequestLimit   Int      @default(100)
+  enabled             Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }

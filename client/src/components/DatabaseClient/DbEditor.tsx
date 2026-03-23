@@ -7,6 +7,10 @@ import {
   IconButton,
   Tooltip,
   Divider,
+  TextField,
+  Button,
+  Collapse,
+  Paper,
 } from '@mui/material';
 import {
   PlayArrow as RunIcon,
@@ -17,12 +21,14 @@ import {
   Code as FormatIcon,
   PowerSettingsNew as DisconnectIcon,
   Download as ExportIcon,
+  AutoAwesome as AiIcon,
 } from '@mui/icons-material';
 import api from '../../api/client';
 import type { CredentialOverride } from '../../store/tabsStore';
 import type { DbQueryResult, DbTableInfo } from '../../api/database.api';
 import { createDbSession, endDbSession, dbSessionHeartbeat } from '../../api/database.api';
 import { extractApiError } from '../../utils/apiError';
+import { generateQuery as generateAiQuery } from '../../api/aiQuery.api';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
 import DockedToolbar, { ToolbarAction } from '../shared/DockedToolbar';
 import DbConnectionStatus, { DbConnectionState } from './DbConnectionStatus';
@@ -58,7 +64,15 @@ export default function DbEditor({
   const [schemaTables, setSchemaTables] = useState<DbTableInfo[]>([]);
   const [schemaLoading, setSchemaLoading] = useState(false);
 
+  // AI Assistant state
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [aiResult, setAiResult] = useState<{ sql: string; explanation: string; firewallWarning?: string } | null>(null);
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState('');
+  const [showExplanation, setShowExplanation] = useState(false);
+
   const schemaBrowserOpen = useUiPreferencesStore((s) => s.dbSchemaBrowserOpen);
+  const aiPanelOpen = useUiPreferencesStore((s) => s.dbAiPanelOpen);
   const setPref = useUiPreferencesStore((s) => s.set);
 
   // Connect to database session on mount
@@ -260,6 +274,31 @@ export default function DbEditor({
     setConnectionState('disconnected');
   }, []);
 
+  // AI: Generate SQL from prompt
+  const handleAiGenerate = useCallback(async () => {
+    if (!sessionIdRef.current || !aiPrompt.trim() || aiGenerating) return;
+    setAiGenerating(true);
+    setAiError('');
+    setAiResult(null);
+    try {
+      const result = await generateAiQuery(sessionIdRef.current, aiPrompt.trim(), protocol);
+      setAiResult(result);
+    } catch (err) {
+      setAiError(extractApiError(err, 'AI query generation failed'));
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [aiPrompt, aiGenerating, protocol]);
+
+  // AI: Insert generated SQL into editor
+  const handleAiInsert = useCallback(() => {
+    if (!aiResult?.sql) return;
+    setSqlValue((prev) => {
+      if (prev.trim()) return prev + '\n\n' + aiResult.sql;
+      return aiResult.sql;
+    });
+  }, [aiResult]);
+
   // Build toolbar actions
   const toolbarActions: ToolbarAction[] = [
     {
@@ -287,6 +326,13 @@ export default function DbEditor({
         if (newVal) handleRefreshSchema();
       },
       active: schemaBrowserOpen,
+    },
+    {
+      id: 'ai-assistant',
+      icon: <AiIcon />,
+      tooltip: aiPanelOpen ? 'Hide AI assistant' : 'Show AI assistant',
+      onClick: () => setPref('dbAiPanelOpen', !aiPanelOpen),
+      active: aiPanelOpen,
     },
     {
       id: 'export-csv',
@@ -388,6 +434,117 @@ export default function DbEditor({
           {error}
         </Alert>
       )}
+
+      {/* AI Assistant panel */}
+      <Collapse in={aiPanelOpen && connectionState === 'connected'}>
+        <Paper
+          elevation={0}
+          sx={{
+            borderBottom: 1,
+            borderColor: 'divider',
+            p: 1.5,
+            bgcolor: (theme) => theme.palette.mode === 'dark' ? 'rgba(144,202,249,0.04)' : 'rgba(25,118,210,0.02)',
+          }}
+        >
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
+            <AiIcon sx={{ fontSize: 18, color: 'primary.main' }} />
+            <Typography variant="subtitle2" color="primary">
+              AI Assistant
+            </Typography>
+          </Box>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+            <TextField
+              value={aiPrompt}
+              onChange={(e) => setAiPrompt(e.target.value)}
+              placeholder="Describe the query you need in plain English..."
+              size="small"
+              fullWidth
+              multiline
+              maxRows={3}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleAiGenerate();
+                }
+              }}
+              disabled={aiGenerating}
+              sx={{
+                '& .MuiInputBase-root': {
+                  fontSize: '0.875rem',
+                },
+              }}
+            />
+            <Button
+              variant="contained"
+              size="small"
+              onClick={handleAiGenerate}
+              disabled={aiGenerating || !aiPrompt.trim()}
+              sx={{ minWidth: 90, height: 40 }}
+            >
+              {aiGenerating ? <CircularProgress size={18} /> : 'Generate'}
+            </Button>
+          </Box>
+
+          {aiError && (
+            <Alert severity="error" sx={{ mt: 1 }} onClose={() => setAiError('')}>
+              {aiError}
+            </Alert>
+          )}
+
+          {aiResult && (
+            <Box sx={{ mt: 1.5 }}>
+              <Box
+                sx={{
+                  p: 1,
+                  bgcolor: 'background.default',
+                  borderRadius: 1,
+                  border: 1,
+                  borderColor: 'divider',
+                  fontFamily: 'monospace',
+                  fontSize: '0.8125rem',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: 150,
+                  overflow: 'auto',
+                }}
+              >
+                {aiResult.sql}
+              </Box>
+
+              {aiResult.firewallWarning && (
+                <Alert severity="warning" sx={{ mt: 1 }}>
+                  {aiResult.firewallWarning}
+                </Alert>
+              )}
+
+              <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                <Button size="small" variant="outlined" onClick={handleAiInsert}>
+                  Insert into editor
+                </Button>
+                {aiResult.explanation && (
+                  <Button
+                    size="small"
+                    variant="text"
+                    onClick={() => setShowExplanation((v) => !v)}
+                  >
+                    {showExplanation ? 'Hide explanation' : 'Explain'}
+                  </Button>
+                )}
+              </Box>
+
+              <Collapse in={showExplanation && Boolean(aiResult.explanation)}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ mt: 1, pl: 1, borderLeft: 2, borderColor: 'primary.main' }}
+                >
+                  {aiResult.explanation}
+                </Typography>
+              </Collapse>
+            </Box>
+          )}
+        </Paper>
+      </Collapse>
 
       {/* Main content area */}
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden' }}>

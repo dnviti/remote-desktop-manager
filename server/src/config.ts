@@ -267,6 +267,16 @@ export const config = {
     rpName: process.env.WEBAUTHN_RP_NAME || 'Arsenale',
   },
   // SSH Protocol Proxy
+  // AI query generation
+  aiQueryEnabled: process.env.AI_QUERY_GENERATION_ENABLED === 'true',
+  aiQueryProvider: (process.env.AI_QUERY_PROVIDER || 'none') as 'none' | 'anthropic' | 'openai',
+  aiAnthropicApiKey: process.env.AI_ANTHROPIC_API_KEY || '',
+  aiOpenaiApiKey: process.env.AI_OPENAI_API_KEY || '',
+  aiOpenaiBaseUrl: process.env.AI_OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  aiModelVersion: process.env.AI_MODEL_VERSION || '',
+  aiQueryTimeoutMs: parseInt(process.env.AI_QUERY_TIMEOUT_MS || '30000', 10),
+  aiMaxRequestsPerDay: parseInt(process.env.AI_MAX_REQUESTS_PER_DAY || '100', 10),
+  // SSH Protocol Proxy
   sshProxy: {
     enabled: process.env.SSH_PROXY_ENABLED === 'true',
     port: parseInt(process.env.SSH_PROXY_PORT || '2222', 10),

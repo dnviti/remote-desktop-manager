@@ -457,6 +457,16 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   { key: 'LDAP_SYNC_CRON', envVar: 'LDAP_SYNC_CRON', configPath: 'ldap.syncCron', type: 'string', default: '0 */6 * * *', group: 'ldap', label: 'Sync Schedule (cron)', description: 'Cron expression for LDAP synchronization.', minEditRole: 'OWNER' },
   { key: 'LDAP_AUTO_PROVISION', envVar: 'LDAP_AUTO_PROVISION', configPath: 'ldap.autoProvision', type: 'boolean', default: true, group: 'ldap', label: 'Auto Provision Users', description: 'Automatically create users on first LDAP login.', minEditRole: 'OWNER' },
   { key: 'LDAP_DEFAULT_TENANT_ID', envVar: 'LDAP_DEFAULT_TENANT_ID', configPath: 'ldap.defaultTenantId', type: 'string', default: '', group: 'ldap', label: 'Default Tenant ID', description: 'Tenant to assign auto-provisioned LDAP users to.', minEditRole: 'OWNER' },
+
+  // ── AI Query Generation ─────────────────────────────────────────────────
+  { key: 'AI_QUERY_GENERATION_ENABLED', envVar: 'AI_QUERY_GENERATION_ENABLED', configPath: 'aiQueryEnabled', type: 'boolean', default: false, group: 'ai-query-generation', label: 'AI Query Generation', description: 'Enable AI-powered natural-language-to-SQL query generation.', minEditRole: 'OWNER' },
+  { key: 'AI_QUERY_PROVIDER', envVar: 'AI_QUERY_PROVIDER', configPath: 'aiQueryProvider', type: 'select', default: 'none', options: ['none', 'anthropic', 'openai'], group: 'ai-query-generation', label: 'AI Provider', description: 'External AI provider for query generation.', minEditRole: 'OWNER' },
+  { key: 'AI_ANTHROPIC_API_KEY', envVar: 'AI_ANTHROPIC_API_KEY', configPath: 'aiAnthropicApiKey', type: 'string', default: '', group: 'ai-query-generation', label: 'Anthropic API Key', description: 'API key for Anthropic Claude models.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'AI_OPENAI_API_KEY', envVar: 'AI_OPENAI_API_KEY', configPath: 'aiOpenaiApiKey', type: 'string', default: '', group: 'ai-query-generation', label: 'OpenAI API Key', description: 'API key for OpenAI or OpenAI-compatible APIs.', minEditRole: 'OWNER', sensitive: true },
+  { key: 'AI_OPENAI_BASE_URL', envVar: 'AI_OPENAI_BASE_URL', configPath: 'aiOpenaiBaseUrl', type: 'string', default: 'https://api.openai.com/v1', group: 'ai-query-generation', label: 'OpenAI Base URL', description: 'Base URL for OpenAI-compatible API endpoint.', minEditRole: 'OWNER' },
+  { key: 'AI_MODEL_VERSION', envVar: 'AI_MODEL_VERSION', configPath: 'aiModelVersion', type: 'string', default: '', group: 'ai-query-generation', label: 'Model Version', description: 'Override the default model (e.g., claude-sonnet-4-20250514, gpt-4o). Leave empty for provider default.', minEditRole: 'OWNER' },
+  { key: 'AI_QUERY_TIMEOUT_MS', envVar: 'AI_QUERY_TIMEOUT_MS', configPath: 'aiQueryTimeoutMs', type: 'number', default: 30000, group: 'ai-query-generation', label: 'Query Timeout (ms)', description: 'Timeout for AI query generation requests.', minEditRole: 'OWNER' },
+  { key: 'AI_MAX_REQUESTS_PER_DAY', envVar: 'AI_MAX_REQUESTS_PER_DAY', configPath: 'aiMaxRequestsPerDay', type: 'number', default: 100, group: 'ai-query-generation', label: 'Max Requests Per Day', description: 'Maximum AI query generation requests per tenant per day.', minEditRole: 'OWNER' },
 ];
 
 // Group metadata for UI display ordering and labels
@@ -483,6 +493,7 @@ export const SETTING_GROUPS: { key: string; label: string; order: number }[] = [
   { key: 'oauth-saml', label: 'OAuth: SAML', order: 19 },
   { key: 'rate-limiting-advanced', label: 'Rate Limiting: Advanced', order: 20 },
   { key: 'ldap', label: 'LDAP / FreeIPA', order: 21 },
+  { key: 'ai-query-generation', label: 'AI Query Generation', order: 22 },
 ];
 
 // ---------------------------------------------------------------------------

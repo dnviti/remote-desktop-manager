@@ -43,6 +43,7 @@ import passwordRotationRoutes from './routes/passwordRotation.routes';
 import dbTunnelRoutes from './routes/dbTunnel.routes';
 import keystrokePolicyRoutes from './routes/keystrokePolicy.routes';
 import systemSettingsRoutes from './routes/systemSettings.routes';
+import aiQueryRoutes from './routes/aiQuery.routes';
 import setupRoutes from './routes/setup.routes';
 import healthRoutes from './routes/health.routes';
 import { errorHandler } from './middleware/error.middleware';
@@ -150,6 +151,7 @@ app.use('/api/db-audit', dbAuditRoutes);
 app.use('/api/secrets', passwordRotationRoutes);
 app.use('/api/keystroke-policies', keystrokePolicyRoutes);
 app.use('/api/admin/system-settings', systemSettingsRoutes);
+app.use('/api/ai', aiQueryRoutes);
 
 // Health & readiness probes
 app.use('/api', healthRoutes);

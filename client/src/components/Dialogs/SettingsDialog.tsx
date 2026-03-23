@@ -50,6 +50,7 @@ import NativeSshSection from '../Settings/NativeSshSection';
 import RdGatewayConfigSection from '../Settings/RdGatewayConfigSection';
 import DbFirewallSection from '../Settings/DbFirewallSection';
 import DbMaskingSection from '../Settings/DbMaskingSection';
+import AiQueryConfigSection from '../Settings/AiQueryConfigSection';
 import AppearanceSection from '../Settings/AppearanceSection';
 import NotificationPreferencesSection from '../Settings/NotificationPreferencesSection';
 import NotificationsSection from '../Settings/NotificationsSection';
@@ -305,7 +306,12 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           {resolvedTab === 'gateways' && (
             <GatewaySection onNavigateToTab={setActiveTab} />
           )}
-          {resolvedTab === 'integrations' && <SyncProfileSection />}
+          {resolvedTab === 'integrations' && (
+            <Stack spacing={3}>
+              <SyncProfileSection />
+              {isOwner && <AiQueryConfigSection />}
+            </Stack>
+          )}
           {resolvedTab === 'tunnel' && <TunnelConfigSection />}
           {resolvedTab === 'administration' && (
             <Stack spacing={3}>
