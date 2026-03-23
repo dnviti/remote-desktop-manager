@@ -182,6 +182,10 @@ export const config = {
   // Database query execution
   dbQueryTimeoutMs: parseInt(process.env.DB_QUERY_TIMEOUT_MS || '30000', 10),
   dbQueryMaxRows: parseInt(process.env.DB_QUERY_MAX_ROWS || '10000', 10),
+  // Database query rate limiting (token bucket)
+  dbRateLimitDefaultWindowMs: parseInt(process.env.DB_RATE_LIMIT_DEFAULT_WINDOW_MS || '60000', 10),
+  dbRateLimitDefaultMaxQueries: parseInt(process.env.DB_RATE_LIMIT_DEFAULT_MAX_QUERIES || '100', 10),
+  dbRateLimitCleanupIntervalMs: parseInt(process.env.DB_RATE_LIMIT_CLEANUP_INTERVAL_MS || '300000', 10),
   dbPoolMaxConnections: parseInt(process.env.DB_POOL_MAX_CONNECTIONS || '3', 10),
   dbPoolIdleTimeoutMs: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '60000', 10),
   // Container orchestrator
