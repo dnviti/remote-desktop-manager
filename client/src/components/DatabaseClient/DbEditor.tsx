@@ -961,7 +961,7 @@ export default function DbEditor({
                 renderLineHighlight: 'line',
                 scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
                 padding: { top: 8, bottom: 8 },
-
+                placeholder: 'Enter SQL query here... (Ctrl+Enter to execute)',
               }}
               loading={
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
