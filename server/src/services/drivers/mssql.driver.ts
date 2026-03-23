@@ -11,11 +11,14 @@ export async function createPool(
   host: string, port: number, username: string, password: string,
   databaseName: string | undefined, dbSettings: DbSettings | undefined,
   sessionConfig?: DbSessionConfig,
+  domain?: string,
 ): Promise<DriverPool> {
   // For MSSQL, activeDatabase can switch the pool-level database or be applied via USE
   const effectiveDb = sessionConfig?.activeDatabase || databaseName;
   const mssqlConfig: mssql.config = {
     server: host, port, user: username, password, database: effectiveDb,
+    // Windows/NTLM auth requires the domain; SQL auth (default) uses user/password only
+    ...(dbSettings?.mssqlAuthMode === 'windows' && domain ? { domain } : {}),
     pool: { max: config.dbPoolMaxConnections, idleTimeoutMillis: config.dbPoolIdleTimeoutMs },
     options: {
       encrypt: false,
@@ -33,8 +36,10 @@ export async function createPool(
 
 function buildSessionInitSql(sc: DbSessionConfig): string[] {
   const stmts: string[] = [];
-  // Note: activeDatabase is handled at pool level for MSSQL
-  if (sc.searchPath) stmts.push(`SET SCHEMA '${sc.searchPath.replace(/'/g, "''")}'`);
+  // Note: activeDatabase is handled at pool level for MSSQL.
+  // MSSQL does not support SET SCHEMA; default schema is set per-user via
+  // ALTER USER, which requires elevated permissions. Use fully-qualified
+  // [schema].[object] names instead. searchPath is intentionally skipped.
   if (sc.initCommands) {
     for (const cmd of sc.initCommands) stmts.push(cmd);
   }
@@ -257,7 +262,7 @@ export async function getIndexes(pool: mssql.ConnectionPool, table: string): Pro
       GROUP BY i.name, i.type_desc, i.is_unique, i.is_primary_key
       ORDER BY i.name
     `);
-  return { supported: true, data: result.recordset };
+  return { supported: true, data: result.recordset ?? [] };
 }
 
 export async function getStatistics(pool: mssql.ConnectionPool, target: string): Promise<IntrospectionResult> {
@@ -274,7 +279,7 @@ export async function getStatistics(pool: mssql.ConnectionPool, target: string):
       WHERE s.object_id = OBJECT_ID(@table)
       ORDER BY s.name
     `);
-  return { supported: true, data: result.recordset };
+  return { supported: true, data: result.recordset ?? [] };
 }
 
 export async function getForeignKeys(pool: mssql.ConnectionPool, table: string): Promise<IntrospectionResult> {
@@ -290,20 +295,24 @@ export async function getForeignKeys(pool: mssql.ConnectionPool, table: string):
       WHERE fk.parent_object_id = OBJECT_ID(@table)
       ORDER BY fk.name
     `);
-  return { supported: true, data: result.recordset };
+  return { supported: true, data: result.recordset ?? [] };
 }
 
 export async function getTableSchema(pool: mssql.ConnectionPool, table: string): Promise<IntrospectionResult> {
-  const result = await pool.request()
-    .input('table', mssql.VarChar, table)
-    .query(`
+  // Support schema-qualified names (e.g. "dbo.Users") to avoid cross-schema ambiguity
+  const parts = table.includes('.') ? table.split('.', 2) : [null, table];
+  const schema = parts.length === 2 ? parts[0] : null;
+  const tableName = parts.length === 2 ? parts[1]! : parts[0]!;
+  const req = pool.request().input('table', mssql.VarChar, tableName);
+  if (schema) req.input('schema', mssql.VarChar, schema);
+  const result = await req.query(`
       SELECT COLUMN_NAME, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH,
              COLUMN_DEFAULT, IS_NULLABLE
       FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_NAME = @table
+      WHERE TABLE_NAME = @table${schema ? ' AND TABLE_SCHEMA = @schema' : ''}
       ORDER BY ORDINAL_POSITION
     `);
-  return { supported: true, data: result.recordset };
+  return { supported: true, data: result.recordset ?? [] };
 }
 
 export async function getRowCount(pool: mssql.ConnectionPool, table: string): Promise<IntrospectionResult> {
@@ -313,12 +322,12 @@ export async function getRowCount(pool: mssql.ConnectionPool, table: string): Pr
       SELECT SUM(p.rows) AS approximate_count
       FROM sys.partitions p
       JOIN sys.tables t ON p.object_id = t.object_id
-      WHERE t.name = @table AND p.index_id IN (0, 1)
+      WHERE t.object_id = OBJECT_ID(@table) AND p.index_id IN (0, 1)
     `);
-  return { supported: true, data: result.recordset[0] ?? { approximate_count: 0 } };
+  return { supported: true, data: result.recordset?.[0] ?? { approximate_count: 0 } };
 }
 
 export async function getVersion(pool: mssql.ConnectionPool): Promise<IntrospectionResult> {
   const result = await pool.request().query('SELECT @@VERSION AS version');
-  return { supported: true, data: result.recordset[0] };
+  return { supported: true, data: result.recordset?.[0] ?? { version: 'Unknown' } };
 }

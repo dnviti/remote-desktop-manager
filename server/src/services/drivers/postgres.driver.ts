@@ -296,5 +296,5 @@ export async function getRowCount(pool: pg.Pool, table: string): Promise<Introsp
 
 export async function getVersion(pool: pg.Pool): Promise<IntrospectionResult> {
   const result = await pool.query('SELECT version() AS version');
-  return { supported: true, data: result.rows[0] };
+  return { supported: true, data: result.rows[0] ?? { version: 'Unknown' } };
 }

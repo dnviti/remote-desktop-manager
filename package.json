@@ -64,6 +64,9 @@
     "@hono/node-server": "1.19.11",
     "lodash": "4.17.23",
     "tar-fs": ">=2.1.4",
+    "targz": {
+      "tar-fs": "1.16.6"
+    },
     "tar-stream": ">=2.2.0",
     "serialize-javascript": ">=7.0.3",
     "dompurify": "$dompurify"

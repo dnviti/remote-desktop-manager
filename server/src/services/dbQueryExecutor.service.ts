@@ -48,6 +48,7 @@ async function createDriverPool(
   databaseName: string | undefined,
   dbSettings: DbSettings | undefined,
   sessionConfig?: DbSessionConfig,
+  domain?: string,
 ): Promise<DriverPool> {
   switch (protocol) {
     case 'postgresql':
@@ -57,7 +58,7 @@ async function createDriverPool(
     case 'mongodb':
       return mongodb.createPool(host, port, username, password, databaseName, dbSettings);
     case 'mssql':
-      return mssqlDriver.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
+      return mssqlDriver.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig, domain);
     case 'oracle':
       return oracle.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
     case 'db2':
@@ -103,6 +104,7 @@ export async function getOrCreatePool(params: PoolParams): Promise<ManagedPool> 
     effectiveDb,
     dbSettings,
     sessionConfig,
+    creds.domain,
   );
 
   const managed: ManagedPool = {
