@@ -1,22 +1,50 @@
 import pg from 'pg';
 import { config } from '../../config';
-import type { DbSettings } from '../../types';
-import type { QueryResult, SchemaInfo, TableInfo } from '../dbSession.service';
+import type { DbSettings, DbSessionConfig } from '../../types';
+import type { QueryResult, SchemaInfo, TableInfo, ViewInfo, RoutineInfo, TriggerInfo, SequenceInfo, DbTypeInfo } from '../dbSession.service';
 import type { DriverPool, ExplainResult, IntrospectionResult } from './types';
 
 export async function createPool(
   host: string, port: number, username: string, password: string,
   databaseName: string | undefined, _dbSettings: DbSettings | undefined,
+  sessionConfig?: DbSessionConfig,
 ): Promise<DriverPool> {
+  // If sessionConfig.activeDatabase is set, override the pool-level database
+  const effectiveDb = sessionConfig?.activeDatabase || databaseName;
   const pool = new pg.Pool({
-    host, port, user: username, password, database: databaseName,
+    host, port, user: username, password, database: effectiveDb,
     max: config.dbPoolMaxConnections,
     idleTimeoutMillis: config.dbPoolIdleTimeoutMs,
     statement_timeout: config.dbQueryTimeoutMs,
   });
+
+  // Apply session config to every new connection via pool event
+  if (sessionConfig) {
+    const initSql = buildSessionInitSql(sessionConfig);
+    if (initSql.length > 0) {
+      pool.on('connect', (client: pg.PoolClient) => {
+        for (const stmt of initSql) {
+          // Fire-and-forget — errors here will surface on the next user query
+          client.query(stmt).catch(() => {});
+        }
+      });
+    }
+  }
+
   const client = await pool.connect();
   client.release();
   return { type: 'postgresql', pool };
+}
+
+function buildSessionInitSql(sc: DbSessionConfig): string[] {
+  const stmts: string[] = [];
+  if (sc.timezone) stmts.push(`SET timezone TO '${sc.timezone.replace(/'/g, "''")}'`);
+  if (sc.searchPath) stmts.push(`SET search_path TO ${sc.searchPath}`);
+  if (sc.encoding) stmts.push(`SET client_encoding TO '${sc.encoding.replace(/'/g, "''")}'`);
+  if (sc.initCommands) {
+    for (const cmd of sc.initCommands) stmts.push(cmd);
+  }
+  return stmts;
 }
 
 export async function runQuery(pool: pg.Pool, sql: string, maxRows: number): Promise<QueryResult> {
@@ -81,7 +109,107 @@ export async function fetchSchema(pool: pg.Pool): Promise<SchemaInfo> {
       })),
     });
   }
-  return { tables };
+
+  // --- Views (regular + materialized) ---
+  const views: ViewInfo[] = [];
+  try {
+    const viewsResult = await pool.query(`
+      SELECT schemaname AS schema, viewname AS name, false AS materialized
+      FROM pg_catalog.pg_views
+      WHERE schemaname NOT IN ('pg_catalog','information_schema')
+      UNION ALL
+      SELECT schemaname AS schema, matviewname AS name, true AS materialized
+      FROM pg_catalog.pg_matviews
+      WHERE schemaname NOT IN ('pg_catalog','information_schema')
+      ORDER BY schema, name
+    `);
+    for (const r of viewsResult.rows as { schema: string; name: string; materialized: boolean }[]) {
+      views.push({ name: r.name, schema: r.schema, materialized: r.materialized });
+    }
+  } catch { /* best-effort */ }
+
+  // --- Functions (prokind='f') ---
+  const functions: RoutineInfo[] = [];
+  try {
+    const fnResult = await pool.query(`
+      SELECT n.nspname AS schema, p.proname AS name,
+             pg_get_function_result(p.oid) AS return_type
+      FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE p.prokind = 'f'
+        AND n.nspname NOT IN ('pg_catalog','information_schema')
+      ORDER BY n.nspname, p.proname
+    `);
+    for (const r of fnResult.rows as { schema: string; name: string; return_type: string }[]) {
+      functions.push({ name: r.name, schema: r.schema, returnType: r.return_type });
+    }
+  } catch { /* best-effort */ }
+
+  // --- Procedures (prokind='p') ---
+  const procedures: RoutineInfo[] = [];
+  try {
+    const procResult = await pool.query(`
+      SELECT n.nspname AS schema, p.proname AS name
+      FROM pg_proc p JOIN pg_namespace n ON p.pronamespace = n.oid
+      WHERE p.prokind = 'p'
+        AND n.nspname NOT IN ('pg_catalog','information_schema')
+      ORDER BY n.nspname, p.proname
+    `);
+    for (const r of procResult.rows as { schema: string; name: string }[]) {
+      procedures.push({ name: r.name, schema: r.schema });
+    }
+  } catch { /* best-effort */ }
+
+  // --- Triggers ---
+  const triggers: TriggerInfo[] = [];
+  try {
+    const trigResult = await pool.query(`
+      SELECT trigger_schema AS schema, trigger_name AS name,
+             event_object_table AS table_name,
+             action_timing AS timing,
+             string_agg(DISTINCT event_manipulation, ',') AS event
+      FROM information_schema.triggers
+      WHERE trigger_schema NOT IN ('pg_catalog','information_schema')
+      GROUP BY trigger_schema, trigger_name, event_object_table, action_timing
+      ORDER BY trigger_schema, trigger_name
+    `);
+    for (const r of trigResult.rows as { schema: string; name: string; table_name: string; timing: string; event: string }[]) {
+      triggers.push({ name: r.name, schema: r.schema, tableName: r.table_name, timing: r.timing, event: r.event });
+    }
+  } catch { /* best-effort */ }
+
+  // --- Sequences ---
+  const sequences: SequenceInfo[] = [];
+  try {
+    const seqResult = await pool.query(`
+      SELECT schemaname AS schema, sequencename AS name
+      FROM pg_catalog.pg_sequences
+      WHERE schemaname NOT IN ('pg_catalog','information_schema')
+      ORDER BY schemaname, sequencename
+    `);
+    for (const r of seqResult.rows as { schema: string; name: string }[]) {
+      sequences.push({ name: r.name, schema: r.schema });
+    }
+  } catch { /* best-effort */ }
+
+  // --- Types (enums, composites, domains, ranges) ---
+  const types: DbTypeInfo[] = [];
+  try {
+    const typResult = await pool.query(`
+      SELECT n.nspname AS schema, t.typname AS name,
+        CASE t.typtype WHEN 'e' THEN 'enum' WHEN 'c' THEN 'composite'
+          WHEN 'd' THEN 'domain' WHEN 'r' THEN 'range' ELSE 'other' END AS kind
+      FROM pg_type t JOIN pg_namespace n ON t.typnamespace = n.oid
+      WHERE t.typtype IN ('e','c','d','r')
+        AND n.nspname NOT IN ('pg_catalog','information_schema')
+        AND t.typname NOT LIKE '\\_%'
+      ORDER BY n.nspname, t.typname
+    `);
+    for (const r of typResult.rows as { schema: string; name: string; kind: string }[]) {
+      types.push({ name: r.name, schema: r.schema, kind: r.kind });
+    }
+  } catch { /* best-effort */ }
+
+  return { tables, views, functions, procedures, triggers, sequences, types };
 }
 
 export async function destroyPool(pool: pg.Pool): Promise<void> {

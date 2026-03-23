@@ -13,10 +13,11 @@ export async function createSession(req: AuthRequest, res: Response, next: NextF
 
   try {
     assertAuthenticated(req);
-    const { connectionId: connId, username, password } = req.body as {
+    const { connectionId: connId, username, password, sessionConfig } = req.body as {
       connectionId: string;
       username?: string;
       password?: string;
+      sessionConfig?: import('../types').DbSessionConfig;
     };
     connectionId = connId;
 
@@ -37,6 +38,7 @@ export async function createSession(req: AuthRequest, res: Response, next: NextF
       ipAddress: getClientIp(req) ?? undefined,
       overrideUsername: username,
       overridePassword: password,
+      sessionConfig,
     });
 
     res.json(result);
@@ -179,6 +181,69 @@ export async function introspectDatabase(req: AuthRequest, res: Response, next: 
     });
 
     res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---- Session configuration ----
+
+export async function updateSessionConfig(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    assertAuthenticated(req);
+    const sessionId = req.params.sessionId as string;
+    const { sessionConfig } = req.body as { sessionConfig?: import('../types').DbSessionConfig };
+
+    if (!sessionConfig || typeof sessionConfig !== 'object') {
+      throw new AppError('sessionConfig is required', 400);
+    }
+
+    // Input length validation
+    if (sessionConfig.timezone && (typeof sessionConfig.timezone !== 'string' || sessionConfig.timezone.length > 100)) {
+      throw new AppError('timezone must be a string with max 100 characters', 400);
+    }
+    if (sessionConfig.searchPath && (typeof sessionConfig.searchPath !== 'string' || sessionConfig.searchPath.length > 500)) {
+      throw new AppError('searchPath must be a string with max 500 characters', 400);
+    }
+    if (sessionConfig.activeDatabase && (typeof sessionConfig.activeDatabase !== 'string' || sessionConfig.activeDatabase.length > 128)) {
+      throw new AppError('activeDatabase must be a string with max 128 characters', 400);
+    }
+    if (sessionConfig.encoding && (typeof sessionConfig.encoding !== 'string' || sessionConfig.encoding.length > 50)) {
+      throw new AppError('encoding must be a string with max 50 characters', 400);
+    }
+    if (sessionConfig.initCommands) {
+      if (!Array.isArray(sessionConfig.initCommands) || sessionConfig.initCommands.length > 10) {
+        throw new AppError('initCommands must be an array with max 10 entries', 400);
+      }
+      for (const cmd of sessionConfig.initCommands) {
+        if (typeof cmd !== 'string' || cmd.length > 500) {
+          throw new AppError('Each init command must be a string with max 500 characters', 400);
+        }
+      }
+    }
+
+    const tenantId = req.user.tenantId as string;
+    const result = await dbSessionService.updateSessionConfig({
+      userId: req.user.userId,
+      tenantId,
+      tenantRole: req.user.tenantRole,
+      sessionId,
+      sessionConfig,
+      ipAddress: getClientIp(req) ?? undefined,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+export async function getSessionConfig(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    assertAuthenticated(req);
+    const sessionId = req.params.sessionId as string;
+    const sessionConfig = await dbSessionService.getSessionConfig(req.user.userId, sessionId);
+    res.json(sessionConfig);
   } catch (err) {
     next(err);
   }

@@ -3,7 +3,7 @@ import mysql from 'mysql2/promise';
 import { MongoClient } from 'mongodb';
 import mssql from 'mssql';
 import type OracleDb from 'oracledb';
-import type { DbProtocol } from '../../types';
+import type { DbProtocol, DbSessionConfig } from '../../types';
 
 export type DriverPool =
   | { type: 'postgresql'; pool: pg.Pool }
@@ -18,6 +18,7 @@ export interface ManagedPool {
   protocol: DbProtocol;
   driver: DriverPool;
   databaseName?: string;
+  sessionConfig?: DbSessionConfig;
   createdAt: Date;
   lastUsedAt: Date;
 }

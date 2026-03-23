@@ -1,8 +1,11 @@
 import type OracleDb from 'oracledb';
 import { AppError } from '../../middleware/error.middleware';
 import { config } from '../../config';
-import type { DbSettings } from '../../types';
-import type { QueryResult, SchemaInfo, TableInfo } from '../dbSession.service';
+import type { DbSettings, DbSessionConfig } from '../../types';
+import type {
+  QueryResult, SchemaInfo, TableInfo, ViewInfo, RoutineInfo,
+  TriggerInfo, SequenceInfo, PackageInfo, DbTypeInfo,
+} from '../dbSession.service';
 import type { DriverPool, ExplainResult, IntrospectionResult } from './types';
 
 // ---------------------------------------------------------------------------
@@ -29,9 +32,13 @@ async function getOracleDb(): Promise<typeof OracleDb> {
 // Pool creation
 // ---------------------------------------------------------------------------
 
+// Per-pool session config for per-query application
+const poolSessionConfig = new Map<OracleDb.Pool, DbSessionConfig>();
+
 export async function createPool(
   host: string, port: number, username: string, password: string,
   databaseName: string | undefined, dbSettings: DbSettings | undefined,
+  sessionConfig?: DbSessionConfig,
 ): Promise<DriverPool> {
   const oracledb = await getOracleDb();
   const connType = dbSettings?.oracleConnectionType ?? 'basic';
@@ -76,7 +83,19 @@ export async function createPool(
   }
 
   const pool = await oracledb.createPool(poolConfig);
+  if (sessionConfig) poolSessionConfig.set(pool, sessionConfig);
   return { type: 'oracle', pool };
+}
+
+function buildOracleSessionSql(sc: DbSessionConfig): string[] {
+  const stmts: string[] = [];
+  if (sc.timezone) stmts.push(`ALTER SESSION SET TIME_ZONE = '${sc.timezone.replace(/'/g, "''")}'`);
+  if (sc.searchPath) stmts.push(`ALTER SESSION SET CURRENT_SCHEMA = ${sc.searchPath}`);
+  if (sc.encoding) stmts.push(`ALTER SESSION SET NLS_LANGUAGE = '${sc.encoding.replace(/'/g, "''")}'`);
+  if (sc.initCommands) {
+    for (const cmd of sc.initCommands) stmts.push(cmd);
+  }
+  return stmts;
 }
 
 // ---------------------------------------------------------------------------
@@ -90,6 +109,13 @@ export async function runQuery(
   const conn = await pool.getConnection();
   try {
     conn.callTimeout = timeoutMs;
+    // Apply session config on this connection before user query
+    const sc = poolSessionConfig.get(pool);
+    if (sc) {
+      for (const stmt of buildOracleSessionSql(sc)) {
+        await conn.execute(stmt);
+      }
+    }
     // codeql[js/sql-injection] — sql is validated by role-based query restriction and
     // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
     const result = await conn.execute(sql, [], {
@@ -148,18 +174,21 @@ export async function runExplain(pool: OracleDb.Pool, sql: string): Promise<Expl
 export async function fetchSchema(pool: OracleDb.Pool, schemaName?: string): Promise<SchemaInfo> {
   const oracledb = await getOracleDb();
   const conn = await pool.getConnection();
+  const sname = schemaName?.toUpperCase();
+  const excludeSys = "('SYS','SYSTEM','DBSNMP','OUTLN','XDB')";
   try {
-    const tablesResult = schemaName
+    // ----- Tables -----------------------------------------------------------
+    const tablesResult = sname
       ? await conn.execute<{ OWNER: string; TABLE_NAME: string }>(
           `SELECT OWNER, TABLE_NAME FROM ALL_TABLES
            WHERE OWNER = :sname
            ORDER BY TABLE_NAME`,
-          { sname: schemaName.toUpperCase() },
+          { sname },
           { outFormat: oracledb.OUT_FORMAT_OBJECT },
         )
       : await conn.execute<{ OWNER: string; TABLE_NAME: string }>(
           `SELECT OWNER, TABLE_NAME FROM ALL_TABLES
-           WHERE OWNER NOT IN ('SYS','SYSTEM','DBSNMP','OUTLN','XDB')
+           WHERE OWNER NOT IN ${excludeSys}
            ORDER BY OWNER, TABLE_NAME`,
           [],
           { outFormat: oracledb.OUT_FORMAT_OBJECT },
@@ -194,13 +223,182 @@ export async function fetchSchema(pool: OracleDb.Pool, schemaName?: string): Pro
         })),
       });
     }
-    return { tables };
+
+    // ----- Views + Materialized Views ---------------------------------------
+    const views: ViewInfo[] = [];
+    try {
+      const viewsResult = sname
+        ? await conn.execute<{ OWNER: string; VIEW_NAME: string }>(
+            `SELECT OWNER, VIEW_NAME FROM ALL_VIEWS WHERE OWNER = :sname ORDER BY VIEW_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; VIEW_NAME: string }>(
+            `SELECT OWNER, VIEW_NAME FROM ALL_VIEWS WHERE OWNER NOT IN ${excludeSys} ORDER BY OWNER, VIEW_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const v of viewsResult.rows ?? []) {
+        views.push({ name: v.VIEW_NAME, schema: v.OWNER, materialized: false });
+      }
+    } catch { /* best-effort */ }
+    try {
+      const mviewsResult = sname
+        ? await conn.execute<{ OWNER: string; MVIEW_NAME: string }>(
+            `SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS WHERE OWNER = :sname ORDER BY MVIEW_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; MVIEW_NAME: string }>(
+            `SELECT OWNER, MVIEW_NAME FROM ALL_MVIEWS WHERE OWNER NOT IN ${excludeSys} ORDER BY OWNER, MVIEW_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const mv of mviewsResult.rows ?? []) {
+        views.push({ name: mv.MVIEW_NAME, schema: mv.OWNER, materialized: true });
+      }
+    } catch { /* best-effort */ }
+
+    // ----- Functions --------------------------------------------------------
+    const functions: RoutineInfo[] = [];
+    try {
+      const fnResult = sname
+        ? await conn.execute<{ OWNER: string; OBJECT_NAME: string }>(
+            `SELECT OWNER, OBJECT_NAME FROM ALL_OBJECTS WHERE OBJECT_TYPE = 'FUNCTION' AND OWNER = :sname ORDER BY OBJECT_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; OBJECT_NAME: string }>(
+            `SELECT OWNER, OBJECT_NAME FROM ALL_OBJECTS WHERE OBJECT_TYPE = 'FUNCTION' AND OWNER NOT IN ${excludeSys} ORDER BY OWNER, OBJECT_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const f of fnResult.rows ?? []) {
+        functions.push({ name: f.OBJECT_NAME, schema: f.OWNER });
+      }
+    } catch { /* best-effort */ }
+
+    // ----- Procedures -------------------------------------------------------
+    const procedures: RoutineInfo[] = [];
+    try {
+      const procResult = sname
+        ? await conn.execute<{ OWNER: string; OBJECT_NAME: string }>(
+            `SELECT OWNER, OBJECT_NAME FROM ALL_OBJECTS WHERE OBJECT_TYPE = 'PROCEDURE' AND OWNER = :sname ORDER BY OBJECT_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; OBJECT_NAME: string }>(
+            `SELECT OWNER, OBJECT_NAME FROM ALL_OBJECTS WHERE OBJECT_TYPE = 'PROCEDURE' AND OWNER NOT IN ${excludeSys} ORDER BY OWNER, OBJECT_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const p of procResult.rows ?? []) {
+        procedures.push({ name: p.OBJECT_NAME, schema: p.OWNER });
+      }
+    } catch { /* best-effort */ }
+
+    // ----- Packages ---------------------------------------------------------
+    const packages: PackageInfo[] = [];
+    try {
+      const pkgResult = sname
+        ? await conn.execute<{ OWNER: string; OBJECT_NAME: string; OBJECT_TYPE: string }>(
+            `SELECT OWNER, OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS WHERE OBJECT_TYPE IN ('PACKAGE','PACKAGE BODY') AND OWNER = :sname ORDER BY OBJECT_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; OBJECT_NAME: string; OBJECT_TYPE: string }>(
+            `SELECT OWNER, OBJECT_NAME, OBJECT_TYPE FROM ALL_OBJECTS WHERE OBJECT_TYPE IN ('PACKAGE','PACKAGE BODY') AND OWNER NOT IN ${excludeSys} ORDER BY OWNER, OBJECT_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      const pkgMap = new Map<string, PackageInfo>();
+      for (const pk of pkgResult.rows ?? []) {
+        const key = `${pk.OWNER}.${pk.OBJECT_NAME}`;
+        const existing = pkgMap.get(key);
+        if (existing) {
+          if (pk.OBJECT_TYPE === 'PACKAGE BODY') existing.hasBody = true;
+        } else {
+          pkgMap.set(key, {
+            name: pk.OBJECT_NAME,
+            schema: pk.OWNER,
+            hasBody: pk.OBJECT_TYPE === 'PACKAGE BODY',
+          });
+        }
+      }
+      packages.push(...pkgMap.values());
+    } catch { /* best-effort */ }
+
+    // ----- Triggers ---------------------------------------------------------
+    const triggers: TriggerInfo[] = [];
+    try {
+      const trigResult = sname
+        ? await conn.execute<{ OWNER: string; TRIGGER_NAME: string; TABLE_NAME: string; TRIGGERING_EVENT: string; TRIGGER_TYPE: string }>(
+            `SELECT OWNER, TRIGGER_NAME, TABLE_NAME, TRIGGERING_EVENT, TRIGGER_TYPE FROM ALL_TRIGGERS WHERE OWNER = :sname ORDER BY TRIGGER_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; TRIGGER_NAME: string; TABLE_NAME: string; TRIGGERING_EVENT: string; TRIGGER_TYPE: string }>(
+            `SELECT OWNER, TRIGGER_NAME, TABLE_NAME, TRIGGERING_EVENT, TRIGGER_TYPE FROM ALL_TRIGGERS WHERE OWNER NOT IN ${excludeSys} ORDER BY OWNER, TRIGGER_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const tr of trigResult.rows ?? []) {
+        triggers.push({
+          name: tr.TRIGGER_NAME,
+          schema: tr.OWNER,
+          tableName: tr.TABLE_NAME,
+          event: tr.TRIGGERING_EVENT,
+          timing: tr.TRIGGER_TYPE,
+        });
+      }
+    } catch { /* best-effort */ }
+
+    // ----- Sequences --------------------------------------------------------
+    const sequences: SequenceInfo[] = [];
+    try {
+      const seqResult = sname
+        ? await conn.execute<{ SEQUENCE_OWNER: string; SEQUENCE_NAME: string }>(
+            `SELECT SEQUENCE_OWNER, SEQUENCE_NAME FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER = :sname ORDER BY SEQUENCE_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ SEQUENCE_OWNER: string; SEQUENCE_NAME: string }>(
+            `SELECT SEQUENCE_OWNER, SEQUENCE_NAME FROM ALL_SEQUENCES WHERE SEQUENCE_OWNER NOT IN ${excludeSys} ORDER BY SEQUENCE_OWNER, SEQUENCE_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const s of seqResult.rows ?? []) {
+        sequences.push({ name: s.SEQUENCE_NAME, schema: s.SEQUENCE_OWNER });
+      }
+    } catch { /* best-effort */ }
+
+    // ----- Types ------------------------------------------------------------
+    const types: DbTypeInfo[] = [];
+    try {
+      const typeResult = sname
+        ? await conn.execute<{ OWNER: string; TYPE_NAME: string; TYPECODE: string }>(
+            `SELECT OWNER, TYPE_NAME, TYPECODE FROM ALL_TYPES WHERE OWNER = :sname ORDER BY TYPE_NAME`,
+            { sname },
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          )
+        : await conn.execute<{ OWNER: string; TYPE_NAME: string; TYPECODE: string }>(
+            `SELECT OWNER, TYPE_NAME, TYPECODE FROM ALL_TYPES WHERE OWNER NOT IN ${excludeSys} ORDER BY OWNER, TYPE_NAME`,
+            [],
+            { outFormat: oracledb.OUT_FORMAT_OBJECT },
+          );
+      for (const t of typeResult.rows ?? []) {
+        types.push({ name: t.TYPE_NAME, schema: t.OWNER, kind: t.TYPECODE });
+      }
+    } catch { /* best-effort */ }
+
+    return { tables, views, functions, procedures, packages, triggers, sequences, types };
   } finally {
     await conn.close();
   }
 }
 
 export async function destroyPool(pool: OracleDb.Pool): Promise<void> {
+  poolSessionConfig.delete(pool);
   await pool.close(0);
 }
 

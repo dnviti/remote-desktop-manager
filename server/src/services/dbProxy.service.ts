@@ -8,7 +8,7 @@ import { selectInstance } from './loadBalancer.service';
 import { getDefaultGateway } from './gateway.service';
 import { isTunnelConnected, createTcpProxy } from './tunnel.service';
 import { logger } from '../utils/logger';
-import type { DbSettings } from '../types';
+import type { DbSettings, DbSessionConfig } from '../types';
 
 const log = logger.child('db-proxy');
 
@@ -44,8 +44,9 @@ export async function createDbProxySession(params: {
   ipAddress?: string;
   overrideUsername?: string;
   overridePassword?: string;
+  sessionConfig?: DbSessionConfig;
 }): Promise<DbProxySessionResult> {
-  const { userId, connectionId, tenantId, ipAddress, overrideUsername, overridePassword } = params;
+  const { userId, connectionId, tenantId, ipAddress, overrideUsername, overridePassword, sessionConfig } = params;
 
   const conn = await prisma.connection.findUnique({
     where: { id: connectionId },
@@ -168,6 +169,7 @@ export async function createDbProxySession(params: {
       ...(dbSettings.mssqlInstanceName && { mssqlInstanceName: dbSettings.mssqlInstanceName }),
       ...(dbSettings.mssqlAuthMode && { mssqlAuthMode: dbSettings.mssqlAuthMode }),
       ...(dbSettings.db2DatabaseAlias && { db2DatabaseAlias: dbSettings.db2DatabaseAlias }),
+      ...(sessionConfig && { sessionConfig }),
     },
     routingDecision,
   });

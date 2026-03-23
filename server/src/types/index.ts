@@ -160,6 +160,19 @@ export interface DbSettings {
   db2DatabaseAlias?: string;
 }
 
+export interface DbSessionConfig {
+  /** Active database — MySQL: USE db, MSSQL: USE [db], PG/Oracle/DB2: pool-level (forces recreate) */
+  activeDatabase?: string;
+  /** Timezone — PG: SET timezone, MySQL: SET time_zone, Oracle: ALTER SESSION SET TIME_ZONE, DB2: SET CURRENT TIMEZONE */
+  timezone?: string;
+  /** Schema/search path — PG: search_path, Oracle: CURRENT_SCHEMA, MSSQL/DB2: SCHEMA */
+  searchPath?: string;
+  /** Character encoding — PG: client_encoding, MySQL: NAMES, Oracle: NLS_LANGUAGE */
+  encoding?: string;
+  /** Arbitrary SET/ALTER SESSION commands (OPERATOR+ roles only) */
+  initCommands?: string[];
+}
+
 export interface DlpPolicy {
   disableCopy?: boolean;
   disablePaste?: boolean;

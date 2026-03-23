@@ -1,22 +1,49 @@
 import mysql from 'mysql2/promise';
 import { config } from '../../config';
-import type { DbSettings } from '../../types';
-import type { QueryResult, SchemaInfo, TableInfo } from '../dbSession.service';
+import type { DbSettings, DbSessionConfig } from '../../types';
+import type { QueryResult, SchemaInfo, TableInfo, ViewInfo, RoutineInfo, TriggerInfo } from '../dbSession.service';
 import type { DriverPool, ExplainResult, IntrospectionResult } from './types';
 
 export async function createPool(
   host: string, port: number, username: string, password: string,
   databaseName: string | undefined, _dbSettings: DbSettings | undefined,
+  sessionConfig?: DbSessionConfig,
 ): Promise<DriverPool> {
+  // For MySQL, activeDatabase can be applied via USE after connection
   const pool = mysql.createPool({
     host, port, user: username, password, database: databaseName,
     connectionLimit: config.dbPoolMaxConnections,
     waitForConnections: true,
     idleTimeout: config.dbPoolIdleTimeoutMs,
   });
+
+  // Apply session config to every new connection via pool event
+  if (sessionConfig) {
+    const initSql = buildSessionInitSql(sessionConfig);
+    if (initSql.length > 0) {
+      // mysql2 emits 'connection' for each new pooled connection
+      pool.on('connection', (conn: mysql.PoolConnection) => {
+        for (const stmt of initSql) {
+          conn.query(stmt).catch(() => {});
+        }
+      });
+    }
+  }
+
   const conn = await pool.getConnection();
   conn.release();
   return { type: 'mysql', pool };
+}
+
+function buildSessionInitSql(sc: DbSessionConfig): string[] {
+  const stmts: string[] = [];
+  if (sc.activeDatabase) stmts.push(`USE \`${sc.activeDatabase.replace(/`/g, '``')}\``);
+  if (sc.timezone) stmts.push(`SET time_zone = '${sc.timezone.replace(/'/g, "''")}'`);
+  if (sc.encoding) stmts.push(`SET NAMES '${sc.encoding.replace(/'/g, "''")}'`);
+  if (sc.initCommands) {
+    for (const cmd of sc.initCommands) stmts.push(cmd);
+  }
+  return stmts;
 }
 
 export async function runQuery(pool: mysql.Pool, sql: string, maxRows: number): Promise<QueryResult> {
@@ -74,7 +101,72 @@ export async function fetchSchema(pool: mysql.Pool): Promise<SchemaInfo> {
       })),
     });
   }
-  return { tables };
+
+  // --- Views ---
+  let views: ViewInfo[] = [];
+  try {
+    const [viewsRaw] = await pool.query(
+      `SELECT TABLE_SCHEMA AS \`schema\`, TABLE_NAME AS name
+       FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_SCHEMA = DATABASE()
+       ORDER BY TABLE_NAME`,
+    );
+    views = (viewsRaw as { schema: string; name: string }[]).map((v) => ({
+      name: v.name,
+      schema: v.schema,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Functions ---
+  let functions: RoutineInfo[] = [];
+  try {
+    const [fnRaw] = await pool.query(
+      `SELECT ROUTINE_SCHEMA AS \`schema\`, ROUTINE_NAME AS name, DTD_IDENTIFIER AS return_type
+       FROM INFORMATION_SCHEMA.ROUTINES
+       WHERE ROUTINE_TYPE = 'FUNCTION' AND ROUTINE_SCHEMA = DATABASE()
+       ORDER BY ROUTINE_NAME`,
+    );
+    functions = (fnRaw as { schema: string; name: string; return_type: string | null }[]).map((f) => ({
+      name: f.name,
+      schema: f.schema,
+      returnType: f.return_type ?? undefined,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Procedures ---
+  let procedures: RoutineInfo[] = [];
+  try {
+    const [procRaw] = await pool.query(
+      `SELECT ROUTINE_SCHEMA AS \`schema\`, ROUTINE_NAME AS name
+       FROM INFORMATION_SCHEMA.ROUTINES
+       WHERE ROUTINE_TYPE = 'PROCEDURE' AND ROUTINE_SCHEMA = DATABASE()
+       ORDER BY ROUTINE_NAME`,
+    );
+    procedures = (procRaw as { schema: string; name: string }[]).map((p) => ({
+      name: p.name,
+      schema: p.schema,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Triggers ---
+  let triggers: TriggerInfo[] = [];
+  try {
+    const [trigRaw] = await pool.query(
+      `SELECT TRIGGER_SCHEMA AS \`schema\`, TRIGGER_NAME AS name,
+             EVENT_OBJECT_TABLE AS table_name,
+             EVENT_MANIPULATION AS event, ACTION_TIMING AS timing
+       FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_SCHEMA = DATABASE()
+       ORDER BY TRIGGER_NAME`,
+    );
+    triggers = (trigRaw as { schema: string; name: string; table_name: string; event: string; timing: string }[]).map((t) => ({
+      name: t.name,
+      schema: t.schema,
+      tableName: t.table_name,
+      event: t.event,
+      timing: t.timing,
+    }));
+  } catch { /* best-effort */ }
+
+  return { tables, views, functions, procedures, triggers };
 }
 
 export async function destroyPool(pool: mysql.Pool): Promise<void> {

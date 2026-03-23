@@ -230,14 +230,282 @@ function extractExtra(node: Record<string, unknown>): Record<string, unknown> {
   return Object.keys(extra).length > 0 ? extra : {};
 }
 
+/**
+ * Parse Oracle DBMS_XPLAN text output into a PlanNode tree.
+ *
+ * Example input:
+ *   | Id  | Operation          | Name       | Rows  | Bytes | Cost (%CPU)| Time     |
+ *   |   0 | SELECT STATEMENT   |            |     6 |   546 |     3   (0)| 00:00:01 |
+ *   |*  1 |  COUNT STOPKEY     |            |       |       |            |          |
+ *   |   2 |   TABLE ACCESS FULL| CATEGORIES |     6 |   546 |     3   (0)| 00:00:01 |
+ *
+ * The indentation of the Operation column encodes parent–child relationships.
+ */
 function parseTextPlan(raw: string): PlanNode {
-  // Oracle DBMS_XPLAN text format — parse into a simple tree
-  const lines = raw.split('\n').filter((l) => l.trim().length > 0);
+  const lines = raw.split('\n');
+
+  // ---- 1. Find the data rows inside the table ----
+  // Separator lines look like "---…---" (all dashes + pipes)
+  const separatorIndices: number[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    if (/^\s*[-]+\s*$/.test(lines[i].replace(/\|/g, '-'))) {
+      separatorIndices.push(i);
+    }
+  }
+
+  // We need at least a header separator and a footer separator
+  if (separatorIndices.length < 2) {
+    return { operator: 'Execution Plan', rows: 0, cost: 0, extra: { rawText: raw } };
+  }
+
+  // Header row is between the first two separators; data rows start after the header separator
+  const headerSep = separatorIndices[0];
+  const footerSep = separatorIndices.length >= 3 ? separatorIndices[2] : separatorIndices[1];
+  const dataStartIdx = separatorIndices.length >= 3 ? separatorIndices[1] + 1 : headerSep + 2;
+
+  // ---- 2. Parse each data row ----
+  interface RawRow {
+    id: number;
+    operation: string;
+    depth: number; // leading spaces in Operation column
+    name: string;
+    rows: number;
+    bytes: number;
+    cost: number;
+    cpuPct: number;
+    time: string;
+    hasPredicate: boolean;
+  }
+
+  const dataRows: RawRow[] = [];
+
+  for (let i = dataStartIdx; i < footerSep; i++) {
+    const line = lines[i];
+    if (!line || !line.includes('|')) continue;
+    const cells = line.split('|').slice(1); // skip leading empty
+    if (cells.length < 2) continue;
+
+    const idStr = (cells[0] ?? '').trim();
+    const hasPredicate = idStr.startsWith('*');
+    const id = parseInt(idStr.replace('*', ''), 10);
+    if (isNaN(id)) continue;
+
+    const opRaw = cells[1] ?? '';
+    const opTrimmed = opRaw.trimEnd();
+    const depth = opTrimmed.length - opTrimmed.trimStart().length;
+    const operation = opRaw.trim();
+
+    const name = (cells[2] ?? '').trim();
+    const rowsVal = parseInt((cells[3] ?? '').trim(), 10) || 0;
+    const bytesVal = parseInt((cells[4] ?? '').trim(), 10) || 0;
+
+    // Cost column may look like "3   (0)" — extract numeric cost and CPU %
+    const costStr = (cells[5] ?? '').trim();
+    const costParts = costStr.split('(');
+    const costVal = parseInt(costParts[0], 10) || 0;
+    const cpuPct = costParts[1] ? parseInt(costParts[1], 10) || 0 : 0;
+
+    const time = (cells[6] ?? '').trim();
+
+    dataRows.push({ id, operation, depth, name, rows: rowsVal, bytes: bytesVal, cost: costVal, cpuPct, time, hasPredicate });
+  }
+
+  if (dataRows.length === 0) {
+    return { operator: 'Execution Plan', rows: 0, cost: 0, extra: { rawText: raw } };
+  }
+
+  // ---- 3. Parse Predicate Information ----
+  const predicates = new Map<number, string>();
+  const predIdx = lines.findIndex((l) => /predicate\s+information/i.test(l));
+  if (predIdx >= 0) {
+    for (let i = predIdx + 1; i < lines.length; i++) {
+      const m = lines[i].match(/^\s*(\d+)\s*-\s*(.+)/);
+      if (m) {
+        predicates.set(parseInt(m[1], 10), m[2].trim());
+      } else if (/^\s*$/.test(lines[i]) && predicates.size > 0) {
+        // Stop on second blank line after we've started collecting
+        if (i + 1 < lines.length && /^\s*$/.test(lines[i + 1])) break;
+      }
+    }
+  }
+
+  // ---- 4. Parse Note section ----
+  let noteText = '';
+  const noteIdx = lines.findIndex((l, idx) => idx > predIdx && /^Note\b/i.test(l.trim()));
+  if (noteIdx >= 0) {
+    const noteLines: string[] = [];
+    for (let i = noteIdx + 1; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+      if (trimmed.startsWith('---')) continue;
+      if (trimmed) noteLines.push(trimmed.replace(/^-\s*/, ''));
+    }
+    noteText = noteLines.join('; ');
+  }
+
+  // ---- 5. Build tree from depth information ----
+  function toNode(row: RawRow): PlanNode {
+    const filter = predicates.get(row.id);
+    return {
+      operator: row.operation,
+      table: row.name || undefined,
+      rows: row.rows || undefined,
+      cost: row.cost,
+      totalCost: row.cost,
+      filter,
+      children: undefined,
+      extra: {
+        ...(row.bytes ? { bytes: row.bytes } : {}),
+        ...(row.cpuPct ? { cpuPct: `${row.cpuPct}%` } : {}),
+        ...(row.time ? { time: row.time } : {}),
+      },
+    };
+  }
+
+  // Stack-based tree construction: each entry is { node, depth }
+  const nodes = dataRows.map(toNode);
+  const depths = dataRows.map((r) => r.depth);
+
+  // Build parent–child by depth: a row's parent is the last preceding row with smaller depth
+  for (let i = 1; i < nodes.length; i++) {
+    for (let j = i - 1; j >= 0; j--) {
+      if (depths[j] < depths[i]) {
+        const parent = nodes[j];
+        if (!parent.children) parent.children = [];
+        parent.children.push(nodes[i]);
+        break;
+      }
+    }
+  }
+
+  // Root is the first node (SELECT STATEMENT, id=0)
+  const root = nodes[0];
+  if (noteText) {
+    root.extra = { ...root.extra, note: noteText };
+  }
+  return root;
+}
+
+/**
+ * Parse MSSQL SHOWPLAN_XML into a PlanNode tree using the browser DOMParser.
+ */
+function parseXmlPlan(raw: string): PlanNode | null {
+  let doc: Document;
+  try {
+    doc = new DOMParser().parseFromString(raw, 'application/xml');
+  } catch {
+    return null;
+  }
+
+  // Check for parse errors
+  if (doc.querySelector('parsererror')) return null;
+
+  // MSSQL namespaces the XML — use a local-name() selector helper
+  function allByLocal(parent: Element, localName: string): Element[] {
+    return Array.from(parent.querySelectorAll('*')).filter(
+      (el) => el.localName === localName,
+    );
+  }
+
+  function firstByLocal(parent: Element, localName: string): Element | null {
+    return parent.querySelector(`*|${localName}`)
+      ?? Array.from(parent.children).find((el) => el.localName === localName)
+      ?? null;
+  }
+
+  function parseRelOp(el: Element): PlanNode {
+    const physOp = el.getAttribute('PhysicalOp') ?? 'Unknown';
+    const logOp = el.getAttribute('LogicalOp') ?? '';
+    const estRows = parseFloat(el.getAttribute('EstimateRows') ?? '0');
+    const estCPU = parseFloat(el.getAttribute('EstimateCPU') ?? '0');
+    const estIO = parseFloat(el.getAttribute('EstimateIO') ?? '0');
+    const subtreeCost = parseFloat(el.getAttribute('EstimatedTotalSubtreeCost') ?? '0');
+    const avgRowSize = parseInt(el.getAttribute('AvgRowSize') ?? '0', 10);
+
+    // Find table/index references inside this op (not in child RelOps)
+    let tableName: string | undefined;
+    let indexName: string | undefined;
+    let scanType: string | undefined;
+
+    // Look for direct operation child elements (e.g., IndexScan, TableScan, Sort, etc.)
+    for (const child of Array.from(el.children)) {
+      if (child.localName === 'RelOp') continue;
+      // Object reference inside operation elements
+      const objRefs = allByLocal(child, 'Object');
+      for (const obj of objRefs) {
+        // Only take objects that aren't inside nested RelOps
+        const parentRelOp = obj.closest('[PhysicalOp]');
+        if (parentRelOp !== el) continue;
+        tableName = tableName || obj.getAttribute('Table')?.replace(/[\[\]]/g, '');
+        indexName = indexName || obj.getAttribute('Index')?.replace(/[\[\]]/g, '');
+      }
+
+      // The child element name often IS the scan type (IndexScan, TableScan, etc.)
+      if (!scanType && child.localName !== 'OutputList' && child.localName !== 'RunTimeInformation') {
+        scanType = child.localName;
+      }
+    }
+
+    // Collect child RelOp elements (direct children of operation sub-elements, not deeply nested)
+    const children: PlanNode[] = [];
+    for (const child of Array.from(el.children)) {
+      if (child.localName === 'RelOp') {
+        children.push(parseRelOp(child));
+      } else {
+        // RelOps nested inside operation elements (e.g., inside Sort, Hash, NestedLoops)
+        for (const nestedRelOp of Array.from(child.children)) {
+          if (nestedRelOp.localName === 'RelOp') {
+            children.push(parseRelOp(nestedRelOp));
+          }
+          // One more level — some ops nest RelOp two levels deep
+          for (const deepChild of Array.from(nestedRelOp.children)) {
+            if (deepChild.localName === 'RelOp') {
+              children.push(parseRelOp(deepChild));
+            }
+          }
+        }
+      }
+    }
+
+    const operator = logOp && logOp !== physOp ? `${physOp} (${logOp})` : physOp;
+
+    return {
+      operator,
+      table: tableName,
+      rows: Math.round(estRows),
+      cost: Math.round((estCPU + estIO) * 10000) / 10000,
+      totalCost: Math.round(subtreeCost * 10000) / 10000,
+      scanType,
+      indexName,
+      width: avgRowSize || undefined,
+      children: children.length > 0 ? children : undefined,
+      extra: {
+        ...(estCPU ? { estimateCPU: estCPU } : {}),
+        ...(estIO ? { estimateIO: estIO } : {}),
+      },
+    };
+  }
+
+  // Navigate: ShowPlanXML > BatchSequence > Batch > Statements > StmtSimple > QueryPlan > RelOp
+  const rootEl = doc.documentElement;
+  const stmts = allByLocal(rootEl, 'StmtSimple');
+  if (stmts.length === 0) return null;
+
+  const stmt = stmts[stmts.length - 1]; // last statement
+  const queryPlan = firstByLocal(stmt, 'QueryPlan');
+  if (!queryPlan) return null;
+
+  // Find the top-level RelOp (direct child of QueryPlan)
+  const topRelOps = Array.from(queryPlan.children).filter((c) => c.localName === 'RelOp');
+  if (topRelOps.length === 0) return null;
+
+  if (topRelOps.length === 1) {
+    return parseRelOp(topRelOps[0]);
+  }
+
+  // Multiple top-level RelOps — wrap in a root node
   return {
-    operator: 'Execution Plan',
-    rows: 0,
-    cost: 0,
-    extra: { rawText: lines.join('\n') },
+    operator: 'Query Plan',
+    children: topRelOps.map(parseRelOp),
   };
 }
 
@@ -383,10 +651,7 @@ export default function ExecutionPlanTree({ plan, format, raw }: ExecutionPlanTr
   const rootNode = useMemo(() => {
     if (format === 'json') return parseJsonPlan(plan);
     if (format === 'text' && raw) return parseTextPlan(raw);
-    if (format === 'xml' && raw) {
-      // MSSQL XML plan — show raw for now
-      return { operator: 'MSSQL Execution Plan', rows: 0, cost: 0, extra: { rawXml: raw } } as PlanNode;
-    }
+    if (format === 'xml' && raw) return parseXmlPlan(raw);
     return null;
   }, [plan, format, raw]);
 

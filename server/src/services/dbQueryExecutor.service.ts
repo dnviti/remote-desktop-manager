@@ -1,7 +1,7 @@
 import { AppError } from '../middleware/error.middleware';
 import { getConnectionCredentials } from './connection.service';
 import { logger } from '../utils/logger';
-import type { DbProtocol, DbSettings, OracleConnectionType, OracleRole } from '../types';
+import type { DbProtocol, DbSettings, DbSessionConfig, OracleConnectionType, OracleRole } from '../types';
 import type { QueryResult, SchemaInfo } from './dbSession.service';
 
 import * as postgres from './drivers/postgres.driver';
@@ -47,20 +47,21 @@ async function createDriverPool(
   password: string,
   databaseName: string | undefined,
   dbSettings: DbSettings | undefined,
+  sessionConfig?: DbSessionConfig,
 ): Promise<DriverPool> {
   switch (protocol) {
     case 'postgresql':
-      return postgres.createPool(host, port, username, password, databaseName, dbSettings);
+      return postgres.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
     case 'mysql':
-      return mysql.createPool(host, port, username, password, databaseName, dbSettings);
+      return mysql.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
     case 'mongodb':
       return mongodb.createPool(host, port, username, password, databaseName, dbSettings);
     case 'mssql':
-      return mssqlDriver.createPool(host, port, username, password, databaseName, dbSettings);
+      return mssqlDriver.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
     case 'oracle':
-      return oracle.createPool(host, port, username, password, databaseName, dbSettings);
+      return oracle.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
     case 'db2':
-      return db2.createPool(host, port, username, password, databaseName, dbSettings);
+      return db2.createPool(host, port, username, password, databaseName, dbSettings, sessionConfig);
     default:
       throw new AppError(`Unsupported database protocol: ${protocol as string}`, 400);
   }
@@ -85,6 +86,10 @@ export async function getOrCreatePool(params: PoolParams): Promise<ManagedPool> 
   const dbSettings: DbSettings | undefined = meta.dbProtocol
     ? { protocol, databaseName, ...pickDbSettingsFields(meta) }
     : undefined;
+  const sessionConfig = (meta.sessionConfig as DbSessionConfig | undefined) ?? undefined;
+
+  // For pool-level db drivers, activeDatabase overrides the connection database
+  const effectiveDb = sessionConfig?.activeDatabase || databaseName;
 
   // Resolve credentials from vault
   const creds = await getConnectionCredentials(params.userId, params.connectionId, params.tenantId);
@@ -95,15 +100,17 @@ export async function getOrCreatePool(params: PoolParams): Promise<ManagedPool> 
     port,
     creds.username,
     creds.password,
-    databaseName,
+    effectiveDb,
     dbSettings,
+    sessionConfig,
   );
 
   const managed: ManagedPool = {
     sessionId: params.sessionId,
     protocol,
     driver,
-    databaseName,
+    databaseName: effectiveDb,
+    sessionConfig,
     createdAt: new Date(),
     lastUsedAt: new Date(),
   };
@@ -132,8 +139,107 @@ function pickDbSettingsFields(meta: Record<string, unknown>): Partial<DbSettings
 }
 
 // ---------------------------------------------------------------------------
+// Statement splitting — most drivers only execute one statement per call.
+// MongoDB is excluded (JSON-based, not SQL).
+// ---------------------------------------------------------------------------
+
+/**
+ * Split a SQL string into individual statements on semicolons,
+ * respecting single-quoted literals, double-quoted identifiers,
+ * line comments (--), and block comments.
+ * Uses character-scanning to avoid polynomial regex backtracking.
+ */
+export function splitStatements(sql: string): string[] {
+  const stmts: string[] = [];
+  let cur = 0;
+  let stmtStart = 0;
+  const len = sql.length;
+
+  while (cur < len) {
+    const ch = sql[cur];
+
+    // Single-quoted string literal ('' is an escaped quote)
+    if (ch === "'") {
+      cur++;
+      while (cur < len) {
+        if (sql[cur] === "'") {
+          cur++;
+          if (cur < len && sql[cur] === "'") { cur++; continue; }
+          break;
+        }
+        cur++;
+      }
+      continue;
+    }
+
+    // Double-quoted identifier
+    if (ch === '"') {
+      cur++;
+      while (cur < len && sql[cur] !== '"') cur++;
+      if (cur < len) cur++;
+      continue;
+    }
+
+    // Line comment: -- … \n
+    if (ch === '-' && cur + 1 < len && sql[cur + 1] === '-') {
+      cur += 2;
+      while (cur < len && sql[cur] !== '\n') cur++;
+      continue;
+    }
+
+    // Block comment: /* … */
+    if (ch === '/' && cur + 1 < len && sql[cur + 1] === '*') {
+      cur += 2;
+      while (cur + 1 < len && !(sql[cur] === '*' && sql[cur + 1] === '/')) cur++;
+      if (cur + 1 < len) cur += 2;
+      continue;
+    }
+
+    // Semicolon — statement boundary
+    if (ch === ';') {
+      const stmt = sql.slice(stmtStart, cur).trim();
+      if (stmt) stmts.push(stmt);
+      cur++;
+      stmtStart = cur;
+      continue;
+    }
+
+    cur++;
+  }
+
+  const last = sql.slice(stmtStart).trim();
+  if (last) stmts.push(last);
+  return stmts;
+}
+
+// ---------------------------------------------------------------------------
 // Query execution
 // ---------------------------------------------------------------------------
+
+/** Execute a single statement against the appropriate driver. */
+async function runSingleQuery(
+  driver: ManagedPool['driver'],
+  stmt: string,
+  maxRows: number,
+  timeoutMs: number,
+): Promise<QueryResult> {
+  switch (driver.type) {
+    case 'postgresql':
+      return await postgres.runQuery(driver.pool, stmt, maxRows);
+    case 'mysql':
+      return await mysql.runQuery(driver.pool, stmt, maxRows);
+    case 'mongodb':
+      return await mongodb.runQuery(driver.client, driver.dbName, stmt, maxRows);
+    case 'mssql':
+      return await mssqlDriver.runQuery(driver.pool, stmt, maxRows);
+    case 'oracle':
+      return await oracle.runQuery(driver.pool, stmt, maxRows, timeoutMs);
+    case 'db2':
+      return await db2.runQuery(driver.conn, stmt, maxRows);
+    default:
+      throw new AppError('Unsupported protocol', 400);
+  }
+}
 
 export async function runQuery(
   managed: ManagedPool,
@@ -145,22 +251,22 @@ export async function runQuery(
   const { driver } = managed;
 
   try {
-    switch (driver.type) {
-      case 'postgresql':
-        return await postgres.runQuery(driver.pool, sql, maxRows);
-      case 'mysql':
-        return await mysql.runQuery(driver.pool, sql, maxRows);
-      case 'mongodb':
-        return await mongodb.runQuery(driver.client, driver.dbName, sql, maxRows);
-      case 'mssql':
-        return await mssqlDriver.runQuery(driver.pool, sql, maxRows);
-      case 'oracle':
-        return await oracle.runQuery(driver.pool, sql, maxRows, timeoutMs);
-      case 'db2':
-        return await db2.runQuery(driver.conn, sql, maxRows);
-      default:
-        throw new AppError('Unsupported protocol', 400);
+    // MongoDB uses JSON commands, not SQL — skip statement splitting
+    if (driver.type === 'mongodb') {
+      return await runSingleQuery(driver, sql, maxRows, timeoutMs);
     }
+
+    const statements = splitStatements(sql);
+    if (statements.length === 0) {
+      return { columns: [], rows: [], rowCount: 0, durationMs: 0, truncated: false };
+    }
+
+    // Execute each statement; return the result of the last one
+    let lastResult: QueryResult = { columns: [], rows: [], rowCount: 0, durationMs: 0, truncated: false };
+    for (const stmt of statements) {
+      lastResult = await runSingleQuery(driver, stmt, maxRows, timeoutMs);
+    }
+    return lastResult;
   } catch (err) {
     if (err instanceof AppError) throw err;
     const message = err instanceof Error ? err.message : 'Query execution failed';
@@ -180,6 +286,14 @@ export async function runExplain(
   sql: string,
 ): Promise<ExplainResult> {
   const { driver } = managed;
+
+  // For multi-statement SQL, explain only the last statement
+  if (driver.type !== 'mongodb') {
+    const stmts = splitStatements(sql);
+    if (stmts.length > 1) {
+      sql = stmts[stmts.length - 1];
+    }
+  }
 
   try {
     switch (driver.type) {

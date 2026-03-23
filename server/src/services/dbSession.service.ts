@@ -10,7 +10,7 @@ import * as dbQueryExecutor from './dbQueryExecutor.service';
 import * as dbIntrospection from './dbIntrospection.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import type { DbSettings, TenantRoleType } from '../types';
+import type { DbSettings, DbSessionConfig, TenantRoleType } from '../types';
 import type { ExplainResult } from './dbQueryExecutor.service';
 import type { IntrospectionResult, IntrospectionType } from './dbIntrospection.service';
 
@@ -39,6 +39,13 @@ export interface QueryResult {
 
 export interface SchemaInfo {
   tables: TableInfo[];
+  views?: ViewInfo[];
+  functions?: RoutineInfo[];
+  procedures?: RoutineInfo[];
+  triggers?: TriggerInfo[];
+  sequences?: SequenceInfo[];
+  packages?: PackageInfo[];
+  types?: DbTypeInfo[];
 }
 
 export interface TableInfo {
@@ -52,6 +59,43 @@ export interface ColumnInfo {
   dataType: string;
   nullable: boolean;
   isPrimaryKey: boolean;
+}
+
+export interface ViewInfo {
+  name: string;
+  schema: string;
+  materialized?: boolean;
+}
+
+export interface RoutineInfo {
+  name: string;
+  schema: string;
+  returnType?: string;
+}
+
+export interface TriggerInfo {
+  name: string;
+  schema: string;
+  tableName: string;
+  event: string;
+  timing: string;
+}
+
+export interface SequenceInfo {
+  name: string;
+  schema: string;
+}
+
+export interface PackageInfo {
+  name: string;
+  schema: string;
+  hasBody: boolean;
+}
+
+export interface DbTypeInfo {
+  name: string;
+  schema: string;
+  kind: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -69,8 +113,9 @@ export async function createSession(params: {
   ipAddress?: string;
   overrideUsername?: string;
   overridePassword?: string;
+  sessionConfig?: DbSessionConfig;
 }): Promise<DbSessionResult> {
-  const { userId, connectionId, tenantId, ipAddress, overrideUsername, overridePassword } = params;
+  const { userId, connectionId, tenantId, ipAddress, overrideUsername, overridePassword, sessionConfig } = params;
 
   // Fetch connection to extract DB settings
   const conn = await prisma.connection.findUnique({
@@ -99,6 +144,7 @@ export async function createSession(params: {
     ipAddress,
     overrideUsername,
     overridePassword,
+    sessionConfig,
   });
 
   log.info(`DB session ${proxyResult.sessionId} created for connection ${connectionId}`);
@@ -512,6 +558,119 @@ export async function introspectDatabase(params: {
   });
 
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Session configuration — runtime session-level parameters
+// ---------------------------------------------------------------------------
+
+/**
+ * Update session-level configuration (timezone, search path, encoding, etc.).
+ * Destroys the current pool and recreates it with the new settings so that
+ * all future queries execute against a properly configured session.
+ */
+export async function updateSessionConfig(params: {
+  userId: string;
+  tenantId: string;
+  tenantRole?: TenantRoleType;
+  sessionId: string;
+  sessionConfig: DbSessionConfig;
+  ipAddress?: string;
+}): Promise<{ applied: boolean; activeDatabase?: string }> {
+  const { userId, tenantId, tenantRole, sessionId, sessionConfig, ipAddress } = params;
+
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    include: { connection: { select: { id: true, dbSettings: true } } },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+  if (session.status === 'CLOSED') {
+    throw new AppError('Session already closed', 410);
+  }
+
+  const dbSettings = (session.connection.dbSettings as DbSettings | null) ?? undefined;
+  if (dbSettings?.protocol === 'mongodb') {
+    throw new AppError('Session configuration is not supported for MongoDB', 400);
+  }
+
+  // initCommands require OPERATOR+ role
+  const OPERATOR_ROLES = new Set(['OPERATOR', 'ADMIN', 'OWNER']);
+  if (sessionConfig.initCommands?.length && (!tenantRole || !OPERATOR_ROLES.has(tenantRole))) {
+    throw new AppError('Custom init commands require OPERATOR role or above', 403);
+  }
+
+  // Validate initCommands are safe SET/ALTER SESSION statements
+  if (sessionConfig.initCommands) {
+    for (const cmd of sessionConfig.initCommands) {
+      const normalized = cmd.trim().toUpperCase();
+      if (!normalized.startsWith('SET ') && !normalized.startsWith('ALTER SESSION ')) {
+        throw new AppError('Init commands must be SET or ALTER SESSION statements', 400);
+      }
+    }
+  }
+
+  // Destroy existing pool
+  await dbQueryExecutor.destroyPool(sessionId);
+
+  // Merge sessionConfig into session metadata
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  metadata.sessionConfig = sessionConfig;
+
+  await prisma.activeSession.update({
+    where: { id: sessionId },
+    data: {
+      metadata: metadata as never,
+      lastActivityAt: new Date(),
+    },
+  });
+
+  // Recreate pool with new config to validate it works
+  const pool = await dbQueryExecutor.getOrCreatePool({
+    sessionId,
+    connectionId: session.connectionId,
+    userId,
+    tenantId,
+    metadata,
+  });
+
+  // Audit the config change
+  auditService.log({
+    userId,
+    action: 'DB_SESSION_CONFIG_UPDATED',
+    targetType: 'DatabaseQuery',
+    targetId: session.connectionId,
+    details: {
+      sessionId,
+      protocol: pool.protocol,
+      configKeys: Object.keys(sessionConfig).filter((k) => (sessionConfig as Record<string, unknown>)[k] !== undefined),
+    },
+    ipAddress,
+  });
+
+  log.info(`Session config updated for session ${sessionId}`);
+
+  return {
+    applied: true,
+    activeDatabase: pool.databaseName,
+  };
+}
+
+/**
+ * Retrieve the current session configuration from session metadata.
+ */
+export async function getSessionConfig(userId: string, sessionId: string): Promise<DbSessionConfig> {
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    select: { userId: true, metadata: true },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  return (metadata.sessionConfig as DbSessionConfig) ?? {};
 }
 
 // ---------------------------------------------------------------------------

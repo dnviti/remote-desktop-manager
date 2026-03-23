@@ -1,12 +1,13 @@
 import { AppError } from '../../middleware/error.middleware';
 import { config } from '../../config';
-import type { DbSettings } from '../../types';
-import type { QueryResult, SchemaInfo } from '../dbSession.service';
+import type { DbSettings, DbSessionConfig } from '../../types';
+import type { QueryResult, SchemaInfo, ViewInfo, RoutineInfo, TriggerInfo, SequenceInfo } from '../dbSession.service';
 import type { DriverPool } from './types';
 
 export async function createPool(
   host: string, port: number, username: string, password: string,
   databaseName: string | undefined, dbSettings: DbSettings | undefined,
+  sessionConfig?: DbSessionConfig,
 ): Promise<DriverPool> {
   let ibmDb: typeof import('ibm_db');
   try {
@@ -17,10 +18,30 @@ export async function createPool(
       501,
     );
   }
-  const dbName = databaseName || dbSettings?.db2DatabaseAlias || 'SAMPLE';
+  const dbName = sessionConfig?.activeDatabase || databaseName || dbSettings?.db2DatabaseAlias || 'SAMPLE';
   const connStr = `DATABASE=${dbName};HOSTNAME=${host};PORT=${port};PROTOCOL=TCPIP;UID=${username};PWD=${password};QueryTimeout=${Math.floor(config.dbQueryTimeoutMs / 1000)}`;
   const conn = ibmDb.openSync(connStr);
+
+  // Apply session config once after connection (single-connection model)
+  if (sessionConfig) {
+    const db2Conn = conn as { querySync: (sql: string) => unknown };
+    const stmts = buildDb2SessionSql(sessionConfig);
+    for (const stmt of stmts) {
+      try { db2Conn.querySync(stmt); } catch { /* best-effort */ }
+    }
+  }
+
   return { type: 'db2', conn, dbName };
+}
+
+function buildDb2SessionSql(sc: DbSessionConfig): string[] {
+  const stmts: string[] = [];
+  if (sc.timezone) stmts.push(`SET CURRENT TIMEZONE = '${sc.timezone.replace(/'/g, "''")}'`);
+  if (sc.searchPath) stmts.push(`SET SCHEMA = ${sc.searchPath}`);
+  if (sc.initCommands) {
+    for (const cmd of sc.initCommands) stmts.push(cmd);
+  }
+  return stmts;
 }
 
 export async function runQuery(conn: unknown, sql: string, maxRows: number): Promise<QueryResult> {
@@ -68,7 +89,96 @@ export async function fetchSchema(conn: unknown): Promise<SchemaInfo> {
       })),
     });
   }
-  return { tables };
+  // -- Views (best-effort) --
+  const views: ViewInfo[] = [];
+  try {
+    const viewRows = db2Conn.querySync(
+      `SELECT TABSCHEMA AS schema, TABNAME AS name
+       FROM SYSCAT.TABLES
+       WHERE TYPE = 'V'
+         AND TABSCHEMA NOT LIKE 'SYS%'
+         AND TABSCHEMA NOT IN ('NULLID','SQLJ','SYSIBMADM')
+       ORDER BY TABSCHEMA, TABNAME`,
+    );
+    for (const v of viewRows) {
+      views.push({ name: String(v.name), schema: String(v.schema) });
+    }
+  } catch { /* best-effort */ }
+
+  // -- Functions (best-effort) --
+  const functions: RoutineInfo[] = [];
+  try {
+    const funcRows = db2Conn.querySync(
+      `SELECT FUNCSCHEMA AS schema, FUNCNAME AS name
+       FROM SYSCAT.FUNCTIONS
+       WHERE FUNCSCHEMA NOT LIKE 'SYS%'
+         AND FUNCSCHEMA NOT IN ('NULLID','SQLJ','SYSIBMADM')
+         AND ORIGIN IN ('E','U')
+       ORDER BY FUNCSCHEMA, FUNCNAME`,
+    );
+    for (const f of funcRows) {
+      functions.push({ name: String(f.name), schema: String(f.schema) });
+    }
+  } catch { /* best-effort */ }
+
+  // -- Procedures (best-effort) --
+  const procedures: RoutineInfo[] = [];
+  try {
+    const procRows = db2Conn.querySync(
+      `SELECT PROCSCHEMA AS schema, PROCNAME AS name
+       FROM SYSCAT.PROCEDURES
+       WHERE PROCSCHEMA NOT LIKE 'SYS%'
+         AND PROCSCHEMA NOT IN ('NULLID','SQLJ','SYSIBMADM')
+       ORDER BY PROCSCHEMA, PROCNAME`,
+    );
+    for (const p of procRows) {
+      procedures.push({ name: String(p.name), schema: String(p.schema) });
+    }
+  } catch { /* best-effort */ }
+
+  // -- Triggers (best-effort) --
+  const triggers: TriggerInfo[] = [];
+  try {
+    const eventMap: Record<string, string> = { I: 'INSERT', U: 'UPDATE', D: 'DELETE' };
+    const timingMap: Record<string, string> = { B: 'BEFORE', A: 'AFTER', I: 'INSTEAD OF' };
+    const trigRows = db2Conn.querySync(
+      `SELECT TRIGSCHEMA AS schema, TRIGNAME AS name, TABNAME AS table_name,
+              TRIGEVENT AS event, TRIGTIME AS timing
+       FROM SYSCAT.TRIGGERS
+       WHERE TRIGSCHEMA NOT LIKE 'SYS%'
+         AND TRIGSCHEMA NOT IN ('NULLID','SQLJ','SYSIBMADM')
+       ORDER BY TRIGSCHEMA, TRIGNAME`,
+    );
+    for (const tr of trigRows) {
+      const eventCode = String(tr.event).trim();
+      const timingCode = String(tr.timing).trim();
+      triggers.push({
+        name: String(tr.name),
+        schema: String(tr.schema),
+        tableName: String(tr.table_name),
+        event: eventMap[eventCode] || eventCode,
+        timing: timingMap[timingCode] || timingCode,
+      });
+    }
+  } catch { /* best-effort */ }
+
+  // -- Sequences (best-effort) --
+  const sequences: SequenceInfo[] = [];
+  try {
+    const seqRows = db2Conn.querySync(
+      `SELECT SEQSCHEMA AS schema, SEQNAME AS name
+       FROM SYSCAT.SEQUENCES
+       WHERE SEQSCHEMA NOT LIKE 'SYS%'
+         AND SEQSCHEMA NOT IN ('NULLID','SQLJ','SYSIBMADM')
+         AND SEQTYPE = 'S'
+       ORDER BY SEQSCHEMA, SEQNAME`,
+    );
+    for (const s of seqRows) {
+      sequences.push({ name: String(s.name), schema: String(s.schema) });
+    }
+  } catch { /* best-effort */ }
+
+  return { tables, views, functions, procedures, triggers, sequences };
 }
 
 export async function destroyPool(conn: unknown): Promise<void> {

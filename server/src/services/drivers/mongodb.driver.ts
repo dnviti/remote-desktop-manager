@@ -2,7 +2,7 @@ import { MongoClient } from 'mongodb';
 import { AppError } from '../../middleware/error.middleware';
 import { config } from '../../config';
 import type { DbSettings } from '../../types';
-import type { QueryResult, SchemaInfo } from '../dbSession.service';
+import type { QueryResult, SchemaInfo, ViewInfo } from '../dbSession.service';
 import type { DriverPool } from './types';
 
 export async function createPool(
@@ -54,7 +54,7 @@ export async function runQuery(
 
 export async function fetchSchema(client: MongoClient, dbName: string): Promise<SchemaInfo> {
   const db = client.db(dbName);
-  const collections = await db.listCollections().toArray();
+  const collections = await db.listCollections({ type: 'collection' }).toArray();
   const tables: SchemaInfo['tables'] = [];
   for (const col of collections) {
     const sample = await db.collection(col.name).findOne();
@@ -68,7 +68,16 @@ export async function fetchSchema(client: MongoClient, dbName: string): Promise<
       : [];
     tables.push({ name: col.name, schema: dbName, columns });
   }
-  return { tables };
+
+  let views: ViewInfo[] = [];
+  try {
+    const viewList = await db.listCollections({ type: 'view' }).toArray();
+    views = viewList.map((c) => ({ name: c.name, schema: dbName }));
+  } catch {
+    /* best-effort: views not supported on older MongoDB versions */
+  }
+
+  return { tables, views };
 }
 
 export async function destroyPool(client: MongoClient): Promise<void> {

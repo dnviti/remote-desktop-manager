@@ -1,15 +1,21 @@
 import mssql from 'mssql';
 import { config } from '../../config';
-import type { DbSettings } from '../../types';
-import type { QueryResult, SchemaInfo, TableInfo } from '../dbSession.service';
+import type { DbSettings, DbSessionConfig } from '../../types';
+import type { QueryResult, SchemaInfo, TableInfo, ViewInfo, RoutineInfo, TriggerInfo, SequenceInfo, DbTypeInfo } from '../dbSession.service';
 import type { DriverPool, ExplainResult, IntrospectionResult } from './types';
+
+// Per-pool session init commands (MSSQL has no pool-level connection hook)
+const poolInitSql = new Map<mssql.ConnectionPool, string[]>();
 
 export async function createPool(
   host: string, port: number, username: string, password: string,
   databaseName: string | undefined, dbSettings: DbSettings | undefined,
+  sessionConfig?: DbSessionConfig,
 ): Promise<DriverPool> {
+  // For MSSQL, activeDatabase can switch the pool-level database or be applied via USE
+  const effectiveDb = sessionConfig?.activeDatabase || databaseName;
   const mssqlConfig: mssql.config = {
-    server: host, port, user: username, password, database: databaseName,
+    server: host, port, user: username, password, database: effectiveDb,
     pool: { max: config.dbPoolMaxConnections, idleTimeoutMillis: config.dbPoolIdleTimeoutMs },
     options: {
       encrypt: false,
@@ -19,13 +25,31 @@ export async function createPool(
     },
   };
   const pool = await new mssql.ConnectionPool(mssqlConfig).connect();
+  // Store init commands keyed by pool for per-query prepending
+  const initSql = sessionConfig ? buildSessionInitSql(sessionConfig) : [];
+  if (initSql.length > 0) poolInitSql.set(pool, initSql);
   return { type: 'mssql', pool };
 }
 
+function buildSessionInitSql(sc: DbSessionConfig): string[] {
+  const stmts: string[] = [];
+  // Note: activeDatabase is handled at pool level for MSSQL
+  if (sc.searchPath) stmts.push(`SET SCHEMA '${sc.searchPath.replace(/'/g, "''")}'`);
+  if (sc.initCommands) {
+    for (const cmd of sc.initCommands) stmts.push(cmd);
+  }
+  return stmts;
+}
+
 export async function runQuery(pool: mssql.ConnectionPool, sql: string, maxRows: number): Promise<QueryResult> {
+  // Prepend session init commands to the query batch
+  const initSql = poolInitSql.get(pool);
+  const fullSql = initSql && initSql.length > 0
+    ? [...initSql, sql].join(';\n')
+    : sql;
   // codeql[js/sql-injection] — sql is validated by role-based query restriction and
   // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
-  const result = await pool.request().query(sql);
+  const result = await pool.request().query(fullSql);
   const allRows = (result.recordset ?? []) as Record<string, unknown>[];
   const columns = result.recordset?.columns
     ? Object.keys(result.recordset.columns)
@@ -103,10 +127,115 @@ export async function fetchSchema(pool: mssql.ConnectionPool): Promise<SchemaInf
       })),
     });
   }
-  return { tables };
+  // --- Views (best-effort) ---
+  let views: ViewInfo[] = [];
+  try {
+    const viewsResult = await pool.request().query(`
+      SELECT SCHEMA_NAME(schema_id) AS [schema], name
+      FROM sys.views
+      WHERE is_ms_shipped = 0
+        AND SCHEMA_NAME(schema_id) NOT IN ('sys','INFORMATION_SCHEMA')
+      ORDER BY [schema], name
+    `);
+    views = (viewsResult.recordset as { schema: string; name: string }[]).map((r) => ({
+      name: r.name,
+      schema: r.schema,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Functions (best-effort) ---
+  let functions: RoutineInfo[] = [];
+  try {
+    const fnResult = await pool.request().query(`
+      SELECT SCHEMA_NAME(schema_id) AS [schema], name,
+             CASE type WHEN 'FN' THEN 'scalar' WHEN 'IF' THEN 'inline' WHEN 'TF' THEN 'table' END AS sub_type
+      FROM sys.objects
+      WHERE type IN ('FN','IF','TF')
+        AND is_ms_shipped = 0
+        AND SCHEMA_NAME(schema_id) NOT IN ('sys','INFORMATION_SCHEMA')
+      ORDER BY [schema], name
+    `);
+    functions = (fnResult.recordset as { schema: string; name: string; sub_type: string }[]).map((r) => ({
+      name: r.name,
+      schema: r.schema,
+      returnType: r.sub_type,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Procedures (best-effort) ---
+  let procedures: RoutineInfo[] = [];
+  try {
+    const procResult = await pool.request().query(`
+      SELECT SCHEMA_NAME(schema_id) AS [schema], name
+      FROM sys.procedures
+      WHERE is_ms_shipped = 0
+        AND SCHEMA_NAME(schema_id) NOT IN ('sys','INFORMATION_SCHEMA')
+      ORDER BY [schema], name
+    `);
+    procedures = (procResult.recordset as { schema: string; name: string }[]).map((r) => ({
+      name: r.name,
+      schema: r.schema,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Triggers (DML only, best-effort) ---
+  let triggers: TriggerInfo[] = [];
+  try {
+    const trigResult = await pool.request().query(`
+      SELECT t.name,
+             OBJECT_SCHEMA_NAME(t.parent_id) AS [schema],
+             OBJECT_NAME(t.parent_id) AS table_name,
+             t.type_desc AS timing
+      FROM sys.triggers t
+      WHERE t.parent_class = 1
+        AND t.is_ms_shipped = 0
+      ORDER BY [schema], t.name
+    `);
+    triggers = (trigResult.recordset as { name: string; schema: string; table_name: string; timing: string }[]).map((r) => ({
+      name: r.name,
+      schema: r.schema,
+      tableName: r.table_name,
+      event: 'DML',
+      timing: r.timing,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Sequences (best-effort) ---
+  let sequences: SequenceInfo[] = [];
+  try {
+    const seqResult = await pool.request().query(`
+      SELECT SCHEMA_NAME(schema_id) AS [schema], name
+      FROM sys.sequences
+      WHERE SCHEMA_NAME(schema_id) NOT IN ('sys','INFORMATION_SCHEMA')
+      ORDER BY [schema], name
+    `);
+    sequences = (seqResult.recordset as { schema: string; name: string }[]).map((r) => ({
+      name: r.name,
+      schema: r.schema,
+    }));
+  } catch { /* best-effort */ }
+
+  // --- Types (best-effort) ---
+  let types: DbTypeInfo[] = [];
+  try {
+    const typesResult = await pool.request().query(`
+      SELECT SCHEMA_NAME(schema_id) AS [schema], name, 'user-defined' AS kind
+      FROM sys.types
+      WHERE is_user_defined = 1
+      ORDER BY [schema], name
+    `);
+    types = (typesResult.recordset as { schema: string; name: string; kind: string }[]).map((r) => ({
+      name: r.name,
+      schema: r.schema,
+      kind: r.kind,
+    }));
+  } catch { /* best-effort */ }
+
+  return { tables, views, functions, procedures, triggers, sequences, types };
 }
 
 export async function destroyPool(pool: mssql.ConnectionPool): Promise<void> {
+  poolInitSql.delete(pool);
   await pool.close();
 }
 
