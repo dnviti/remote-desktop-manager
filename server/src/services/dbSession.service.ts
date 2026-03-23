@@ -7,9 +7,12 @@ import * as sqlFirewall from './sqlFirewall.service';
 import * as dbAudit from './dbAudit.service';
 import * as dataMasking from './dataMasking.service';
 import * as dbQueryExecutor from './dbQueryExecutor.service';
+import * as dbIntrospection from './dbIntrospection.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
-import type { DbSettings, TenantRoleType } from '../types';
+import type { DbSettings, DbSessionConfig, TenantRoleType } from '../types';
+import type { ExplainResult } from './dbQueryExecutor.service';
+import type { IntrospectionResult, IntrospectionType } from './dbIntrospection.service';
 
 const log = logger.child('db-session');
 
@@ -36,6 +39,13 @@ export interface QueryResult {
 
 export interface SchemaInfo {
   tables: TableInfo[];
+  views?: ViewInfo[];
+  functions?: RoutineInfo[];
+  procedures?: RoutineInfo[];
+  triggers?: TriggerInfo[];
+  sequences?: SequenceInfo[];
+  packages?: PackageInfo[];
+  types?: DbTypeInfo[];
 }
 
 export interface TableInfo {
@@ -49,6 +59,43 @@ export interface ColumnInfo {
   dataType: string;
   nullable: boolean;
   isPrimaryKey: boolean;
+}
+
+export interface ViewInfo {
+  name: string;
+  schema: string;
+  materialized?: boolean;
+}
+
+export interface RoutineInfo {
+  name: string;
+  schema: string;
+  returnType?: string;
+}
+
+export interface TriggerInfo {
+  name: string;
+  schema: string;
+  tableName: string;
+  event: string;
+  timing: string;
+}
+
+export interface SequenceInfo {
+  name: string;
+  schema: string;
+}
+
+export interface PackageInfo {
+  name: string;
+  schema: string;
+  hasBody: boolean;
+}
+
+export interface DbTypeInfo {
+  name: string;
+  schema: string;
+  kind: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,8 +113,9 @@ export async function createSession(params: {
   ipAddress?: string;
   overrideUsername?: string;
   overridePassword?: string;
+  sessionConfig?: DbSessionConfig;
 }): Promise<DbSessionResult> {
-  const { userId, connectionId, tenantId, ipAddress, overrideUsername, overridePassword } = params;
+  const { userId, connectionId, tenantId, ipAddress, overrideUsername, overridePassword, sessionConfig } = params;
 
   // Fetch connection to extract DB settings
   const conn = await prisma.connection.findUnique({
@@ -96,6 +144,7 @@ export async function createSession(params: {
     ipAddress,
     overrideUsername,
     overridePassword,
+    sessionConfig,
   });
 
   log.info(`DB session ${proxyResult.sessionId} created for connection ${connectionId}`);
@@ -368,4 +417,321 @@ export async function getSchema(userId: string, sessionId: string, tenantId: str
   });
 
   return dbQueryExecutor.fetchSchema(pool);
+}
+
+/**
+ * Get the execution plan for a SQL query via the database's native EXPLAIN.
+ */
+export async function getExecutionPlan(params: {
+  userId: string;
+  tenantId: string;
+  tenantRole?: TenantRoleType;
+  sessionId: string;
+  sql: string;
+  ipAddress?: string;
+}): Promise<ExplainResult> {
+  const { userId, tenantId, tenantRole, sessionId, sql, ipAddress } = params;
+
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    include: { connection: { select: { id: true, dbSettings: true } } },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+  if (session.status === 'CLOSED') {
+    throw new AppError('Session already closed', 410);
+  }
+
+  const dbSettings = (session.connection.dbSettings as DbSettings | null) ?? undefined;
+  const databaseName = dbSettings?.databaseName;
+  const queryType = dbAudit.classifyQuery(sql);
+  const tablesAccessed = dbAudit.extractTables(sql);
+
+  // --- Role-based query restriction (same as executeQuery) ---
+  const WRITE_ROLES = new Set(['OPERATOR', 'ADMIN', 'OWNER']);
+  if (queryType !== 'SELECT' && (!tenantRole || !WRITE_ROLES.has(tenantRole))) {
+    const blockReason = `EXPLAIN for ${queryType} queries requires OPERATOR role or above`;
+    auditService.log({
+      userId,
+      action: 'DB_QUERY_BLOCKED',
+      targetType: 'DatabaseQuery',
+      targetId: session.connectionId,
+      details: { sessionId, protocol: 'DATABASE', queryType, blockReason, context: 'explain' },
+      ipAddress,
+    });
+    throw new AppError(blockReason, 403);
+  }
+
+  // --- SQL Firewall enforcement ---
+  const firewallResult = await sqlFirewall.evaluateQuery(
+    tenantId,
+    sql,
+    databaseName,
+    tablesAccessed[0],
+  );
+
+  if (!firewallResult.allowed) {
+    const blockReason = firewallResult.matchedRule
+      ? `Blocked by firewall rule: ${firewallResult.matchedRule.name}`
+      : 'Blocked by SQL firewall';
+    auditService.log({
+      userId,
+      action: 'DB_QUERY_BLOCKED',
+      targetType: 'DatabaseQuery',
+      targetId: session.connectionId,
+      details: { sessionId, protocol: 'DATABASE', queryType, blockReason, context: 'explain' },
+      ipAddress,
+    });
+    throw new AppError(blockReason, 403);
+  }
+
+  const pool = await dbQueryExecutor.getOrCreatePool({
+    sessionId,
+    connectionId: session.connectionId,
+    userId,
+    tenantId,
+    metadata: (session.metadata as Record<string, unknown>) ?? {},
+  });
+
+  const result = await dbQueryExecutor.runExplain(pool, sql);
+
+  // Audit the plan request
+  auditService.log({
+    userId,
+    action: 'DB_QUERY_PLAN_REQUESTED',
+    targetType: 'DatabaseQuery',
+    targetId: session.connectionId,
+    details: { sessionId, protocol: pool.protocol, supported: result.supported, queryType },
+    ipAddress,
+  });
+
+  return result;
+}
+
+/**
+ * Perform database introspection (indexes, statistics, foreign keys, etc.)
+ * via the active proxy session.
+ */
+export async function introspectDatabase(params: {
+  userId: string;
+  tenantId: string;
+  tenantRole?: TenantRoleType;
+  sessionId: string;
+  type: IntrospectionType;
+  target?: string;
+  ipAddress?: string;
+}): Promise<IntrospectionResult> {
+  const { userId, tenantId, tenantRole, sessionId, type, target, ipAddress } = params;
+
+  // --- Role-based restriction: introspection is limited to OPERATOR/ADMIN/OWNER ---
+  const INTROSPECTION_ROLES = new Set(['OPERATOR', 'ADMIN', 'OWNER']);
+  if (!tenantRole || !INTROSPECTION_ROLES.has(tenantRole)) {
+    throw new AppError('Database introspection requires OPERATOR role or above', 403);
+  }
+
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    include: { connection: { select: { id: true } } },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+  if (session.status === 'CLOSED') {
+    throw new AppError('Session already closed', 410);
+  }
+
+  const pool = await dbQueryExecutor.getOrCreatePool({
+    sessionId,
+    connectionId: session.connectionId,
+    userId,
+    tenantId,
+    metadata: (session.metadata as Record<string, unknown>) ?? {},
+  });
+
+  const result = await dbIntrospection.introspect(pool, type, target ?? '');
+
+  // Audit the introspection request
+  auditService.log({
+    userId,
+    action: 'DB_INTROSPECTION_REQUESTED',
+    targetType: 'DatabaseQuery',
+    targetId: session.connectionId,
+    details: { sessionId, protocol: pool.protocol, introspectionType: type, target: target ?? '' },
+    ipAddress,
+  });
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Session configuration — runtime session-level parameters
+// ---------------------------------------------------------------------------
+
+/**
+ * Update session-level configuration (timezone, search path, encoding, etc.).
+ * Destroys the current pool and recreates it with the new settings so that
+ * all future queries execute against a properly configured session.
+ */
+export async function updateSessionConfig(params: {
+  userId: string;
+  tenantId: string;
+  tenantRole?: TenantRoleType;
+  sessionId: string;
+  sessionConfig: DbSessionConfig;
+  ipAddress?: string;
+}): Promise<{ applied: boolean; activeDatabase?: string }> {
+  const { userId, tenantId, tenantRole, sessionId, sessionConfig, ipAddress } = params;
+
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    include: { connection: { select: { id: true, dbSettings: true } } },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+  if (session.status === 'CLOSED') {
+    throw new AppError('Session already closed', 410);
+  }
+
+  const dbSettings = (session.connection.dbSettings as DbSettings | null) ?? undefined;
+  if (dbSettings?.protocol === 'mongodb') {
+    throw new AppError('Session configuration is not supported for MongoDB', 400);
+  }
+
+  // initCommands require OPERATOR+ role
+  const OPERATOR_ROLES = new Set(['OPERATOR', 'ADMIN', 'OWNER']);
+  if (sessionConfig.initCommands?.length && (!tenantRole || !OPERATOR_ROLES.has(tenantRole))) {
+    throw new AppError('Custom init commands require OPERATOR role or above', 403);
+  }
+
+  // Validate initCommands are safe SET/ALTER SESSION statements
+  if (sessionConfig.initCommands) {
+    for (const cmd of sessionConfig.initCommands) {
+      const normalized = cmd.trim().toUpperCase();
+      if (!normalized.startsWith('SET ') && !normalized.startsWith('ALTER SESSION ')) {
+        throw new AppError('Init commands must be SET or ALTER SESSION statements', 400);
+      }
+    }
+  }
+
+  // Destroy existing pool
+  await dbQueryExecutor.destroyPool(sessionId);
+
+  // Merge sessionConfig into session metadata
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  metadata.sessionConfig = sessionConfig;
+
+  await prisma.activeSession.update({
+    where: { id: sessionId },
+    data: {
+      metadata: metadata as never,
+      lastActivityAt: new Date(),
+    },
+  });
+
+  // Recreate pool with new config to validate it works
+  const pool = await dbQueryExecutor.getOrCreatePool({
+    sessionId,
+    connectionId: session.connectionId,
+    userId,
+    tenantId,
+    metadata,
+  });
+
+  // Audit the config change
+  auditService.log({
+    userId,
+    action: 'DB_SESSION_CONFIG_UPDATED',
+    targetType: 'DatabaseQuery',
+    targetId: session.connectionId,
+    details: {
+      sessionId,
+      protocol: pool.protocol,
+      configKeys: Object.keys(sessionConfig).filter((k) => (sessionConfig as Record<string, unknown>)[k] !== undefined),
+    },
+    ipAddress,
+  });
+
+  log.info(`Session config updated for session ${sessionId}`);
+
+  return {
+    applied: true,
+    activeDatabase: pool.databaseName,
+  };
+}
+
+/**
+ * Retrieve the current session configuration from session metadata.
+ */
+export async function getSessionConfig(userId: string, sessionId: string): Promise<DbSessionConfig> {
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    select: { userId: true, metadata: true },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  return (metadata.sessionConfig as DbSessionConfig) ?? {};
+}
+
+// ---------------------------------------------------------------------------
+// Query history — user-scoped, reads from DbAuditLog
+// ---------------------------------------------------------------------------
+
+export interface QueryHistoryEntry {
+  id: string;
+  queryText: string;
+  queryType: string;
+  executionTimeMs: number | null;
+  rowsAffected: number | null;
+  blocked: boolean;
+  createdAt: Date;
+}
+
+export async function getQueryHistory(params: {
+  userId: string;
+  sessionId: string;
+  limit?: number;
+  search?: string;
+}): Promise<QueryHistoryEntry[]> {
+  const { userId, sessionId, search } = params;
+  const limit = Math.min(params.limit ?? 50, 200);
+
+  // Validate session ownership
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    select: { userId: true, connectionId: true },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+
+  const where: Record<string, unknown> = {
+    userId,
+    connectionId: session.connectionId,
+  };
+
+  if (search) {
+    where.queryText = { contains: search, mode: 'insensitive' };
+  }
+
+  const rows = await prisma.dbAuditLog.findMany({
+    where,
+    orderBy: { createdAt: 'desc' },
+    take: limit,
+    select: {
+      id: true,
+      queryText: true,
+      queryType: true,
+      executionTimeMs: true,
+      rowsAffected: true,
+      blocked: true,
+      createdAt: true,
+    },
+  });
+
+  return rows;
 }

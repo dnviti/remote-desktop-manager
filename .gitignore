@@ -396,3 +396,5 @@ __marimo__/
 .claude/worktrees/
 
 .mcp.json
+
+*.sql

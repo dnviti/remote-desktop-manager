@@ -101,6 +101,9 @@ export const ACTION_LABELS: Record<AuditAction, string> = {
   DB_MASKING_POLICY_CREATE: 'Create Masking Policy',
   DB_MASKING_POLICY_UPDATE: 'Update Masking Policy',
   DB_MASKING_POLICY_DELETE: 'Delete Masking Policy',
+  DB_QUERY_PLAN_REQUESTED: 'DB Execution Plan',
+  DB_QUERY_AI_OPTIMIZED: 'AI Query Optimization',
+  DB_INTROSPECTION_REQUESTED: 'DB Introspection',
 };
 
 export function getActionColor(action: AuditAction): 'default' | 'primary' | 'secondary' | 'error' | 'warning' | 'success' | 'info' {
@@ -163,6 +166,7 @@ export const ALL_ACTIONS: AuditAction[] = [
   'DB_QUERY_EXECUTED', 'DB_QUERY_BLOCKED',
   'DB_FIREWALL_RULE_CREATE', 'DB_FIREWALL_RULE_UPDATE', 'DB_FIREWALL_RULE_DELETE',
   'DB_MASKING_POLICY_CREATE', 'DB_MASKING_POLICY_UPDATE', 'DB_MASKING_POLICY_DELETE',
+  'DB_QUERY_PLAN_REQUESTED', 'DB_QUERY_AI_OPTIMIZED', 'DB_INTROSPECTION_REQUESTED',
 ];
 
 export const TARGET_TYPES = [

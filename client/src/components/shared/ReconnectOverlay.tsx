@@ -7,7 +7,7 @@ interface ReconnectOverlayProps {
   maxRetries: number;
   onRetry?: () => void;
   onClose?: () => void;
-  protocol: 'RDP' | 'VNC' | 'SSH';
+  protocol: 'RDP' | 'VNC' | 'SSH' | 'DATABASE';
 }
 
 export default function ReconnectOverlay({ state, attempt, maxRetries, onRetry, onClose, protocol }: ReconnectOverlayProps) {

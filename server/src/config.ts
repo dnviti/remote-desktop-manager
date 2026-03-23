@@ -276,4 +276,14 @@ export const config = {
     caPublicKeyPath: process.env.SSH_PROXY_CA_PUBLIC_KEY || '',
     keystrokeRecording: process.env.SSH_PROXY_KEYSTROKE_RECORDING === 'true',
   },
+  // AI / LLM Integration (SQL Query Optimizer)
+  ai: {
+    provider: (process.env.AI_PROVIDER || '') as '' | 'anthropic' | 'openai' | 'ollama' | 'openai-compatible',
+    apiKey: process.env.AI_API_KEY || '',
+    model: process.env.AI_MODEL || '',
+    baseUrl: process.env.AI_BASE_URL || '',
+    maxTokens: parseInt(process.env.AI_MAX_TOKENS || '4096', 10),
+    temperature: parseFloat(process.env.AI_TEMPERATURE || '0.2'),
+    timeoutMs: parseInt(process.env.AI_TIMEOUT_MS || '60000', 10),
+  },
 };

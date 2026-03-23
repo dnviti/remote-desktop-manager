@@ -16,5 +16,10 @@ router.post('/:sessionId/end', asyncHandler(dbProxyController.endSession));
 router.post('/:sessionId/heartbeat', asyncHandler(dbProxyController.heartbeat));
 router.post('/:sessionId/query', asyncHandler(dbProxyController.executeQuery));
 router.get('/:sessionId/schema', asyncHandler(dbProxyController.getSchema));
+router.post('/:sessionId/explain', asyncHandler(dbProxyController.getExecutionPlan));
+router.post('/:sessionId/introspect', asyncHandler(dbProxyController.introspectDatabase));
+router.put('/:sessionId/config', asyncHandler(dbProxyController.updateSessionConfig));
+router.get('/:sessionId/config', asyncHandler(dbProxyController.getSessionConfig));
+router.get('/:sessionId/history', asyncHandler(dbProxyController.getQueryHistory));
 
 export default router;

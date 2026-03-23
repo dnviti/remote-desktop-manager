@@ -457,6 +457,15 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   { key: 'LDAP_SYNC_CRON', envVar: 'LDAP_SYNC_CRON', configPath: 'ldap.syncCron', type: 'string', default: '0 */6 * * *', group: 'ldap', label: 'Sync Schedule (cron)', description: 'Cron expression for LDAP synchronization.', minEditRole: 'OWNER' },
   { key: 'LDAP_AUTO_PROVISION', envVar: 'LDAP_AUTO_PROVISION', configPath: 'ldap.autoProvision', type: 'boolean', default: true, group: 'ldap', label: 'Auto Provision Users', description: 'Automatically create users on first LDAP login.', minEditRole: 'OWNER' },
   { key: 'LDAP_DEFAULT_TENANT_ID', envVar: 'LDAP_DEFAULT_TENANT_ID', configPath: 'ldap.defaultTenantId', type: 'string', default: '', group: 'ldap', label: 'Default Tenant ID', description: 'Tenant to assign auto-provisioned LDAP users to.', minEditRole: 'OWNER' },
+
+  // ── AI / LLM Integration ──────────────────────────────────────────────────
+  { key: 'AI_PROVIDER', envVar: 'AI_PROVIDER', configPath: 'ai.provider', type: 'select', default: '', options: ['', 'anthropic', 'openai', 'ollama', 'openai-compatible'], group: 'ai', label: 'AI Provider', description: 'LLM provider for SQL query optimization. Leave empty to disable.', minEditRole: 'ADMIN' },
+  { key: 'AI_API_KEY', envVar: 'AI_API_KEY', configPath: 'ai.apiKey', type: 'string', default: '', group: 'ai', label: 'API Key', description: 'API key for the selected provider (not required for Ollama).', minEditRole: 'ADMIN', sensitive: true },
+  { key: 'AI_MODEL', envVar: 'AI_MODEL', configPath: 'ai.model', type: 'string', default: '', group: 'ai', label: 'Model', description: 'Model name (e.g., claude-sonnet-4-20250514, gpt-4o, llama3.1:8b). Empty uses provider default.', minEditRole: 'ADMIN' },
+  { key: 'AI_BASE_URL', envVar: 'AI_BASE_URL', configPath: 'ai.baseUrl', type: 'string', default: '', group: 'ai', label: 'Base URL', description: 'API base URL. Required for Ollama (e.g., http://localhost:11434) and OpenAI-compatible providers.', minEditRole: 'ADMIN' },
+  { key: 'AI_MAX_TOKENS', envVar: 'AI_MAX_TOKENS', configPath: 'ai.maxTokens', type: 'number', default: 4096, group: 'ai', label: 'Max Tokens', description: 'Maximum number of tokens in the AI response.', minEditRole: 'ADMIN' },
+  { key: 'AI_TEMPERATURE', envVar: 'AI_TEMPERATURE', configPath: 'ai.temperature', type: 'number', default: 0.2, group: 'ai', label: 'Temperature', description: 'Sampling temperature (0-1). Lower values produce more deterministic SQL rewrites.', minEditRole: 'ADMIN' },
+  { key: 'AI_TIMEOUT_MS', envVar: 'AI_TIMEOUT_MS', configPath: 'ai.timeoutMs', type: 'number', default: 60000, group: 'ai', label: 'Timeout (ms)', description: 'Request timeout in milliseconds. Increase for slower local models.', minEditRole: 'ADMIN' },
 ];
 
 // Group metadata for UI display ordering and labels
@@ -483,6 +492,7 @@ export const SETTING_GROUPS: { key: string; label: string; order: number }[] = [
   { key: 'oauth-saml', label: 'OAuth: SAML', order: 19 },
   { key: 'rate-limiting-advanced', label: 'Rate Limiting: Advanced', order: 20 },
   { key: 'ldap', label: 'LDAP / FreeIPA', order: 21 },
+  { key: 'ai', label: 'AI / LLM', order: 22 },
 ];
 
 // ---------------------------------------------------------------------------

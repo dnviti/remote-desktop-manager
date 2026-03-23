@@ -2,6 +2,16 @@
 
 declare module 'oracledb' {
   export const OUT_FORMAT_OBJECT: number;
+
+  // Privilege constants
+  export const SYSDBA: number;
+  export const SYSOPER: number;
+  export const SYSASM: number;
+  export const SYSBACKUP: number;
+  export const SYSDG: number;
+  export const SYSKM: number;
+  export const SYSRAC: number;
+
   export function createPool(config: {
     user: string;
     password: string;
@@ -9,6 +19,7 @@ declare module 'oracledb' {
     poolMin?: number;
     poolMax?: number;
     poolTimeout?: number;
+    privilege?: number;
   }): Promise<Pool>;
   export function initOracleClient(opts?: Record<string, unknown>): void;
 

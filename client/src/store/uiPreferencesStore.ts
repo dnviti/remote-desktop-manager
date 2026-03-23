@@ -51,6 +51,11 @@ interface UiPreferences {
   tunnelMetricsOpen: boolean;
   desktopNotificationsEnabled: boolean;
   dbSchemaBrowserOpen: boolean;
+  dbQueryHistoryOpen: boolean;
+  queryVisualizerOpen: boolean;
+  dbQuerySubTabs: Record<string, { tabs: Array<{ id: string; label: string; sql: string }>; activeId: string }>;
+  dbSessionConfigs: Record<string, { activeDatabase?: string; timezone?: string; searchPath?: string; encoding?: string; initCommands?: string[] }>;
+  dbEditorSplitRatio: number;
 }
 
 interface UiPreferencesState extends UiPreferences {
@@ -110,6 +115,11 @@ const defaults: UiPreferences = {
   tunnelMetricsOpen: true,
   desktopNotificationsEnabled: false,
   dbSchemaBrowserOpen: false,
+  dbQueryHistoryOpen: false,
+  queryVisualizerOpen: false,
+  dbQuerySubTabs: {},
+  dbSessionConfigs: {},
+  dbEditorSplitRatio: 0.3,
 };
 
 export const useUiPreferencesStore = create<UiPreferencesState>()(

@@ -142,6 +142,7 @@ async function main() {
   registerReload('rate-limiting-advanced', rebuildOauthRateLimiters);
   registerReload('rate-limiting-advanced', rebuildSessionRateLimiter);
   registerReload('vault', rebuildVaultRateLimiters);
+  registerReload('ai', () => { logger.verbose('AI/LLM settings reloaded'); });
 
   // Start gateway health monitors
   startAllMonitors();

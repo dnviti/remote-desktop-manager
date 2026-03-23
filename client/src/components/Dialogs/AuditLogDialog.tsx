@@ -16,6 +16,7 @@ import {
   Warning as WarningIcon,
   Storage as StorageIcon,
   List as ListIcon,
+  Visibility as VisualizeIcon,
 } from '@mui/icons-material';
 import { getAuditLogs, getAuditGateways, getAuditCountries, AuditLogEntry, AuditAction, AuditLogParams, AuditGateway } from '../../api/audit.api';
 import {
@@ -27,6 +28,7 @@ import { useAuthStore } from '../../store/authStore';
 import { ACTION_LABELS, getActionColor, formatDetails, ALL_ACTIONS, TARGET_TYPES } from '../Audit/auditConstants';
 import IpGeoCell from '../Audit/IpGeoCell';
 import { SlideUp } from '../common/SlideUp';
+import QueryVisualizer from '../DatabaseClient/QueryVisualizer';
 
 interface AuditLogDialogProps {
   open: boolean;
@@ -103,6 +105,9 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
   const [dbExpandedRowId, setDbExpandedRowId] = useState<string | null>(null);
   const [dbConnections, setDbConnections] = useState<DbAuditConnection[]>([]);
   const [dbUsers, setDbUsers] = useState<DbAuditUser[]>([]);
+
+  // ---- Query Visualizer state ----
+  const [visualizerEntry, setVisualizerEntry] = useState<DbAuditLogEntry | null>(null);
 
   const activeTab = auditLogTab || 'general';
 
@@ -756,6 +761,20 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
                                         </>
                                       )}
                                     </Box>
+                                    <Box sx={{ mt: 1.5 }}>
+                                      <Tooltip title="Open query visualizer">
+                                        <IconButton
+                                          size="small"
+                                          color="primary"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setVisualizerEntry(entry);
+                                          }}
+                                        >
+                                          <VisualizeIcon fontSize="small" />
+                                        </IconButton>
+                                      </Tooltip>
+                                    </Box>
                                   </Box>
                                 </Collapse>
                               </TableCell>
@@ -780,6 +799,19 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
           </>
         )}
       </Box>
+
+      {/* Query Visualizer drawer */}
+      <QueryVisualizer
+        open={Boolean(visualizerEntry)}
+        onClose={() => setVisualizerEntry(null)}
+        queryText={visualizerEntry?.queryText ?? ''}
+        queryType={visualizerEntry?.queryType ?? ''}
+        executionTimeMs={visualizerEntry?.executionTimeMs ?? null}
+        rowsAffected={visualizerEntry?.rowsAffected ?? null}
+        tablesAccessed={visualizerEntry?.tablesAccessed ?? []}
+        blocked={visualizerEntry?.blocked ?? false}
+        blockReason={visualizerEntry?.blockReason}
+      />
     </Dialog>
   );
 }

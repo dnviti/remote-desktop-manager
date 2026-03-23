@@ -3,6 +3,7 @@ import {
   CheckCircle as ConnectedIcon,
   Cancel as DisconnectedIcon,
   HourglassEmpty as ConnectingIcon,
+  Tune as ConfiguredIcon,
 } from '@mui/icons-material';
 
 export type DbConnectionState = 'connecting' | 'connected' | 'disconnected' | 'error';
@@ -12,6 +13,7 @@ interface DbConnectionStatusProps {
   protocol: string;
   databaseName?: string;
   error?: string;
+  hasSessionConfig?: boolean;
 }
 
 export default function DbConnectionStatus({
@@ -19,6 +21,7 @@ export default function DbConnectionStatus({
   protocol,
   databaseName,
   error,
+  hasSessionConfig,
 }: DbConnectionStatusProps) {
   const statusConfig: Record<
     DbConnectionState,
@@ -65,6 +68,9 @@ export default function DbConnectionStatus({
         <Typography variant="caption" color="text.secondary">
           / {databaseName}
         </Typography>
+      )}
+      {hasSessionConfig && (
+        <ConfiguredIcon sx={{ fontSize: 12, color: 'primary.main', ml: 0.5 }} />
       )}
       {state === 'error' && error && (
         <Typography variant="caption" color="error.main" sx={{ ml: 1 }}>
