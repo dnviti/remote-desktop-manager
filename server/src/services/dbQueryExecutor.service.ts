@@ -443,6 +443,97 @@ async function runDb2Query(
 }
 
 // ---------------------------------------------------------------------------
+// Execution plan (EXPLAIN)
+// ---------------------------------------------------------------------------
+
+export interface ExplainResult {
+  supported: boolean;
+  plan?: unknown;
+  format?: 'json' | 'xml' | 'text';
+  raw?: string;
+}
+
+export async function runExplain(
+  managed: ManagedPool,
+  sql: string,
+): Promise<ExplainResult> {
+  const { driver } = managed;
+
+  try {
+    switch (driver.type) {
+      case 'postgresql':
+        return await runPostgresExplain(driver.pool, sql);
+      case 'mysql':
+        return await runMysqlExplain(driver.pool, sql);
+      case 'mssql':
+        return await runMssqlExplain(driver.pool, sql);
+      case 'oracle':
+        return await runOracleExplain(driver.pool, sql);
+      case 'mongodb':
+      case 'db2':
+        return { supported: false };
+      default:
+        return { supported: false };
+    }
+  } catch (err) {
+    if (err instanceof AppError) throw err;
+    const message = err instanceof Error ? err.message : 'Explain failed';
+    throw new AppError(message, 400);
+  }
+}
+
+async function runPostgresExplain(pool: pg.Pool, sql: string): Promise<ExplainResult> {
+  // codeql[js/sql-injection] — sql is validated by role-based query restriction and
+  // sqlFirewall.evaluateQuery() in dbSession.service.ts before reaching this function.
+  const result = await pool.query(`EXPLAIN (ANALYZE false, FORMAT JSON) ${sql}`);
+  const planRows = (result.rows ?? []) as Record<string, unknown>[];
+  const plan = planRows[0]?.['QUERY PLAN'] ?? planRows;
+  return { supported: true, plan, format: 'json', raw: JSON.stringify(plan, null, 2) };
+}
+
+async function runMysqlExplain(pool: mysql.Pool, sql: string): Promise<ExplainResult> {
+  // codeql[js/sql-injection] — sql is validated upstream before reaching this function.
+  const [rows] = await pool.query(`EXPLAIN FORMAT=JSON ${sql}`);
+  const arr = rows as Record<string, unknown>[];
+  const raw = (arr[0]?.EXPLAIN as string) ?? JSON.stringify(arr);
+  let plan: unknown;
+  try { plan = JSON.parse(raw); } catch { plan = arr; }
+  return { supported: true, plan, format: 'json', raw };
+}
+
+async function runMssqlExplain(pool: mssql.ConnectionPool, sql: string): Promise<ExplainResult> {
+  // codeql[js/sql-injection] — sql is validated upstream before reaching this function.
+  const request = pool.request();
+  await request.query('SET SHOWPLAN_XML ON');
+  try {
+    const result = await pool.request().query(sql);
+    const rows = (result.recordset ?? []) as Record<string, unknown>[];
+    const raw = rows.length > 0 ? String(Object.values(rows[0])[0] ?? '') : '';
+    return { supported: true, plan: raw, format: 'xml', raw };
+  } finally {
+    await pool.request().query('SET SHOWPLAN_XML OFF');
+  }
+}
+
+async function runOracleExplain(pool: oracledb.Pool, sql: string): Promise<ExplainResult> {
+  const conn = await pool.getConnection();
+  try {
+    // codeql[js/sql-injection] — sql is validated upstream before reaching this function.
+    await conn.execute(`EXPLAIN PLAN FOR ${sql}`);
+    const result = await conn.execute<Record<string, unknown>>(
+      `SELECT * FROM TABLE(DBMS_XPLAN.DISPLAY)`,
+      [],
+      { outFormat: oracledb.OUT_FORMAT_OBJECT },
+    );
+    const rows = result.rows ?? [];
+    const raw = rows.map((r) => String(r.PLAN_TABLE_OUTPUT ?? '')).join('\n');
+    return { supported: true, plan: rows, format: 'text', raw };
+  } finally {
+    await conn.close();
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Schema fetching
 // ---------------------------------------------------------------------------
 

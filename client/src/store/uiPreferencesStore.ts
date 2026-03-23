@@ -51,6 +51,7 @@ interface UiPreferences {
   tunnelMetricsOpen: boolean;
   desktopNotificationsEnabled: boolean;
   dbSchemaBrowserOpen: boolean;
+  queryVisualizerOpen: boolean;
 }
 
 interface UiPreferencesState extends UiPreferences {
@@ -110,6 +111,7 @@ const defaults: UiPreferences = {
   tunnelMetricsOpen: true,
   desktopNotificationsEnabled: false,
   dbSchemaBrowserOpen: false,
+  queryVisualizerOpen: false,
 };
 
 export const useUiPreferencesStore = create<UiPreferencesState>()(

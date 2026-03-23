@@ -7,9 +7,12 @@ import * as sqlFirewall from './sqlFirewall.service';
 import * as dbAudit from './dbAudit.service';
 import * as dataMasking from './dataMasking.service';
 import * as dbQueryExecutor from './dbQueryExecutor.service';
+import * as dbIntrospection from './dbIntrospection.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import type { DbSettings, TenantRoleType } from '../types';
+import type { ExplainResult } from './dbQueryExecutor.service';
+import type { IntrospectionResult, IntrospectionType } from './dbIntrospection.service';
 
 const log = logger.child('db-session');
 
@@ -364,4 +367,85 @@ export async function getSchema(userId: string, sessionId: string, tenantId: str
   });
 
   return dbQueryExecutor.fetchSchema(pool);
+}
+
+/**
+ * Get the execution plan for a SQL query via the database's native EXPLAIN.
+ */
+export async function getExecutionPlan(params: {
+  userId: string;
+  tenantId: string;
+  sessionId: string;
+  sql: string;
+  ipAddress?: string;
+}): Promise<ExplainResult> {
+  const { userId, tenantId, sessionId, sql, ipAddress } = params;
+
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    include: { connection: { select: { id: true } } },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+  if (session.status === 'CLOSED') {
+    throw new AppError('Session already closed', 410);
+  }
+
+  const pool = await dbQueryExecutor.getOrCreatePool({
+    sessionId,
+    connectionId: session.connectionId,
+    userId,
+    tenantId,
+    metadata: (session.metadata as Record<string, unknown>) ?? {},
+  });
+
+  const result = await dbQueryExecutor.runExplain(pool, sql);
+
+  // Audit the plan request
+  auditService.log({
+    userId,
+    action: 'DB_QUERY_PLAN_REQUESTED',
+    targetType: 'DatabaseQuery',
+    targetId: session.connectionId,
+    details: { sessionId, protocol: pool.protocol, supported: result.supported },
+    ipAddress,
+  });
+
+  return result;
+}
+
+/**
+ * Perform database introspection (indexes, statistics, foreign keys, etc.)
+ * via the active proxy session.
+ */
+export async function introspectDatabase(params: {
+  userId: string;
+  tenantId: string;
+  sessionId: string;
+  type: IntrospectionType;
+  target: string;
+}): Promise<IntrospectionResult> {
+  const { userId, tenantId, sessionId, type, target } = params;
+
+  const session = await prisma.activeSession.findUnique({
+    where: { id: sessionId },
+    include: { connection: { select: { id: true } } },
+  });
+  if (!session || session.userId !== userId) {
+    throw new AppError('Session not found', 404);
+  }
+  if (session.status === 'CLOSED') {
+    throw new AppError('Session already closed', 410);
+  }
+
+  const pool = await dbQueryExecutor.getOrCreatePool({
+    sessionId,
+    connectionId: session.connectionId,
+    userId,
+    tenantId,
+    metadata: (session.metadata as Record<string, unknown>) ?? {},
+  });
+
+  return dbIntrospection.introspect(pool, type, target);
 }

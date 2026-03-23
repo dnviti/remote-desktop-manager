@@ -62,3 +62,45 @@ export async function getDbSchema(sessionId: string): Promise<DbSchemaInfo> {
   const { data } = await api.get(`/sessions/database/${sessionId}/schema`);
   return data;
 }
+
+// ---------------------------------------------------------------------------
+// Execution plan
+// ---------------------------------------------------------------------------
+
+export interface ExecutionPlanResponse {
+  supported: boolean;
+  plan?: unknown;
+  format?: 'json' | 'xml' | 'text';
+  raw?: string;
+}
+
+export async function getExecutionPlan(sessionId: string, sql: string): Promise<ExecutionPlanResponse> {
+  const { data } = await api.post(`/sessions/database/${sessionId}/explain`, { sql });
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Database introspection
+// ---------------------------------------------------------------------------
+
+export type IntrospectionType =
+  | 'indexes'
+  | 'statistics'
+  | 'foreign_keys'
+  | 'table_schema'
+  | 'row_count'
+  | 'database_version';
+
+export interface IntrospectionResponse {
+  supported: boolean;
+  data?: unknown;
+}
+
+export async function introspectDatabase(
+  sessionId: string,
+  type: IntrospectionType,
+  target: string,
+): Promise<IntrospectionResponse> {
+  const { data } = await api.post(`/sessions/database/${sessionId}/introspect`, { type, target });
+  return data;
+}

@@ -115,3 +115,60 @@ export async function getSchema(req: AuthRequest, res: Response, next: NextFunct
     next(err);
   }
 }
+
+// ---- Get execution plan (EXPLAIN) ----
+
+export async function getExecutionPlan(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    assertAuthenticated(req);
+    const sessionId = req.params.sessionId as string;
+    const { sql } = req.body as { sql: string };
+
+    if (!sql || typeof sql !== 'string') {
+      throw new AppError('sql is required', 400);
+    }
+
+    const tenantId = req.user.tenantId as string;
+    const result = await dbSessionService.getExecutionPlan({
+      userId: req.user.userId,
+      tenantId,
+      sessionId,
+      sql,
+      ipAddress: getClientIp(req) ?? undefined,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ---- Database introspection ----
+
+export async function introspectDatabase(req: AuthRequest, res: Response, next: NextFunction) {
+  try {
+    assertAuthenticated(req);
+    const sessionId = req.params.sessionId as string;
+    const { type, target } = req.body as { type: string; target: string };
+
+    if (!type || typeof type !== 'string') {
+      throw new AppError('type is required', 400);
+    }
+    if (!target || typeof target !== 'string') {
+      throw new AppError('target is required', 400);
+    }
+
+    const tenantId = req.user.tenantId as string;
+    const result = await dbSessionService.introspectDatabase({
+      userId: req.user.userId,
+      tenantId,
+      sessionId,
+      type: type as Parameters<typeof dbSessionService.introspectDatabase>[0]['type'],
+      target,
+    });
+
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
