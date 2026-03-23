@@ -6,6 +6,7 @@ import {
   DialogActions, TextField, FormControl, InputLabel,
   Select, MenuItem, Switch, FormControlLabel, Alert,
   CircularProgress, Tooltip, OutlinedInput, SelectChangeEvent,
+  Divider, ListSubheader,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -32,6 +33,117 @@ const STRATEGY_COLORS: Record<MaskingStrategy, 'error' | 'warning' | 'info'> = {
 };
 
 const ROLE_OPTIONS = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'CONSULTANT', 'AUDITOR', 'GUEST'];
+
+// ---------------------------------------------------------------------------
+// Preset masking policy templates
+// ---------------------------------------------------------------------------
+
+interface MaskingTemplate {
+  name: string;
+  columnPattern: string;
+  strategy: MaskingStrategy;
+  description: string;
+  category: string;
+}
+
+const MASKING_TEMPLATES: MaskingTemplate[] = [
+  // --- PII / Identity ---
+  {
+    category: 'PII / Identity',
+    name: 'Mask SSN / National ID',
+    columnPattern: '(ssn|social_security|national_id|tax_id|identity_number)',
+    strategy: 'PARTIAL',
+    description: 'Partially masks social security numbers and national identifiers',
+  },
+  {
+    category: 'PII / Identity',
+    name: 'Redact Full Names',
+    columnPattern: '(full_name|first_name|last_name|surname|given_name)',
+    strategy: 'REDACT',
+    description: 'Fully redacts personal name columns',
+  },
+  {
+    category: 'PII / Identity',
+    name: 'Hash Personal Identifiers',
+    columnPattern: '(passport|driver_license|license_number)',
+    strategy: 'HASH',
+    description: 'Hashes government-issued ID numbers for pseudonymized analytics',
+  },
+  // --- Financial ---
+  {
+    category: 'Financial',
+    name: 'Mask Credit Cards',
+    columnPattern: '(credit_card|card_number|pan|cc_number)',
+    strategy: 'PARTIAL',
+    description: 'Shows only the last digits of payment card numbers',
+  },
+  {
+    category: 'Financial',
+    name: 'Redact Bank Accounts',
+    columnPattern: '(bank_account|iban|routing_number|sort_code|account_number)',
+    strategy: 'REDACT',
+    description: 'Fully redacts banking and financial account numbers',
+  },
+  {
+    category: 'Financial',
+    name: 'Redact Salary / Compensation',
+    columnPattern: '(salary|wage|compensation|income|bonus)',
+    strategy: 'REDACT',
+    description: 'Hides salary and compensation data from non-privileged users',
+  },
+  // --- Authentication ---
+  {
+    category: 'Authentication',
+    name: 'Redact Passwords',
+    columnPattern: '(password|passwd|pwd|secret|pin)',
+    strategy: 'REDACT',
+    description: 'Fully redacts password and secret columns',
+  },
+  {
+    category: 'Authentication',
+    name: 'Hash API Keys / Tokens',
+    columnPattern: '(api_key|access_key|secret_key|auth_token|refresh_token)',
+    strategy: 'HASH',
+    description: 'Hashes API keys and tokens for reference without exposing raw values',
+  },
+  // --- Contact Information ---
+  {
+    category: 'Contact Information',
+    name: 'Mask Email Addresses',
+    columnPattern: '(email|e_mail|email_address)',
+    strategy: 'PARTIAL',
+    description: 'Partially masks email addresses showing domain only',
+  },
+  {
+    category: 'Contact Information',
+    name: 'Mask Phone Numbers',
+    columnPattern: '(phone|telephone|mobile|cell|fax)',
+    strategy: 'PARTIAL',
+    description: 'Partially masks phone numbers showing last digits only',
+  },
+  {
+    category: 'Contact Information',
+    name: 'Redact Physical Addresses',
+    columnPattern: '(address|street|city|zip_code|postal_code)',
+    strategy: 'REDACT',
+    description: 'Fully redacts physical address components',
+  },
+  // --- Healthcare ---
+  {
+    category: 'Healthcare',
+    name: 'Redact Medical Records',
+    columnPattern: '(diagnosis|medical_record|patient_id|health_id)',
+    strategy: 'REDACT',
+    description: 'Fully redacts protected health information (PHI)',
+  },
+  {
+    category: 'Healthcare',
+    name: 'Hash Prescription Data',
+    columnPattern: '(prescription|medication|drug_name)',
+    strategy: 'HASH',
+    description: 'Hashes prescription data for pseudonymized research use',
+  },
+];
 
 export default function DbMaskingSection() {
   const [policies, setPolicies] = useState<MaskingPolicy[]>([]);
@@ -70,6 +182,18 @@ export default function DbMaskingSection() {
     setFormData({ name: '', columnPattern: '', strategy: 'REDACT', exemptRoles: [], scope: '', description: '', enabled: true });
     clearError();
     setEditOpen(true);
+  };
+
+  const handleApplyTemplate = (templateValue: string) => {
+    const template = MASKING_TEMPLATES.find((t) => t.name === templateValue);
+    if (!template) return;
+    setFormData({
+      ...formData,
+      name: template.name,
+      columnPattern: template.columnPattern,
+      strategy: template.strategy,
+      description: template.description,
+    });
   };
 
   const handleOpenEdit = (policy: MaskingPolicy) => {
@@ -189,6 +313,42 @@ export default function DbMaskingSection() {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
+
+            {/* Template selector — only shown when creating */}
+            {!editingPolicy && (
+              <>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Start from template (optional)</InputLabel>
+                  <Select
+                    value=""
+                    label="Start from template (optional)"
+                    onChange={(e) => handleApplyTemplate(e.target.value)}
+                  >
+                    {(() => {
+                      const items: React.ReactNode[] = [];
+                      let lastCategory = '';
+                      for (const t of MASKING_TEMPLATES) {
+                        if (t.category !== lastCategory) {
+                          items.push(<ListSubheader key={`cat-${t.category}`}>{t.category}</ListSubheader>);
+                          lastCategory = t.category;
+                        }
+                        items.push(
+                          <MenuItem key={t.name} value={t.name}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                              <Chip label={STRATEGY_LABELS[t.strategy]} color={STRATEGY_COLORS[t.strategy]} size="small" sx={{ minWidth: 72 }} />
+                              <Typography variant="body2">{t.name}</Typography>
+                            </Box>
+                          </MenuItem>,
+                        );
+                      }
+                      return items;
+                    })()}
+                  </Select>
+                </FormControl>
+                <Divider />
+              </>
+            )}
+
             <TextField
               label="Name"
               size="small"

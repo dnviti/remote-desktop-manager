@@ -5,7 +5,7 @@ import {
   Chip, IconButton, Dialog, DialogTitle, DialogContent,
   DialogActions, TextField, FormControl, InputLabel,
   Select, MenuItem, Switch, FormControlLabel, Alert,
-  CircularProgress, Tooltip,
+  CircularProgress, Tooltip, Divider, ListSubheader,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -43,6 +43,108 @@ const WINDOW_OPTIONS = [
 ];
 
 const EXEMPT_ROLE_OPTIONS = ['OWNER', 'ADMIN', 'OPERATOR', 'MEMBER', 'CONSULTANT', 'AUDITOR', 'GUEST'];
+
+// ---------------------------------------------------------------------------
+// Preset policy templates
+// ---------------------------------------------------------------------------
+
+interface PolicyTemplate {
+  name: string;
+  queryType: DbQueryType | null;
+  windowMs: number;
+  maxQueries: number;
+  burstMax: number;
+  action: RateLimitAction;
+  category: string;
+}
+
+const POLICY_TEMPLATES: PolicyTemplate[] = [
+  // --- General Protection ---
+  {
+    category: 'General Protection',
+    name: 'Standard Query Limit',
+    queryType: null,
+    windowMs: 60000,
+    maxQueries: 100,
+    burstMax: 10,
+    action: 'REJECT',
+  },
+  {
+    category: 'General Protection',
+    name: 'Strict Query Limit',
+    queryType: null,
+    windowMs: 60000,
+    maxQueries: 30,
+    burstMax: 5,
+    action: 'REJECT',
+  },
+  {
+    category: 'General Protection',
+    name: 'Relaxed Query Limit (Log Only)',
+    queryType: null,
+    windowMs: 60000,
+    maxQueries: 500,
+    burstMax: 50,
+    action: 'LOG_ONLY',
+  },
+  // --- Write Protection ---
+  {
+    category: 'Write Protection',
+    name: 'INSERT Rate Limit',
+    queryType: 'INSERT',
+    windowMs: 60000,
+    maxQueries: 50,
+    burstMax: 10,
+    action: 'REJECT',
+  },
+  {
+    category: 'Write Protection',
+    name: 'UPDATE Rate Limit',
+    queryType: 'UPDATE',
+    windowMs: 60000,
+    maxQueries: 30,
+    burstMax: 5,
+    action: 'REJECT',
+  },
+  {
+    category: 'Write Protection',
+    name: 'DELETE Rate Limit',
+    queryType: 'DELETE',
+    windowMs: 60000,
+    maxQueries: 20,
+    burstMax: 3,
+    action: 'REJECT',
+  },
+  // --- DDL Protection ---
+  {
+    category: 'DDL Protection',
+    name: 'DDL Rate Limit',
+    queryType: 'DDL',
+    windowMs: 300000,
+    maxQueries: 5,
+    burstMax: 2,
+    action: 'REJECT',
+  },
+  // --- Performance ---
+  {
+    category: 'Performance',
+    name: 'SELECT Throttle',
+    queryType: 'SELECT',
+    windowMs: 10000,
+    maxQueries: 50,
+    burstMax: 20,
+    action: 'REJECT',
+  },
+  {
+    category: 'Performance',
+    name: 'Heavy Read Alert',
+    queryType: 'SELECT',
+    windowMs: 60000,
+    maxQueries: 200,
+    burstMax: 30,
+    action: 'LOG_ONLY',
+  },
+];
 
 function formatWindow(ms: number): string {
   if (ms < 60000) return `${ms / 1000}s`;
@@ -105,6 +207,20 @@ export default function DbRateLimitSection() {
     });
     clearError();
     setEditOpen(true);
+  };
+
+  const handleApplyTemplate = (templateValue: string) => {
+    const template = POLICY_TEMPLATES.find((t) => t.name === templateValue);
+    if (!template) return;
+    setFormData({
+      ...formData,
+      name: template.name,
+      queryType: template.queryType,
+      windowMs: template.windowMs,
+      maxQueries: template.maxQueries,
+      burstMax: template.burstMax,
+      action: template.action,
+    });
   };
 
   const handleOpenEdit = (policy: RateLimitPolicy) => {
@@ -235,6 +351,44 @@ export default function DbRateLimitSection() {
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
             {error && <Alert severity="error">{error}</Alert>}
+
+            {/* Template selector — only shown when creating */}
+            {!editingPolicy && (
+              <>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Start from template (optional)</InputLabel>
+                  <Select
+                    value=""
+                    label="Start from template (optional)"
+                    onChange={(e) => handleApplyTemplate(e.target.value)}
+                  >
+                    {(() => {
+                      const items: React.ReactNode[] = [];
+                      let lastCategory = '';
+                      for (const t of POLICY_TEMPLATES) {
+                        if (t.category !== lastCategory) {
+                          items.push(<ListSubheader key={`cat-${t.category}`}>{t.category}</ListSubheader>);
+                          lastCategory = t.category;
+                        }
+                        items.push(
+                          <MenuItem key={t.name} value={t.name}>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, width: '100%' }}>
+                              <Chip label={t.action === 'REJECT' ? 'Reject' : 'Log'} color={ACTION_COLORS[t.action]} size="small" sx={{ minWidth: 56 }} />
+                              <Typography variant="body2">{t.name}</Typography>
+                              <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto' }}>
+                                {t.queryType || 'All'} · {t.maxQueries}/{formatWindow(t.windowMs)}
+                              </Typography>
+                            </Box>
+                          </MenuItem>,
+                        );
+                      }
+                      return items;
+                    })()}
+                  </Select>
+                </FormControl>
+                <Divider />
+              </>
+            )}
 
             <TextField
               label="Name"
