@@ -65,19 +65,50 @@ const UPDATE_KEYWORDS = /^\s*UPDATE\b/i;
 const DELETE_KEYWORDS = /^\s*DELETE\b/i;
 
 /**
+ * Strip leading SQL comments (line `--` and block comments) and whitespace.
+ * Uses a character-scanning loop instead of regex to avoid polynomial
+ * backtracking (CodeQL js/polynomial-redos).
+ */
+function stripLeadingComments(sql: string): string {
+  let i = 0;
+  const len = sql.length;
+
+  while (i < len) {
+    // Skip whitespace
+    const ch = sql.charCodeAt(i);
+    if (ch === 32 || ch === 9 || ch === 10 || ch === 13) { // space, tab, LF, CR
+      i++;
+      continue;
+    }
+
+    // Line comment: -- ... \n
+    if (i + 1 < len && sql[i] === '-' && sql[i + 1] === '-') {
+      i += 2;
+      while (i < len && sql[i] !== '\n') i++;
+      if (i < len) i++; // skip newline
+      continue;
+    }
+
+    // Block comment: /* ... */
+    if (i + 1 < len && sql[i] === '/' && sql[i + 1] === '*') {
+      i += 2;
+      while (i + 1 < len && !(sql[i] === '*' && sql[i + 1] === '/')) i++;
+      if (i + 1 < len) i += 2; // skip */
+      continue;
+    }
+
+    break;
+  }
+
+  return sql.slice(i);
+}
+
+/**
  * Classify a SQL query text into a DbQueryType.
  * Handles CTEs (WITH ... SELECT/INSERT/UPDATE/DELETE), EXPLAIN, SHOW, etc.
  */
 export function classifyQuery(queryText: string): DbQueryType {
-  // Strip leading comments (-- and /* */) and whitespace
-  let trimmed = queryText.trim();
-  // Strip leading SQL comments iteratively (avoids polynomial regex backtracking)
-  let prev = '';
-  while (trimmed !== prev) {
-    prev = trimmed;
-    trimmed = trimmed.replace(/^--[^\n]*\n\s*/, '');
-    trimmed = trimmed.replace(/^\/\*[\s\S]*?\*\/\s*/, '');
-  }
+  const trimmed = stripLeadingComments(queryText);
 
   if (DDL_KEYWORDS.test(trimmed)) return 'DDL';
   if (SELECT_KEYWORDS.test(trimmed)) return 'SELECT';
