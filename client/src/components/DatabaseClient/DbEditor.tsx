@@ -131,6 +131,7 @@ export default function DbEditor({
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const editorPaneRef = useRef<HTMLDivElement>(null);
   const resultsPaneRef = useRef<HTMLDivElement>(null);
+  const handleRunQueryRef = useRef<() => void>(() => {});
 
   // Store selectors — must be declared before any useState that depends on them
   const storedSubTabs = useUiPreferencesStore((s) => s.dbQuerySubTabs[connectionId]);
@@ -402,6 +403,9 @@ export default function DbEditor({
     }
   }, [queryTabs, activeQueryTabId, updateTab, triggerReconnect]);
 
+  // Keep ref in sync so Monaco keybinding always calls the latest handleRunQuery
+  handleRunQueryRef.current = handleRunQuery;
+
   // Refresh schema
   const handleRefreshSchema = useCallback(async () => {
     if (!sessionIdRef.current) return;
@@ -476,13 +480,15 @@ export default function DbEditor({
     });
 
     // Register Ctrl+Enter keybinding for query execution
+    // Use ref to avoid stale closure — the action is registered once at mount,
+    // but handleRunQueryRef always points to the latest handleRunQuery.
     editor.addAction({
       id: 'run-sql-query',
       label: 'Run SQL Query',
       keybindings: [
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
       ],
-      run: () => { handleRunQuery(); },
+      run: () => { handleRunQueryRef.current(); },
     });
 
     // Register F5 keybinding for query execution
@@ -492,7 +498,7 @@ export default function DbEditor({
       keybindings: [
         monaco.KeyCode.F5,
       ],
-      run: () => { handleRunQuery(); },
+      run: () => { handleRunQueryRef.current(); },
     });
 
     // Register completion provider with current schema
@@ -503,7 +509,7 @@ export default function DbEditor({
 
     // Apply the resolved theme
     monaco.editor.setTheme(resolvedMonacoTheme);
-  }, [handleRunQuery, schemaTables, resolvedMonacoTheme]) as OnMount;
+  }, [schemaTables, resolvedMonacoTheme]) as OnMount;
 
   // Re-register completion provider when schema changes
   useEffect(() => {
