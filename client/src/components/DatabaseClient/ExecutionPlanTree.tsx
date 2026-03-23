@@ -287,7 +287,7 @@ function parseTextPlan(raw: string): PlanNode {
 
     const idStr = (cells[0] ?? '').trim();
     const hasPredicate = idStr.startsWith('*');
-    const id = parseInt(idStr.replace('*', ''), 10);
+    const id = parseInt(idStr.replace(/\*/g, ''), 10);
     if (isNaN(id)) continue;
 
     const opRaw = cells[1] ?? '';
