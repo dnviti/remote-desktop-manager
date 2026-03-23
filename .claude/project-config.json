@@ -56,6 +56,9 @@
       { "name": "hackernews", "enabled": true, "max_length": 2000, "post_url": "https://news.ycombinator.com/submit" }
     ]
   },
+  "worktrees": {
+    "enabled": true
+  },
   "ollama": {
     "enabled": true,
     "model": "qwen3.5:latest",
