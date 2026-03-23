@@ -18,6 +18,8 @@ const log = logger.child('aiQuery');
 
 // ---------------------------------------------------------------------------
 // Per-tenant daily request counters (resets at midnight UTC)
+// NOTE: In-memory — resets on server restart and is not shared across instances.
+// For production multi-instance deployments, use a shared store (Redis/DB).
 // ---------------------------------------------------------------------------
 interface DailyCounter {
   count: number;
@@ -91,14 +93,14 @@ RULES:
 2. Use the correct SQL dialect for ${dialect}.
 3. ONLY use table and column names from the provided schema — do not reference any other tables.
 4. If the request is ambiguous, make reasonable assumptions and explain them.
-5. Always add reasonable LIMIT clauses when the user does not specify one (default to LIMIT 100).
+5. When the user does not specify a limit, add a reasonable limit on the number of returned rows. Use the appropriate limiting syntax for the ${dialect} dialect (for example, LIMIT for PostgreSQL/MySQL, TOP for MSSQL, FETCH FIRST for DB2/Oracle).
 6. Use table aliases for readability.
 7. Return your response as a JSON object with two fields:
    - "sql": the generated SELECT query (using ONLY approved tables)
-   - "explanation": a brief explanation of what the query does, any assumptions, and any limitations due to table restrictions
+   - "explanation": a brief explanation of what the query does and any assumptions made
 
 Example response:
-{"sql": "SELECT o.id, o.total FROM orders o WHERE o.created_at >= NOW() - INTERVAL '1 month' AND o.total > 1000 LIMIT 100;", "explanation": "Retrieves orders from the last month with totals over $1000, limited to 100 results."}`;
+{"sql": "SELECT o.id, o.total FROM orders o WHERE o.total > 1000", "explanation": "Retrieves orders where the total is greater than 1000."}`;
 }
 
 // ---------------------------------------------------------------------------

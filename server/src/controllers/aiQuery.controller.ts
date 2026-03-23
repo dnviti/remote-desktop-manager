@@ -9,6 +9,11 @@ import { getClientIp } from '../utils/ip';
 
 // ---- AI Query Generation (AISQL-2069) ----
 
+/** Known database protocols — used to validate client-supplied dbProtocol values. */
+const KNOWN_DB_PROTOCOLS = new Set([
+  'postgresql', 'mysql', 'mongodb', 'oracle', 'mssql', 'db2',
+]);
+
 /**
  * GET /api/ai/config — Returns tenant AI config (API key redacted).
  * Requires ADMIN or OWNER (enforced by route middleware).
@@ -90,7 +95,9 @@ export async function analyzeQuery(req: AuthRequestType, res: Response): Promise
     // Schema fetch is best-effort; we proceed without it
   }
 
-  const dbProtocol = clientProtocol || 'postgresql';
+  const dbProtocol = clientProtocol && KNOWN_DB_PROTOCOLS.has(clientProtocol)
+    ? clientProtocol
+    : 'postgresql';
 
   const result = await aiQueryService.analyzeQueryIntent({
     tenantId,
@@ -161,6 +168,9 @@ export async function optimizeQuery(req: AuthRequest, res: Response, next: NextF
     }
     if (!dbProtocol || typeof dbProtocol !== 'string') {
       throw new AppError('dbProtocol is required', 400);
+    }
+    if (!KNOWN_DB_PROTOCOLS.has(dbProtocol)) {
+      throw new AppError(`Unsupported dbProtocol "${dbProtocol}". Must be one of: ${[...KNOWN_DB_PROTOCOLS].join(', ')}`, 400);
     }
 
     const tenantId = req.user.tenantId as string;

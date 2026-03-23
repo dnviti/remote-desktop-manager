@@ -113,15 +113,22 @@ export async function upsertConfig(
   tenantId: string,
   input: TenantAiConfigUpdateInput,
 ): Promise<TenantAiConfigDto> {
-  let encryptedApiKey: string | undefined;
-  let apiKeyIV: string | undefined;
-  let apiKeyTag: string | undefined;
+  let encryptedApiKey: string | null | undefined;
+  let apiKeyIV: string | null | undefined;
+  let apiKeyTag: string | null | undefined;
 
-  if (input.apiKey !== undefined && input.apiKey !== '') {
-    const encrypted = encryptWithServerKey(input.apiKey);
-    encryptedApiKey = encrypted.ciphertext;
-    apiKeyIV = encrypted.iv;
-    apiKeyTag = encrypted.tag;
+  if (input.apiKey !== undefined) {
+    if (input.apiKey === '') {
+      // Explicitly clear the stored API key
+      encryptedApiKey = null;
+      apiKeyIV = null;
+      apiKeyTag = null;
+    } else {
+      const encrypted = encryptWithServerKey(input.apiKey);
+      encryptedApiKey = encrypted.ciphertext;
+      apiKeyIV = encrypted.iv;
+      apiKeyTag = encrypted.tag;
+    }
   }
 
   const data: Record<string, unknown> = {};
@@ -131,7 +138,7 @@ export async function upsertConfig(
   if (input.maxTokensPerRequest !== undefined) data.maxTokensPerRequest = input.maxTokensPerRequest;
   if (input.dailyRequestLimit !== undefined) data.dailyRequestLimit = input.dailyRequestLimit;
   if (input.enabled !== undefined) data.enabled = input.enabled;
-  if (encryptedApiKey) {
+  if (encryptedApiKey !== undefined) {
     data.encryptedApiKey = encryptedApiKey;
     data.apiKeyIV = apiKeyIV;
     data.apiKeyTag = apiKeyTag;
