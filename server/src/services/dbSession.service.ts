@@ -6,6 +6,7 @@ import * as auditService from './audit.service';
 import * as sqlFirewall from './sqlFirewall.service';
 import * as dbAudit from './dbAudit.service';
 import * as dataMasking from './dataMasking.service';
+import * as dbRateLimit from './dbRateLimit.service';
 import * as dbQueryExecutor from './dbQueryExecutor.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -259,6 +260,65 @@ export async function executeQuery(params: {
         tablesAccessed,
         firewallAction: firewallResult.action,
         firewallRule: firewallResult.matchedRule.name,
+      },
+      ipAddress,
+    });
+  }
+
+  // --- Rate limit enforcement ---
+  const rateLimitResult = await dbRateLimit.evaluateRateLimit(
+    userId,
+    tenantId,
+    queryType,
+    tenantRole,
+  );
+
+  if (!rateLimitResult.allowed && rateLimitResult.policy) {
+    const blockReason = `Rate limit exceeded: ${rateLimitResult.policy.name}`;
+
+    dbAudit.interceptQuery({
+      userId,
+      connectionId: session.connectionId,
+      tenantId,
+      queryText: sql,
+      blocked: true,
+      blockReason,
+    });
+
+    auditService.log({
+      userId,
+      action: 'DB_QUERY_BLOCKED',
+      targetType: 'DatabaseQuery',
+      targetId: session.connectionId,
+      details: {
+        sessionId,
+        protocol: 'DATABASE',
+        queryType,
+        blockReason,
+        rateLimitPolicy: rateLimitResult.policy.name,
+        retryAfterMs: rateLimitResult.retryAfterMs,
+      },
+      ipAddress,
+    });
+
+    const err = new AppError(blockReason, 429);
+    throw err;
+  }
+
+  // Log rate limit trigger for LOG_ONLY policies (query is allowed but was over-limit)
+  if (rateLimitResult.policy && rateLimitResult.remaining <= 0) {
+    auditService.log({
+      userId,
+      action: 'DB_QUERY_RATE_LIMITED',
+      targetType: 'DatabaseQuery',
+      targetId: session.connectionId,
+      details: {
+        sessionId,
+        protocol: 'DATABASE',
+        queryType,
+        rateLimitPolicy: rateLimitResult.policy.name,
+        action: rateLimitResult.policy.action,
+        remaining: rateLimitResult.remaining,
       },
       ipAddress,
     });

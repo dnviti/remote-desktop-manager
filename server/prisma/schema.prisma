@@ -693,6 +693,10 @@ enum AuditAction {
   DB_MASKING_POLICY_CREATE
   DB_MASKING_POLICY_UPDATE
   DB_MASKING_POLICY_DELETE
+  DB_QUERY_RATE_LIMITED
+  DB_RATE_LIMIT_POLICY_CREATE
+  DB_RATE_LIMIT_POLICY_UPDATE
+  DB_RATE_LIMIT_POLICY_DELETE
   SESSION_TERMINATED_POLICY_VIOLATION
   KEYSTROKE_POLICY_CREATE
   KEYSTROKE_POLICY_UPDATE
@@ -1293,6 +1297,33 @@ model DbMaskingPolicy {
 
   @@index([tenantId, enabled])
   @@index([tenantId])
+}
+
+enum RateLimitAction {
+  REJECT
+  LOG_ONLY
+}
+
+/// Policy-based SQL query rate limiter evaluated after the SQL firewall and
+/// before query execution. Uses a token bucket algorithm with in-memory state.
+model DbRateLimitPolicy {
+  id           String           @id @default(uuid())
+  tenantId     String
+  name         String
+  queryType    DbQueryType?     /// Null means all query types
+  windowMs     Int              @default(60000)
+  maxQueries   Int              @default(100)
+  burstMax     Int              @default(10) /// Token bucket burst capacity
+  exemptRoles  String[]         @default([])
+  scope        String?          /// Optional database or table scope
+  action       RateLimitAction  @default(REJECT)
+  enabled      Boolean          @default(true)
+  priority     Int              @default(0)
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+
+  @@index([tenantId, enabled])
+  @@unique([tenantId, queryType, scope])
 }
 
 /// OAuth 2.0 Device Authorization Grant (RFC 8628).

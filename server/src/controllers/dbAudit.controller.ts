@@ -3,10 +3,11 @@ import { AuthRequest, assertTenantAuthenticated } from '../types';
 import * as dbAuditService from '../services/dbAudit.service';
 import * as sqlFirewallService from '../services/sqlFirewall.service';
 import * as dataMaskingService from '../services/dataMasking.service';
+import * as dbRateLimitService from '../services/dbRateLimit.service';
 import * as auditService from '../services/audit.service';
 import { AppError } from '../middleware/error.middleware';
 import { getClientIp } from '../utils/ip';
-import { DbQueryType, FirewallAction, MaskingStrategy } from '../lib/prisma';
+import { DbQueryType, FirewallAction, MaskingStrategy, RateLimitAction } from '../lib/prisma';
 
 // ---- DB Audit Logs ----
 
@@ -253,6 +254,123 @@ export async function deleteMaskingPolicy(req: AuthRequest, res: Response) {
     userId: req.user.userId,
     action: 'DB_MASKING_POLICY_DELETE',
     targetType: 'DbMaskingPolicy',
+    targetId: policyId,
+    ipAddress: ip,
+  });
+
+  res.json({ ok: true });
+}
+
+// ---- Rate Limit Policies ----
+
+export async function listRateLimitPolicies(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const policies = await dbRateLimitService.listPolicies(req.user.tenantId);
+  res.json(policies);
+}
+
+export async function getRateLimitPolicy(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const policyId = req.params.policyId as string;
+  const policy = await dbRateLimitService.getPolicy(req.user.tenantId, policyId);
+  if (!policy) throw new AppError('Rate limit policy not found', 404);
+  res.json(policy);
+}
+
+export async function createRateLimitPolicy(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+
+  const { name, queryType, windowMs, maxQueries, burstMax, exemptRoles, scope, action, enabled, priority } = req.body as {
+    name: string;
+    queryType?: DbQueryType | null;
+    windowMs?: number;
+    maxQueries?: number;
+    burstMax?: number;
+    exemptRoles?: string[];
+    scope?: string;
+    action?: RateLimitAction;
+    enabled?: boolean;
+    priority?: number;
+  };
+
+  if (!name) {
+    throw new AppError('name is required', 400);
+  }
+
+  const policy = await dbRateLimitService.createPolicy({
+    tenantId: req.user.tenantId,
+    name,
+    queryType,
+    windowMs,
+    maxQueries,
+    burstMax,
+    exemptRoles,
+    scope,
+    action,
+    enabled,
+    priority,
+  });
+
+  const ip = getClientIp(req);
+  auditService.log({
+    userId: req.user.userId,
+    action: 'DB_RATE_LIMIT_POLICY_CREATE',
+    targetType: 'DbRateLimitPolicy',
+    targetId: policy.id,
+    details: { name, queryType: queryType ?? 'ALL', rateLimitAction: action ?? 'REJECT' },
+    ipAddress: ip,
+  });
+
+  res.status(201).json(policy);
+}
+
+export async function updateRateLimitPolicy(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const policyId = req.params.policyId as string;
+
+  const { name, queryType, windowMs, maxQueries, burstMax, exemptRoles, scope, action, enabled, priority } = req.body as {
+    name?: string;
+    queryType?: DbQueryType | null;
+    windowMs?: number;
+    maxQueries?: number;
+    burstMax?: number;
+    exemptRoles?: string[];
+    scope?: string;
+    action?: RateLimitAction;
+    enabled?: boolean;
+    priority?: number;
+  };
+
+  const policy = await dbRateLimitService.updatePolicy(
+    req.user.tenantId,
+    policyId,
+    { name, queryType, windowMs, maxQueries, burstMax, exemptRoles, scope, action, enabled, priority },
+  );
+
+  const ip = getClientIp(req);
+  auditService.log({
+    userId: req.user.userId,
+    action: 'DB_RATE_LIMIT_POLICY_UPDATE',
+    targetType: 'DbRateLimitPolicy',
+    targetId: policy.id,
+    details: { name: policy.name },
+    ipAddress: ip,
+  });
+
+  res.json(policy);
+}
+
+export async function deleteRateLimitPolicy(req: AuthRequest, res: Response) {
+  assertTenantAuthenticated(req);
+  const policyId = req.params.policyId as string;
+
+  await dbRateLimitService.deletePolicy(req.user.tenantId, policyId);
+
+  const ip = getClientIp(req);
+  auditService.log({
+    userId: req.user.userId,
+    action: 'DB_RATE_LIMIT_POLICY_DELETE',
+    targetType: 'DbRateLimitPolicy',
     targetId: policyId,
     ipAddress: ip,
   });

@@ -29,4 +29,11 @@ router.post('/masking-policies', requireTenantRoleAny('ADMIN', 'OWNER'), asyncHa
 router.put('/masking-policies/:policyId', requireTenantRoleAny('ADMIN', 'OWNER'), asyncHandler(dbAuditController.updateMaskingPolicy));
 router.delete('/masking-policies/:policyId', requireTenantRoleAny('ADMIN', 'OWNER'), asyncHandler(dbAuditController.deleteMaskingPolicy));
 
+// Rate Limit Policies (ADMIN/OWNER only for mutations)
+router.get('/rate-limit-policies', asyncHandler(dbAuditController.listRateLimitPolicies));
+router.get('/rate-limit-policies/:policyId', asyncHandler(dbAuditController.getRateLimitPolicy));
+router.post('/rate-limit-policies', requireTenantRoleAny('ADMIN', 'OWNER'), asyncHandler(dbAuditController.createRateLimitPolicy));
+router.put('/rate-limit-policies/:policyId', requireTenantRoleAny('ADMIN', 'OWNER'), asyncHandler(dbAuditController.updateRateLimitPolicy));
+router.delete('/rate-limit-policies/:policyId', requireTenantRoleAny('ADMIN', 'OWNER'), asyncHandler(dbAuditController.deleteRateLimitPolicy));
+
 export default router;
