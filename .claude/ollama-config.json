@@ -1,5 +1,5 @@
 {
-  "enabled": true,
+  "enabled": false,
   "model": "qwen3.5:latest",
   "api_base": "http://localhost:11434",
   "hardware": {
@@ -10,11 +10,18 @@
   },
   "offloading": {
     "level": 5,
-    "enabled": true,
+    "enabled": false,
     "auto_route": true,
     "tool_calls": {
-      "enabled": true,
-      "include_tools": ["Bash", "Read", "Grep", "Glob", "Edit", "Write"]
+      "enabled": false,
+      "include_tools": [
+        "Bash",
+        "Read",
+        "Grep",
+        "Glob",
+        "Edit",
+        "Write"
+      ]
     },
     "offloadable_tasks": [
       "generate-boilerplate",

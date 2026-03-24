@@ -2,11 +2,12 @@
 title: Troubleshooting
 description: Common errors, debugging tips, and frequently asked questions
 generated-by: ctdf-docs
-generated-at: 2026-03-21T19:50:00Z
+generated-at: 2026-03-24T23:40:00Z
 source-files:
   - server/src/index.ts
   - server/src/middleware/error.middleware.ts
   - server/src/middleware/auth.middleware.ts
+  - server/src/utils/logger.ts
   - client/src/api/auth.api.ts
   - server/src/config.ts
   - server/src/services/keystrokeInspection.service.ts
@@ -227,7 +228,7 @@ npm run lint:fix   # Auto-fix what's possible
 ```
 
 Common issues:
-- `no-console` in server code (use the logger utility)
+- `no-console` in server code (use the logger utility; create child loggers via `logger.child('module')` for prefixed output)
 - Missing React hook dependencies
 - `@typescript-eslint/no-explicit-any` (use proper types)
 
@@ -296,9 +297,10 @@ For Podman, ensure the socket path is correct: `PODMAN_SOCKET_PATH=$XDG_RUNTIME_
 
 **Debugging:**
 1. Enable `LOG_HTTP_REQUESTS=true` to see request timing
-2. Check database query performance with `npx prisma studio`
-3. Verify PostgreSQL has adequate resources
-4. Check for missing database indexes
+2. Set `LOG_FORMAT=json` for structured log output that is easier to parse with log aggregation tools
+3. Check database query performance with `npx prisma studio`
+4. Verify PostgreSQL has adequate resources
+5. Check for missing database indexes
 
 ### High Memory Usage
 
@@ -356,4 +358,7 @@ A: Set the provider's `CLIENT_ID` and `CLIENT_SECRET` in `.env`. The server auto
 A: The vault must be unlocked to decrypt connection credentials. Check vault status.
 
 **Q: How do I debug WebSocket issues?**
-A: Enable `LOG_GUACAMOLE=true` in `.env`. For Socket.IO, set `LOG_LEVEL=debug`.
+A: Enable `LOG_GUACAMOLE=true` in `.env`. For Socket.IO, set `LOG_LEVEL=verbose` for intermediate detail or `LOG_LEVEL=debug` for full trace output. Valid levels from least to most verbose: `error`, `warn`, `info`, `verbose`, `debug`.
+
+**Q: Why are sensitive values showing as `[REDACTED]` in logs?**
+A: The logger automatically sanitizes output. Known sensitive keys (password, token, secret, apikey, etc.) are redacted in objects, and patterns like JWTs and Bearer tokens are scrubbed from strings. This is by design to prevent clear-text credential leaks. Error objects are also sanitized -- only the message string is logged, never the raw object.

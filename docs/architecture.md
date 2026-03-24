@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and key design patterns
 generated-by: ctdf-docs
-generated-at: 2026-03-21T22:40:00Z
+generated-at: 2026-03-24T23:40:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
@@ -18,6 +18,7 @@ source-files:
   - server/src/socket/notification.handler.ts
   - server/src/socket/gatewayMonitor.handler.ts
   - server/src/config/passport.ts
+  - server/src/middleware/featureGate.middleware.ts
   - server/src/services/keystrokeInspection.service.ts
   - server/src/services/checkout.service.ts
   - server/src/services/lateralMovement.service.ts
@@ -27,6 +28,7 @@ source-files:
   - server/src/services/dbTunnel.service.ts
   - server/src/services/passwordRotation.service.ts
   - server/src/services/deviceAuth.service.ts
+  - server/src/services/configReloader.service.ts
   - tools/arsenale-cli/main.go
 ---
 
@@ -138,9 +140,11 @@ On startup, the server:
 7. Creates HTTP server with Express app
 8. Attaches Socket.IO server (SSH terminal + notifications)
 9. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
-10. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
-11. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
-12. Registers graceful shutdown on SIGTERM/SIGINT
+10. Starts SSH protocol proxy server (if enabled)
+11. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
+12. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
+13. Registers live-reload callbacks for runtime system settings (OAuth, LDAP, SSH proxy, email, SMS, rate limiting, AI, feature toggles)
+14. Registers graceful shutdown on SIGTERM/SIGINT
 
 ### Express App (`server/src/app.ts`)
 
@@ -158,7 +162,7 @@ Middleware stack (in order):
 
 ### Route Mounting
 
-43 route files mounted under `/api`:
+44 route files mounted under `/api` (feature-gated routes require their feature toggle to be enabled):
 
 | Path | Purpose |
 |------|---------|
@@ -196,6 +200,7 @@ Middleware stack (in order):
 | `/api/db-audit` | Database query audit logs, SQL firewall rules, masking policies |
 | `/api/secrets` (rotation) | Password rotation enable/disable/trigger/status |
 | `/api/keystroke-policies` | SSH keystroke inspection policy CRUD |
+| `/api/ai` | AI-assisted SQL query generation and optimization (feature-gated) |
 | `/api/admin/system-settings` | Runtime system settings management |
 
 ### Middleware
@@ -211,7 +216,8 @@ Middleware stack (in order):
 | Tenant | `tenant.middleware.ts` | Tenant extraction and role enforcement |
 | Team | `team.middleware.ts` | Team context middleware |
 | Validation | `validate.middleware.ts` | Zod schema validation |
-| Rate Limiters | `*RateLimit*.middleware.ts` | Per-endpoint rate limiting (login, vault, SMS, session, registration) |
+| Rate Limiters | `*RateLimit*.middleware.ts` | Per-endpoint rate limiting (login, vault, SMS, session, registration, OAuth) |
+| Feature Gate | `featureGate.middleware.ts` | Runtime feature toggles (connections, database proxy, keychain) |
 | Request Logger | `requestLogger.middleware.ts` | HTTP request logging |
 
 ### Socket.IO Handlers
@@ -245,10 +251,13 @@ Middleware stack (in order):
 | Membership Expiry Check | Periodic | Check and enforce membership expiry |
 | Checkout Expiry | 5 minutes | Auto-expire approved checkouts past TTL |
 | Password Rotation | Cron-based | Rotate credentials on target systems |
+| Token Family Cleanup | 5 minutes | Remove token families past absolute session timeout |
+| RD Gateway Tunnel Cleanup | 1 minute | Close idle RD Gateway tunnels |
+| Device Auth Code Cleanup | 5 minutes | Remove expired device authorization codes |
 
 ## Database Schema
 
-40+ Prisma models across 6 domains:
+45+ Prisma models across 7 domains:
 
 ```mermaid
 erDiagram
@@ -263,6 +272,7 @@ erDiagram
     Tenant ||--o{ Team : contains
     Tenant ||--o{ Gateway : manages
     Tenant ||--o{ AccessPolicy : defines
+    Tenant ||--o| TenantAiConfig : configures
 
     Team ||--o{ TeamMember : has
     Team ||--o{ VaultSecret : "team secrets"
@@ -294,6 +304,8 @@ erDiagram
 | **ActiveSession** | Socket ID, last activity, protocol | Open session tracking |
 | **AuditLog** | 100+ action types, IP, GeoIP, flags | Comprehensive audit trail |
 | **AccessPolicy** | Time windows, trusted device, MFA step-up | ABAC policy enforcement |
+| **TenantAiConfig** | Provider, model, daily limits, encrypted API key | Per-tenant AI/LLM configuration |
+| **DbRateLimitPolicy** | Token bucket, query type scope, burst capacity | SQL query rate limiting |
 
 ### Enums
 
@@ -305,10 +317,14 @@ erDiagram
 | SecretType | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
 | SecretScope | PERSONAL, TEAM, TENANT |
 | GatewayType | GUACD, SSH_BASTION, MANAGED_SSH, DB_PROXY |
+| SessionProtocol | SSH, RDP, VNC, SSH_PROXY, DATABASE, DB_TUNNEL |
 | SessionStatus | ACTIVE, IDLE, CLOSED |
 | ManagedInstanceStatus | PROVISIONING, RUNNING, STOPPED, ERROR, REMOVING |
 | CheckoutStatus | PENDING, APPROVED, REJECTED, EXPIRED, CHECKED_IN |
 | KeystrokePolicyAction | BLOCK_AND_TERMINATE, ALERT_ONLY |
+| FirewallAction | BLOCK, ALERT, LOG |
+| MaskingStrategy | REDACT, HASH, PARTIAL |
+| RateLimitAction | REJECT, LOG_ONLY |
 
 ## Client Architecture
 
