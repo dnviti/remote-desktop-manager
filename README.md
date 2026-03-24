@@ -5,7 +5,7 @@
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
 [![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/verify-server.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify-server.yml)
 [![Verify Client](https://github.com/dnviti/arsenale/actions/workflows/verify-client.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify-client.yml)
-[![Version](https://img.shields.io/badge/version-1.3.2-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.7.1-green.svg)](CHANGELOG.md)
 
 A web-based application for managing and accessing remote SSH and RDP connections from your browser. Organize connections in folders, share them with team members, and keep credentials encrypted at rest with a personal vault.
 
