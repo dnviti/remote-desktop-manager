@@ -26,8 +26,8 @@
     "enable_versioned_reads": false
   },
   "vector_memory": {
-    "enabled": true,
-    "auto_index": true,
+    "enabled": false,
+    "auto_index": false,
     "embedding_provider": "local",
     "embedding_model": "all-MiniLM-L6-v2",
     "embedding_api_key_env": "",
@@ -38,29 +38,57 @@
     "exclude_patterns": []
   },
   "mcp_server": {
-    "enabled": true,
+    "enabled": false,
     "transport": "stdio",
-    "auto_start": true
+    "auto_start": false
   },
   "social_announce": {
     "platforms": {
-      "bluesky": { "enabled": false },
-      "mastodon": { "enabled": false },
-      "discord": { "enabled": false },
-      "slack": { "enabled": false }
+      "bluesky": {
+        "enabled": false
+      },
+      "mastodon": {
+        "enabled": false
+      },
+      "discord": {
+        "enabled": false
+      },
+      "slack": {
+        "enabled": false
+      }
     },
     "clipboard_platforms": [
-      { "name": "twitter", "enabled": true, "max_length": 280, "post_url": "https://twitter.com/compose/tweet" },
-      { "name": "linkedin", "enabled": true, "max_length": 3000, "post_url": "https://www.linkedin.com/feed/" },
-      { "name": "reddit", "enabled": true, "max_length": 10000, "post_url": "" },
-      { "name": "hackernews", "enabled": true, "max_length": 2000, "post_url": "https://news.ycombinator.com/submit" }
+      {
+        "name": "twitter",
+        "enabled": true,
+        "max_length": 280,
+        "post_url": "https://twitter.com/compose/tweet"
+      },
+      {
+        "name": "linkedin",
+        "enabled": true,
+        "max_length": 3000,
+        "post_url": "https://www.linkedin.com/feed/"
+      },
+      {
+        "name": "reddit",
+        "enabled": true,
+        "max_length": 10000,
+        "post_url": ""
+      },
+      {
+        "name": "hackernews",
+        "enabled": true,
+        "max_length": 2000,
+        "post_url": "https://news.ycombinator.com/submit"
+      }
     ]
   },
   "worktrees": {
     "enabled": true
   },
   "ollama": {
-    "enabled": true,
+    "enabled": false,
     "model": "qwen3.5:latest",
     "offloading_level": 5
   }
