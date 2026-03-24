@@ -2,7 +2,7 @@
 title: Development
 description: Contributing guide, local development setup, testing, code quality, and branch strategy
 generated-by: ctdf-docs
-generated-at: 2026-03-21T22:40:00Z
+generated-at: 2026-03-24T23:40:00Z
 source-files:
   - package.json
   - server/package.json
@@ -41,8 +41,11 @@ npm run predev && npm run dev  # Start containers + server + client
 | `npm run dev` | Runs server (3001) + client (3000) concurrently |
 | `npm run dev:server` | Express with tsx watch, hot reload |
 | `npm run dev:client` | Vite dev server, proxies to server |
+| `npm run dev:client:wait` | Waits for server health check, then starts client |
 | `npm run docker:dev` | Start PostgreSQL + guacenc containers |
 | `npm run docker:dev:down` | Stop dev containers |
+| `npm run dev:docker` | Full Docker dev stack (build + run) |
+| `npm run dev:docker:detach` | Full Docker dev stack (detached mode) |
 
 ### Database Operations
 
@@ -52,7 +55,7 @@ npm run predev && npm run dev  # Start containers + server + client
 | `npm run db:push` | Sync schema to database (no migration file) |
 | `npm run db:migrate` | Create new migration interactively |
 
-Migrations run automatically on server start via `prisma migrate deploy` — no manual migration step needed for development.
+Migrations run automatically on server start via `prisma migrate deploy` -- no manual migration step needed for development.
 
 ### Makefile Shortcuts
 
@@ -72,7 +75,7 @@ make migrate-dev    # Interactive migration creation
 npm run verify   # Must pass before closing any task
 ```
 
-Runs in sequence: **typecheck → lint → audit → test → build**
+Runs in sequence: **typecheck -> lint -> audit -> test -> build**
 
 ### Individual Checks
 
@@ -82,6 +85,11 @@ Runs in sequence: **typecheck → lint → audit → test → build**
 | `npm run lint` | ESLint across all workspaces (flat config) |
 | `npm run lint:fix` | ESLint with auto-fix |
 | `npm run sast` | npm audit (critical severity) |
+| `npm run codeql` | Local CodeQL security scan (security-extended) |
+| `npm run codeql:full` | Local CodeQL full scan (security-and-quality) |
+| `npm run security` | Full security scan (npm audit + CodeQL + dependency check) |
+| `npm run security:quick` | Quick security scan |
+| `npm run security:docker` | Docker image security scan |
 | `npm run build` | Build all workspaces |
 
 ### ESLint Configuration
@@ -99,9 +107,9 @@ The flat ESLint config (`eslint.config.mjs`) applies:
 
 | Workspace | Target | Module | JSX | Strict |
 |-----------|--------|--------|-----|--------|
-| Server | ES2022 | CommonJS | — | Yes |
+| Server | ES2022 | CommonJS | -- | Yes |
 | Client | ES2022 | ESNext | react-jsx | Yes |
-| Tunnel Agent | ES2022 | CommonJS | — | Yes |
+| Tunnel Agent | ES2022 | CommonJS | -- | Yes |
 | Browser Extensions | ES2022 | ESNext | react-jsx | Yes |
 
 ## Testing
@@ -136,12 +144,12 @@ gitgraph
     checkout develop
     merge task/TASK-002 id: "PR merge 2"
     checkout main
-    merge develop id: "release v1.3.3"
+    merge develop id: "release v1.7.1"
 ```
 
 | Branch | Purpose | Merges Into |
 |--------|---------|-------------|
-| `main` | Production releases | — |
+| `main` | Production releases | -- |
 | `develop` | Integration branch | `main` (via release) |
 | `staging` | Pre-release testing | `main` |
 | `task/<code>` | Feature/fix branches | `develop` (via PR) |
@@ -169,10 +177,10 @@ gitgraph
 ### Layered Architecture (Server)
 
 ```
-Routes → Controllers → Services → Prisma ORM
+Routes -> Controllers -> Services -> Prisma ORM
 ```
 
-- **Routes:** Define endpoints, apply middleware (auth, validation, rate limiting)
+- **Routes:** Define endpoints, apply middleware (auth, validation, rate limiting, feature gates)
 - **Controllers:** Parse requests, extract params, delegate to services
 - **Services:** Business logic, database operations, encryption
 - **Prisma ORM:** Type-safe database queries
@@ -202,7 +210,7 @@ State managed in `MainLayout` as `useState<boolean>`.
 **Server:**
 ```typescript
 throw new AppError('Connection not found', 404);
-// Caught by asyncHandler → global error middleware
+// Caught by asyncHandler -> global error middleware
 ```
 
 **Client:**
@@ -245,6 +253,7 @@ When bumping the version, update all locations:
 | `extra-clients/browser-extensions/manifest.json` | `"version"` |
 | `server/src/cli.ts` | `.version('X.Y.Z')` |
 | `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
+| `docs/index.md` | `Version:` line at bottom |
 
 Then run `npm install --package-lock-only` to update the lockfile.
 
@@ -258,25 +267,26 @@ arsenale/
 │   │   ├── app.ts                   # Express app setup
 │   │   ├── config.ts                # Configuration
 │   │   ├── cli.ts                   # CLI tool
-│   │   ├── routes/                  # Route definitions (31 files)
+│   │   ├── routes/                  # Route definitions (43 files)
 │   │   ├── controllers/             # Request handlers
 │   │   ├── services/                # Business logic
-│   │   ├── middleware/              # Auth, CSRF, peekAuth, rate limiting, validation
+│   │   ├── middleware/              # Auth, CSRF, peekAuth, rate limiting, feature gates, validation
 │   │   ├── socket/                  # Socket.IO + WebSocket handlers
+│   │   ├── orchestrator/            # Container orchestration (Docker/Podman/Kubernetes)
 │   │   ├── schemas/                 # Zod validation schemas
 │   │   └── types/                   # Shared TypeScript types
 │   └── prisma/
-│       └── schema.prisma            # Database schema (32 models)
+│       └── schema.prisma            # Database schema (42 models)
 ├── client/                          # React 19 SPA
 │   ├── src/
 │   │   ├── main.tsx                 # Entry point
 │   │   ├── App.tsx                  # Router
-│   │   ├── api/                     # Axios API modules (30 files)
-│   │   ├── store/                   # Zustand stores (15 files)
+│   │   ├── api/                     # Axios API modules (37 files)
+│   │   ├── store/                   # Zustand stores (17 files)
 │   │   ├── pages/                   # Route components
 │   │   ├── components/              # UI components
 │   │   ├── hooks/                   # Custom React hooks
-│   │   ├── theme/                   # 6 themes × 2 modes
+│   │   ├── theme/                   # 6 themes x 2 modes
 │   │   └── utils/                   # Utilities
 │   ├── vite.config.ts               # Vite + PWA config
 │   └── nginx.conf                   # Production Nginx config

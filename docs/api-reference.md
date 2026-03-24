@@ -2,7 +2,7 @@
 title: API Reference
 description: Complete REST API endpoint reference, WebSocket namespaces, and client SDK documentation
 generated-by: ctdf-docs
-generated-at: 2026-03-21T22:40:00Z
+generated-at: 2026-03-24T23:40:00Z
 source-files:
   - server/src/routes/auth.routes.ts
   - server/src/routes/oauth.routes.ts
@@ -44,6 +44,7 @@ source-files:
   - server/src/routes/passwordRotation.routes.ts
   - server/src/routes/dbTunnel.routes.ts
   - server/src/routes/keystrokePolicy.routes.ts
+  - server/src/routes/aiQuery.routes.ts
   - server/src/routes/systemSettings.routes.ts
   - server/src/routes/setup.routes.ts
 ---
@@ -224,9 +225,17 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 |--------|------|------|-------------|
 | `GET` | `/` | JWT | List secrets with filters |
 | `POST` | `/` | JWT | Create secret |
+| `GET` | `/counts` | JWT | Get lightweight secret counts |
 | `GET` | `/:id` | JWT | Get secret details |
 | `PUT` | `/:id` | JWT | Update secret |
 | `DELETE` | `/:id` | JWT | Delete secret |
+
+### Breach Check
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/breach-check` | JWT | Check all secrets against breach databases |
+| `POST` | `/:id/breach-check` | JWT | Check single secret against breach databases |
 
 ### Secret Versions
 
@@ -547,8 +556,8 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | `POST` | `/:id/rotation/enable` | JWT | Enable automatic rotation |
 | `POST` | `/:id/rotation/disable` | JWT | Disable rotation |
 | `POST` | `/:id/rotation/trigger` | JWT | Manually trigger rotation |
-| `GET` | `/:id/rotation/status` | JWT | Get rotation status |
-| `GET` | `/:id/rotation/history` | JWT | Get rotation history |
+| `POST` | `/rotation/status` | JWT | Get rotation status (batch) |
+| `POST` | `/rotation/history` | JWT | Get rotation history (batch) |
 
 ## SSH Proxy (`/api/sessions/ssh-proxy`)
 
@@ -584,6 +593,11 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | `POST` | `/:sessionId/heartbeat` | JWT | — | Session heartbeat |
 | `POST` | `/:sessionId/query` | JWT | — | Execute SQL query |
 | `GET` | `/:sessionId/schema` | JWT | — | Get database schema |
+| `POST` | `/:sessionId/explain` | JWT | — | Get query execution plan |
+| `POST` | `/:sessionId/introspect` | JWT | — | Introspect database structure |
+| `PUT` | `/:sessionId/config` | JWT | — | Update session configuration |
+| `GET` | `/:sessionId/config` | JWT | — | Get session configuration |
+| `GET` | `/:sessionId/history` | JWT | — | Get session query history |
 
 ## Database Tunnels (`/api/sessions/db-tunnel`)
 
@@ -624,11 +638,45 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | `PUT` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Update masking policy |
 | `DELETE` | `/masking-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Delete masking policy |
 
+### Rate Limit Policies
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/rate-limit-policies` | JWT + Tenant | ADMIN/OWNER/AUDITOR | List rate limit policies |
+| `GET` | `/rate-limit-policies/:policyId` | JWT + Tenant | ADMIN/OWNER/AUDITOR | Get rate limit policy |
+| `POST` | `/rate-limit-policies` | JWT + Tenant | ADMIN/OWNER | Create rate limit policy |
+| `PUT` | `/rate-limit-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Update rate limit policy |
+| `DELETE` | `/rate-limit-policies/:policyId` | JWT + Tenant | ADMIN/OWNER | Delete rate limit policy |
+
+## AI Query Assistant (`/api/ai`)
+
+### Configuration
+
+| Method | Path | Auth | Role | Description |
+|--------|------|------|------|-------------|
+| `GET` | `/config` | JWT + Tenant | ADMIN/OWNER | Get tenant AI configuration |
+| `PUT` | `/config` | JWT + Tenant | OWNER | Update tenant AI configuration |
+
+### Query Generation
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/generate-query` | JWT + Tenant | Analyze prompt and return tables for approval |
+| `POST` | `/generate-query/confirm` | JWT + Tenant | Generate SQL with user-approved tables |
+
+### Query Optimization
+
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `POST` | `/optimize-query` | JWT + Tenant | AI query optimization (initial analysis) |
+| `POST` | `/optimize-query/continue` | JWT + Tenant | Continue optimization with approved data |
+
 ## System Settings (`/api/admin/system-settings`)
 
 | Method | Path | Auth | Role | Description |
 |--------|------|------|------|-------------|
 | `GET` | `/` | JWT + Tenant | AUDITOR/ADMIN/OWNER | List all system settings |
+| `GET` | `/db-status` | JWT + Tenant | ADMIN/OWNER | Get database connection status |
 | `PUT` | `/:key` | JWT + Tenant | ADMIN/OWNER | Update a single setting |
 | `PUT` | `/` | JWT + Tenant | ADMIN/OWNER | Bulk update settings |
 
@@ -637,6 +685,7 @@ All REST endpoints are served under `/api`. Authentication uses JWT Bearer token
 | Method | Path | Auth | Rate Limit | Description |
 |--------|------|------|------------|-------------|
 | `GET` | `/status` | Public | — | Check if initial setup is required |
+| `GET` | `/db-status` | Public | — | Get database connection status |
 | `POST` | `/complete` | Public | 5/min | Complete first-time platform setup |
 
 ## Keystroke Policies (`/api/keystroke-policies`)

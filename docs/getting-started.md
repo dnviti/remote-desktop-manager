@@ -2,7 +2,7 @@
 title: Getting Started
 description: Installation, prerequisites, environment setup, and first run instructions
 generated-by: ctdf-docs
-generated-at: 2026-03-21T19:50:00Z
+generated-at: 2026-03-24T23:40:00Z
 source-files:
   - package.json
   - server/package.json
@@ -27,9 +27,9 @@ source-files:
 | **Git** | 2.x | Source control |
 
 Optional:
-- **GeoLite2-City.mmdb** — MaxMind GeoIP database for impossible travel detection
-- **Twilio/AWS SNS/Vonage** account — SMS MFA
-- **SMTP server** or SendGrid/SES/Resend/Mailgun — Only needed if you enable email verification (`EMAIL_VERIFY_REQUIRED=true`)
+- **GeoLite2-City.mmdb** -- MaxMind GeoIP database for impossible travel detection
+- **Twilio/AWS SNS/Vonage** account -- SMS MFA
+- **SMTP server** or SendGrid/SES/Resend/Mailgun -- Only needed if you enable email verification (`EMAIL_VERIFY_REQUIRED=true`)
 
 ## Quick Start
 
@@ -82,7 +82,7 @@ cp .env.example .env
 | `GUACAMOLE_SECRET` | (generated in dev) | Shared secret for RDP/VNC tokens |
 | `CLIENT_URL` | `http://localhost:3000` | Client URL for CORS and verification links |
 
-**OAuth providers** (optional — leave `CLIENT_ID` empty to disable any provider):
+**OAuth providers** (optional -- leave `CLIENT_ID` empty to disable any provider):
 
 | Variable | Default | Notes |
 |----------|---------|-------|
@@ -93,7 +93,17 @@ cp .env.example .env
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | (empty) | GitHub OAuth |
 | `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | (empty) | Generic OIDC (Authentik, Keycloak, Authelia, etc.) |
 
-See [Configuration](configuration.md) for the full list of OAuth, SAML, and LDAP variables.
+**AI / LLM integration** (optional -- leave `AI_PROVIDER` empty to disable):
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `AI_PROVIDER` | (empty) | `anthropic`, `openai`, `ollama`, or `openai-compatible` |
+| `AI_API_KEY` | (empty) | API key for the selected provider (not needed for Ollama) |
+| `AI_MODEL` | (provider default) | Model name override |
+| `AI_BASE_URL` | (empty) | Required for Ollama and openai-compatible providers |
+| `AI_QUERY_GENERATION_ENABLED` | `false` | Enable natural-language-to-SQL query generation |
+
+See [Configuration](configuration.md) for the full list of OAuth, SAML, LDAP, and AI variables.
 
 The `.env` file **must** live at the monorepo root, not inside `server/`. The Prisma CLI resolves its env path to `../.env` via `server/prisma.config.ts`.
 
@@ -104,8 +114,8 @@ npm run docker:dev
 ```
 
 This starts:
-- **PostgreSQL 16** — Database on `127.0.0.1:5432`
-- **guacenc** — Recording processor on port 3003
+- **PostgreSQL 16** -- Database on `127.0.0.1:5432`
+- **guacenc** -- Recording processor on port 3003
 
 Alternatively, the `predev` script handles this automatically:
 
@@ -143,9 +153,9 @@ Open `http://localhost:3000` in your browser.
 
 The default settings are optimized for a simplified first-run experience:
 
-- **No email provider needed** — email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`)
-- **LAN connections work out of the box** — private network access is allowed by default (`ALLOW_LOCAL_NETWORK=true`)
-- **Admin creates accounts** — self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`); the first user created via the startup wizard becomes the admin and can then create additional accounts from the admin panel
+- **No email provider needed** -- email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`)
+- **LAN connections work out of the box** -- private network access is allowed by default (`ALLOW_LOCAL_NETWORK=true`)
+- **Admin creates accounts** -- self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`); the first user created via the startup wizard becomes the admin and can then create additional accounts from the admin panel
 
 To get started:
 
@@ -157,7 +167,7 @@ To get started:
 
 | Port | Service | Notes |
 |------|---------|-------|
-| 3000 | Client (Vite) | Proxies `/api` → 3001, `/guacamole` → 3002 |
+| 3000 | Client (Vite) | Proxies `/api` -> 3001, `/guacamole` -> 3002 |
 | 3001 | Server (Express) | REST API + Socket.IO |
 | 3002 | Guacamole WebSocket | RDP/VNC tunnel |
 | 3003 | guacenc | Recording processor (dev only) |
@@ -193,11 +203,11 @@ Run the full verification pipeline before committing:
 npm run verify
 ```
 
-This runs: typecheck → lint → audit → test → build. All checks must pass.
+This runs: typecheck -> lint -> audit -> test -> build. All checks must pass.
 
 ## Next Steps
 
-- [Configuration](configuration.md) — Environment variables and feature flags
-- [Architecture](architecture.md) — System design and component interactions
-- [API Reference](api-reference.md) — Complete endpoint documentation
-- [Development](development.md) — Contributing guidelines and branch strategy
+- [Configuration](configuration.md) -- Environment variables and feature flags
+- [Architecture](architecture.md) -- System design and component interactions
+- [API Reference](api-reference.md) -- Complete endpoint documentation
+- [Development](development.md) -- Contributing guidelines and branch strategy
