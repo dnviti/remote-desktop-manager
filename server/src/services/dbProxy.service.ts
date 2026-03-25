@@ -174,6 +174,57 @@ export async function createDbProxySession(params: {
     routingDecision,
   });
 
+  // Eagerly test database connectivity so the client gets an immediate error
+  // instead of a false "connected" state when the target DB is unreachable.
+  try {
+    await dbQueryExecutor.testConnection({
+      sessionId,
+      connectionId,
+      userId,
+      tenantId: tenantId ?? '',
+      metadata: {
+        host: conn.host,
+        port: conn.port,
+        dbProtocol,
+        databaseName,
+        username,
+        resolvedHost: proxyHost,
+        resolvedPort: proxyPort,
+        ...(dbSettings.oracleConnectionType && { oracleConnectionType: dbSettings.oracleConnectionType }),
+        ...(dbSettings.oracleSid && { oracleSid: dbSettings.oracleSid }),
+        ...(dbSettings.oracleServiceName && { oracleServiceName: dbSettings.oracleServiceName }),
+        ...(dbSettings.oracleRole && { oracleRole: dbSettings.oracleRole }),
+        ...(dbSettings.oracleTnsAlias && { oracleTnsAlias: dbSettings.oracleTnsAlias }),
+        ...(dbSettings.oracleTnsDescriptor && { oracleTnsDescriptor: dbSettings.oracleTnsDescriptor }),
+        ...(dbSettings.oracleConnectString && { oracleConnectString: dbSettings.oracleConnectString }),
+        ...(dbSettings.mssqlInstanceName && { mssqlInstanceName: dbSettings.mssqlInstanceName }),
+        ...(dbSettings.mssqlAuthMode && { mssqlAuthMode: dbSettings.mssqlAuthMode }),
+        ...(dbSettings.db2DatabaseAlias && { db2DatabaseAlias: dbSettings.db2DatabaseAlias }),
+        ...(sessionConfig && { sessionConfig }),
+      },
+    });
+  } catch (err) {
+    // Connectivity check failed — clean up the session record
+    await sessionService.endSession(sessionId, 'connectivity_check_failed');
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    log.warn(`DB connectivity check failed for session ${sessionId}: ${msg}`);
+
+    if (err instanceof AppError) throw err;
+
+    // Classify common driver errors into user-friendly responses
+    const lower = msg.toLowerCase();
+    if (lower.includes('econnrefused') || lower.includes('connection refused')) {
+      throw new AppError('Database unreachable — connection refused', 502);
+    }
+    if (lower.includes('authentication') || lower.includes('password') || lower.includes('login failed') || lower.includes('access denied')) {
+      throw new AppError('Database authentication failed', 401);
+    }
+    if (lower.includes('timeout') || lower.includes('etimedout') || lower.includes('timed out')) {
+      throw new AppError('Database connection timed out', 504);
+    }
+    throw new AppError(`Failed to connect to database: ${msg}`, 502);
+  }
+
   log.info(`DB proxy session ${sessionId} created for connection ${connectionId} (${dbProtocol})`);
 
   auditService.log({
