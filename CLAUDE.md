@@ -370,15 +370,17 @@ Tasks can be grouped into planned releases via `releases.json` at the project ro
 
 <!-- CodeClaw:START -->
 
-## Agent Teams Mode (Experimental)
+## Agent Teams Mode
 
-When `$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is `"1"`, skills that spawn parallel subagents use **Agent Teams** instead, providing coordinated multi-agent execution with dedicated quality and security reviewers.
+**Agent Teams is the default execution mode.** Whenever a task involves development, research, or any work that can benefit from parallel agents, **always use Agent Teams** with the defined roles and coordination rules below. Do not fall back to standalone subagents unless Agent Teams tools (`TeamCreate`, `TaskCreate`, `SendMessage`, `TeamDelete`) are explicitly unavailable.
 
-### Detection
+### When to Use Agent Teams
 
-At each parallel execution point, check `$CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS`:
-- `"1"` → **Agent Teams mode** (team composition specified per skill)
-- Otherwise → **Standard subagent mode** (default)
+- **Development tasks** (feature implementation, bug fixes, refactoring) — use the Implementation team roles
+- **Research & exploration** (codebase analysis, architecture review, dependency audits) — use the Explore agent as a team member alongside a security or QA reviewer
+- **Release & CI flows** (PR analysis, release pipeline, CI monitoring) — use the Other Flows team roles
+- **Task/idea batch operations** (`/task pick all`, `/task continue all`, `/crazy`) — always use full team composition
+- **Any work spanning 2+ files or layers** (server + client, API + UI, schema + service) — split across backend-dev and frontend-dev roles
 
 ### Team Lifecycle
 
