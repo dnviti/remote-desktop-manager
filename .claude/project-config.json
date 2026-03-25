@@ -85,7 +85,7 @@
     ]
   },
   "worktrees": {
-    "enabled": true
+    "enabled": false
   },
   "ollama": {
     "enabled": false,
