@@ -151,8 +151,8 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
       setDlpDisableUpload(tenant.dlpDisableUpload);
       setRecordingEnabled(tenant.recordingEnabled);
       setRecordingRetentionDays(tenant.recordingRetentionDays != null ? String(tenant.recordingRetentionDays) : '');
-      setFileUploadMaxSizeMb(tenant.fileUploadMaxSizeBytes != null ? String(Math.round(tenant.fileUploadMaxSizeBytes / 1048576)) : '');
-      setUserDriveQuotaMb(tenant.userDriveQuotaBytes != null ? String(Math.round(tenant.userDriveQuotaBytes / 1048576)) : '');
+      setFileUploadMaxSizeMb(tenant.fileUploadMaxSizeBytes != null ? String(parseFloat((tenant.fileUploadMaxSizeBytes / 1048576).toFixed(2))) : '');
+      setUserDriveQuotaMb(tenant.userDriveQuotaBytes != null ? String(parseFloat((tenant.userDriveQuotaBytes / 1048576).toFixed(2))) : '');
       fetchUsers();
       if (isAdmin) {
         getTenantMfaStats(tenant.id).then(setMfaDashboard).catch(() => {});
@@ -866,7 +866,7 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
                     value={recordingRetentionDays}
                     onChange={(e) => setRecordingRetentionDays(e.target.value)}
                     placeholder="System default"
-                    helperText="System default: 90 days. Leave empty to use system default."
+                    helperText="Leave empty to use system default."
                     slotProps={{ htmlInput: { min: 1, max: 3650 } }}
                     sx={{ width: 240 }}
                   />
@@ -908,7 +908,7 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
                     value={fileUploadMaxSizeMb}
                     onChange={(e) => setFileUploadMaxSizeMb(e.target.value)}
                     placeholder="System default"
-                    helperText="System default: 10 MB. Leave empty to use system default."
+                    helperText="Leave empty to use system default."
                     slotProps={{ htmlInput: { min: 1 } }}
                     sx={{ width: 240 }}
                   />
@@ -919,7 +919,7 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
                     value={userDriveQuotaMb}
                     onChange={(e) => setUserDriveQuotaMb(e.target.value)}
                     placeholder="System default"
-                    helperText="System default: 100 MB. Leave empty to use system default."
+                    helperText="Leave empty to use system default."
                     slotProps={{ htmlInput: { min: 1 } }}
                     sx={{ width: 240 }}
                   />
@@ -932,8 +932,8 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
                         setStorageError('');
                         setSavingStorage(true);
                         try {
-                          const uploadSize = fileUploadMaxSizeMb.trim() === '' ? null : parseInt(fileUploadMaxSizeMb, 10) * 1048576;
-                          const driveQuota = userDriveQuotaMb.trim() === '' ? null : parseInt(userDriveQuotaMb, 10) * 1048576;
+                          const uploadSize = fileUploadMaxSizeMb.trim() === '' ? null : Math.round(parseFloat(fileUploadMaxSizeMb) * 1048576);
+                          const driveQuota = userDriveQuotaMb.trim() === '' ? null : Math.round(parseFloat(userDriveQuotaMb) * 1048576);
                           if (uploadSize !== null && (isNaN(uploadSize) || uploadSize < 1)) {
                             setStorageError('Upload size must be a positive number');
                             return;

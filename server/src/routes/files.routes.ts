@@ -39,36 +39,44 @@ const router = Router();
 
 router.use(authenticate);
 
-const quotaCheck = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+// Resolve tenant storage limits once and attach to res.locals for downstream middleware
+const resolveTenantStorageLimits = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
     assertAuthenticated(req);
-    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
-    // Resolve tenant-level quota override
-    let tenantQuotaBytes: number | null | undefined;
     if (req.user.tenantId) {
       const tenant = await prisma.tenant.findUnique({
         where: { id: req.user.tenantId },
         select: { userDriveQuotaBytes: true, fileUploadMaxSizeBytes: true },
       });
-      tenantQuotaBytes = tenant?.userDriveQuotaBytes;
+      res.locals.tenantQuotaBytes = tenant?.userDriveQuotaBytes ?? undefined;
+      res.locals.tenantFileMaxBytes = tenant?.fileUploadMaxSizeBytes ?? undefined;
     }
-    await checkQuota(req.user.userId, contentLength, tenantQuotaBytes);
     next();
   } catch (err) {
     next(err);
   }
 };
 
-// Post-upload middleware: enforce tenant-specific file size limit
+const quotaCheck = async (req: AuthRequest, _res: Response, next: NextFunction) => {
+  try {
+    assertAuthenticated(req);
+    const contentLength = parseInt(req.headers['content-length'] || '0', 10);
+    await checkQuota(req.user.userId, contentLength, _res.locals.tenantQuotaBytes);
+    next();
+  } catch (err) {
+    next(err);
+  }
+};
+
+// Post-upload middleware: enforce tenant-specific file size limit.
+// Note: multer's static fileSize limit acts as a hard ceiling — tenant limits can only
+// restrict further, not exceed the system default. This is intentional: system admins
+// control the absolute maximum via FILE_UPLOAD_MAX_SIZE env var.
 const tenantFileSizeCheck = async (req: AuthRequest, _res: Response, next: NextFunction) => {
   try {
     assertAuthenticated(req);
-    if (!req.file || !req.user.tenantId) { next(); return; }
-    const tenant = await prisma.tenant.findUnique({
-      where: { id: req.user.tenantId },
-      select: { fileUploadMaxSizeBytes: true },
-    });
-    const maxSize = tenant?.fileUploadMaxSizeBytes;
+    if (!req.file) { next(); return; }
+    const maxSize: number | undefined = _res.locals.tenantFileMaxBytes;
     if (maxSize && req.file.size > maxSize) {
       // Delete the uploaded file that exceeds tenant limit.
       // Validate path stays within the drive base to satisfy CodeQL path-traversal check.
@@ -92,7 +100,7 @@ const tenantFileSizeCheck = async (req: AuthRequest, _res: Response, next: NextF
 
 router.get('/', asyncHandler(filesController.list));
 router.get('/:name', validate(fileNameSchema, 'params'), asyncHandler(filesController.download));
-router.post('/', quotaCheck as never, upload.single('file'), tenantFileSizeCheck as never, asyncHandler(filesController.upload) as never);
+router.post('/', resolveTenantStorageLimits as never, quotaCheck as never, upload.single('file'), tenantFileSizeCheck as never, asyncHandler(filesController.upload) as never);
 router.delete('/:name', validate(fileNameSchema, 'params'), asyncHandler(filesController.remove));
 
 export default router;

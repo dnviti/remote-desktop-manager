@@ -455,12 +455,15 @@ export async function cleanupExpiredRecordings(): Promise<number> {
     }
   }
 
-  // Fetch all completed recordings with user's tenant membership
-  const globalCutoff = new Date();
-  globalCutoff.setDate(globalCutoff.getDate() - config.recordingRetentionDays);
+  // Pre-filter in DB using the most conservative (smallest) retention across all tenants
+  // and the global default, so we only load recordings that *might* be expired.
+  const allRetentionValues = [...tenantRetentionMap.values(), config.recordingRetentionDays];
+  const minRetention = Math.min(...allRetentionValues);
+  const broadCutoff = new Date();
+  broadCutoff.setDate(broadCutoff.getDate() - minRetention);
 
   const candidates = await prisma.sessionRecording.findMany({
-    where: { status: 'COMPLETE' },
+    where: { status: 'COMPLETE', createdAt: { lt: broadCutoff } },
     select: {
       id: true,
       filePath: true,
@@ -470,6 +473,7 @@ export async function cleanupExpiredRecordings(): Promise<number> {
           tenantMemberships: {
             where: { isActive: true },
             select: { tenantId: true },
+            orderBy: { joinedAt: 'asc' },
             take: 1,
           },
         },
@@ -477,7 +481,7 @@ export async function cleanupExpiredRecordings(): Promise<number> {
     },
   });
 
-  // Determine which recordings are expired based on per-tenant or global retention
+  // Refine: apply the exact per-tenant (or global) retention to each recording
   const expired = candidates.filter((rec) => {
     const tenantId = rec.user?.tenantMemberships?.[0]?.tenantId;
     const retentionDays = tenantId && tenantRetentionMap.has(tenantId)
