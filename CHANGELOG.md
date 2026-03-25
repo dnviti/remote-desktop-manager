@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-03-25
+
+### Added
+- Feature toggles for database proxy, connections, and keychain management (#466)
+- AI-assisted SQL query generation with natural language to SQL conversion (AISQL-2069) (#442)
+- Configurable SQL query rate limiter per-tenant (DBRL-2066) (#440)
+- Monaco SQL editor with intellisense and themes (SQLED-2067) (#441)
+- SQL execution visualizer with AI-powered query optimization (SQLVIZ-2070) (#443)
+- Precise query execution timing for database operations (DB-0001) (#439)
+- ALLOW_LOOPBACK setting to control loopback address connections (CFG-2044) (#428)
+- OAuth & SAML providers fully configurable from Web UI Settings panel (CFG-2042) (#411)
+- Configurable pagination for database query results (AISQL-2072)
+- Tenant-level recording configuration — enable/disable and retention policy (TENANT-331)
+
+### Fixed
+- Database driver issues and improved error handling (#464)
+- safeRegex validation and staging Docker push (#394)
+- CodeQL security findings reduced (34 → 23) (#415)
+
+### Changed
+- Disabled ollama and related features in configuration
+- Updated documentation and generated files (#467)
+
+### Security
+- Address PR #381 review findings — security and robustness
+- Resolve CodeQL security findings (#415)
+
 ## [1.7.0] - 2026-03-22
 
 ### Added
