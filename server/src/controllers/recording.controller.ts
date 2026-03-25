@@ -1,5 +1,5 @@
 import { Response } from 'express';
-import { readFile } from 'fs/promises';
+import { open } from 'fs/promises';
 import fs from 'fs';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as recordingService from '../services/recording.service';
@@ -67,19 +67,25 @@ export async function analyzeRecording(req: AuthRequest, res: Response) {
   if (!recording) throw new AppError('Recording not found', 404);
   if (recording.format !== 'guac') throw new AppError('Only .guac recordings can be analyzed', 400);
 
-  // Read the file directly (no stat pre-check to avoid TOCTOU race)
+  // Read only the first maxBytes from the file to avoid OOM on large recordings
   const maxBytes = 10 * 1024 * 1024;
-  let buf: Buffer;
+  let content: string;
+  let bytesRead = 0;
+  let fh;
   try {
     // eslint-disable-next-line security/detect-non-literal-fs-filename
-    buf = await readFile(recording.filePath);
+    fh = await open(recording.filePath, 'r');
+    const buf = Buffer.alloc(maxBytes);
+    ({ bytesRead } = await fh.read(buf, 0, maxBytes, 0));
+    content = buf.subarray(0, bytesRead).toString('ascii');
   } catch (err: unknown) {
     if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
       throw new AppError('Recording file not found on disk', 404);
     }
     throw err;
+  } finally {
+    await fh?.close();
   }
-  const content = buf.slice(0, maxBytes).toString('ascii');
 
   const instructions: Record<string, number> = {};
   let displayWidth = 0;
@@ -123,8 +129,8 @@ export async function analyzeRecording(req: AuthRequest, res: Response) {
   }
 
   res.json({
-    fileSize: buf.length,
-    truncated: buf.length > maxBytes,
+    fileSize: bytesRead,
+    truncated: bytesRead >= maxBytes,
     instructions,
     syncCount: instructions['sync'] || 0,
     displayWidth,

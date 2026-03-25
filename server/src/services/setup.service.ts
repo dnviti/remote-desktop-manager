@@ -207,7 +207,11 @@ export async function getDbStatus(): Promise<{
   try {
     const result = await prisma.$queryRawUnsafe<[{ version: string }]>('SELECT version()');
     connected = true;
-    version = result[0]?.version || null;
+    // Only expose the engine name and major version (e.g. "PostgreSQL 16.x"),
+    // not the full build string which leaks OS/compiler/architecture details.
+    const raw = result[0]?.version || '';
+    const match = raw.match(/^(\w+)\s+([\d]+(?:\.[\d]+)?)/);
+    version = match ? `${match[1]} ${match[2]}` : (raw ? 'connected' : null);
   } catch { /* connection failed */ }
 
   return { host, port, database, connected, version };

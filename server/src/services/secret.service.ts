@@ -513,10 +513,8 @@ async function buildAccessWhere(
   userId: string,
   filters: SecretListFilters,
   tenantId?: string | null
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<any> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const where: any = {};
+): Promise<Prisma.VaultSecretWhereInput> {
+  const where: Prisma.VaultSecretWhereInput = {};
 
   if (filters.scope === 'PERSONAL') {
     where.userId = userId;
