@@ -19,7 +19,7 @@ const maxSessionIDLength = 128
 var validSessionIDPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
 
 // validateSessionID checks that a session ID is non-empty, within length limits,
-// and contains only safe characters (alphanumeric, hyphens, underscores).
+// and contains only safe characters (alphanumeric, hyphens, and underscores).
 func validateSessionID(id string) error {
 	if id == "" {
 		return fmt.Errorf("session ID must not be empty")
@@ -28,7 +28,7 @@ func validateSessionID(id string) error {
 		return fmt.Errorf("session ID too long: %d chars (max %d)", len(id), maxSessionIDLength)
 	}
 	if !validSessionIDPattern.MatchString(id) {
-		return fmt.Errorf("session ID contains invalid characters (allowed: alphanumeric, hyphens, underscores)")
+		return fmt.Errorf("session ID contains invalid characters (allowed: alphanumeric characters, hyphens, and underscores)")
 	}
 	return nil
 }

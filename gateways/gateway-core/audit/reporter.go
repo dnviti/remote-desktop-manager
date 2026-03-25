@@ -41,6 +41,7 @@ type AuditReporter struct {
 	wg      sync.WaitGroup
 	stopCh  chan struct{}
 	stopped bool
+	started bool
 	mu      sync.Mutex
 }
 
@@ -57,8 +58,17 @@ func NewAuditReporter(sender FrameSender, bufferSize int) *AuditReporter {
 	}
 }
 
-// Start begins the background event processing goroutine.
+// Start begins the background event processing goroutine. It is idempotent —
+// calling Start() multiple times has no effect after the first call.
 func (ar *AuditReporter) Start() {
+	ar.mu.Lock()
+	if ar.started {
+		ar.mu.Unlock()
+		return
+	}
+	ar.started = true
+	ar.mu.Unlock()
+
 	ar.wg.Add(1)
 	go ar.processLoop()
 }

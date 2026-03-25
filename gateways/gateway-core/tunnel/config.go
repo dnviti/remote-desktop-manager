@@ -27,6 +27,10 @@ type Config struct {
 	// LocalPort is the local service port for health probes (default 0 = disabled).
 	LocalPort int
 
+	// mTLS certificates are optional for development/testing. Production
+	// deployments MUST provide CA cert, client cert, and client key for
+	// mutual TLS authentication.
+
 	// CACert is the PEM-encoded CA certificate for server verification (optional).
 	CACert string
 	// ClientCert is the PEM-encoded client certificate for mTLS (optional).

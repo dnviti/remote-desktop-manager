@@ -33,11 +33,11 @@ func BuildFrame(msgType byte, streamID uint16, payload []byte) []byte {
 }
 
 // ParseFrame decodes a binary frame from buf. It returns the parsed Frame,
-// any remaining bytes after the frame, and an error if the buffer is malformed.
+// remaining bytes, and an error if the buffer is malformed.
 //
-// Because frames are length-delimited by the WebSocket message boundary (each
-// WS message contains exactly one frame), remaining is typically empty. It is
-// provided for callers that buffer multiple frames.
+// The wire format relies on WebSocket message boundaries (one WS message = one
+// frame). The remaining return value is kept for forward compatibility but will
+// be nil on successful parses.
 func ParseFrame(buf []byte) (*Frame, []byte, error) {
 	if len(buf) < HeaderSize {
 		return nil, buf, ErrFrameTooShort

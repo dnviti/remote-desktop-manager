@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"sync"
 	"time"
@@ -30,6 +31,7 @@ type TunnelClient struct {
 	reconnectDelay time.Duration
 	stopped        bool
 	stopMu         sync.Mutex
+	stopCh         chan struct{}
 }
 
 // NewTunnelClient creates a new tunnel client with the given configuration.
@@ -38,6 +40,7 @@ func NewTunnelClient(cfg Config) *TunnelClient {
 		cfg:            cfg,
 		streams:        make(map[uint16]*Stream),
 		reconnectDelay: cfg.ReconnectInitial,
+		stopCh:         make(chan struct{}),
 	}
 }
 
@@ -86,6 +89,8 @@ func (tc *TunnelClient) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
+		case <-tc.stopCh:
+			return nil
 		default:
 		}
 
@@ -105,14 +110,21 @@ func (tc *TunnelClient) Run(ctx context.Context) error {
 		tc.readLoop(ctx)
 		pingCancel()
 
+		// Close the old connection to prevent WebSocket leak before reconnecting.
+		tc.connMu.Lock()
+		if tc.conn != nil {
+			_ = tc.conn.Close()
+			tc.conn = nil
+		}
+		tc.connMu.Unlock()
+
 		// Connection lost — clean up streams
 		tc.closeAllStreams()
 
-		tc.stopMu.Lock()
-		stopped := tc.stopped
-		tc.stopMu.Unlock()
-		if stopped {
+		select {
+		case <-tc.stopCh:
 			return nil
+		default:
 		}
 
 		log.Printf("[tunnel] Disconnected — reconnecting in %v", tc.reconnectDelay)
@@ -137,7 +149,10 @@ func (tc *TunnelClient) SendFrame(frame *protocol.Frame) error {
 // Close gracefully shuts down the tunnel client.
 func (tc *TunnelClient) Close() error {
 	tc.stopMu.Lock()
-	tc.stopped = true
+	if !tc.stopped {
+		tc.stopped = true
+		close(tc.stopCh)
+	}
 	tc.stopMu.Unlock()
 
 	tc.closeAllStreams()
@@ -190,25 +205,40 @@ func (tc *TunnelClient) sendStreamData(streamID uint16, data []byte) error {
 }
 
 // readLoop reads frames from the WebSocket and dispatches them.
+// A background goroutine watches ctx.Done() and closes the connection to
+// unblock the blocking conn.ReadMessage() call.
 func (tc *TunnelClient) readLoop(ctx context.Context) {
-	for {
+	tc.connMu.Lock()
+	conn := tc.conn
+	tc.connMu.Unlock()
+	if conn == nil {
+		return
+	}
+
+	// Watch for context cancellation and close the connection to unblock
+	// ReadMessage, which otherwise blocks indefinitely.
+	done := make(chan struct{})
+	go func() {
 		select {
 		case <-ctx.Done():
-			return
-		default:
+			_ = conn.Close()
+		case <-tc.stopCh:
+			_ = conn.Close()
+		case <-done:
 		}
+	}()
+	defer close(done)
 
-		tc.connMu.Lock()
-		conn := tc.conn
-		tc.connMu.Unlock()
-		if conn == nil {
-			return
-		}
-
+	for {
 		_, data, err := conn.ReadMessage()
 		if err != nil {
 			if !websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
-				log.Printf("[tunnel] Read error: %v", err)
+				// Suppress log noise when the context was cancelled (expected close).
+				select {
+				case <-ctx.Done():
+				default:
+					log.Printf("[tunnel] Read error: %v", err)
+				}
 			}
 			return
 		}
@@ -231,7 +261,9 @@ func (tc *TunnelClient) dispatchFrame(frame *protocol.Frame) {
 		s, ok := tc.streams[frame.StreamID]
 		tc.streamsMu.RUnlock()
 		if ok {
-			s.deliver(frame.Payload)
+			if !s.deliver(frame.Payload) {
+				log.Printf("[tunnel] Stream %d buffer full, dropped %d bytes", frame.StreamID, len(frame.Payload))
+			}
 		}
 
 	case protocol.MsgClose:
@@ -320,20 +352,30 @@ func (tc *TunnelClient) probeLocalService() healthStatus {
 	return healthStatus{Healthy: true, LatencyMs: latency, ActiveStreams: count}
 }
 
-// waitReconnect waits for the reconnect delay with exponential backoff.
-// Returns false if context is cancelled during the wait.
+// waitReconnect waits for the reconnect delay with exponential backoff and
+// jitter. Returns false if context is cancelled or the client is stopped
+// during the wait.
 func (tc *TunnelClient) waitReconnect(ctx context.Context) bool {
 	timer := time.NewTimer(tc.reconnectDelay)
 	defer timer.Stop()
 
-	// Exponential backoff
+	// Exponential backoff with jitter (up to 25%) to prevent thundering herd.
 	tc.reconnectDelay = tc.reconnectDelay * 2
 	if tc.reconnectDelay > tc.cfg.ReconnectMax {
 		tc.reconnectDelay = tc.cfg.ReconnectMax
 	}
+	if tc.reconnectDelay > 0 {
+		jitter := time.Duration(rand.Int63n(int64(tc.reconnectDelay / 4)))
+		tc.reconnectDelay += jitter
+		if tc.reconnectDelay > tc.cfg.ReconnectMax {
+			tc.reconnectDelay = tc.cfg.ReconnectMax
+		}
+	}
 
 	select {
 	case <-ctx.Done():
+		return false
+	case <-tc.stopCh:
 		return false
 	case <-timer.C:
 		return true

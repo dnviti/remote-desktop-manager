@@ -18,7 +18,8 @@ type Stream struct {
 	sendFunc  func(streamID uint16, data []byte) error
 	readBuf   chan []byte
 	remainder []byte // leftover bytes from a partial Read
-	closed    bool
+	done      chan struct{}
+	closeOnce sync.Once
 	mu        sync.Mutex
 }
 
@@ -28,6 +29,7 @@ func newStream(id uint16, sendFunc func(uint16, []byte) error) *Stream {
 		id:       id,
 		sendFunc: sendFunc,
 		readBuf:  make(chan []byte, 256),
+		done:     make(chan struct{}),
 	}
 }
 
@@ -54,28 +56,46 @@ func (s *Stream) Read(p []byte) (int, error) {
 	}
 	s.mu.Unlock()
 
-	data, ok := <-s.readBuf
-	if !ok {
-		return 0, io.EOF
+	select {
+	case data, ok := <-s.readBuf:
+		if !ok {
+			return 0, io.EOF
+		}
+		n := copy(p, data)
+		if n < len(data) {
+			s.mu.Lock()
+			s.remainder = data[n:]
+			s.mu.Unlock()
+		}
+		return n, nil
+	case <-s.done:
+		// Drain any remaining buffered data before returning EOF.
+		select {
+		case data, ok := <-s.readBuf:
+			if !ok {
+				return 0, io.EOF
+			}
+			n := copy(p, data)
+			if n < len(data) {
+				s.mu.Lock()
+				s.remainder = data[n:]
+				s.mu.Unlock()
+			}
+			return n, nil
+		default:
+			return 0, io.EOF
+		}
 	}
-	n := copy(p, data)
-	if n < len(data) {
-		s.mu.Lock()
-		s.remainder = data[n:]
-		s.mu.Unlock()
-	}
-	return n, nil
 }
 
 // Write sends data over the tunnel for this stream. It is safe for concurrent
 // use.
 func (s *Stream) Write(p []byte) (int, error) {
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
+	select {
+	case <-s.done:
 		return 0, ErrStreamClosed
+	default:
 	}
-	s.mu.Unlock()
 
 	if err := s.sendFunc(s.id, p); err != nil {
 		return 0, err
@@ -84,28 +104,18 @@ func (s *Stream) Write(p []byte) (int, error) {
 }
 
 // Close closes the stream. Subsequent reads will drain the buffer then return
-// io.EOF. Subsequent writes return ErrStreamClosed.
+// io.EOF. Subsequent writes return ErrStreamClosed. Close is safe for
+// concurrent use and idempotent.
 func (s *Stream) Close() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	close(s.readBuf)
+	s.closeOnce.Do(func() {
+		close(s.done)
+	})
 	return nil
 }
 
 // deliver enqueues received data into the stream's read buffer. Returns false
 // if the stream is closed or the buffer is full (data dropped).
 func (s *Stream) deliver(data []byte) bool {
-	s.mu.Lock()
-	if s.closed {
-		s.mu.Unlock()
-		return false
-	}
-	s.mu.Unlock()
-
 	// Defensive copy to prevent the caller's buffer from being reused.
 	buf := make([]byte, len(data))
 	copy(buf, data)
@@ -113,6 +123,8 @@ func (s *Stream) deliver(data []byte) bool {
 	select {
 	case s.readBuf <- buf:
 		return true
+	case <-s.done:
+		return false
 	default:
 		// Buffer full — drop data to prevent blocking the tunnel read loop.
 		return false
