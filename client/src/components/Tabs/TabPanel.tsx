@@ -46,7 +46,7 @@ export default function TabPanel() {
           ) : tab.connection.type === 'VNC' ? (
             <VncViewer connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} credentials={tab.credentials} />
           ) : tab.connection.type === 'DATABASE' ? (
-            <DbEditor connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} credentials={tab.credentials} />
+            <DbEditor connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} credentials={tab.credentials} initialProtocol={tab.connection.dbSettings?.protocol} />
           ) : (
             <RdpViewer connectionId={tab.connection.id} tabId={tab.id} isActive={tab.id === activeTabId} enableDrive={tab.connection.enableDrive} credentials={tab.credentials} />
           )}

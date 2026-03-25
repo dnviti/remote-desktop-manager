@@ -70,6 +70,7 @@ interface DbEditorProps {
   tabId: string;
   isActive?: boolean;
   credentials?: CredentialOverride;
+  initialProtocol?: string;
 }
 
 interface QuerySubTab {
@@ -132,6 +133,7 @@ export default function DbEditor({
   tabId,
   isActive = true,
   credentials,
+  initialProtocol,
 }: DbEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const monacoEditorRef = useRef<monacoNs.editor.IStandaloneCodeEditor | null>(null);
@@ -157,7 +159,7 @@ export default function DbEditor({
 
   const [connectionState, setConnectionState] = useState<DbConnectionState>('connecting');
   const [error, setError] = useState('');
-  const [protocol, setProtocol] = useState('postgresql');
+  const [protocol, setProtocol] = useState(initialProtocol || 'postgresql');
   const [databaseName, setDatabaseName] = useState<string | undefined>();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [schemaData, setSchemaData] = useState<DbSchemaInfo>({ tables: [] });

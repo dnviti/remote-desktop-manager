@@ -141,6 +141,65 @@ function pickDbSettingsFields(meta: Record<string, unknown>): Partial<DbSettings
 }
 
 // ---------------------------------------------------------------------------
+// Eager connectivity test (used during session creation)
+// ---------------------------------------------------------------------------
+
+/**
+ * Eagerly create the driver pool for a session **and** verify the target
+ * database is actually reachable by acquiring (and releasing) a real
+ * connection. Some drivers (Oracle with poolMin:0, pg Pool) create pool
+ * metadata without opening a TCP connection, so pool creation alone is not
+ * sufficient to detect an unreachable host.
+ *
+ * On success the pool is kept in the registry, ready for the first query.
+ * On failure the partial pool is destroyed and the error is re-thrown.
+ */
+export async function testConnection(params: PoolParams): Promise<void> {
+  let managed: ManagedPool | undefined;
+  try {
+    managed = await getOrCreatePool(params);
+
+    // Acquire a real connection to verify the target DB is reachable
+    const { driver } = managed;
+    switch (driver.type) {
+      case 'postgresql': {
+        const client = await driver.pool.connect();
+        client.release();
+        break;
+      }
+      case 'mysql': {
+        const conn = await driver.pool.getConnection();
+        conn.release();
+        break;
+      }
+      case 'oracle': {
+        const conn = await driver.pool.getConnection();
+        await conn.close();
+        break;
+      }
+      case 'mssql': {
+        // mssql.ConnectionPool.connect() is called during createPool — already connected.
+        // Issue a lightweight request to confirm.
+        await driver.pool.request().query('SELECT 1');
+        break;
+      }
+      case 'mongodb': {
+        await driver.client.db(driver.dbName).command({ ping: 1 });
+        break;
+      }
+      case 'db2': {
+        // ibm_db openSync already connects eagerly; nothing extra needed.
+        break;
+      }
+    }
+  } catch (err) {
+    // Clean up any partial pool that was registered before the driver threw
+    await destroyPool(params.sessionId);
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Statement splitting — most drivers only execute one statement per call.
 // MongoDB is excluded (JSON-based, not SQL).
 // ---------------------------------------------------------------------------
