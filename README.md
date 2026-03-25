@@ -2,9 +2,12 @@
   <img src="icons/Arsenale_logo_transparent.png" alt="Arsenale" width="500" />
 </div>
 
+[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/docker-build.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/docker-build.yml)
+[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/gateway-builds.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/gateway-builds.yml)
+[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/release.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/release.yml)
+[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/security.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/security.yml)
+[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/verify.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify.yml)
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
-[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/verify-server.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify-server.yml)
-[![Verify Client](https://github.com/dnviti/arsenale/actions/workflows/verify-client.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify-client.yml)
 [![Version](https://img.shields.io/badge/version-1.7.1-green.svg)](CHANGELOG.md)
 
 A web-based application for managing and accessing remote SSH and RDP connections from your browser. Organize connections in folders, share them with team members, and keep credentials encrypted at rest with a personal vault.
