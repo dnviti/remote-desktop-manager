@@ -25,7 +25,7 @@ export async function onSettingChanged(group: string): Promise<void> {
     try {
       await fn();
     } catch (err) {
-      logger.error(`Config reload failed for group "${group}":`, err);
+      logger.error(`Config reload failed for group "${group}": ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   logger.verbose(`Config reloaded for group "${group}" (${fns.length} handler(s))`);
