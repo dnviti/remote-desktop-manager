@@ -3,7 +3,7 @@
 </div>
 
 [![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/docker-build.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/docker-build.yml)
-[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/gateway-builds.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/gateway-builds.yml)
+[![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/gateways-builds.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/gateways-builds.yml)
 [![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/release.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/release.yml)
 [![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/security.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/security.yml)
 [![Verify Server](https://github.com/dnviti/arsenale/actions/workflows/verify.yml/badge.svg)](https://github.com/dnviti/arsenale/actions/workflows/verify.yml)
