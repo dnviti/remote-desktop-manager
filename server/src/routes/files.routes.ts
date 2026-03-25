@@ -1,6 +1,7 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import multer from 'multer';
 import fsp from 'fs/promises';
+import path from 'path';
 import { authenticate } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { fileNameSchema } from '../schemas/files.schemas';
@@ -69,9 +70,15 @@ const tenantFileSizeCheck = async (req: AuthRequest, _res: Response, next: NextF
     });
     const maxSize = tenant?.fileUploadMaxSizeBytes;
     if (maxSize && req.file.size > maxSize) {
-      // Delete the uploaded file that exceeds tenant limit
-      // eslint-disable-next-line security/detect-non-literal-fs-filename
-      await fsp.unlink(req.file.path).catch(() => {});
+      // Delete the uploaded file that exceeds tenant limit.
+      // Validate path stays within the drive base to satisfy CodeQL path-traversal check.
+      const resolvedPath = path.resolve(req.file.path);
+      const driveRoot = path.resolve(config.driveBasePath);
+      const rel = path.relative(driveRoot, resolvedPath);
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+        // eslint-disable-next-line security/detect-non-literal-fs-filename
+        await fsp.unlink(resolvedPath).catch(() => {});
+      }
       throw new AppError(
         `File exceeds organization limit of ${Math.round(maxSize / 1024 / 1024)}MB`,
         413,
