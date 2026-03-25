@@ -12,8 +12,227 @@ import {
 import {
   listVaultProviders, createVaultProvider, updateVaultProvider, deleteVaultProvider,
   testVaultProvider, VaultProviderData, CreateVaultProviderInput, UpdateVaultProviderInput,
+  ExternalVaultType, ExternalVaultAuthMethod,
 } from '../../api/externalVault.api';
 import { extractApiError } from '../../utils/apiError';
+
+// ---------- Provider / auth method metadata ----------
+
+interface AuthMethodMeta {
+  value: ExternalVaultAuthMethod;
+  label: string;
+}
+
+interface ProviderMeta {
+  value: ExternalVaultType;
+  label: string;
+  authMethods: AuthMethodMeta[];
+  defaultMount: string;
+  serverUrlPlaceholder: string;
+  serverUrlLabel: string;
+  secretPathHelp: string;
+}
+
+const PROVIDERS: ProviderMeta[] = [
+  {
+    value: 'HASHICORP_VAULT',
+    label: 'HashiCorp Vault',
+    authMethods: [
+      { value: 'TOKEN', label: 'Static Token' },
+      { value: 'APPROLE', label: 'AppRole' },
+    ],
+    defaultMount: 'secret',
+    serverUrlPlaceholder: 'https://vault.example.com:8200',
+    serverUrlLabel: 'Server URL',
+    secretPathHelp: 'Path within the KV v2 mount, e.g. "servers/web1"',
+  },
+  {
+    value: 'AWS_SECRETS_MANAGER',
+    label: 'AWS Secrets Manager',
+    authMethods: [
+      { value: 'IAM_ACCESS_KEY', label: 'IAM Access Key' },
+      { value: 'IAM_ROLE', label: 'IAM Role (IRSA / Instance Profile)' },
+    ],
+    defaultMount: '',
+    serverUrlPlaceholder: 'https://secretsmanager.us-east-1.amazonaws.com',
+    serverUrlLabel: 'Endpoint URL',
+    secretPathHelp: 'Secret name or ARN. Append #AWSPREVIOUS for previous version.',
+  },
+  {
+    value: 'AZURE_KEY_VAULT',
+    label: 'Azure Key Vault',
+    authMethods: [
+      { value: 'CLIENT_CREDENTIALS', label: 'Service Principal (Client Credentials)' },
+      { value: 'MANAGED_IDENTITY', label: 'Managed Identity' },
+    ],
+    defaultMount: '',
+    serverUrlPlaceholder: 'https://myvault.vault.azure.net',
+    serverUrlLabel: 'Vault URI',
+    secretPathHelp: 'Secret name, optionally with version: "my-secret" or "my-secret/version-id"',
+  },
+  {
+    value: 'GCP_SECRET_MANAGER',
+    label: 'GCP Secret Manager',
+    authMethods: [
+      { value: 'SERVICE_ACCOUNT_KEY', label: 'Service Account Key (JSON)' },
+      { value: 'WORKLOAD_IDENTITY', label: 'Workload Identity' },
+    ],
+    defaultMount: '',
+    serverUrlPlaceholder: 'https://secretmanager.googleapis.com',
+    serverUrlLabel: 'Server URL',
+    secretPathHelp: 'Secret name, e.g. "my-secret" or "my-secret/versions/5"',
+  },
+  {
+    value: 'CYBERARK_CONJUR',
+    label: 'CyberArk Conjur',
+    authMethods: [
+      { value: 'CONJUR_API_KEY', label: 'API Key' },
+      { value: 'CONJUR_AUTHN_K8S', label: 'Kubernetes Auth (authn-k8s)' },
+    ],
+    defaultMount: '',
+    serverUrlPlaceholder: 'https://conjur.example.com',
+    serverUrlLabel: 'Conjur URL',
+    secretPathHelp: 'Variable ID with policy path, e.g. "myapp/db/password"',
+  },
+];
+
+function getProviderMeta(type: ExternalVaultType): ProviderMeta {
+  return PROVIDERS.find((p) => p.value === type) ?? PROVIDERS[0];
+}
+
+function providerLabel(type: ExternalVaultType): string {
+  return getProviderMeta(type).label;
+}
+
+// ---------- Auth credential fields per method ----------
+
+interface AuthFieldProps {
+  authMethod: ExternalVaultAuthMethod;
+  isEdit: boolean;
+  values: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+}
+
+function AuthFields({ authMethod, isEdit, values, onChange }: AuthFieldProps) {
+  const placeholder = isEdit ? 'Leave blank to keep unchanged' : undefined;
+  const required = !isEdit;
+
+  switch (authMethod) {
+    case 'TOKEN':
+      return (
+        <TextField label="Vault Token" value={values.token ?? ''} onChange={(e) => onChange('token', e.target.value)}
+          fullWidth type="password" required={required} placeholder={placeholder} />
+      );
+    case 'APPROLE':
+      return (
+        <>
+          <TextField label="Role ID" value={values.roleId ?? ''} onChange={(e) => onChange('roleId', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Secret ID" value={values.secretId ?? ''} onChange={(e) => onChange('secretId', e.target.value)}
+            fullWidth type="password" required={required} placeholder={placeholder} />
+        </>
+      );
+    case 'IAM_ACCESS_KEY':
+      return (
+        <>
+          <TextField label="Access Key ID" value={values.accessKeyId ?? ''} onChange={(e) => onChange('accessKeyId', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Secret Access Key" value={values.secretAccessKey ?? ''} onChange={(e) => onChange('secretAccessKey', e.target.value)}
+            fullWidth type="password" required={required} placeholder={placeholder} />
+          <TextField label="Region" value={values.region ?? ''} onChange={(e) => onChange('region', e.target.value)}
+            fullWidth placeholder="us-east-1 (default)" />
+        </>
+      );
+    case 'IAM_ROLE':
+      return (
+        <>
+          <TextField label="Region" value={values.region ?? ''} onChange={(e) => onChange('region', e.target.value)}
+            fullWidth placeholder="us-east-1 (default)" />
+          <TextField label="Role ARN (optional)" value={values.roleArn ?? ''} onChange={(e) => onChange('roleArn', e.target.value)}
+            fullWidth placeholder="arn:aws:iam::123456789:role/my-role" />
+          <Typography variant="caption" color="text.secondary">
+            Credentials are sourced from the environment (IRSA, instance profile, or env vars).
+          </Typography>
+        </>
+      );
+    case 'CLIENT_CREDENTIALS':
+      return (
+        <>
+          <TextField label="Azure Tenant ID" value={values.tenantId ?? ''} onChange={(e) => onChange('tenantId', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Client ID" value={values.clientId ?? ''} onChange={(e) => onChange('clientId', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Client Secret" value={values.clientSecret ?? ''} onChange={(e) => onChange('clientSecret', e.target.value)}
+            fullWidth type="password" required={required} placeholder={placeholder} />
+        </>
+      );
+    case 'MANAGED_IDENTITY':
+      return (
+        <>
+          <TextField label="Client ID (optional)" value={values.clientId ?? ''} onChange={(e) => onChange('clientId', e.target.value)}
+            fullWidth placeholder="Leave blank for system-assigned identity" />
+          <Typography variant="caption" color="text.secondary">
+            Uses the Azure IMDS endpoint. Only works when running on Azure.
+          </Typography>
+        </>
+      );
+    case 'SERVICE_ACCOUNT_KEY':
+      return (
+        <>
+          <TextField label="Service Account Key (JSON)" value={values.serviceAccountKey ?? ''} onChange={(e) => onChange('serviceAccountKey', e.target.value)}
+            fullWidth multiline rows={4} required={required} placeholder={isEdit ? 'Leave blank to keep unchanged' : 'Paste full JSON key file'} />
+          <TextField label="Project ID (optional, derived from key)" value={values.projectId ?? ''} onChange={(e) => onChange('projectId', e.target.value)}
+            fullWidth />
+        </>
+      );
+    case 'WORKLOAD_IDENTITY':
+      return (
+        <>
+          <TextField label="Project ID" value={values.projectId ?? ''} onChange={(e) => onChange('projectId', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <Typography variant="caption" color="text.secondary">
+            Uses GCE metadata server. Only works when running on GCP with Workload Identity.
+          </Typography>
+        </>
+      );
+    case 'CONJUR_API_KEY':
+      return (
+        <>
+          <TextField label="Account" value={values.account ?? ''} onChange={(e) => onChange('account', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Login (Host ID)" value={values.login ?? ''} onChange={(e) => onChange('login', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="API Key" value={values.apiKey ?? ''} onChange={(e) => onChange('apiKey', e.target.value)}
+            fullWidth type="password" required={required} placeholder={placeholder} />
+        </>
+      );
+    case 'CONJUR_AUTHN_K8S':
+      return (
+        <>
+          <TextField label="Account" value={values.account ?? ''} onChange={(e) => onChange('account', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Service ID (authn-k8s)" value={values.serviceId ?? ''} onChange={(e) => onChange('serviceId', e.target.value)}
+            fullWidth required={required} placeholder={placeholder} />
+          <TextField label="Host ID (optional)" value={values.hostId ?? ''} onChange={(e) => onChange('hostId', e.target.value)}
+            fullWidth />
+          <Typography variant="caption" color="text.secondary">
+            Uses the Kubernetes service account token for authentication.
+          </Typography>
+        </>
+      );
+    default:
+      return null;
+  }
+}
+
+/** Auth methods that rely on environment/platform credentials and don't require user-supplied secrets. */
+const AUTH_METHODS_NO_CREDENTIALS_REQUIRED: Set<ExternalVaultAuthMethod> = new Set([
+  'IAM_ROLE',
+  'MANAGED_IDENTITY',
+  'WORKLOAD_IDENTITY',
+]);
+
+// ---------- Component ----------
 
 interface VaultProvidersSectionProps {
   tenantId: string;
@@ -27,19 +246,19 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
   const [editingProvider, setEditingProvider] = useState<VaultProviderData | null>(null);
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testProviderId, setTestProviderId] = useState('');
+  const [testProviderType, setTestProviderType] = useState<ExternalVaultType>('HASHICORP_VAULT');
   const [testPath, setTestPath] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; keys?: string[]; error?: string } | null>(null);
   const [testLoading, setTestLoading] = useState(false);
 
   // Form state
   const [formName, setFormName] = useState('');
+  const [formProviderType, setFormProviderType] = useState<ExternalVaultType>('HASHICORP_VAULT');
   const [formUrl, setFormUrl] = useState('');
-  const [formAuth, setFormAuth] = useState<'TOKEN' | 'APPROLE'>('TOKEN');
+  const [formAuth, setFormAuth] = useState<ExternalVaultAuthMethod>('TOKEN');
   const [formNamespace, setFormNamespace] = useState('');
   const [formMount, setFormMount] = useState('secret');
-  const [formToken, setFormToken] = useState('');
-  const [formRoleId, setFormRoleId] = useState('');
-  const [formSecretId, setFormSecretId] = useState('');
+  const [formAuthValues, setFormAuthValues] = useState<Record<string, string>>({});
   const [formCacheTtl, setFormCacheTtl] = useState('300');
   const [formCaCert, setFormCaCert] = useState('');
   const [formError, setFormError] = useState('');
@@ -61,51 +280,77 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
     if (tenantId) fetchProviders();
   }, [tenantId, fetchProviders]);
 
+  const resetForm = (providerType: ExternalVaultType = 'HASHICORP_VAULT') => {
+    const meta = getProviderMeta(providerType);
+    setFormProviderType(providerType);
+    setFormAuth(meta.authMethods[0].value);
+    setFormMount(meta.defaultMount);
+    setFormAuthValues({});
+    setFormCaCert('');
+    setFormError('');
+  };
+
   const openCreateDialog = () => {
     setEditingProvider(null);
     setFormName('');
     setFormUrl('');
-    setFormAuth('TOKEN');
     setFormNamespace('');
-    setFormMount('secret');
-    setFormToken('');
-    setFormRoleId('');
-    setFormSecretId('');
     setFormCacheTtl('300');
-    setFormCaCert('');
-    setFormError('');
+    resetForm('HASHICORP_VAULT');
     setDialogOpen(true);
   };
 
   const openEditDialog = (p: VaultProviderData) => {
     setEditingProvider(p);
     setFormName(p.name);
+    setFormProviderType(p.providerType);
     setFormUrl(p.serverUrl);
     setFormAuth(p.authMethod);
     setFormNamespace(p.namespace ?? '');
     setFormMount(p.mountPath);
-    setFormToken('');
-    setFormRoleId('');
-    setFormSecretId('');
+    setFormAuthValues({});
     setFormCacheTtl(String(p.cacheTtlSeconds));
     setFormCaCert('');
     setFormError('');
     setDialogOpen(true);
   };
 
+  const handleProviderTypeChange = (type: ExternalVaultType) => {
+    resetForm(type);
+    setFormUrl('');
+    setFormNamespace('');
+  };
+
+  const handleAuthChange = (key: string, value: string) => {
+    setFormAuthValues((prev) => ({ ...prev, [key]: value }));
+  };
+
+  const buildAuthPayload = (): string => {
+    // Filter out empty values to keep payload clean
+    const clean: Record<string, string> = {};
+    for (const [k, v] of Object.entries(formAuthValues)) {
+      if (v) clean[k] = v;
+    }
+    return JSON.stringify(clean);
+  };
+
+  const hasAuthCredentials = (): boolean => {
+    return Object.values(formAuthValues).some((v) => v.length > 0);
+  };
+
+  const requiresAuthCredentials = (): boolean => {
+    return !AUTH_METHODS_NO_CREDENTIALS_REQUIRED.has(formAuth);
+  };
+
   const handleSave = async () => {
     if (!formName || !formUrl) {
-      setFormError('Name and Server URL are required');
+      setFormError('Name and Server URL / Region are required');
       return;
     }
 
-    let authPayload: string;
-    if (formAuth === 'TOKEN') {
-      if (!formToken && !editingProvider) { setFormError('Token is required'); return; }
-      authPayload = JSON.stringify({ token: formToken });
-    } else {
-      if ((!formRoleId || !formSecretId) && !editingProvider) { setFormError('Role ID and Secret ID are required'); return; }
-      authPayload = JSON.stringify({ roleId: formRoleId, secretId: formSecretId });
+    if (requiresAuthCredentials() && !hasAuthCredentials() && !editingProvider) {
+      setFormError('Authentication credentials are required');
+      return;
     }
 
     try {
@@ -113,6 +358,7 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
       if (editingProvider) {
         const input: UpdateVaultProviderInput = {
           name: formName,
+          providerType: formProviderType,
           serverUrl: formUrl,
           authMethod: formAuth,
           namespace: formNamespace || null,
@@ -120,16 +366,15 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
           cacheTtlSeconds: parseInt(formCacheTtl, 10) || 300,
           ...(formCaCert ? { caCertificate: formCaCert } : {}),
         };
-        // Only send authPayload if credentials were re-entered
-        if (formAuth === 'TOKEN' && formToken) input.authPayload = authPayload;
-        if (formAuth === 'APPROLE' && formRoleId && formSecretId) input.authPayload = authPayload;
+        if (hasAuthCredentials()) input.authPayload = buildAuthPayload();
         await updateVaultProvider(editingProvider.id, input);
       } else {
         const input: CreateVaultProviderInput = {
           name: formName,
+          providerType: formProviderType,
           serverUrl: formUrl,
           authMethod: formAuth,
-          authPayload,
+          authPayload: buildAuthPayload(),
           ...(formNamespace ? { namespace: formNamespace } : {}),
           mountPath: formMount,
           cacheTtlSeconds: parseInt(formCacheTtl, 10) || 300,
@@ -164,8 +409,9 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
     }
   };
 
-  const openTestDialog = (providerId: string) => {
+  const openTestDialog = (providerId: string, providerType: ExternalVaultType) => {
     setTestProviderId(providerId);
+    setTestProviderType(providerType);
     setTestPath('');
     setTestResult(null);
     setTestDialogOpen(true);
@@ -184,6 +430,8 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
     }
   };
 
+  const meta = getProviderMeta(formProviderType);
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
@@ -197,16 +445,16 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
         <Typography variant="body2" color="text.secondary">Loading...</Typography>
       ) : providers.length === 0 ? (
         <Typography variant="body2" color="text.secondary">
-          No external vault providers configured. Add a HashiCorp Vault provider to reference credentials stored externally.
+          No external vault providers configured. Add a provider to reference credentials stored in HashiCorp Vault, AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, or CyberArk Conjur.
         </Typography>
       ) : (
         <Table size="small">
           <TableHead>
             <TableRow>
               <TableCell>Name</TableCell>
+              <TableCell>Provider</TableCell>
               <TableCell>Server URL</TableCell>
               <TableCell>Auth</TableCell>
-              <TableCell>Mount</TableCell>
               <TableCell>Status</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
@@ -215,13 +463,15 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
             {providers.map((p) => (
               <TableRow key={p.id}>
                 <TableCell>{p.name}</TableCell>
+                <TableCell>
+                  <Chip label={providerLabel(p.providerType)} size="small" variant="outlined" />
+                </TableCell>
                 <TableCell sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {p.serverUrl}
                 </TableCell>
                 <TableCell>
                   <Chip label={p.authMethod} size="small" variant="outlined" />
                 </TableCell>
-                <TableCell>{p.mountPath}</TableCell>
                 <TableCell>
                   {p.enabled
                     ? <Chip icon={<CheckCircleIcon />} label="Enabled" size="small" color="success" variant="outlined" />
@@ -229,7 +479,7 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
                 </TableCell>
                 <TableCell align="right">
                   <Tooltip title="Test Connection">
-                    <IconButton size="small" onClick={() => openTestDialog(p.id)}>
+                    <IconButton size="small" onClick={() => openTestDialog(p.id, p.providerType)}>
                       <TestIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
@@ -260,56 +510,42 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
           {formError && <Alert severity="error" sx={{ mb: 2 }}>{formError}</Alert>}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mt: 1 }}>
             <TextField label="Name" value={formName} onChange={(e) => setFormName(e.target.value)} fullWidth required />
-            <TextField label="Server URL" value={formUrl} onChange={(e) => setFormUrl(e.target.value)} fullWidth required placeholder="https://vault.example.com:8200" />
+
+            <FormControl fullWidth>
+              <InputLabel>Provider Type</InputLabel>
+              <Select value={formProviderType} label="Provider Type" disabled={!!editingProvider}
+                onChange={(e) => handleProviderTypeChange(e.target.value as ExternalVaultType)}>
+                {PROVIDERS.map((p) => (
+                  <MenuItem key={p.value} value={p.value}>{p.label}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <TextField label={meta.serverUrlLabel} value={formUrl} onChange={(e) => setFormUrl(e.target.value)}
+              fullWidth required placeholder={meta.serverUrlPlaceholder} />
+
             <FormControl fullWidth>
               <InputLabel>Auth Method</InputLabel>
               <Select value={formAuth} label="Auth Method" onChange={(e) => {
-                const newMethod = e.target.value as 'TOKEN' | 'APPROLE';
-                setFormAuth(newMethod);
-                if (editingProvider) {
-                  // Clear credential fields when switching auth method in edit mode
-                  setFormToken('');
-                  setFormRoleId('');
-                  setFormSecretId('');
-                }
+                setFormAuth(e.target.value as ExternalVaultAuthMethod);
+                setFormAuthValues({});
               }}>
-                <MenuItem value="TOKEN">Static Token</MenuItem>
-                <MenuItem value="APPROLE">AppRole</MenuItem>
+                {meta.authMethods.map((am) => (
+                  <MenuItem key={am.value} value={am.value}>{am.label}</MenuItem>
+                ))}
               </Select>
             </FormControl>
-            {formAuth === 'TOKEN' ? (
-              <TextField
-                label="Vault Token"
-                value={formToken}
-                onChange={(e) => setFormToken(e.target.value)}
-                fullWidth
-                type="password"
-                required={!editingProvider}
-                placeholder={editingProvider ? 'Leave blank to keep unchanged' : undefined}
-              />
-            ) : (
-              <>
-                <TextField
-                  label="Role ID"
-                  value={formRoleId}
-                  onChange={(e) => setFormRoleId(e.target.value)}
-                  fullWidth
-                  required={!editingProvider}
-                  placeholder={editingProvider ? 'Leave blank to keep unchanged' : undefined}
-                />
-                <TextField
-                  label="Secret ID"
-                  value={formSecretId}
-                  onChange={(e) => setFormSecretId(e.target.value)}
-                  fullWidth
-                  type="password"
-                  required={!editingProvider}
-                  placeholder={editingProvider ? 'Leave blank to keep unchanged' : undefined}
-                />
-              </>
+
+            <AuthFields authMethod={formAuth} isEdit={!!editingProvider} values={formAuthValues} onChange={handleAuthChange} />
+
+            {formProviderType === 'HASHICORP_VAULT' && (
+              <TextField label="Namespace (optional)" value={formNamespace} onChange={(e) => setFormNamespace(e.target.value)} fullWidth />
             )}
-            <TextField label="Namespace (optional)" value={formNamespace} onChange={(e) => setFormNamespace(e.target.value)} fullWidth />
-            <TextField label="Mount Path" value={formMount} onChange={(e) => setFormMount(e.target.value)} fullWidth />
+
+            {meta.defaultMount !== '' && (
+              <TextField label="Mount Path" value={formMount} onChange={(e) => setFormMount(e.target.value)} fullWidth />
+            )}
+
             <TextField label="Cache TTL (seconds)" value={formCacheTtl} onChange={(e) => setFormCacheTtl(e.target.value)} type="number" fullWidth />
             <TextField
               label="CA Certificate (optional)"
@@ -340,8 +576,8 @@ export default function VaultProvidersSection({ tenantId }: VaultProvidersSectio
               value={testPath}
               onChange={(e) => setTestPath(e.target.value)}
               fullWidth
-              placeholder="e.g. servers/web1"
-              helperText="Path to the secret within the KV v2 mount"
+              placeholder={getProviderMeta(testProviderType).secretPathHelp.replace(/^.*?e\.g\.\s*/, '').replace(/"$/, '') || 'e.g. servers/web1'}
+              helperText={getProviderMeta(testProviderType).secretPathHelp}
             />
             {testResult && (
               <Alert severity={testResult.success ? 'success' : 'error'}>

@@ -122,30 +122,24 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
   const storedTab = useUiPreferencesStore((s) => s.settingsActiveTab);
   const setStoredTab = useUiPreferencesStore((s) => s.set);
 
-  // Use initialTab when provided, otherwise fall back to stored preference
-  const [activeTab, setActiveTabState] = useState(() => {
-    const preferred = initialTab || storedTab || 'profile';
-    return validTabIds.has(preferred) ? preferred : 'profile';
-  });
-
-  // Track prop changes to sync initialTab (React derived-state-from-props pattern)
-  const [prevOpen, setPrevOpen] = useState(open);
+  // --- Active tab state (React 19 render-time adjustment, no useEffect) ---
+  const [activeTab, setActiveTabRaw] = useState('profile');
+  const [prevOpen, setPrevOpen] = useState(false);
   const [prevInitialTab, setPrevInitialTab] = useState(initialTab);
 
-  if (open !== prevOpen || initialTab !== prevInitialTab) {
-    setPrevOpen(open);
-    setPrevInitialTab(initialTab);
-    if (open && initialTab && validTabIds.has(initialTab)) {
-      setActiveTabState(initialTab);
-      setStoredTab('settingsActiveTab', initialTab);
-    }
+  // Reset tab when dialog opens or initialTab changes while open
+  if (open && (!prevOpen || initialTab !== prevInitialTab)) {
+    const target = initialTab || storedTab || 'profile';
+    setActiveTabRaw(validTabIds.has(target) ? target : 'profile');
   }
+  if (open !== prevOpen) setPrevOpen(open);
+  if (initialTab !== prevInitialTab) setPrevInitialTab(initialTab);
 
-  // Ensure active tab is always valid (handles tenant removal, tab changes)
+  // Ensure active tab is always valid (handles tenant removal, role changes)
   const resolvedTab = validTabIds.has(activeTab) ? activeTab : 'profile';
 
   const setActiveTab = useCallback((tab: string) => {
-    setActiveTabState(tab);
+    setActiveTabRaw(tab);
     setStoredTab('settingsActiveTab', tab);
   }, [setStoredTab]);
 

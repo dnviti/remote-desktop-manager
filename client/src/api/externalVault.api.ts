@@ -1,10 +1,25 @@
 import api from './client';
 
+export type ExternalVaultType =
+  | 'HASHICORP_VAULT'
+  | 'AWS_SECRETS_MANAGER'
+  | 'AZURE_KEY_VAULT'
+  | 'GCP_SECRET_MANAGER'
+  | 'CYBERARK_CONJUR';
+
+export type ExternalVaultAuthMethod =
+  | 'TOKEN' | 'APPROLE'
+  | 'IAM_ACCESS_KEY' | 'IAM_ROLE'
+  | 'CLIENT_CREDENTIALS' | 'MANAGED_IDENTITY'
+  | 'SERVICE_ACCOUNT_KEY' | 'WORKLOAD_IDENTITY'
+  | 'CONJUR_API_KEY' | 'CONJUR_AUTHN_K8S';
+
 export interface VaultProviderData {
   id: string;
   name: string;
+  providerType: ExternalVaultType;
   serverUrl: string;
-  authMethod: 'TOKEN' | 'APPROLE';
+  authMethod: ExternalVaultAuthMethod;
   namespace: string | null;
   mountPath: string;
   cacheTtlSeconds: number;
@@ -16,8 +31,9 @@ export interface VaultProviderData {
 
 export interface CreateVaultProviderInput {
   name: string;
+  providerType?: ExternalVaultType;
   serverUrl: string;
-  authMethod: 'TOKEN' | 'APPROLE';
+  authMethod: ExternalVaultAuthMethod;
   namespace?: string;
   mountPath?: string;
   authPayload: string;
@@ -27,8 +43,9 @@ export interface CreateVaultProviderInput {
 
 export interface UpdateVaultProviderInput {
   name?: string;
+  providerType?: ExternalVaultType;
   serverUrl?: string;
-  authMethod?: 'TOKEN' | 'APPROLE';
+  authMethod?: ExternalVaultAuthMethod;
   namespace?: string | null;
   mountPath?: string;
   authPayload?: string;

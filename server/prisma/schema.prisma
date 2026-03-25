@@ -1089,12 +1089,33 @@ enum RecordingStatus {
 enum ExternalVaultAuthMethod {
   TOKEN
   APPROLE
+  // AWS
+  IAM_ACCESS_KEY
+  IAM_ROLE
+  // Azure
+  CLIENT_CREDENTIALS
+  MANAGED_IDENTITY
+  // GCP
+  SERVICE_ACCOUNT_KEY
+  WORKLOAD_IDENTITY
+  // CyberArk Conjur
+  CONJUR_API_KEY
+  CONJUR_AUTHN_K8S
+}
+
+enum ExternalVaultType {
+  HASHICORP_VAULT
+  AWS_SECRETS_MANAGER
+  AZURE_KEY_VAULT
+  GCP_SECRET_MANAGER
+  CYBERARK_CONJUR
 }
 
 model ExternalVaultProvider {
   id                    String                   @id @default(uuid())
   tenantId              String
   name                  String
+  providerType          ExternalVaultType        @default(HASHICORP_VAULT)
   serverUrl             String
   authMethod            ExternalVaultAuthMethod
   namespace             String?

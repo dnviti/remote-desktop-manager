@@ -17,6 +17,9 @@ import { extractApiError } from '../../utils/apiError';
 // eslint-disable-next-line security/detect-unsafe-regex
 const CIDR_RE = /^(?:(?:\d{1,3}\.){3}\d{1,3}(?:\/\d{1,2})?|[0-9a-fA-F:]+(?:\/\d{1,3})?)$/;
 
+// Stable slotProps references to avoid InputBase re-render cycles
+const DAYS_SLOT_PROPS = { htmlInput: { min: 1, max: 365 } } as const;
+
 /** Validate IP/CIDR beyond the regex — checks octet ranges and prefix length */
 function isValidCidr(value: string): boolean {
   if (!CIDR_RE.test(value)) return false;
@@ -61,21 +64,35 @@ export default function TunnelConfigSection() {
   const [error, setError] = useState('');
   const notify = useNotificationStore((s) => s.notify);
 
-  // Sync local state from tenant data
+  // Fetch tenant data if not already loaded
   useEffect(() => {
-    if (!tenant) return;
-    setTunnelDefaultEnabled(tenant.tunnelDefaultEnabled);
-    setTunnelRequireForRemote(tenant.tunnelRequireForRemote);
-    setTunnelAutoTokenRotation(tenant.tunnelAutoTokenRotation);
-    setTunnelTokenRotationDays(tenant.tunnelTokenRotationDays);
-    setTunnelTokenMaxLifetimeDays(tenant.tunnelTokenMaxLifetimeDays);
-    setTunnelAgentAllowedCidrs(tenant.tunnelAgentAllowedCidrs);
-  }, [tenant]);
+    if (user?.tenantId && !tenant) fetchTenant();
+  }, [user?.tenantId, tenant, fetchTenant]);
+
+  // Sync local state from tenant data — track individual primitive fields so
+  // the effect doesn't re-run when the tenant object reference changes.
+  const tde = tenant?.tunnelDefaultEnabled;
+  const trfr = tenant?.tunnelRequireForRemote;
+  const tatr = tenant?.tunnelAutoTokenRotation;
+  const ttrd = tenant?.tunnelTokenRotationDays;
+  const ttmld = tenant?.tunnelTokenMaxLifetimeDays;
+  // Stringify the array so the dependency is a stable primitive
+  const taacKey = JSON.stringify(tenant?.tunnelAgentAllowedCidrs ?? []);
+  useEffect(() => {
+    if (tde == null) return;
+    setTunnelDefaultEnabled(tde);
+    setTunnelRequireForRemote(trfr!);
+    setTunnelAutoTokenRotation(tatr!);
+    setTunnelTokenRotationDays(ttrd!);
+    setTunnelTokenMaxLifetimeDays(ttmld!);
+    setTunnelAgentAllowedCidrs(JSON.parse(taacKey));
+  }, [tde, trfr, tatr, ttrd, ttmld, taacKey]);
 
   // Fetch tunnel overview on mount
   useEffect(() => {
     if (user?.tenantId) fetchTunnelOverview();
-  }, [user?.tenantId, fetchTunnelOverview]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.tenantId]);
 
   const handleSave = useCallback(async () => {
     setSaving(true);
@@ -203,7 +220,7 @@ export default function TunnelConfigSection() {
               value={tunnelTokenRotationDays}
               onChange={(e) => { setTunnelTokenRotationDays(Math.max(1, parseInt(e.target.value, 10) || 1));}}
               disabled={saving || !tunnelAutoTokenRotation}
-              slotProps={{ htmlInput: { min: 1, max: 365 } }}
+              slotProps={DAYS_SLOT_PROPS}
               sx={{ width: 200 }}
             />
             <TextField
@@ -216,7 +233,7 @@ export default function TunnelConfigSection() {
                 setTunnelTokenMaxLifetimeDays(val === '' ? null : Math.max(1, parseInt(val, 10) || 1));
               }}
               disabled={saving}
-              slotProps={{ htmlInput: { min: 1, max: 365 } }}
+              slotProps={DAYS_SLOT_PROPS}
               helperText="Leave empty for no limit"
               sx={{ width: 220 }}
             />
@@ -278,9 +295,11 @@ export default function TunnelConfigSection() {
               Fleet Overview
             </Typography>
             <Tooltip title="Refresh">
-              <IconButton size="small" onClick={fetchTunnelOverview} disabled={tunnelOverviewLoading}>
-                <RefreshIcon fontSize="small" />
-              </IconButton>
+              <span>
+                <IconButton size="small" onClick={fetchTunnelOverview} disabled={tunnelOverviewLoading}>
+                  <RefreshIcon fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
           </Box>
           {tunnelOverviewLoading && !tunnelOverview ? (
