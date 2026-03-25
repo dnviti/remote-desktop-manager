@@ -116,6 +116,13 @@ func (s *Stream) Close() error {
 // deliver enqueues received data into the stream's read buffer. Returns false
 // if the stream is closed or the buffer is full (data dropped).
 func (s *Stream) deliver(data []byte) bool {
+	// Check closed first to avoid sending to a closed stream's buffer.
+	select {
+	case <-s.done:
+		return false
+	default:
+	}
+
 	// Defensive copy to prevent the caller's buffer from being reused.
 	buf := make([]byte, len(data))
 	copy(buf, data)
