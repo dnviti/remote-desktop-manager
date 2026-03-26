@@ -53,14 +53,11 @@ router.get('/ready', async (_req: Request, res: Response) => {
     }
   }
 
-  let status: 'ok' | 'degraded' | 'unavailable' = db.ok ? 'ok' : 'unavailable';
+  let status: 'ok' | 'unavailable' = db.ok ? 'ok' : 'unavailable';
 
+  // Gateways are always mandatory — missing gateways means server cannot serve connections
   if (db.ok && !gatewayCheck.allAvailable) {
-    if (config.gatewayRoutingMode === 'gateway-mandatory') {
-      status = 'unavailable';
-    } else {
-      status = 'degraded';
-    }
+    status = 'unavailable';
   }
 
   const httpStatus = status === 'unavailable' ? 503 : 200;

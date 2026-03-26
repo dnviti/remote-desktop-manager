@@ -7,7 +7,6 @@ import * as dbQueryExecutor from './dbQueryExecutor.service';
 import { selectInstance } from './loadBalancer.service';
 import { getDefaultGateway } from './gateway.service';
 import { isTunnelConnected, createTcpProxy } from './tunnel.service';
-import { config } from '../config';
 import { logger } from '../utils/logger';
 import type { DbSettings, DbSessionConfig } from '../types';
 
@@ -119,33 +118,19 @@ export async function createDbProxySession(params: {
       proxyPort = localPort;
     }
   } else {
-    // No gateway — enforce gateway-mandatory mode if configured
-    if (config.gatewayRoutingMode === 'gateway-mandatory') {
-      throw new AppError(
-        'Direct database connections are not allowed in gateway-mandatory mode. Configure a DB_PROXY gateway.',
-        403,
-      );
-    }
-
-    // Audit log: direct connection without gateway (warn in non-mandatory mode)
-    log.warn(
-      `Direct database connection for connection ${connectionId} by user ${userId} — no DB_PROXY gateway configured`,
-    );
+    // No gateway — all connections require a gateway
     auditService.log({
       userId,
-      action: 'SESSION_START',
+      action: 'SESSION_BLOCKED',
       targetType: 'Connection',
       targetId: connectionId,
-      details: {
-        protocol: 'DATABASE',
-        dbProtocol,
-        warning: 'direct_connection_no_gateway',
-      },
+      details: { reason: 'no_gateway_available', protocol: 'DATABASE', dbProtocol },
       ipAddress,
     });
-
-    proxyHost = conn.host;
-    proxyPort = conn.port || DEFAULT_DB_PORTS[dbProtocol] || 5432;
+    throw new AppError(
+      'No gateway available. A connected gateway is required for all connections. Deploy and connect a DB_PROXY gateway to enable database sessions.',
+      503,
+    );
   }
 
   // Resolve credentials (password is verified but not stored in session metadata;

@@ -91,7 +91,7 @@ const publicSelect = {
 export async function getDefaultGateway(tenantId: string, type: GatewayType) {
   return prisma.gateway.findFirst({
     where: { tenantId, type, isDefault: true },
-    select: { id: true, type: true, host: true, port: true, isManaged: true, lbStrategy: true },
+    select: { id: true, type: true, host: true, port: true, isManaged: true, lbStrategy: true, tunnelEnabled: true },
   });
 }
 

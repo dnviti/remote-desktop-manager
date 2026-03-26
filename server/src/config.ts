@@ -300,17 +300,8 @@ export const config = {
   // Empty = trust all proxies when trustProxy is enabled.
   tunnelTrustedProxyIps: (process.env.TUNNEL_TRUSTED_PROXY_IPS || '')
     .split(',').map(s => s.trim()).filter(Boolean),
-  // Gateway routing mode
-  gatewayRoutingMode: (() => {
-    const val = process.env.GATEWAY_ROUTING_MODE || 'prefer-gateway';
-    const allowed = ['prefer-gateway', 'gateway-mandatory'] as const;
-    if (!(allowed as readonly string[]).includes(val)) {
-      // eslint-disable-next-line no-console
-      console.warn(`[config] Invalid GATEWAY_ROUTING_MODE "${val}" — falling back to "prefer-gateway"`);
-      return 'prefer-gateway' as const;
-    }
-    return val as typeof allowed[number];
-  })(),
+  // Gateway routing mode — always mandatory; all connections require a gateway
+  gatewayRoutingMode: 'gateway-mandatory' as const,
   gatewayHealthCheckIntervalMs: (() => {
     const val = parseInt(process.env.GATEWAY_HEALTH_CHECK_INTERVAL_MS || '30000', 10);
     return Number.isFinite(val) && val > 0 ? val : 30000;

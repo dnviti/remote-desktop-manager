@@ -5,7 +5,7 @@ import { SFTPWrapper } from 'ssh2';
 import { config } from '../config';
 import { AuthPayload, SftpEntry, DlpPolicy, ResolvedDlpPolicy } from '../types';
 import { verifyJwt } from '../utils/jwt';
-import { createSshConnection, createSshConnectionViaBastion, createSftpSession, resizeSshTerminal, SshSession } from '../services/ssh.service';
+import { createSshConnectionViaBastion, createSftpSession, resizeSshTerminal, SshSession } from '../services/ssh.service';
 import { getConnectionCredentials, getConnection } from '../services/connection.service';
 import { resolveDomainCredentials } from '../services/domain.service';
 import { getGatewayCredentials, getDefaultGateway } from '../services/gateway.service';
@@ -264,7 +264,6 @@ export function setupSshHandler(io: Server) {
           passphrase = creds.passphrase;
         }
 
-        let session: SshSession;
         let selectedInstanceId: string | undefined;
         let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
@@ -274,108 +273,114 @@ export function setupSshHandler(io: Server) {
             ? (await getDefaultGateway(user.tenantId, 'MANAGED_SSH') ?? await getDefaultGateway(user.tenantId, 'SSH_BASTION'))
             : null);
 
-        if (gateway) {
-          if (gateway.type !== 'SSH_BASTION' && gateway.type !== 'MANAGED_SSH') {
-            const msg = 'Connection gateway must be SSH_BASTION or MANAGED_SSH for SSH connections';
-            logSessionError(msg, conn.host, conn.port, gateway.id);
-            socket.emit('session:error', { message: msg });
-            return;
-          }
+        if (!gateway) {
+          const msg = 'No gateway available. A connected gateway is required for all connections. Deploy and connect a gateway to enable SSH sessions.';
+          auditService.log({
+            userId: user.userId,
+            action: 'SESSION_BLOCKED',
+            targetType: 'Connection',
+            targetId: data.connectionId,
+            details: { reason: 'no_gateway_available', protocol: 'SSH' },
+            ipAddress: clientIp,
+          });
+          logSessionError(msg, conn.host, conn.port);
+          socket.emit('session:error', { message: msg });
+          return;
+        }
 
-          if (!user.tenantId) {
-            const msg = 'Tenant context required for gateway routing';
-            logSessionError(msg, conn.host, conn.port, gateway.id);
-            socket.emit('session:error', { message: msg });
-            return;
-          }
+        if (gateway.type !== 'SSH_BASTION' && gateway.type !== 'MANAGED_SSH') {
+          const msg = 'Connection gateway must be SSH_BASTION or MANAGED_SSH for SSH connections';
+          logSessionError(msg, conn.host, conn.port, gateway.id);
+          socket.emit('session:error', { message: msg });
+          return;
+        }
 
-          let bastionUsername: string;
-          let bastionPassword: string | undefined;
-          let bastionPrivateKey: string | undefined;
+        if (!user.tenantId) {
+          const msg = 'Tenant context required for gateway routing';
+          logSessionError(msg, conn.host, conn.port, gateway.id);
+          socket.emit('session:error', { message: msg });
+          return;
+        }
 
-          if (gateway.type === 'MANAGED_SSH') {
-            // Managed SSH gateway: use server-managed key pair, fixed username "tunnel"
-            const privateKeyBuf = await getTenantPrivateKey(user.tenantId);
-            bastionUsername = 'tunnel';
-            bastionPrivateKey = privateKeyBuf.toString('utf8');
-          } else {
-            // SSH_BASTION: decrypt user-supplied credentials from the gateway
-            const gatewayCreds = await getGatewayCredentials(user.userId, user.tenantId, gateway.id);
-            if (!gatewayCreds.username || (!gatewayCreds.password && !gatewayCreds.sshPrivateKey)) {
-              const msg = 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.';
-              logSessionError(msg, conn.host, conn.port, gateway.id);
-              socket.emit('session:error', { message: msg });
-              return;
-            }
-            bastionUsername = gatewayCreds.username;
-            bastionPassword = gatewayCreds.password ?? undefined;
-            bastionPrivateKey = gatewayCreds.sshPrivateKey ?? undefined;
-          }
+        let bastionUsername: string;
+        let bastionPassword: string | undefined;
+        let bastionPrivateKey: string | undefined;
 
-          let bastionHost = gateway.host;
-          let bastionPort = gateway.port;
-
-          if (gateway.isManaged) {
-            const inst = await selectInstance(gateway.id, gateway.lbStrategy);
-            if (inst) {
-              bastionHost = inst.host;
-              bastionPort = inst.port;
-              selectedInstanceId = inst.id;
-              routingDecision = {
-                strategy: inst.strategy,
-                candidateCount: inst.candidateCount,
-                selectedSessionCount: inst.selectedSessionCount,
-              };
-            }
-          }
-
-          // Tunnel routing: when the gateway has a zero-trust tunnel connected,
-          // open a multiplexed stream to the bastion host instead of a direct TCP connection.
-          if (gateway.tunnelEnabled) {
-            if (!isTunnelConnected(gateway.id)) {
-              const msg = 'Gateway tunnel is disconnected — the gateway may be unreachable';
-              logSessionError(msg, conn.host, conn.port, gateway.id);
-              socket.emit('session:error', { message: msg });
-              return;
-            }
-            const tunnelSock = await openStream(gateway.id, bastionHost, bastionPort);
-            session = await createSshConnectionViaBastion({
-              bastionHost,
-              bastionPort,
-              bastionUsername,
-              bastionPassword,
-              bastionPrivateKey,
-              targetHost: conn.host,
-              targetPort: conn.port,
-              targetUsername: username,
-              targetPassword: password,
-              targetPrivateKey: privateKey,
-              targetPassphrase: passphrase,
-              sock: tunnelSock,
-            });
-          } else {
-            session = await createSshConnectionViaBastion({
-              bastionHost,
-              bastionPort,
-              bastionUsername,
-              bastionPassword,
-              bastionPrivateKey,
-              targetHost: conn.host,
-              targetPort: conn.port,
-              targetUsername: username,
-              targetPassword: password,
-              targetPrivateKey: privateKey,
-              targetPassphrase: passphrase,
-            });
-          }
+        if (gateway.type === 'MANAGED_SSH') {
+          // Managed SSH gateway: use server-managed key pair, fixed username "tunnel"
+          const privateKeyBuf = await getTenantPrivateKey(user.tenantId);
+          bastionUsername = 'tunnel';
+          bastionPrivateKey = privateKeyBuf.toString('utf8');
         } else {
-          session = await createSshConnection({
-            host: conn.host,
-            port: conn.port,
-            username,
-            password,
-            privateKey,
-            passphrase,
+          // SSH_BASTION: decrypt user-supplied credentials from the gateway
+          const gatewayCreds = await getGatewayCredentials(user.userId, user.tenantId, gateway.id);
+          if (!gatewayCreds.username || (!gatewayCreds.password && !gatewayCreds.sshPrivateKey)) {
+            const msg = 'Gateway credentials are incomplete. Please configure username and password or SSH key on the gateway.';
+            logSessionError(msg, conn.host, conn.port, gateway.id);
+            socket.emit('session:error', { message: msg });
+            return;
+          }
+          bastionUsername = gatewayCreds.username;
+          bastionPassword = gatewayCreds.password ?? undefined;
+          bastionPrivateKey = gatewayCreds.sshPrivateKey ?? undefined;
+        }
+
+        let bastionHost = gateway.host;
+        let bastionPort = gateway.port;
+
+        if (gateway.isManaged) {
+          const inst = await selectInstance(gateway.id, gateway.lbStrategy);
+          if (inst) {
+            bastionHost = inst.host;
+            bastionPort = inst.port;
+            selectedInstanceId = inst.id;
+            routingDecision = {
+              strategy: inst.strategy,
+              candidateCount: inst.candidateCount,
+              selectedSessionCount: inst.selectedSessionCount,
+            };
+          }
+        }
+
+        let session: SshSession;
+
+        // Tunnel routing: when the gateway has a zero-trust tunnel connected,
+        // open a multiplexed stream to the bastion host instead of a direct TCP connection.
+        if (gateway.tunnelEnabled) {
+          if (!isTunnelConnected(gateway.id)) {
+            const msg = 'Gateway tunnel is disconnected — the gateway may be unreachable';
+            logSessionError(msg, conn.host, conn.port, gateway.id);
+            socket.emit('session:error', { message: msg });
+            return;
+          }
+          const tunnelSock = await openStream(gateway.id, bastionHost, bastionPort);
+          session = await createSshConnectionViaBastion({
+            bastionHost,
+            bastionPort,
+            bastionUsername,
+            bastionPassword,
+            bastionPrivateKey,
+            targetHost: conn.host,
+            targetPort: conn.port,
+            targetUsername: username,
+            targetPassword: password,
+            targetPrivateKey: privateKey,
+            targetPassphrase: passphrase,
+            sock: tunnelSock,
+          });
+        } else {
+          session = await createSshConnectionViaBastion({
+            bastionHost,
+            bastionPort,
+            bastionUsername,
+            bastionPassword,
+            bastionPrivateKey,
+            targetHost: conn.host,
+            targetPort: conn.port,
+            targetUsername: username,
+            targetPassword: password,
+            targetPrivateKey: privateKey,
+            targetPassphrase: passphrase,
           });
         }
 

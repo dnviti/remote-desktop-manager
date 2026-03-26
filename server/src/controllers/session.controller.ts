@@ -67,50 +67,59 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       ?? (req.user.tenantId ? await getDefaultGateway(req.user.tenantId, 'GUACD') : null);
     if (gateway) gatewayId = gateway.id;
 
-    let guacdHost: string | undefined;
-    let guacdPort: number | undefined;
+    if (!gateway) {
+      auditService.log({
+        userId: req.user.userId,
+        action: 'SESSION_BLOCKED',
+        targetType: 'Connection',
+        targetId: connectionId,
+        details: { reason: 'no_gateway_available', protocol: 'RDP' },
+        ipAddress: getClientIp(req),
+      });
+      throw new AppError(
+        'No gateway available. A connected gateway is required for all connections. Deploy and connect a GUACD gateway to enable RDP sessions.',
+        503,
+      );
+    }
+
+    if (gateway.type !== 'GUACD') {
+      throw new AppError('Connection gateway must be of type GUACD for RDP connections', 400);
+    }
+
+    let guacdHost: string = gateway.host;
+    let guacdPort: number = gateway.port;
     let selectedInstanceId: string | undefined;
     let selectedContainerName: string | undefined;
     let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
-    if (gateway) {
-      if (gateway.type !== 'GUACD') {
-        throw new AppError('Connection gateway must be of type GUACD for RDP connections', 400);
+    if (gateway.isManaged) {
+      const inst = await selectInstance(gateway.id, gateway.lbStrategy);
+      if (!inst) {
+        throw new AppError(
+          'No healthy gateway instances available. The gateway may be scaling — please try again.',
+          503,
+        );
       }
-      guacdHost = gateway.host;
-      guacdPort = gateway.port;
+      guacdHost = inst.host;
+      guacdPort = inst.port;
+      selectedInstanceId = inst.id;
+      selectedContainerName = inst.containerName;
+      routingDecision = {
+        strategy: inst.strategy,
+        candidateCount: inst.candidateCount,
+        selectedSessionCount: inst.selectedSessionCount,
+      };
+    }
 
-      if (gateway.isManaged) {
-        const inst = await selectInstance(gateway.id, gateway.lbStrategy);
-        if (!inst) {
-          throw new AppError(
-            'No healthy gateway instances available. The gateway may be scaling — please try again.',
-            503,
-          );
-        }
-        guacdHost = inst.host;
-        guacdPort = inst.port;
-        selectedInstanceId = inst.id;
-        selectedContainerName = inst.containerName;
-        routingDecision = {
-          strategy: inst.strategy,
-          candidateCount: inst.candidateCount,
-          selectedSessionCount: inst.selectedSessionCount,
-        };
+    // Tunnel routing: when the gateway has a zero-trust tunnel connected,
+    // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
+    if (gateway.tunnelEnabled) {
+      if (!isTunnelConnected(gateway.id)) {
+        throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
-
-      // Tunnel routing: when the gateway has a zero-trust tunnel connected,
-      // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
-      if (gateway.tunnelEnabled) {
-        if (!isTunnelConnected(gateway.id)) {
-          throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
-        }
-        const targetHost = guacdHost ?? gateway.host;
-        const targetPort = guacdPort ?? gateway.port;
-        const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, targetHost, targetPort);
-        guacdHost = '127.0.0.1';
-        guacdPort = localPort;
-      }
+      const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, guacdHost, guacdPort);
+      guacdHost = '127.0.0.1';
+      guacdPort = localPort;
     }
 
     let username: string;
@@ -311,50 +320,59 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       ?? (req.user.tenantId ? await getDefaultGateway(req.user.tenantId, 'GUACD') : null);
     if (gateway) gatewayId = gateway.id;
 
-    let guacdHost: string | undefined;
-    let guacdPort: number | undefined;
+    if (!gateway) {
+      auditService.log({
+        userId: req.user.userId,
+        action: 'SESSION_BLOCKED',
+        targetType: 'Connection',
+        targetId: connectionId,
+        details: { reason: 'no_gateway_available', protocol: 'VNC' },
+        ipAddress: getClientIp(req),
+      });
+      throw new AppError(
+        'No gateway available. A connected gateway is required for all connections. Deploy and connect a GUACD gateway to enable VNC sessions.',
+        503,
+      );
+    }
+
+    if (gateway.type !== 'GUACD') {
+      throw new AppError('Connection gateway must be of type GUACD for VNC connections', 400);
+    }
+
+    let guacdHost: string = gateway.host;
+    let guacdPort: number = gateway.port;
     let selectedInstanceId: string | undefined;
     let selectedContainerName: string | undefined;
     let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
-    if (gateway) {
-      if (gateway.type !== 'GUACD') {
-        throw new AppError('Connection gateway must be of type GUACD for VNC connections', 400);
+    if (gateway.isManaged) {
+      const inst = await selectInstance(gateway.id, gateway.lbStrategy);
+      if (!inst) {
+        throw new AppError(
+          'No healthy gateway instances available. The gateway may be scaling — please try again.',
+          503,
+        );
       }
-      guacdHost = gateway.host;
-      guacdPort = gateway.port;
+      guacdHost = inst.host;
+      guacdPort = inst.port;
+      selectedInstanceId = inst.id;
+      selectedContainerName = inst.containerName;
+      routingDecision = {
+        strategy: inst.strategy,
+        candidateCount: inst.candidateCount,
+        selectedSessionCount: inst.selectedSessionCount,
+      };
+    }
 
-      if (gateway.isManaged) {
-        const inst = await selectInstance(gateway.id, gateway.lbStrategy);
-        if (!inst) {
-          throw new AppError(
-            'No healthy gateway instances available. The gateway may be scaling — please try again.',
-            503,
-          );
-        }
-        guacdHost = inst.host;
-        guacdPort = inst.port;
-        selectedInstanceId = inst.id;
-        selectedContainerName = inst.containerName;
-        routingDecision = {
-          strategy: inst.strategy,
-          candidateCount: inst.candidateCount,
-          selectedSessionCount: inst.selectedSessionCount,
-        };
+    // Tunnel routing: when the gateway has a zero-trust tunnel connected,
+    // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
+    if (gateway.tunnelEnabled) {
+      if (!isTunnelConnected(gateway.id)) {
+        throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
-
-      // Tunnel routing: when the gateway has a zero-trust tunnel connected,
-      // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
-      if (gateway.tunnelEnabled) {
-        if (!isTunnelConnected(gateway.id)) {
-          throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
-        }
-        const targetHost = guacdHost ?? gateway.host;
-        const targetPort = guacdPort ?? gateway.port;
-        const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, targetHost, targetPort);
-        guacdHost = '127.0.0.1';
-        guacdPort = localPort;
-      }
+      const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, guacdHost, guacdPort);
+      guacdHost = '127.0.0.1';
+      guacdPort = localPort;
     }
 
     // VNC uses only a password (no username typically)
