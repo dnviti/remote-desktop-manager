@@ -44,9 +44,9 @@ RUN ssh-keygen -A \
 COPY gateways/ssh-gateway/entrypoint.sh /entrypoint.sh
 RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
-RUN mkdir -p /var/www/cgi-bin
-COPY gateways/ssh-gateway/key-api.sh /var/www/cgi-bin/authorized-keys
-RUN sed -i 's/\r$//' /var/www/cgi-bin/authorized-keys && chmod +x /var/www/cgi-bin/authorized-keys
+# Node.js HTTPS key management API (replaces BusyBox httpd + CGI)
+RUN mkdir -p /opt/key-api
+COPY gateways/ssh-gateway/key-api-server.js /opt/key-api/key-api-server.js
 
 # Embed pre-built tunnel agent
 COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist

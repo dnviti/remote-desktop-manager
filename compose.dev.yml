@@ -26,8 +26,13 @@ services:
 
   # guacd:
   #   image: guacamole/guacd:1.6.0
+  #   environment:
+  #     GUACD_SSL: "true"
+  #     GUACD_SSL_CERT: /certs/server-cert.pem
+  #     GUACD_SSL_KEY: /certs/server-key.pem
   #   volumes:
   #     - ${RECORDING_PATH:-./data/recordings}:/recordings
+  #     - ./dev-certs/guacd:/certs:ro
   #   networks:
   #     - net-guacd
   #   restart: always

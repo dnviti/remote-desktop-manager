@@ -24,11 +24,10 @@ fi
 
 chmod 600 "$AUTH_KEYS_FILE"
 
-# Start HTTP key management API (sidecar) if token is configured
-API_PORT="${GATEWAY_API_PORT:-8022}"
+# Start HTTPS key management API (sidecar) if token is configured
 if [ -n "$GATEWAY_API_TOKEN" ]; then
-  echo "Starting key management API on port $API_PORT..."
-  httpd -p "$API_PORT" -h /var/www
+  echo "Starting key management API (HTTPS)..."
+  node /opt/key-api/key-api-server.js &
 else
   echo "WARNING: GATEWAY_API_TOKEN not set — key management API disabled"
 fi

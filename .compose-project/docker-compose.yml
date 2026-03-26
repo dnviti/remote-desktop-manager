@@ -100,6 +100,12 @@ services:
   guacd:
     image: ${ORCHESTRATOR_GUACD_IMAGE:-guacamole/guacd:1.6.0}
     container_name: arsenale-guacd
+    environment:
+      # TLS encryption for guacd listener (Guacamole native protocol).
+      # When enabled, all traffic between guacamole-lite and guacd is encrypted.
+      GUACD_SSL: "${GUACD_SSL:-false}"
+      GUACD_SSL_CERT: /certs/server-cert.pem
+      GUACD_SSL_KEY: /certs/server-key.pem
     volumes:
       # Shared drive for RDP file redirection (drag-and-drop file transfer).
       # The server writes uploaded files here; guacd makes them available
@@ -108,6 +114,8 @@ services:
       # Session recordings directory. guacd writes .guac (RDP/VNC) and .cast
       # (SSH) recording files here. The guacenc service converts them to video.
       - arsenale_recordings:/recordings
+      # TLS certificates for encrypted guacd communication
+      - ${GUACD_CERT_DIR:-./arsenale/dev-certs/guacd}:/certs:ro
     restart: always
     healthcheck:
       # Verify guacd is listening on its native protocol port.
@@ -323,6 +331,10 @@ services:
       retries: 3
     env_file:
       - .env
+    environment:
+      # Key API HTTPS certificates (mounted from dev-certs or production certs)
+      GATEWAY_API_TLS_CERT: /certs/server-cert.pem
+      GATEWAY_API_TLS_KEY: /certs/server-key.pem
     ports:
       # SSH port exposed to the host. Users connect with:
       #   ssh -p 2222 tunnel@<your-server-ip>
@@ -331,6 +343,8 @@ services:
       # Mount authorized SSH public keys. The server pushes keys here
       # via the Gateway API, or you can manage them manually.
       - ./config/ssh-gateway/authorized_keys:/config/authorized_keys:ro
+      # TLS certificates for the key management API
+      - ${SSH_GATEWAY_CERT_DIR:-./arsenale/dev-certs/ssh-gateway}:/certs:ro
     restart: always
     networks:
       - net-gateway

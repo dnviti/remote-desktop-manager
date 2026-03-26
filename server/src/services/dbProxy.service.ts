@@ -7,6 +7,7 @@ import * as dbQueryExecutor from './dbQueryExecutor.service';
 import { selectInstance } from './loadBalancer.service';
 import { getDefaultGateway } from './gateway.service';
 import { isTunnelConnected, createTcpProxy } from './tunnel.service';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 import type { DbSettings, DbSessionConfig } from '../types';
 
@@ -118,7 +119,31 @@ export async function createDbProxySession(params: {
       proxyPort = localPort;
     }
   } else {
-    // No gateway — connect directly to the database host
+    // No gateway — enforce gateway-mandatory mode if configured
+    if (config.gatewayRoutingMode === 'gateway-mandatory') {
+      throw new AppError(
+        'Direct database connections are not allowed in gateway-mandatory mode. Configure a DB_PROXY gateway.',
+        403,
+      );
+    }
+
+    // Audit log: direct connection without gateway (warn in non-mandatory mode)
+    log.warn(
+      `Direct database connection for connection ${connectionId} by user ${userId} — no DB_PROXY gateway configured`,
+    );
+    auditService.log({
+      userId,
+      action: 'SESSION_START',
+      targetType: 'Connection',
+      targetId: connectionId,
+      details: {
+        protocol: 'DATABASE',
+        dbProtocol,
+        warning: 'direct_connection_no_gateway',
+      },
+      ipAddress,
+    });
+
     proxyHost = conn.host;
     proxyPort = conn.port || DEFAULT_DB_PORTS[dbProtocol] || 5432;
   }

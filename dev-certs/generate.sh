@@ -74,8 +74,19 @@ chmod 600 "$CERT_DIR/postgres/server-key.pem"  # PostgreSQL requires strict perm
 # 4. guacenc sidecar
 echo "=== Guacenc HTTPS ==="
 generate_server_cert "$CERT_DIR/guacenc" "guacenc" "DNS:guacenc, DNS:localhost, IP:127.0.0.1"
+chmod 644 "$CERT_DIR/guacenc/server-key.pem"  # Rootless container needs read access
 
-# 5. Express + guacamole-lite
+# 5. guacd (Guacamole Daemon — TLS listener)
+echo "=== guacd TLS ==="
+generate_server_cert "$CERT_DIR/guacd" "guacd" "DNS:guacd, DNS:localhost, IP:127.0.0.1"
+chmod 644 "$CERT_DIR/guacd/server-key.pem"  # guacd container runs as non-root (guacd user)
+
+# 6. SSH Gateway sidecar API (HTTPS key management)
+echo "=== SSH Gateway API HTTPS ==="
+generate_server_cert "$CERT_DIR/ssh-gateway" "ssh-gateway" "DNS:ssh-gateway, DNS:arsenale-ssh-gateway, DNS:localhost, IP:127.0.0.1"
+chmod 644 "$CERT_DIR/ssh-gateway/server-key.pem"  # Rootless container needs read access
+
+# 7. Express + guacamole-lite
 echo "=== Dev Server HTTPS ==="
 generate_server_cert "$CERT_DIR/server" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1"
 
@@ -84,8 +95,10 @@ rm -f "$CERT_DIR"/*.srl
 
 echo ""
 echo "=== All certificates generated (shared CA: $CERT_DIR/ca.pem) ==="
-echo "  gocache:    $CERT_DIR/gocache/"
-echo "  tunnel:     $CERT_DIR/tunnel/"
-echo "  PostgreSQL: $CERT_DIR/postgres/"
-echo "  guacenc:    $CERT_DIR/guacenc/"
-echo "  server:     $CERT_DIR/server/"
+echo "  gocache:     $CERT_DIR/gocache/"
+echo "  tunnel:      $CERT_DIR/tunnel/"
+echo "  PostgreSQL:  $CERT_DIR/postgres/"
+echo "  guacenc:     $CERT_DIR/guacenc/"
+echo "  guacd:       $CERT_DIR/guacd/"
+echo "  ssh-gateway: $CERT_DIR/ssh-gateway/"
+echo "  server:      $CERT_DIR/server/"

@@ -45,6 +45,8 @@ export const config = {
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   guacdHost: process.env.GUACD_HOST || 'localhost',
   guacdPort: parseInt(process.env.GUACD_PORT || '4822', 10),
+  guacdSsl: process.env.GUACD_SSL === 'true',
+  guacdCaCert: process.env.GUACD_CA_CERT || '',
   guacamoleSecret: (() => {
     const secret = process.env.GUACAMOLE_SECRET;
     if (!secret && process.env.NODE_ENV === 'production') {

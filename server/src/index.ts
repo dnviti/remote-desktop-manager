@@ -94,6 +94,9 @@ async function runStartupMigrations() {
 function checkProductionSecurityConfig(): void {
   if (config.nodeEnv !== 'production') return;
 
+  if (!config.guacdSsl) {
+    logger.warn('[security] guacd communication uses plaintext TCP — set GUACD_SSL=true and configure GUACD_CA_CERT');
+  }
   if (!config.tunnelServerCert) {
     logger.warn('[security] Tunnel endpoint running without TLS — mTLS enforcement requires TUNNEL_SERVER_CERT/KEY');
   }
@@ -372,6 +375,59 @@ async function main() {
   let guacServer: any = null;
   if (config.nodeEnv !== 'test') {
     try {
+      // -----------------------------------------------------------------------
+      // Monkey-patch GuacdClient to support TLS connections to guacd.
+      // guacamole-lite uses Net.connect() (plain TCP) internally. When
+      // GUACD_SSL=true, we replace the module export with a subclass that
+      // upgrades the connection to TLS before the Guacamole handshake starts.
+      // -----------------------------------------------------------------------
+      if (config.guacdSsl) {
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const tls = require('tls');
+        const guacdClientPath = require.resolve('guacamole-lite/lib/GuacdClient');
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        const OrigGuacdClient = require(guacdClientPath);
+
+        const guacdTlsCa = config.guacdCaCert ? fs.readFileSync(config.guacdCaCert) : undefined;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        class TlsGuacdClient extends OrigGuacdClient {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          constructor(guacdOptions: any, ...rest: any[]) {
+            super(guacdOptions, ...rest);
+
+            // The parent created a plain TCP socket and attached listeners.
+            // Destroy it immediately (before async connect fires) and replace
+            // with a TLS socket.
+            this.guacdConnection.removeAllListeners();
+            this.guacdConnection.destroy();
+
+            this.guacdConnection = tls.connect({
+              host: guacdOptions.host,
+              port: guacdOptions.port,
+              ca: guacdTlsCa,
+              rejectUnauthorized: !!guacdTlsCa,
+            });
+
+            this.guacdConnection.on('secureConnect', this.processConnectionOpen.bind(this));
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            this.guacdConnection.on('data', (data: any) => {
+              this.processReceivedData(data.toString());
+            });
+            this.guacdConnection.on('close', (hadError: boolean) => {
+              this.close(hadError ? new Error('TLS connection closed unexpectedly') : undefined);
+            });
+            this.guacdConnection.on('error', (error: Error) => {
+              this.emit('error', error);
+              this.close(error);
+            });
+          }
+        }
+
+        require.cache[guacdClientPath]!.exports = TlsGuacdClient;
+        logger.info('[tls] GuacdClient patched to use TLS connections to guacd');
+      }
+
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const GuacamoleLite = require('guacamole-lite');
       // eslint-disable-next-line @typescript-eslint/no-require-imports
