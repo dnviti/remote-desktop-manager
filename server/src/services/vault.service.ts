@@ -21,6 +21,7 @@ import {
 } from './crypto.service';
 import { verifyCode as verifyTotpCode, getDecryptedSecret } from './totp.service';
 import { AppError } from '../middleware/error.middleware';
+import { processPendingDistributions } from './secret.service';
 
 // Resolve the effective vault auto-lock TTL for a user (in minutes, 0 = never)
 async function resolveVaultTtl(userId: string): Promise<number> {
@@ -76,6 +77,8 @@ export async function unlockVault(userId: string, password: string) {
     const ttl = await resolveVaultTtl(userId);
     storeVaultSession(userId, masterKey, ttl);
     storeVaultRecovery(userId, masterKey);
+    // Process any pending tenant vault key distributions
+    processPendingDistributions(userId).catch(() => {/* non-blocking */});
     masterKey.fill(0);
     derivedKey.fill(0);
 
@@ -160,6 +163,7 @@ export async function unlockVaultWithTotp(userId: string, code: string) {
     throw new AppError('Invalid TOTP code', 401);
   }
 
+  processPendingDistributions(userId).catch(() => {/* non-blocking */});
   masterKey.fill(0);
   return { unlocked: true };
 }
@@ -186,6 +190,7 @@ export async function unlockVaultWithWebAuthn(userId: string, credential: Record
 
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
+  processPendingDistributions(userId).catch(() => {/* non-blocking */});
   masterKey.fill(0);
   return { unlocked: true };
 }
@@ -220,6 +225,7 @@ export async function unlockVaultWithSms(userId: string, code: string) {
 
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
+  processPendingDistributions(userId).catch(() => {/* non-blocking */});
   masterKey.fill(0);
   return { unlocked: true };
 }

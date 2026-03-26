@@ -23,6 +23,7 @@ const SUBJECT_MAP: Record<NotificationType, string> = {
   [NotificationType.SECRET_CHECKOUT_EXPIRED]: 'Credential check-out expired — Arsenale',
   [NotificationType.LATERAL_MOVEMENT_ALERT]: 'Security Alert: Lateral Movement Anomaly Detected — Arsenale',
   [NotificationType.SESSION_TERMINATED_POLICY_VIOLATION]: 'Security Alert: SSH Session Terminated by Policy — Arsenale',
+  [NotificationType.TENANT_VAULT_KEY_RECEIVED]: 'Organization vault access granted — Arsenale',
 };
 
 function escapeHtml(str: string): string {

@@ -10,6 +10,9 @@ import {
   decryptTenantKey,
   storeTenantVaultSession,
   getTenantMasterKey as getCachedTenantKey,
+  deriveEscrowKey,
+  encryptWithEscrow,
+  decryptWithEscrow,
 } from './crypto.service';
 import { resolveTeamKey } from './team.service';
 import * as permissionService from './permission.service';
@@ -162,6 +165,21 @@ export async function initTenantVault(
             tenantVaultKeyTag: encKey.tag,
           },
         });
+      } else {
+        // Vault closed — save pending distribution with escrow key
+        const escrowKey = deriveEscrowKey(tenantId);
+        const encKey = encryptWithEscrow(tenantKey, escrowKey);
+        await tx.pendingVaultKeyDistribution.create({
+          data: {
+            tenantId,
+            targetUserId: user.id,
+            encryptedTenantVaultKey: encKey.ciphertext,
+            tenantVaultKeyIV: encKey.iv,
+            tenantVaultKeyTag: encKey.tag,
+            distributorUserId: initiatorUserId,
+          },
+        });
+        escrowKey.fill(0);
       }
     }
   });
@@ -175,7 +193,7 @@ export async function distributeTenantKeyToUser(
   tenantId: string,
   targetUserId: string,
   distributorUserId: string
-): Promise<void> {
+): Promise<{ distributed: boolean; pending: boolean }> {
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
   if (!tenant?.hasTenantVaultKey) {
     throw new AppError('Tenant vault is not initialized', 400);
@@ -198,20 +216,112 @@ export async function distributeTenantKeyToUser(
   // Distributor needs their vault unlocked + tenant key access
   const tenantKey = await resolveTenantKey(tenantId, distributorUserId);
 
-  // Target user's vault must be unlocked
-  const targetMasterKey = requireMasterKey(targetUserId, "Target user's vault is locked. They must unlock their vault first.");
+  // Check if target vault is unlocked
+  const targetMasterKey = getMasterKey(targetUserId);
 
-  const encKey = encryptTenantKey(tenantKey, targetMasterKey);
+  if (targetMasterKey) {
+    // Direct distribution — target vault is open
+    const encKey = encryptTenantKey(tenantKey, targetMasterKey);
+    await prisma.tenantVaultMember.create({
+      data: {
+        tenantId,
+        userId: targetUserId,
+        encryptedTenantVaultKey: encKey.ciphertext,
+        tenantVaultKeyIV: encKey.iv,
+        tenantVaultKeyTag: encKey.tag,
+      },
+    });
+    return { distributed: true, pending: false };
+  }
 
-  await prisma.tenantVaultMember.create({
-    data: {
-      tenantId,
-      userId: targetUserId,
+  // Deferred distribution — encrypt with escrow key and save pending
+  const escrowKey = deriveEscrowKey(tenantId);
+  const encKey = encryptWithEscrow(tenantKey, escrowKey);
+
+  await prisma.pendingVaultKeyDistribution.upsert({
+    where: { tenantId_targetUserId: { tenantId, targetUserId } },
+    update: {
       encryptedTenantVaultKey: encKey.ciphertext,
       tenantVaultKeyIV: encKey.iv,
       tenantVaultKeyTag: encKey.tag,
+      distributorUserId,
+    },
+    create: {
+      tenantId,
+      targetUserId,
+      encryptedTenantVaultKey: encKey.ciphertext,
+      tenantVaultKeyIV: encKey.iv,
+      tenantVaultKeyTag: encKey.tag,
+      distributorUserId,
     },
   });
+  escrowKey.fill(0);
+  return { distributed: false, pending: true };
+}
+
+export async function processPendingDistributions(userId: string): Promise<number> {
+  const pending = await prisma.pendingVaultKeyDistribution.findMany({
+    where: { targetUserId: userId },
+  });
+
+  if (pending.length === 0) return 0;
+
+  const userMasterKey = requireMasterKey(userId);
+  let processed = 0;
+
+  for (const record of pending) {
+    const escrowKey = deriveEscrowKey(record.tenantId);
+    const tenantKey = decryptWithEscrow(
+      {
+        ciphertext: record.encryptedTenantVaultKey,
+        iv: record.tenantVaultKeyIV,
+        tag: record.tenantVaultKeyTag,
+      },
+      escrowKey
+    );
+    escrowKey.fill(0);
+
+    const encKey = encryptTenantKey(tenantKey, userMasterKey);
+    tenantKey.fill(0);
+
+    await prisma.$transaction(async (tx) => {
+      await tx.tenantVaultMember.upsert({
+        where: { tenantId_userId: { tenantId: record.tenantId, userId } },
+        update: {
+          encryptedTenantVaultKey: encKey.ciphertext,
+          tenantVaultKeyIV: encKey.iv,
+          tenantVaultKeyTag: encKey.tag,
+        },
+        create: {
+          tenantId: record.tenantId,
+          userId,
+          encryptedTenantVaultKey: encKey.ciphertext,
+          tenantVaultKeyIV: encKey.iv,
+          tenantVaultKeyTag: encKey.tag,
+        },
+      });
+
+      await tx.pendingVaultKeyDistribution.delete({
+        where: { id: record.id },
+      });
+    });
+
+    processed++;
+  }
+
+  // Fire notification if any were processed
+  if (processed > 0) {
+    const { createNotificationAsync } = await import('./notification.service');
+    createNotificationAsync({
+      userId,
+      type: 'TENANT_VAULT_KEY_RECEIVED' as never,
+      message: processed === 1
+        ? 'You now have access to an organization vault.'
+        : `You now have access to ${processed} organization vaults.`,
+    });
+  }
+
+  return processed;
 }
 
 // --- Secret CRUD ---
