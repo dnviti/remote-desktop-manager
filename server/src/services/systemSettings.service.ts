@@ -492,6 +492,11 @@ export const SETTINGS_REGISTRY: SettingDef[] = [
   { key: 'AI_QUERY_GENERATION_ENABLED', envVar: 'AI_QUERY_GENERATION_ENABLED', configPath: 'ai.queryGenerationEnabled', type: 'boolean', default: false, group: 'ai', label: 'Query Generation', description: 'Enable AI-powered natural-language-to-SQL query generation.', minEditRole: 'ADMIN' },
   { key: 'AI_QUERY_GENERATION_MODEL', envVar: 'AI_QUERY_GENERATION_MODEL', configPath: 'ai.queryGenerationModel', type: 'string', default: '', group: 'ai', label: 'Query Generation Model', description: 'Override model for SQL query generation. Leave empty to use the default model above.', minEditRole: 'ADMIN' },
   { key: 'AI_MAX_REQUESTS_PER_DAY', envVar: 'AI_MAX_REQUESTS_PER_DAY', configPath: 'ai.maxRequestsPerDay', type: 'number', default: 100, group: 'ai', label: 'Query Generation Daily Limit', description: 'Maximum AI query generation requests per tenant per day.', minEditRole: 'ADMIN' },
+
+  // ── Gateway Routing ─────────────────────────────────────────────────────
+  { key: 'GATEWAY_ROUTING_MODE', envVar: 'GATEWAY_ROUTING_MODE', configPath: 'gatewayRoutingMode', type: 'select', default: 'prefer-gateway', options: ['prefer-gateway', 'gateway-mandatory'], group: 'gateway', label: 'Gateway Routing Mode', description: 'Controls whether connections must flow through gateway agents. "prefer-gateway" uses gateways when available with fallback to direct connections. "gateway-mandatory" refuses all connections without a gateway.', minEditRole: 'ADMIN', restartRequired: false },
+  { key: 'GATEWAY_HEALTH_CHECK_INTERVAL_MS', envVar: 'GATEWAY_HEALTH_CHECK_INTERVAL_MS', configPath: 'gatewayHealthCheckIntervalMs', type: 'number', default: 30000, group: 'gateway', label: 'Health Check Interval (ms)', description: 'How often the server checks gateway availability for the readiness endpoint. Default: 30000 (30 seconds).', minEditRole: 'ADMIN', restartRequired: false },
+  { key: 'GATEWAY_REQUIRED_TYPES', envVar: 'GATEWAY_REQUIRED_TYPES', configPath: 'gatewayRequiredTypes', type: 'string', default: 'MANAGED_SSH,GUACD,DB_PROXY', group: 'gateway', label: 'Required Gateway Types', description: 'Comma-separated list of gateway types that must have at least one connected tunnel for the readiness check to pass in gateway-mandatory mode. Valid types: MANAGED_SSH, GUACD, DB_PROXY.', minEditRole: 'ADMIN', restartRequired: false },
 ];
 
 // Group metadata for UI display ordering and labels
@@ -520,6 +525,7 @@ export const SETTING_GROUPS: { key: string; label: string; order: number }[] = [
   { key: 'rate-limiting-advanced', label: 'Rate Limiting: Advanced', order: 20 },
   { key: 'ldap', label: 'LDAP / FreeIPA', order: 21 },
   { key: 'ai', label: 'AI / LLM', order: 22 },
+  { key: 'gateway', label: 'Gateway Routing', order: 23 },
 ];
 
 // ---------------------------------------------------------------------------
@@ -720,6 +726,12 @@ export async function applySystemSettings(): Promise<void> {
     if (typeof config.ldap.allowedGroups === 'string') {
       config.ldap.allowedGroups = (config.ldap.allowedGroups as unknown as string)
         .split(',').map(s => s.trim()).filter(Boolean);
+    }
+
+    // gatewayRequiredTypes is stored as comma-separated string but config expects string[]
+    if (typeof config.gatewayRequiredTypes === 'string') {
+      config.gatewayRequiredTypes = (config.gatewayRequiredTypes as unknown as string)
+        .split(',').map(s => s.trim()).filter(Boolean) as Array<'MANAGED_SSH' | 'GUACD' | 'DB_PROXY'>;
     }
 
     logger.info(`System settings loaded: ${rows.length} keys from database.`);

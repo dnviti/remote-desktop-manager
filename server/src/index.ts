@@ -144,6 +144,7 @@ async function main() {
   registerReload('vault', rebuildVaultRateLimiters);
   registerReload('ai', () => { logger.verbose('AI/LLM settings reloaded'); });
   registerReload('feature-toggles', () => { logger.verbose('Feature toggles reloaded'); });
+  registerReload('gateway', () => { logger.verbose('Gateway routing settings reloaded'); });
 
   // Start gateway health monitors
   startAllMonitors();
