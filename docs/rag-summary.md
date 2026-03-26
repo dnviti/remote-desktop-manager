@@ -50,7 +50,7 @@ Batch sharing allows multiple connections to be shared simultaneously, and folde
 
 External sharing enables creating time-limited, access-limited links for secrets that can be shared with people outside the platform. These links can optionally be protected with a PIN code. External shares have configurable expiration dates and maximum access counts, and can be revoked at any time.
 
-Teams provide a collaborative workspace within an organization. Teams have their own connection pools, folders, and vault sections. Team members are assigned roles (admin, editor, viewer) that control their level of access. Team vaults use a separate encryption key distributed to members, ensuring team secrets are accessible only to team members.
+Teams provide a collaborative workspace within an organization. Teams have their own connection pools, folders, and vault sections. Team members are assigned roles (admin, editor, viewer) that control their level of access. Team vaults use a separate encryption key distributed to members, ensuring team secrets are accessible only to team members. Tenant vault key distribution is asynchronous: when a user's personal vault is locked at the time of distribution (e.g., during tenant vault initialization or when an admin distributes keys), the encrypted tenant key is held in a server-side escrow (AES-256-GCM encrypted with an HMAC-SHA256-derived escrow key) and automatically finalized when the target user next unlocks their personal vault. This ensures that offline or locked-vault users receive tenant vault access without requiring both parties to be online simultaneously.
 
 Folder organization supports nested hierarchies with drag-and-drop reordering for both personal and team connections.
 
