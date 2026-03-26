@@ -1,5 +1,6 @@
 import fs from 'fs';
 import fsp from 'fs/promises';
+import https from 'https';
 import path from 'path';
 import { Readable } from 'stream';
 import prisma from '../lib/prisma';
@@ -10,6 +11,39 @@ import type { SessionProtocol, RecordingStatus } from '../lib/prisma';
 import { createNotificationAsync } from './notification.service';
 import { emitNotification } from '../socket/notification.handler';
 import * as auditService from './audit.service';
+
+// ── Guacenc sidecar fetch helpers ────────────────────────────────────
+
+/** Build common headers for guacenc sidecar requests (auth token when configured). */
+function guacencHeaders(extra?: Record<string, string>): Record<string, string> {
+  const headers: Record<string, string> = { ...extra };
+  if (config.guacencAuthToken) {
+    headers['Authorization'] = `Bearer ${config.guacencAuthToken}`;
+  }
+  return headers;
+}
+
+/** Build extra fetch options for guacenc TLS (custom CA when configured). */
+function guacencFetchOptions(): Record<string, unknown> {
+  if (config.guacencUseTls && config.guacencTlsCa) {
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      const ca = fs.readFileSync(config.guacencTlsCa);
+      return { dispatcher: new https.Agent({ ca }) };
+    } catch (err) {
+      logger.warn(`Failed to load guacenc TLS CA from ${config.guacencTlsCa}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+  return {};
+}
+
+/** Resolve the effective URL for a guacenc sidecar endpoint, upgrading to https:// when configured. */
+function resolveGuacencUrl(baseUrl: string): string {
+  if (config.guacencUseTls) {
+    return baseUrl.replace(/^http:\/\//, 'https://');
+  }
+  return baseUrl;
+}
 
 // ── Video conversion concurrency lock ────────────────────────────────
 const activeConversions = new Map<string, Promise<{ videoPath: string; fileSize: number }>>();
@@ -339,8 +373,9 @@ export async function convertToVideo(
     const deadline = Date.now() + config.guacencTimeoutMs;
 
     // Select endpoint and service URL based on recording format
-    const serviceUrl = isAsciicast ? config.asciicastConverterUrl : config.guacencServiceUrl;
+    const serviceUrl = resolveGuacencUrl(isAsciicast ? config.asciicastConverterUrl : config.guacencServiceUrl);
     const endpoint = isAsciicast ? '/convert-asciicast' : '/convert';
+    const tlsOptions = guacencFetchOptions();
 
     // Step 1: Submit async conversion job
     let jobId: string;
@@ -357,9 +392,10 @@ export async function convertToVideo(
 
       const res = await fetch(`${serviceUrl}${endpoint}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: guacencHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(GUACENC_SUBMIT_TIMEOUT_MS),
+        ...tlsOptions,
       });
 
       if (!res.ok) {
@@ -383,7 +419,9 @@ export async function convertToVideo(
 
       try {
         const res = await fetch(`${serviceUrl}/status/${jobId}`, {
+          headers: guacencHeaders(),
           signal: AbortSignal.timeout(GUACENC_STATUS_TIMEOUT_MS),
+          ...tlsOptions,
         });
 
         if (!res.ok) {
@@ -509,11 +547,12 @@ export async function cleanupExpiredRecordings(): Promise<number> {
 
   // Optional: Also ask the guacenc sidecar to clean up any orphaned .m4v files
   try {
-    await fetch(`${config.guacencServiceUrl}/cleanup`, {
+    await fetch(`${resolveGuacencUrl(config.guacencServiceUrl)}/cleanup`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: guacencHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ maxAgeDays: config.recordingRetentionDays }),
       signal: AbortSignal.timeout(GUACENC_SUBMIT_TIMEOUT_MS),
+      ...guacencFetchOptions(),
     });
   } catch (err) {
     // Ignore errors — sidecar might be down or not configured

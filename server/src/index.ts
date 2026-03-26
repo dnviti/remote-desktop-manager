@@ -90,6 +90,44 @@ async function runStartupMigrations() {
   }
 }
 
+function checkProductionSecurityConfig(): void {
+  if (config.nodeEnv !== 'production') return;
+
+  if (!config.tunnelServerCert) {
+    logger.warn('[security] Tunnel endpoint running without TLS — mTLS enforcement requires TUNNEL_SERVER_CERT/KEY');
+  }
+  if (!config.gatewayApiUseTls) {
+    logger.warn('[security] Gateway API key push uses plaintext HTTP — set GATEWAY_API_USE_TLS=true');
+  }
+  if (!config.guacencAuthToken) {
+    logger.warn('[security] Guacenc sidecar has no auth token — set GUACENC_AUTH_TOKEN');
+  }
+  if (config.ldap.enabled && !config.ldap.starttls && !config.ldap.serverUrl.startsWith('ldaps://')) {
+    logger.warn('[security] LDAP enabled without TLS — enable LDAP_STARTTLS or use ldaps:// URL');
+  }
+  if (process.env.DATABASE_URL && !process.env.DATABASE_URL.includes('sslmode')) {
+    logger.warn('[security] DATABASE_URL lacks sslmode parameter — consider adding sslmode=require');
+  }
+
+  // Check OAuth callback URLs for HTTP (except localhost)
+  const oauthProviders = [
+    { name: 'Google', url: config.oauth.google.callbackUrl, enabled: config.oauth.google.enabled },
+    { name: 'Microsoft', url: config.oauth.microsoft.callbackUrl, enabled: config.oauth.microsoft.enabled },
+    { name: 'GitHub', url: config.oauth.github.callbackUrl, enabled: config.oauth.github.enabled },
+    { name: 'OIDC', url: config.oauth.oidc.callbackUrl, enabled: config.oauth.oidc.enabled },
+    { name: 'SAML', url: config.oauth.saml.callbackUrl, enabled: config.oauth.saml.enabled },
+  ];
+  for (const provider of oauthProviders) {
+    if (provider.enabled && provider.url.startsWith('http://') && !provider.url.includes('://localhost')) {
+      logger.warn(`[security] ${provider.name} OAuth callback URL uses HTTP — use HTTPS in production`);
+    }
+  }
+
+  if (!config.geoipDbPath) {
+    logger.info('[security] GeoIP database not configured — IP geolocation enrichment disabled. Set GEOIP_DB_PATH for offline lookups instead of http://ip-api.com');
+  }
+}
+
 async function main() {
   // Kill stale processes from previous runs (e.g. tsx watch restart, debugger)
   freePort(config.port);
@@ -98,6 +136,9 @@ async function main() {
   await runDatabaseMigrations();
   await runStartupMigrations();
   await applySystemSettings();
+
+  // Check for insecure production configurations
+  checkProductionSecurityConfig();
 
   // Recover orphaned sessions from previous server instance
   const recovered = await sessionService.recoverOrphanedSessions();

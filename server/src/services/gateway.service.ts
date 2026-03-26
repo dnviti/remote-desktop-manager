@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import fs from 'fs';
+import https from 'https';
 import prisma, { ManagedInstanceStatus } from '../lib/prisma';
 import type { GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
@@ -521,8 +523,21 @@ export async function pushKeyToGateway(
 
   const results: PushKeyInstanceResult[] = [];
 
+  // Build a custom HTTPS dispatcher when gateway API TLS + CA is configured
+  let gatewayFetchOptions: Record<string, unknown> = {};
+  if (config.gatewayApiUseTls && config.gatewayApiTlsCa) {
+    try {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename
+      const ca = fs.readFileSync(config.gatewayApiTlsCa);
+      gatewayFetchOptions = { dispatcher: new https.Agent({ ca }) };
+    } catch (err) {
+      log.warn(`Failed to load gateway API TLS CA from ${config.gatewayApiTlsCa}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    }
+  }
+
   for (const instance of instances) {
-    const url = `http://${instance.host}:${instance.apiPort}/cgi-bin/authorized-keys`;
+    const scheme = config.gatewayApiUseTls ? 'https' : 'http';
+    const url = `${scheme}://${instance.host}:${instance.apiPort}/cgi-bin/authorized-keys`;
     const ac = new AbortController();
     const timeout = setTimeout(() => ac.abort(), 5000);
 
@@ -535,6 +550,7 @@ export async function pushKeyToGateway(
         },
         body: JSON.stringify({ publicKey: keyPair.publicKey }),
         signal: ac.signal,
+        ...gatewayFetchOptions,
       });
       clearTimeout(timeout);
 
