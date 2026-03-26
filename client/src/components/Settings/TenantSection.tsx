@@ -88,6 +88,34 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
   const [userDriveQuotaMb, setUserDriveQuotaMb] = useState('');
   const [savingStorage, setSavingStorage] = useState(false);
   const [storageError, setStorageError] = useState('');
+  // Login Security state
+  const [loginRateLimitWindow, setLoginRateLimitWindow] = useState<string>('default');
+  const [savingRateLimitWindow, setSavingRateLimitWindow] = useState(false);
+  const [rateLimitWindowError, setRateLimitWindowError] = useState('');
+  const [loginRateLimitMaxAttempts, setLoginRateLimitMaxAttempts] = useState<string>('default');
+  const [savingRateLimitMaxAttempts, setSavingRateLimitMaxAttempts] = useState(false);
+  const [rateLimitMaxAttemptsError, setRateLimitMaxAttemptsError] = useState('');
+  const [accountLockoutThreshold, setAccountLockoutThreshold] = useState<string>('default');
+  const [savingLockoutThreshold, setSavingLockoutThreshold] = useState(false);
+  const [lockoutThresholdError, setLockoutThresholdError] = useState('');
+  const [accountLockoutDuration, setAccountLockoutDuration] = useState<string>('default');
+  const [savingLockoutDuration, setSavingLockoutDuration] = useState(false);
+  const [lockoutDurationError, setLockoutDurationError] = useState('');
+  const [impossibleTravelSpeed, setImpossibleTravelSpeed] = useState<string>('default');
+  const [savingTravelSpeed, setSavingTravelSpeed] = useState(false);
+  const [travelSpeedError, setTravelSpeedError] = useState('');
+
+  // Session & Token Lifetime state
+  const [jwtExpiresIn, setJwtExpiresIn] = useState<string>('default');
+  const [savingJwtExpires, setSavingJwtExpires] = useState(false);
+  const [jwtExpiresError, setJwtExpiresError] = useState('');
+  const [jwtRefreshExpiresIn, setJwtRefreshExpiresIn] = useState<string>('default');
+  const [savingJwtRefreshExpires, setSavingJwtRefreshExpires] = useState(false);
+  const [jwtRefreshExpiresError, setJwtRefreshExpiresError] = useState('');
+  const [vaultDefaultTtl, setVaultDefaultTtl] = useState<string>('default');
+  const [savingVaultDefaultTtl, setSavingVaultDefaultTtl] = useState(false);
+  const [vaultDefaultTtlError, setVaultDefaultTtlError] = useState('');
+
   const [createUserOpen, setCreateUserOpen] = useState(false);
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
 
@@ -158,6 +186,14 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
       setRecordingRetentionDays(tenant.recordingRetentionDays != null ? String(tenant.recordingRetentionDays) : '');
       setFileUploadMaxSizeMb(tenant.fileUploadMaxSizeBytes != null ? String(parseFloat((tenant.fileUploadMaxSizeBytes / 1048576).toFixed(2))) : '');
       setUserDriveQuotaMb(tenant.userDriveQuotaBytes != null ? String(parseFloat((tenant.userDriveQuotaBytes / 1048576).toFixed(2))) : '');
+      setLoginRateLimitWindow(tenant.loginRateLimitWindowMs == null ? 'default' : String(tenant.loginRateLimitWindowMs));
+      setLoginRateLimitMaxAttempts(tenant.loginRateLimitMaxAttempts == null ? 'default' : String(tenant.loginRateLimitMaxAttempts));
+      setAccountLockoutThreshold(tenant.accountLockoutThreshold == null ? 'default' : String(tenant.accountLockoutThreshold));
+      setAccountLockoutDuration(tenant.accountLockoutDurationMs == null ? 'default' : String(tenant.accountLockoutDurationMs));
+      setImpossibleTravelSpeed(tenant.impossibleTravelSpeedKmh == null ? 'default' : String(tenant.impossibleTravelSpeedKmh));
+      setJwtExpiresIn(tenant.jwtExpiresInSeconds == null ? 'default' : String(tenant.jwtExpiresInSeconds));
+      setJwtRefreshExpiresIn(tenant.jwtRefreshExpiresInSeconds == null ? 'default' : String(tenant.jwtRefreshExpiresInSeconds));
+      setVaultDefaultTtl(tenant.vaultDefaultTtlMinutes == null ? 'default' : String(tenant.vaultDefaultTtlMinutes));
       fetchUsers();
       if (isAdmin) {
         getTenantMfaStats(tenant.id).then(setMfaDashboard).catch(() => {});
@@ -802,6 +838,285 @@ export default function TenantSection({ onViewUserProfile, onDeleteRequest }: Te
                 <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
                   Forces re-authentication after this duration, regardless of user activity. Disabled means no forced re-login.
                 </Typography>
+              </Box>
+
+              <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="subtitle2">Login Security</Typography>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Rate Limit Window</Typography>
+                  {rateLimitWindowError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setRateLimitWindowError('')}>{rateLimitWindowError}</Alert>}
+                  <Select
+                    value={loginRateLimitWindow}
+                    size="small"
+                    disabled={savingRateLimitWindow}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setRateLimitWindowError('');
+                      setSavingRateLimitWindow(true);
+                      try {
+                        await updateTenant({ loginRateLimitWindowMs: val === 'default' ? null : Number(val) });
+                        setLoginRateLimitWindow(val);
+                      } catch (err: unknown) {
+                        setRateLimitWindowError(extractApiError(err, 'Failed to update rate limit window'));
+                      } finally {
+                        setSavingRateLimitWindow(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="60000">1 minute</MenuItem>
+                    <MenuItem value="300000">5 minutes</MenuItem>
+                    <MenuItem value="900000">15 minutes</MenuItem>
+                    <MenuItem value="1800000">30 minutes</MenuItem>
+                    <MenuItem value="3600000">1 hour</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Time window for counting failed login attempts
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Max Login Attempts</Typography>
+                  {rateLimitMaxAttemptsError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setRateLimitMaxAttemptsError('')}>{rateLimitMaxAttemptsError}</Alert>}
+                  <Select
+                    value={loginRateLimitMaxAttempts}
+                    size="small"
+                    disabled={savingRateLimitMaxAttempts}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setRateLimitMaxAttemptsError('');
+                      setSavingRateLimitMaxAttempts(true);
+                      try {
+                        await updateTenant({ loginRateLimitMaxAttempts: val === 'default' ? null : Number(val) });
+                        setLoginRateLimitMaxAttempts(val);
+                      } catch (err: unknown) {
+                        setRateLimitMaxAttemptsError(extractApiError(err, 'Failed to update max login attempts'));
+                      } finally {
+                        setSavingRateLimitMaxAttempts(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="3">3</MenuItem>
+                    <MenuItem value="5">5</MenuItem>
+                    <MenuItem value="10">10</MenuItem>
+                    <MenuItem value="15">15</MenuItem>
+                    <MenuItem value="20">20</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Maximum failed login attempts within the rate limit window
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Account Lockout Threshold</Typography>
+                  {lockoutThresholdError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setLockoutThresholdError('')}>{lockoutThresholdError}</Alert>}
+                  <Select
+                    value={accountLockoutThreshold}
+                    size="small"
+                    disabled={savingLockoutThreshold}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setLockoutThresholdError('');
+                      setSavingLockoutThreshold(true);
+                      try {
+                        await updateTenant({ accountLockoutThreshold: val === 'default' ? null : Number(val) });
+                        setAccountLockoutThreshold(val);
+                      } catch (err: unknown) {
+                        setLockoutThresholdError(extractApiError(err, 'Failed to update lockout threshold'));
+                      } finally {
+                        setSavingLockoutThreshold(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="3">3</MenuItem>
+                    <MenuItem value="5">5</MenuItem>
+                    <MenuItem value="10">10</MenuItem>
+                    <MenuItem value="15">15</MenuItem>
+                    <MenuItem value="20">20</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Failed attempts before account is locked
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Account Lockout Duration</Typography>
+                  {lockoutDurationError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setLockoutDurationError('')}>{lockoutDurationError}</Alert>}
+                  <Select
+                    value={accountLockoutDuration}
+                    size="small"
+                    disabled={savingLockoutDuration}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setLockoutDurationError('');
+                      setSavingLockoutDuration(true);
+                      try {
+                        await updateTenant({ accountLockoutDurationMs: val === 'default' ? null : Number(val) });
+                        setAccountLockoutDuration(val);
+                      } catch (err: unknown) {
+                        setLockoutDurationError(extractApiError(err, 'Failed to update lockout duration'));
+                      } finally {
+                        setSavingLockoutDuration(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="300000">5 minutes</MenuItem>
+                    <MenuItem value="900000">15 minutes</MenuItem>
+                    <MenuItem value="1800000">30 minutes</MenuItem>
+                    <MenuItem value="3600000">1 hour</MenuItem>
+                    <MenuItem value="14400000">4 hours</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    How long accounts stay locked after exceeding threshold
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Impossible Travel Speed</Typography>
+                  {travelSpeedError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setTravelSpeedError('')}>{travelSpeedError}</Alert>}
+                  <Select
+                    value={impossibleTravelSpeed}
+                    size="small"
+                    disabled={savingTravelSpeed}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setTravelSpeedError('');
+                      setSavingTravelSpeed(true);
+                      try {
+                        await updateTenant({ impossibleTravelSpeedKmh: val === 'default' ? null : Number(val) });
+                        setImpossibleTravelSpeed(val);
+                      } catch (err: unknown) {
+                        setTravelSpeedError(extractApiError(err, 'Failed to update impossible travel speed'));
+                      } finally {
+                        setSavingTravelSpeed(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="0">Disabled</MenuItem>
+                    <MenuItem value="500">500 km/h</MenuItem>
+                    <MenuItem value="900">900 km/h</MenuItem>
+                    <MenuItem value="1500">1500 km/h</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Speed threshold for detecting impossible travel between login locations. Set to Disabled to turn off.
+                  </Typography>
+                </Box>
+              </Box>
+
+              <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
+                <Typography variant="subtitle2">Session &amp; Token Lifetime</Typography>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Access Token Expiry</Typography>
+                  {jwtExpiresError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setJwtExpiresError('')}>{jwtExpiresError}</Alert>}
+                  <Select
+                    value={jwtExpiresIn}
+                    size="small"
+                    disabled={savingJwtExpires}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setJwtExpiresError('');
+                      setSavingJwtExpires(true);
+                      try {
+                        await updateTenant({ jwtExpiresInSeconds: val === 'default' ? null : Number(val) });
+                        setJwtExpiresIn(val);
+                      } catch (err: unknown) {
+                        setJwtExpiresError(extractApiError(err, 'Failed to update access token expiry'));
+                      } finally {
+                        setSavingJwtExpires(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="300">5 minutes</MenuItem>
+                    <MenuItem value="900">15 minutes</MenuItem>
+                    <MenuItem value="1800">30 minutes</MenuItem>
+                    <MenuItem value="3600">1 hour</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    How long access tokens remain valid before requiring refresh
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Refresh Token Expiry</Typography>
+                  {jwtRefreshExpiresError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setJwtRefreshExpiresError('')}>{jwtRefreshExpiresError}</Alert>}
+                  <Select
+                    value={jwtRefreshExpiresIn}
+                    size="small"
+                    disabled={savingJwtRefreshExpires}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setJwtRefreshExpiresError('');
+                      setSavingJwtRefreshExpires(true);
+                      try {
+                        await updateTenant({ jwtRefreshExpiresInSeconds: val === 'default' ? null : Number(val) });
+                        setJwtRefreshExpiresIn(val);
+                      } catch (err: unknown) {
+                        setJwtRefreshExpiresError(extractApiError(err, 'Failed to update refresh token expiry'));
+                      } finally {
+                        setSavingJwtRefreshExpires(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="86400">1 day</MenuItem>
+                    <MenuItem value="259200">3 days</MenuItem>
+                    <MenuItem value="604800">7 days</MenuItem>
+                    <MenuItem value="1209600">14 days</MenuItem>
+                    <MenuItem value="2592000">30 days</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    How long refresh tokens remain valid before requiring re-login
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mt: 1 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5 }}>Vault Default TTL</Typography>
+                  {vaultDefaultTtlError && <Alert severity="error" sx={{ mb: 1 }} onClose={() => setVaultDefaultTtlError('')}>{vaultDefaultTtlError}</Alert>}
+                  <Select
+                    value={vaultDefaultTtl}
+                    size="small"
+                    disabled={savingVaultDefaultTtl}
+                    onChange={async (e) => {
+                      const val = e.target.value as string;
+                      setVaultDefaultTtlError('');
+                      setSavingVaultDefaultTtl(true);
+                      try {
+                        await updateTenant({ vaultDefaultTtlMinutes: val === 'default' ? null : Number(val) });
+                        setVaultDefaultTtl(val);
+                      } catch (err: unknown) {
+                        setVaultDefaultTtlError(extractApiError(err, 'Failed to update vault default TTL'));
+                      } finally {
+                        setSavingVaultDefaultTtl(false);
+                      }
+                    }}
+                    sx={{ minWidth: 200 }}
+                  >
+                    <MenuItem value="default">System default</MenuItem>
+                    <MenuItem value="0">Never (0)</MenuItem>
+                    <MenuItem value="5">5 minutes</MenuItem>
+                    <MenuItem value="15">15 minutes</MenuItem>
+                    <MenuItem value="30">30 minutes</MenuItem>
+                    <MenuItem value="60">1 hour</MenuItem>
+                    <MenuItem value="240">4 hours</MenuItem>
+                  </Select>
+                  <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                    Default vault auto-lock timeout for new users. Distinct from the max ceiling above.
+                  </Typography>
+                </Box>
               </Box>
 
               <Box sx={{ mt: 2, pt: 2, borderTop: 1, borderColor: 'divider' }}>
