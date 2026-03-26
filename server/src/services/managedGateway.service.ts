@@ -304,7 +304,7 @@ export async function deployGatewayInstance(
       containerName: containerInfo.name,
       host,
       port,
-      apiPort: apiHostPort ?? (gateway.type === 'MANAGED_SSH' && config.gatewayApiToken ? 8022 : null),
+      apiPort: apiHostPort ?? (gateway.type === 'MANAGED_SSH' ? config.gatewayGrpcPort : null),
       status: ManagedInstanceStatus.RUNNING,
       orchestratorType: orchestrator.type,
       healthStatus: 'healthy',

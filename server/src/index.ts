@@ -100,8 +100,8 @@ function checkProductionSecurityConfig(): void {
   if (!config.tunnelServerCert) {
     logger.warn('[security] Tunnel endpoint running without TLS — mTLS enforcement requires TUNNEL_SERVER_CERT/KEY');
   }
-  if (!config.gatewayApiUseTls) {
-    logger.warn('[security] Gateway API key push uses plaintext HTTP — set GATEWAY_API_USE_TLS=true');
+  if (!config.gatewayGrpcTlsCa || !config.gatewayGrpcTlsCert || !config.gatewayGrpcTlsKey) {
+    logger.warn('[security] Gateway gRPC key push lacks mTLS — set GATEWAY_GRPC_TLS_CA/CERT/KEY');
   }
   if (!config.guacencAuthToken) {
     logger.warn('[security] Guacenc sidecar has no auth token — set GUACENC_AUTH_TOKEN');
