@@ -1,0 +1,187 @@
+syntax = "proto3";
+
+package cache;
+
+option go_package = "github.com/dnviti/arsenale/infrastructure/gocache/proto";
+
+// CacheService exposes KV, PubSub, Locks, and Queue over gRPC.
+service CacheService {
+  // KV operations
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  rpc Incr(IncrRequest) returns (IncrResponse);
+  rpc GetDel(GetDelRequest) returns (GetDelResponse);
+
+  // PubSub
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  rpc Subscribe(SubscribeRequest) returns (stream SubscribeResponse);
+
+  // Distributed Locks
+  rpc AcquireLock(AcquireLockRequest) returns (AcquireLockResponse);
+  rpc ReleaseLock(ReleaseLockRequest) returns (ReleaseLockResponse);
+  rpc RenewLock(RenewLockRequest) returns (RenewLockResponse);
+
+  // Queue
+  rpc Enqueue(EnqueueRequest) returns (EnqueueResponse);
+  rpc Dequeue(DequeueRequest) returns (DequeueResponse);
+
+  // Internal peer replication
+  rpc ReplicateKV(stream ReplicateKVRequest) returns (ReplicateKVResponse);
+  rpc ReplicatePubSub(stream ReplicatePubSubRequest) returns (ReplicatePubSubResponse);
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+}
+
+// KV Messages
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  bytes value = 1;
+  bool found = 2;
+}
+
+message SetRequest {
+  string key = 1;
+  bytes value = 2;
+  int64 ttl_ms = 3; // 0 means no expiry
+}
+
+message SetResponse {
+  bool ok = 1;
+}
+
+message DeleteRequest {
+  string key = 1;
+}
+
+message DeleteResponse {
+  bool deleted = 1;
+}
+
+message IncrRequest {
+  string key = 1;
+  int64 delta = 2;
+}
+
+message IncrResponse {
+  int64 value = 1;
+}
+
+message GetDelRequest {
+  string key = 1;
+}
+
+message GetDelResponse {
+  bytes value = 1;
+  bool found = 2;
+}
+
+// PubSub Messages
+
+message PublishRequest {
+  string channel = 1;
+  bytes message = 2;
+}
+
+message PublishResponse {
+  int32 receivers = 1;
+}
+
+message SubscribeRequest {
+  string channel = 1;
+  bool pattern = 2; // if true, treat channel as a glob pattern
+}
+
+message SubscribeResponse {
+  string channel = 1;
+  bytes message = 2;
+}
+
+// Lock Messages
+
+message AcquireLockRequest {
+  string name = 1;
+  int64 ttl_ms = 2;
+  string holder_id = 3;
+}
+
+message AcquireLockResponse {
+  bool acquired = 1;
+  uint64 fencing_token = 2;
+}
+
+message ReleaseLockRequest {
+  string name = 1;
+  string holder_id = 2;
+}
+
+message ReleaseLockResponse {
+  bool released = 1;
+}
+
+message RenewLockRequest {
+  string name = 1;
+  int64 ttl_ms = 2;
+  string holder_id = 3;
+}
+
+message RenewLockResponse {
+  bool renewed = 1;
+}
+
+// Queue Messages
+
+message EnqueueRequest {
+  string queue_name = 1;
+  bytes message = 2;
+}
+
+message EnqueueResponse {
+  bool ok = 1;
+}
+
+message DequeueRequest {
+  string queue_name = 1;
+  int64 timeout_ms = 2;
+}
+
+message DequeueResponse {
+  bytes message = 1;
+  bool found = 2;
+}
+
+// Replication Messages
+
+message ReplicateKVRequest {
+  string key = 1;
+  bytes value = 2;
+  int64 ttl_ms = 3;
+  bool deleted = 4;
+  uint64 timestamp = 5; // logical timestamp for LWW
+}
+
+message ReplicateKVResponse {
+  int32 applied = 1;
+}
+
+message ReplicatePubSubRequest {
+  string channel = 1;
+  bytes message = 2;
+}
+
+message ReplicatePubSubResponse {
+  int32 delivered = 1;
+}
+
+message HeartbeatRequest {
+  string peer_id = 1;
+  string address = 2;
+}
+
+message HeartbeatResponse {
+  string peer_id = 1;
+  bool ok = 2;
+}
