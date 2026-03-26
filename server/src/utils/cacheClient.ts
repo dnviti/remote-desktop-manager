@@ -9,6 +9,8 @@
  * and log a warning rather than crashing the application.
  */
 
+import fs from 'fs';
+import { config } from '../config';
 import { logger } from './logger';
 
 // Types matching the gRPC service definition (JSON-encoded on the wire).
@@ -156,7 +158,23 @@ export async function getCacheClient(): Promise<CacheClient | null> {
     };
 
     const CacheService = grpcModule.makeGenericClientConstructor(serviceDef, 'CacheService');
-    client = new CacheService(SIDECAR_URL, grpcModule.credentials.createInsecure()) as unknown as CacheClient;
+
+    // Use mTLS when TLS cert/key/ca files are configured, otherwise fall back to insecure.
+    let channelCredentials: ReturnType<typeof grpcModule.credentials.createInsecure>;
+    const { cacheSidecarTlsCa, cacheSidecarTlsCert, cacheSidecarTlsKey } = config;
+
+    if (cacheSidecarTlsCa && cacheSidecarTlsCert && cacheSidecarTlsKey) {
+      const rootCert = fs.readFileSync(cacheSidecarTlsCa);
+      const privateKey = fs.readFileSync(cacheSidecarTlsKey);
+      const certChain = fs.readFileSync(cacheSidecarTlsCert);
+      channelCredentials = grpcModule.credentials.createSsl(rootCert, privateKey, certChain);
+      logger.info('Cache sidecar client using mTLS (certificates configured)');
+    } else {
+      channelCredentials = grpcModule.credentials.createInsecure();
+      logger.warn('Cache sidecar client using INSECURE plaintext gRPC — set CACHE_SIDECAR_TLS_CA/CERT/KEY to enable mTLS');
+    }
+
+    client = new CacheService(SIDECAR_URL, channelCredentials) as unknown as CacheClient;
     logger.info('Cache sidecar client connected to [REDACTED]');
     return client;
   } catch (err) {

@@ -54,6 +54,8 @@ export const config = {
   })(),
   serverEncryptionKey: resolveServerEncryptionKey(),
   gatewayApiToken: process.env.GATEWAY_API_TOKEN || '',
+  gatewayApiUseTls: process.env.GATEWAY_API_USE_TLS === 'true',
+  gatewayApiTlsCa: process.env.GATEWAY_API_TLS_CA || '',
   vaultTtlMinutes: parseInt(process.env.VAULT_TTL_MINUTES || '30', 10),
   vaultRecoveryTtlMs: parseExpiry(process.env.JWT_REFRESH_EXPIRES_IN || '7d'),
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -207,6 +209,9 @@ export const config = {
   recordingVolume: process.env.RECORDING_VOLUME || '',
   recordingRetentionDays: parseInt(process.env.RECORDING_RETENTION_DAYS || '90', 10),
   // Guacenc video conversion sidecar
+  guacencAuthToken: process.env.GUACENC_AUTH_TOKEN || '',
+  guacencUseTls: process.env.GUACENC_USE_TLS === 'true',
+  guacencTlsCa: process.env.GUACENC_TLS_CA || '',
   guacencServiceUrl: process.env.GUACENC_SERVICE_URL || 'http://guacenc:3003',
   guacencTimeoutMs: parseInt(process.env.GUACENC_TIMEOUT_MS || '120000', 10),
   guacencRecordingPath: process.env.GUACENC_RECORDING_PATH || '/recordings',
@@ -338,4 +343,8 @@ export const config = {
   cacheSidecarUrl: process.env.CACHE_SIDECAR_URL || 'gocache:6380',
   cacheSidecarEnabled: process.env.CACHE_SIDECAR_ENABLED !== 'false',
   cacheProtoPath: process.env.CACHE_PROTO_PATH || '',
+  // Cache sidecar mTLS — paths to PEM files for gRPC channel encryption
+  cacheSidecarTlsCa: process.env.CACHE_SIDECAR_TLS_CA || '',
+  cacheSidecarTlsCert: process.env.CACHE_SIDECAR_TLS_CERT || '',
+  cacheSidecarTlsKey: process.env.CACHE_SIDECAR_TLS_KEY || '',
 };

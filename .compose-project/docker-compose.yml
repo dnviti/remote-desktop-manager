@@ -161,8 +161,14 @@ services:
       CACHE_LISTEN: "tcp://0.0.0.0:6380"
       CACHE_HEALTH_ADDR: "0.0.0.0:6381"
       CACHE_DISCOVERY: "manual"
+      # mTLS — set paths inside the container; certs are mounted below
+      CACHE_TLS_CA: "${CACHE_TLS_CA:-}"
+      CACHE_TLS_CERT: "${CACHE_TLS_CERT:-}"
+      CACHE_TLS_KEY: "${CACHE_TLS_KEY:-}"
     volumes:
       - gocache_data:/data
+      # Mount gocache mTLS certificates (optional — leave empty for insecure dev)
+      - ${CACHE_TLS_CERT_DIR:-./arsenale/infrastructure/gocache/certs}:/certs:ro
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:6381/health || exit 1"]

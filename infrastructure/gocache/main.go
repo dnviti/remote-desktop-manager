@@ -4,6 +4,8 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -22,6 +24,7 @@ import (
 	"github.com/dnviti/arsenale/infrastructure/gocache/pubsub"
 	"github.com/dnviti/arsenale/infrastructure/gocache/queue"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
 )
 
@@ -143,7 +146,15 @@ func main() {
 		replication: replicationEngine,
 	}
 
-	grpcServer := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	if tlsConfig := buildTLSConfig(); tlsConfig != nil {
+		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+		log.Println("[main] gRPC server using mTLS (certificates configured)")
+	} else {
+		log.Println("[main] gRPC server using INSECURE plaintext — set CACHE_TLS_CA/CERT/KEY to enable mTLS")
+	}
+
+	grpcServer := grpc.NewServer(grpcOpts...)
 	RegisterCacheServiceServer(grpcServer, svc)
 	if envOrDefault("CACHE_GRPC_REFLECTION", "false") == "true" {
 		reflection.Register(grpcServer)
@@ -394,6 +405,42 @@ func (s *cacheServiceServer) ReplicatePubSub(stream CacheService_ReplicatePubSub
 func (s *cacheServiceServer) Heartbeat(_ context.Context, req *HeartbeatRequest) (*HeartbeatResponse, error) {
 	log.Printf("[peer] HEARTBEAT peer=%q", req.PeerId)
 	return &HeartbeatResponse{PeerId: req.PeerId, Ok: true}, nil
+}
+
+// --- TLS ---
+
+// buildTLSConfig returns a *tls.Config with mTLS enforcement when CACHE_TLS_CA,
+// CACHE_TLS_CERT, and CACHE_TLS_KEY are set. Returns nil for insecure fallback.
+func buildTLSConfig() *tls.Config {
+	caPath := os.Getenv("CACHE_TLS_CA")
+	certPath := os.Getenv("CACHE_TLS_CERT")
+	keyPath := os.Getenv("CACHE_TLS_KEY")
+
+	if caPath == "" || certPath == "" || keyPath == "" {
+		return nil
+	}
+
+	cert, err := tls.LoadX509KeyPair(certPath, keyPath)
+	if err != nil {
+		log.Fatalf("[tls] failed to load server cert/key (%s, %s): %v", certPath, keyPath, err)
+	}
+
+	caPEM, err := os.ReadFile(caPath)
+	if err != nil {
+		log.Fatalf("[tls] failed to read CA cert %s: %v", caPath, err)
+	}
+
+	caPool := x509.NewCertPool()
+	if !caPool.AppendCertsFromPEM(caPEM) {
+		log.Fatalf("[tls] failed to parse CA cert from %s", caPath)
+	}
+
+	return &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    caPool,
+		MinVersion:   tls.VersionTLS12,
+	}
 }
 
 // --- Helpers ---
