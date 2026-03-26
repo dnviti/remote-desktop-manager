@@ -280,6 +280,11 @@ export const config = {
     caPublicKeyPath: process.env.SSH_PROXY_CA_PUBLIC_KEY || '',
     keystrokeRecording: process.env.SSH_PROXY_KEYSTROKE_RECORDING === 'true',
   },
+  // Gateway routing mode
+  gatewayRoutingMode: (process.env.GATEWAY_ROUTING_MODE || 'prefer-gateway') as 'prefer-gateway' | 'gateway-mandatory',
+  gatewayHealthCheckIntervalMs: parseInt(process.env.GATEWAY_HEALTH_CHECK_INTERVAL_MS || '30000', 10),
+  gatewayRequiredTypes: ((process.env.GATEWAY_REQUIRED_TYPES || 'MANAGED_SSH,GUACD,DB_PROXY')
+    .split(',').map(s => s.trim()).filter(Boolean)) as Array<'MANAGED_SSH' | 'GUACD' | 'DB_PROXY'>,
   // Feature Toggles (opt-out: enabled by default, set to 'false' to disable)
   features: {
     databaseProxyEnabled: process.env.FEATURE_DATABASE_PROXY_ENABLED !== 'false',

@@ -4,6 +4,8 @@ import {
   checkDatabase,
   checkGuacd,
 } from '../services/health.service';
+import { checkRequiredGateways } from '../services/gatewayHealth.service';
+import { config } from '../config';
 
 const router = Router();
 
@@ -26,12 +28,30 @@ router.get('/ready', async (_req: Request, res: Response) => {
 
   const db = await checkDatabase();
   const guacd = await checkGuacd();
+  const gatewayCheck = await checkRequiredGateways(config.gatewayRequiredTypes);
 
-  const ready = db.ok;
+  let status: 'ready' | 'degraded' | 'unavailable' = db.ok ? 'ready' : 'unavailable';
 
-  res.status(ready ? 200 : 503).json({
-    status: ready ? 'ready' : 'not_ready',
-    checks: { database: db, guacd },
+  if (db.ok && !gatewayCheck.allAvailable) {
+    if (config.gatewayRoutingMode === 'gateway-mandatory') {
+      status = 'unavailable';
+    } else {
+      status = 'degraded';
+    }
+  }
+
+  const httpStatus = status === 'unavailable' || !db.ok ? 503 : 200;
+
+  res.status(httpStatus).json({
+    status,
+    checks: {
+      database: db,
+      guacd,
+      gateways: {
+        mode: config.gatewayRoutingMode,
+        ...gatewayCheck.details,
+      },
+    },
   });
 });
 
