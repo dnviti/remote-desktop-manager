@@ -225,13 +225,14 @@ export async function updatePermissionOverrides(
 
   // Normalize: strip overrides that match the role default so only true
   // overrides are persisted. If nothing remains, store null.
+  // Build from known flags only to satisfy CodeQL property-injection checks.
   let normalized: Record<string, boolean> | null = null;
   if (overrides) {
     const defaults = ROLE_DEFAULTS[member.role];
-    const stripped: Record<string, boolean> = {};
-    for (const [key, value] of Object.entries(overrides)) {
-      if (defaults[key as PermissionFlag] !== value) {
-        stripped[key] = value;
+    const stripped: Record<PermissionFlag, boolean> = {} as Record<PermissionFlag, boolean>;
+    for (const flag of ALL_PERMISSION_FLAGS) {
+      if (flag in overrides && overrides[flag] !== defaults[flag]) {
+        stripped[flag] = overrides[flag] as boolean;
       }
     }
     normalized = Object.keys(stripped).length > 0 ? stripped : null;
