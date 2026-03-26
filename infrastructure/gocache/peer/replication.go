@@ -204,8 +204,10 @@ func (e *Engine) sendToPeer(pc *peerConn, data []byte) {
 		return
 	}
 
-	// Write length-prefixed JSON.
-	msg := append(data, '\n')
+	// Write newline-delimited JSON.
+	msg := make([]byte, len(data)+1)
+	copy(msg, data)
+	msg[len(data)] = '\n'
 	if _, err := pc.conn.Write(msg); err != nil {
 		log.Printf("[replication] write to %s failed: %v", pc.addr, err)
 		pc.connected = false
@@ -311,7 +313,9 @@ func (e *Engine) replayBuffer(pc *peerConn) {
 		data := pc.buffer.Remove(front).([]byte)
 		pc.bufferBytes -= len(data)
 
-		msg := append(data, '\n')
+		msg := make([]byte, len(data)+1)
+		copy(msg, data)
+		msg[len(data)] = '\n'
 		if err := pc.conn.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 			pc.connected = false
 			// Re-buffer remaining entries (they're still in the list).
@@ -362,6 +366,8 @@ func ListenForReplication(addr string, engine *Engine) (net.Listener, error) {
 	return ln, nil
 }
 
+const maxLineLength = 1 << 20 // 1MB max line length to prevent OOM
+
 func handleReplicationConn(conn net.Conn, engine *Engine) {
 	defer conn.Close()
 
@@ -374,6 +380,12 @@ func handleReplicationConn(conn net.Conn, engine *Engine) {
 			return
 		}
 		buf = append(buf, tmp[:n]...)
+
+		// Guard against unbounded buffer growth from peers sending data without newlines.
+		if len(buf) > maxLineLength {
+			log.Printf("[replication] closing connection: line exceeds %d bytes", maxLineLength)
+			return
+		}
 
 		// Process complete lines (newline-delimited JSON).
 		for {

@@ -100,17 +100,6 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// Start replication listener on same port (TCP).
-	replAddr := ":" + grpcPort
-	replLn, err := peer.ListenForReplication(replAddr, replicationEngine)
-	if err != nil {
-		// If we can't bind the replication port, continue without replication.
-		log.Printf("[main] replication listener failed (non-fatal): %v", err)
-	} else {
-		defer replLn.Close()
-		log.Printf("[main] replication listener on %s", replAddr)
-	}
-
 	registry.Start(ctx)
 	defer registry.Stop()
 	replicationEngine.Start()
@@ -290,9 +279,15 @@ func (s *cacheServiceServer) Enqueue(_ context.Context, req *EnqueueRequest) (*E
 	return &EnqueueResponse{Ok: true}, nil
 }
 
-func (s *cacheServiceServer) Dequeue(_ context.Context, req *DequeueRequest) (*DequeueResponse, error) {
-	timeout := time.Duration(req.TimeoutMs) * time.Millisecond
-	data, found := s.queueMgr.Dequeue(req.QueueName, timeout)
+func (s *cacheServiceServer) Dequeue(ctx context.Context, req *DequeueRequest) (*DequeueResponse, error) {
+	if req.TimeoutMs <= 0 {
+		data, found := s.queueMgr.Dequeue(req.QueueName, 0)
+		return &DequeueResponse{Message: data, Found: found}, nil
+	}
+	// Use a context that respects both the gRPC client cancellation and the requested timeout.
+	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(req.TimeoutMs)*time.Millisecond)
+	defer cancel()
+	data, found := s.queueMgr.DequeueContext(timeoutCtx, req.QueueName)
 	return &DequeueResponse{Message: data, Found: found}, nil
 }
 

@@ -68,12 +68,48 @@ func (m *Manager) Enqueue(name string, data []byte) {
 	q.mu.Unlock()
 }
 
+// DequeueContext removes and returns the head of a named queue, blocking until
+// an item is available or ctx is cancelled. Returns (nil, false) on cancellation.
+func (m *Manager) DequeueContext(ctx context.Context, name string) ([]byte, bool) {
+	q := m.getOrCreate(name)
+
+	q.mu.Lock()
+	defer q.mu.Unlock()
+
+	// Fast path: item already available.
+	if q.list.Len() > 0 {
+		return q.popFront()
+	}
+
+	if ctx.Err() != nil {
+		return nil, false
+	}
+
+	// Single goroutine broadcasts when context expires so cond.Wait unblocks.
+	done := make(chan struct{})
+	go func() {
+		select {
+		case <-ctx.Done():
+			q.cond.Broadcast()
+		case <-done:
+		}
+	}()
+	defer close(done)
+
+	for q.list.Len() == 0 {
+		q.cond.Wait()
+		if ctx.Err() != nil {
+			return nil, false
+		}
+	}
+	return q.popFront()
+}
+
 // Dequeue removes and returns the head of a named queue, blocking up to timeout.
 // A zero timeout means non-blocking. Returns (nil, false) if no item available.
 func (m *Manager) Dequeue(name string, timeout time.Duration) ([]byte, bool) {
-	q := m.getOrCreate(name)
-
 	if timeout <= 0 {
+		q := m.getOrCreate(name)
 		q.mu.Lock()
 		defer q.mu.Unlock()
 		return q.popFront()
@@ -81,28 +117,7 @@ func (m *Manager) Dequeue(name string, timeout time.Duration) ([]byte, bool) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
-
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	for q.list.Len() == 0 {
-		// Use a goroutine to broadcast on timeout so Wait unblocks.
-		done := make(chan struct{})
-		go func() {
-			select {
-			case <-ctx.Done():
-				q.cond.Broadcast()
-			case <-done:
-			}
-		}()
-		q.cond.Wait()
-		close(done)
-
-		if ctx.Err() != nil {
-			return nil, false
-		}
-	}
-	return q.popFront()
+	return m.DequeueContext(ctx, name)
 }
 
 // popFront removes and returns the front item. Caller must hold q.mu.

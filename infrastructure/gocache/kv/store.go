@@ -200,6 +200,9 @@ func (s *Store) Incr(key string, delta int64) int64 {
 	if ok {
 		if len(e.value) == 8 {
 			current = int64(binary.LittleEndian.Uint64(e.value))
+		} else {
+			// Non-8-byte value: reallocate to proper size.
+			e.value = make([]byte, 8)
 		}
 		current += delta
 		binary.LittleEndian.PutUint64(e.value, uint64(current))
