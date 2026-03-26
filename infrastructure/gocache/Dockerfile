@@ -17,8 +17,7 @@ FROM alpine:3.21
 
 LABEL org.opencontainers.image.title="gocache" \
       org.opencontainers.image.description="In-memory cache server with gRPC clustering" \
-      org.opencontainers.image.source="https://github.com/dnviti/arsenale" \
-      io.containers.capabilities="{}"
+      org.opencontainers.image.source="https://github.com/dnviti/arsenale"
 
 RUN apk add --no-cache ca-certificates wget && \
     addgroup -g 10001 -S gocache && \

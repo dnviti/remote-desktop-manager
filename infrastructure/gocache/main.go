@@ -110,7 +110,19 @@ func main() {
 	defer replicationEngine.Stop()
 
 	// Start the replication listener so peers can connect inbound.
-	replicationAddr := envOrDefault("CACHE_REPLICATION_ADDR", listenAddr)
+	// Default to grpc port + 1000 to avoid conflicting with the main gRPC listener.
+	defaultReplAddr := func() string {
+		host, port, err := net.SplitHostPort(listenAddr)
+		if err != nil {
+			return "0.0.0.0:7380"
+		}
+		p, err := strconv.Atoi(port)
+		if err != nil {
+			return "0.0.0.0:7380"
+		}
+		return net.JoinHostPort(host, strconv.Itoa(p+1000))
+	}()
+	replicationAddr := envOrDefault("CACHE_REPLICATION_ADDR", defaultReplAddr)
 	go func() {
 		ln, err := peer.ListenForReplication(replicationAddr, replicationEngine)
 		if err != nil {
@@ -211,6 +223,7 @@ type cacheServiceServer struct {
 
 func (s *cacheServiceServer) Get(_ context.Context, req *GetRequest) (*GetResponse, error) {
 	val, found := s.store.Get(req.Key)
+	log.Printf("[kv] GET key=%q found=%v size=%d", req.Key, found, len(val))
 	return &GetResponse{Value: val, Found: found}, nil
 }
 
@@ -221,6 +234,7 @@ func (s *cacheServiceServer) Set(_ context.Context, req *SetRequest) (*SetRespon
 	}
 	s.store.Set(req.Key, req.Value, ttl)
 	s.replication.ReplicateKVSet(req.Key, req.Value, req.TtlMs)
+	log.Printf("[kv] SET key=%q size=%d ttl=%v", req.Key, len(req.Value), ttl)
 	return &SetResponse{Ok: true}, nil
 }
 
@@ -229,11 +243,13 @@ func (s *cacheServiceServer) Delete(_ context.Context, req *DeleteRequest) (*Del
 	if deleted {
 		s.replication.ReplicateKVDelete(req.Key)
 	}
+	log.Printf("[kv] DELETE key=%q deleted=%v", req.Key, deleted)
 	return &DeleteResponse{Deleted: deleted}, nil
 }
 
 func (s *cacheServiceServer) Incr(_ context.Context, req *IncrRequest) (*IncrResponse, error) {
 	val := s.store.Incr(req.Key, req.Delta)
+	log.Printf("[kv] INCR key=%q delta=%d result=%d", req.Key, req.Delta, val)
 	return &IncrResponse{Value: val}, nil
 }
 
@@ -242,23 +258,29 @@ func (s *cacheServiceServer) GetDel(_ context.Context, req *GetDelRequest) (*Get
 	if found {
 		s.replication.ReplicateKVDelete(req.Key)
 	}
+	log.Printf("[kv] GETDEL key=%q found=%v size=%d", req.Key, found, len(val))
 	return &GetDelResponse{Value: val, Found: found}, nil
 }
 
 func (s *cacheServiceServer) Publish(_ context.Context, req *PublishRequest) (*PublishResponse, error) {
 	count, _ := s.broker.Publish(req.Channel, req.Message)
 	s.replication.ReplicatePubSub(req.Channel, req.Message)
+	log.Printf("[pubsub] PUBLISH channel=%q receivers=%d msgSize=%d", req.Channel, count, len(req.Message))
 	return &PublishResponse{Receivers: int32(count)}, nil
 }
 
 func (s *cacheServiceServer) Subscribe(req *SubscribeRequest, stream CacheService_SubscribeServer) error {
+	log.Printf("[pubsub] SUBSCRIBE channel=%q pattern=%v", req.Channel, req.Pattern)
 	var sub *pubsub.Subscriber
 	if req.Pattern {
 		sub = s.broker.PSubscribe(req.Channel)
 	} else {
 		sub = s.broker.Subscribe(req.Channel)
 	}
-	defer s.broker.Unsubscribe(sub)
+	defer func() {
+		s.broker.Unsubscribe(sub)
+		log.Printf("[pubsub] UNSUBSCRIBE channel=%q", req.Channel)
+	}()
 
 	for {
 		select {
@@ -281,42 +303,50 @@ func (s *cacheServiceServer) Subscribe(req *SubscribeRequest, stream CacheServic
 func (s *cacheServiceServer) AcquireLock(_ context.Context, req *AcquireLockRequest) (*AcquireLockResponse, error) {
 	ttl := time.Duration(req.TtlMs) * time.Millisecond
 	acquired, token := s.lockMgr.AcquireLock(req.Name, ttl, req.HolderId)
+	log.Printf("[lock] ACQUIRE lock=%q ttl=%v acquired=%v token=%d", req.Name, ttl, acquired, token)
 	return &AcquireLockResponse{Acquired: acquired, FencingToken: token}, nil
 }
 
 func (s *cacheServiceServer) ReleaseLock(_ context.Context, req *ReleaseLockRequest) (*ReleaseLockResponse, error) {
 	released := s.lockMgr.ReleaseLock(req.Name, req.HolderId)
+	log.Printf("[lock] RELEASE lock=%q released=%v", req.Name, released)
 	return &ReleaseLockResponse{Released: released}, nil
 }
 
 func (s *cacheServiceServer) RenewLock(_ context.Context, req *RenewLockRequest) (*RenewLockResponse, error) {
 	ttl := time.Duration(req.TtlMs) * time.Millisecond
 	renewed := s.lockMgr.RenewLock(req.Name, ttl, req.HolderId)
+	log.Printf("[lock] RENEW lock=%q ttl=%v renewed=%v", req.Name, ttl, renewed)
 	return &RenewLockResponse{Renewed: renewed}, nil
 }
 
 func (s *cacheServiceServer) Enqueue(_ context.Context, req *EnqueueRequest) (*EnqueueResponse, error) {
 	s.queueMgr.Enqueue(req.QueueName, req.Message)
+	log.Printf("[queue] ENQUEUE queue=%q msgSize=%d", req.QueueName, len(req.Message))
 	return &EnqueueResponse{Ok: true}, nil
 }
 
 func (s *cacheServiceServer) Dequeue(ctx context.Context, req *DequeueRequest) (*DequeueResponse, error) {
 	if req.TimeoutMs <= 0 {
 		data, found := s.queueMgr.Dequeue(req.QueueName, 0)
+		log.Printf("[queue] DEQUEUE queue=%q found=%v msgSize=%d", req.QueueName, found, len(data))
 		return &DequeueResponse{Message: data, Found: found}, nil
 	}
 	// Use a context that respects both the gRPC client cancellation and the requested timeout.
 	timeoutCtx, cancel := context.WithTimeout(ctx, time.Duration(req.TimeoutMs)*time.Millisecond)
 	defer cancel()
 	data, found := s.queueMgr.DequeueContext(timeoutCtx, req.QueueName)
+	log.Printf("[queue] DEQUEUE queue=%q found=%v timeout=%dms msgSize=%d", req.QueueName, found, req.TimeoutMs, len(data))
 	return &DequeueResponse{Message: data, Found: found}, nil
 }
 
 func (s *cacheServiceServer) ReplicateKV(stream CacheService_ReplicateKVServer) error {
+	log.Printf("[repl] ReplicateKV stream opened")
 	count := 0
 	for {
 		req, err := stream.Recv()
 		if err != nil {
+			log.Printf("[repl] ReplicateKV stream closed, applied=%d", count)
 			return stream.SendAndClose(&ReplicateKVResponse{Applied: int32(count)})
 		}
 		entry := peer.ReplicationEntry{
@@ -336,10 +366,12 @@ func (s *cacheServiceServer) ReplicateKV(stream CacheService_ReplicateKVServer) 
 }
 
 func (s *cacheServiceServer) ReplicatePubSub(stream CacheService_ReplicatePubSubServer) error {
+	log.Printf("[repl] ReplicatePubSub stream opened")
 	count := 0
 	for {
 		req, err := stream.Recv()
 		if err != nil {
+			log.Printf("[repl] ReplicatePubSub stream closed, delivered=%d", count)
 			return stream.SendAndClose(&ReplicatePubSubResponse{Delivered: int32(count)})
 		}
 		entry := peer.ReplicationEntry{
@@ -353,6 +385,7 @@ func (s *cacheServiceServer) ReplicatePubSub(stream CacheService_ReplicatePubSub
 }
 
 func (s *cacheServiceServer) Heartbeat(_ context.Context, req *HeartbeatRequest) (*HeartbeatResponse, error) {
+	log.Printf("[peer] HEARTBEAT peer=%q", req.PeerId)
 	return &HeartbeatResponse{PeerId: req.PeerId, Ok: true}, nil
 }
 
