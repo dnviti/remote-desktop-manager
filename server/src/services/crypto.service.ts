@@ -1,10 +1,10 @@
 import crypto, { createHmac } from 'crypto';
 import argon2 from 'argon2';
-import { EncryptedField, VaultSession } from '../types';
+import type { EncryptedField, VaultSession } from '../types';
 import { config } from '../config';
 import { AppError } from '../middleware/error.middleware';
 import { logger } from '../utils/logger';
-import * as auditService from './audit.service';
+import * as cache from '../utils/cacheClient';
 
 const log = logger.child('crypto');
 
@@ -13,37 +13,45 @@ const IV_LENGTH = 16;
 const KEY_LENGTH = 32;
 const SALT_LENGTH = 32;
 
-// In-memory vault store: userId -> VaultSession
+// In-memory vault store (local fallback): userId -> VaultSession
 const vaultStore = new Map<string, VaultSession>();
 
-// In-memory vault recovery store: userId -> server-encrypted master key.
+// In-memory vault recovery store (local fallback): userId -> server-encrypted master key.
 // Allows MFA-based re-unlock after vault TTL expiry without the user's password.
 // Cleared on logout, password change, or server restart.
 const vaultRecoveryStore = new Map<string, { encryptedKey: EncryptedField; expiresAt: number }>();
 
-// In-memory team vault store: "${teamId}:${userId}" -> decrypted team master key
+// In-memory team vault store (local fallback): "${teamId}:${userId}" -> decrypted team master key
 const teamVaultStore = new Map<string, { teamKey: Buffer; expiresAt: number }>();
 
-// In-memory tenant vault store: "${tenantId}:${userId}" -> decrypted tenant master key
+// In-memory tenant vault store (local fallback): "${tenantId}:${userId}" -> decrypted tenant master key
 const tenantVaultStore = new Map<string, { tenantKey: Buffer; expiresAt: number }>();
 
-// Cleanup expired sessions every minute
+// --- Cache index helpers (for prefix-based cleanup without scan) ---
+
+async function addToIndex(indexKey: string, value: string): Promise<void> {
+  const buf = await cache.get(indexKey);
+  const arr: string[] = buf ? JSON.parse(buf.toString()) : [];
+  if (!arr.includes(value)) arr.push(value);
+  await cache.set(indexKey, JSON.stringify(arr));
+}
+
+async function removeFromIndex(indexKey: string, value: string): Promise<void> {
+  const buf = await cache.get(indexKey);
+  if (!buf) return;
+  const arr: string[] = JSON.parse(buf.toString()).filter((v: string) => v !== value);
+  if (arr.length > 0) await cache.set(indexKey, JSON.stringify(arr));
+  else await cache.del(indexKey);
+}
+
+// Simplified local-only cleanup every minute.
+// Cache TTL handles expiry for cross-instance entries.
 setInterval(() => {
   const now = Date.now();
   for (const [userId, session] of vaultStore.entries()) {
-    if (session.expiresAt < now) {
-      session.masterKey.fill(0); // zero out the key
+    if (session.expiresAt !== Infinity && session.expiresAt < now) {
+      session.masterKey.fill(0);
       vaultStore.delete(userId);
-      // Soft lock: keep recovery entry so MFA can re-unlock
-      lockUserTeamVaults(userId);
-      lockUserTenantVaults(userId);
-      auditService.log({
-        userId,
-        action: 'VAULT_AUTO_LOCK',
-        targetType: 'User',
-        targetId: userId,
-        details: { reason: 'ttl_expired' },
-      });
     }
   }
   for (const [key, session] of teamVaultStore.entries()) {
@@ -117,12 +125,12 @@ export function decrypt(field: EncryptedField, key: Buffer): string {
   return plaintext;
 }
 
-export function requireMasterKey(
+export async function requireMasterKey(
   userId: string,
   message = 'Vault is locked. Please unlock it first.',
   statusCode = 403
-): Buffer {
-  const key = getMasterKey(userId);
+): Promise<Buffer> {
+  const key = await getMasterKey(userId);
   if (!key) throw new AppError(message, statusCode);
   return key;
 }
@@ -223,40 +231,72 @@ export function decryptWithServerKey(field: EncryptedField): string {
 export function storeVaultSession(userId: string, masterKey: Buffer, ttlMinutes?: number): void {
   const effective = ttlMinutes ?? config.vaultTtlMinutes;
   const expiresAt = effective === 0 ? Infinity : Date.now() + effective * 60 * 1000;
+  // Local map (sync, immediate)
   vaultStore.set(userId, {
     masterKey: Buffer.from(masterKey), // copy the buffer
     expiresAt,
   });
+  // Cache (async, fire-and-forget)
+  if (config.cacheSidecarEnabled && effective !== 0) {
+    const ttlMs = effective * 60 * 1000;
+    const encrypted = encrypt(masterKey.toString('hex'), config.serverEncryptionKey);
+    cache.set(`vault:user:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
+  }
   log.debug(`Vault session stored for user ${userId} (TTL ${effective === 0 ? 'never' : effective + 'm'})`);
 }
 
-export function getVaultSession(userId: string): VaultSession | null {
-  const session = vaultStore.get(userId);
-  if (!session) return null;
+export async function getVaultSession(userId: string): Promise<VaultSession | null> {
+  // Check local map first (fast path)
+  const local = vaultStore.get(userId);
+  if (local) {
+    if (local.expiresAt !== Infinity && local.expiresAt < Date.now()) {
+      local.masterKey.fill(0);
+      vaultStore.delete(userId);
+      // Fall through to cache check
+    } else {
+      // Sliding window: reset TTL on every successful access (skip for "never" sessions)
+      if (local.expiresAt !== Infinity) {
+        const ttlMs = config.vaultTtlMinutes * 60 * 1000;
+        local.expiresAt = Date.now() + ttlMs;
+        // Refresh cache TTL (fire-and-forget)
+        if (config.cacheSidecarEnabled) {
+          const encrypted = encrypt(local.masterKey.toString('hex'), config.serverEncryptionKey);
+          cache.set(`vault:user:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
+        }
+      }
+      return local;
+    }
+  }
 
-  if (session.expiresAt !== Infinity && session.expiresAt < Date.now()) {
-    session.masterKey.fill(0);
-    vaultStore.delete(userId);
+  // Cache fallback (cross-instance)
+  if (!config.cacheSidecarEnabled) return null;
+  const buf = await cache.get(`vault:user:${userId}`);
+  if (!buf) return null;
+  try {
+    const encrypted = JSON.parse(buf.toString()) as EncryptedField;
+    const hex = decrypt(encrypted, config.serverEncryptionKey);
+    const masterKey = Buffer.from(hex, 'hex');
+    const ttlMs = config.vaultTtlMinutes * 60 * 1000;
+    const session: VaultSession = { masterKey, expiresAt: Date.now() + ttlMs };
+    // Hydrate local map
+    vaultStore.set(userId, { masterKey: Buffer.from(masterKey), expiresAt: session.expiresAt });
+    // Refresh cache TTL (sliding window)
+    cache.set(`vault:user:${userId}`, buf.toString(), { ttl: ttlMs }).catch(() => {});
+    return session;
+  } catch {
     return null;
   }
-
-  // Sliding window: reset TTL on every successful access (skip for "never" sessions)
-  if (session.expiresAt !== Infinity) {
-    const ttlMs = config.vaultTtlMinutes * 60 * 1000;
-    session.expiresAt = Date.now() + ttlMs;
-  }
-
-  return session;
 }
 
-export function getMasterKey(userId: string): Buffer | null {
-  const session = getVaultSession(userId);
+export async function getMasterKey(userId: string): Promise<Buffer | null> {
+  const session = await getVaultSession(userId);
   return session?.masterKey ?? null;
 }
 
 // Hard lock: clears vault session, team/tenant vaults, AND recovery entry.
 // Used by logout and password change.
 export function lockVault(userId: string): void {
+  // Sync local operations
   const session = vaultStore.get(userId);
   if (session) {
     session.masterKey.fill(0);
@@ -266,11 +306,19 @@ export function lockVault(userId: string): void {
   clearVaultRecovery(userId);
   lockUserTeamVaults(userId);
   lockUserTenantVaults(userId);
+  // Async cache cleanup (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.del(`vault:user:${userId}`).catch(() => {});
+    cache.del(`vault:recovery:${userId}`).catch(() => {});
+    // Publish vault lock event
+    cache.publish('vault:status', JSON.stringify({ userId, unlocked: false })).catch(() => {});
+  }
 }
 
 // Soft lock: clears vault session and team/tenant vaults but keeps
 // the recovery entry so MFA can re-unlock without the password.
 export function softLockVault(userId: string): void {
+  // Sync local operations
   const session = vaultStore.get(userId);
   if (session) {
     session.masterKey.fill(0);
@@ -279,46 +327,89 @@ export function softLockVault(userId: string): void {
   }
   lockUserTeamVaults(userId);
   lockUserTenantVaults(userId);
+  // Async cache cleanup (fire-and-forget) — keep recovery entry
+  if (config.cacheSidecarEnabled) {
+    cache.del(`vault:user:${userId}`).catch(() => {});
+    cache.publish('vault:status', JSON.stringify({ userId, unlocked: false })).catch(() => {});
+  }
 }
 
-export function isVaultUnlocked(userId: string): boolean {
-  return getVaultSession(userId) !== null;
+export async function isVaultUnlocked(userId: string): Promise<boolean> {
+  return (await getVaultSession(userId)) !== null;
 }
 
 // Vault recovery management (MFA-based re-unlock)
 
 export function storeVaultRecovery(userId: string, masterKey: Buffer): void {
   const encryptedKey = encrypt(masterKey.toString('hex'), config.serverEncryptionKey);
+  // Local map (sync, immediate)
   vaultRecoveryStore.set(userId, {
     encryptedKey,
     expiresAt: Date.now() + config.vaultRecoveryTtlMs,
   });
+  // Cache (async, fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.set(
+      `vault:recovery:${userId}`,
+      JSON.stringify(encryptedKey),
+      { ttl: config.vaultRecoveryTtlMs },
+    ).catch(() => {});
+  }
   log.debug(`Vault recovery stored for user ${userId}`);
 }
 
-export function getVaultRecovery(userId: string): Buffer | null {
+export async function getVaultRecovery(userId: string): Promise<Buffer | null> {
+  // Check local map first
   const entry = vaultRecoveryStore.get(userId);
-  if (!entry) return null;
-  if (entry.expiresAt < Date.now()) {
-    vaultRecoveryStore.delete(userId);
+  if (entry) {
+    if (entry.expiresAt < Date.now()) {
+      vaultRecoveryStore.delete(userId);
+      // Fall through to cache check
+    } else {
+      const hex = decrypt(entry.encryptedKey, config.serverEncryptionKey);
+      return Buffer.from(hex, 'hex');
+    }
+  }
+  // Cache fallback (cross-instance)
+  if (!config.cacheSidecarEnabled) return null;
+  const buf = await cache.get(`vault:recovery:${userId}`);
+  if (!buf) return null;
+  try {
+    const encryptedKey = JSON.parse(buf.toString()) as EncryptedField;
+    const hex = decrypt(encryptedKey, config.serverEncryptionKey);
+    // Hydrate local map
+    vaultRecoveryStore.set(userId, {
+      encryptedKey,
+      expiresAt: Date.now() + config.vaultRecoveryTtlMs,
+    });
+    return Buffer.from(hex, 'hex');
+  } catch {
     return null;
   }
-  const hex = decrypt(entry.encryptedKey, config.serverEncryptionKey);
-  return Buffer.from(hex, 'hex');
 }
 
-export function hasVaultRecovery(userId: string): boolean {
+export async function hasVaultRecovery(userId: string): Promise<boolean> {
+  // Check local map first
   const entry = vaultRecoveryStore.get(userId);
-  if (!entry) return false;
-  if (entry.expiresAt < Date.now()) {
-    vaultRecoveryStore.delete(userId);
-    return false;
+  if (entry) {
+    if (entry.expiresAt < Date.now()) {
+      vaultRecoveryStore.delete(userId);
+      // Fall through to cache check
+    } else {
+      return true;
+    }
   }
-  return true;
+  // Cache fallback
+  if (!config.cacheSidecarEnabled) return false;
+  const buf = await cache.get(`vault:recovery:${userId}`);
+  return buf !== null;
 }
 
 export function clearVaultRecovery(userId: string): void {
   vaultRecoveryStore.delete(userId);
+  if (config.cacheSidecarEnabled) {
+    cache.del(`vault:recovery:${userId}`).catch(() => {});
+  }
 }
 
 // Team vault session management
@@ -338,45 +429,102 @@ export function decryptTeamKey(encryptedField: EncryptedField, userMasterKey: Bu
 
 export function storeTeamVaultSession(teamId: string, userId: string, teamKey: Buffer): void {
   const ttlMs = config.vaultTtlMinutes * 60 * 1000;
-  const key = `${teamId}:${userId}`;
-  teamVaultStore.set(key, {
+  const mapKey = `${teamId}:${userId}`;
+  // Local map (sync, immediate)
+  teamVaultStore.set(mapKey, {
     teamKey: Buffer.from(teamKey), // defensive copy
     expiresAt: Date.now() + ttlMs,
   });
+  // Cache (async, fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    const encrypted = encrypt(teamKey.toString('hex'), config.serverEncryptionKey);
+    cache.set(`vault:team:${teamId}:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
+    // Update indexes for prefix-based cleanup
+    addToIndex(`vault:team-idx:${teamId}`, userId).catch(() => {});
+    addToIndex(`vault:user-teams:${userId}`, teamId).catch(() => {});
+  }
 }
 
-export function getTeamMasterKey(teamId: string, userId: string): Buffer | null {
-  const key = `${teamId}:${userId}`;
-  const session = teamVaultStore.get(key);
-  if (!session) return null;
-
-  if (session.expiresAt < Date.now()) {
-    session.teamKey.fill(0);
-    teamVaultStore.delete(key);
+export async function getTeamMasterKey(teamId: string, userId: string): Promise<Buffer | null> {
+  const mapKey = `${teamId}:${userId}`;
+  // Check local map first (fast path)
+  const session = teamVaultStore.get(mapKey);
+  if (session) {
+    if (session.expiresAt < Date.now()) {
+      session.teamKey.fill(0);
+      teamVaultStore.delete(mapKey);
+      // Fall through to cache check
+    } else {
+      // Sliding window
+      const ttlMs = config.vaultTtlMinutes * 60 * 1000;
+      session.expiresAt = Date.now() + ttlMs;
+      if (config.cacheSidecarEnabled) {
+        const encrypted = encrypt(session.teamKey.toString('hex'), config.serverEncryptionKey);
+        cache.set(`vault:team:${teamId}:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
+      }
+      return session.teamKey;
+    }
+  }
+  // Cache fallback (cross-instance)
+  if (!config.cacheSidecarEnabled) return null;
+  const buf = await cache.get(`vault:team:${teamId}:${userId}`);
+  if (!buf) return null;
+  try {
+    const encrypted = JSON.parse(buf.toString()) as EncryptedField;
+    const hex = decrypt(encrypted, config.serverEncryptionKey);
+    const teamKey = Buffer.from(hex, 'hex');
+    const ttlMs = config.vaultTtlMinutes * 60 * 1000;
+    // Hydrate local map
+    teamVaultStore.set(mapKey, { teamKey: Buffer.from(teamKey), expiresAt: Date.now() + ttlMs });
+    // Refresh cache TTL (sliding window)
+    cache.set(`vault:team:${teamId}:${userId}`, buf.toString(), { ttl: ttlMs }).catch(() => {});
+    return teamKey;
+  } catch {
     return null;
   }
-
-  // Sliding window: reset TTL on every successful access
-  const ttlMs = config.vaultTtlMinutes * 60 * 1000;
-  session.expiresAt = Date.now() + ttlMs;
-  return session.teamKey;
 }
 
 export function lockTeamVault(teamId: string): void {
+  // Sync local cleanup
   for (const [key, session] of teamVaultStore.entries()) {
     if (key.startsWith(`${teamId}:`)) {
       session.teamKey.fill(0);
       teamVaultStore.delete(key);
     }
   }
+  // Async cache cleanup via index (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.get(`vault:team-idx:${teamId}`).then(async (buf) => {
+      if (!buf) return;
+      const userIds: string[] = JSON.parse(buf.toString());
+      for (const uid of userIds) {
+        await cache.del(`vault:team:${teamId}:${uid}`);
+        removeFromIndex(`vault:user-teams:${uid}`, teamId).catch(() => {});
+      }
+      await cache.del(`vault:team-idx:${teamId}`);
+    }).catch(() => {});
+  }
 }
 
 export function lockUserTeamVaults(userId: string): void {
+  // Sync local cleanup
   for (const [key, session] of teamVaultStore.entries()) {
     if (key.endsWith(`:${userId}`)) {
       session.teamKey.fill(0);
       teamVaultStore.delete(key);
     }
+  }
+  // Async cache cleanup via reverse index (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.get(`vault:user-teams:${userId}`).then(async (buf) => {
+      if (!buf) return;
+      const teamIds: string[] = JSON.parse(buf.toString());
+      for (const tid of teamIds) {
+        await cache.del(`vault:team:${tid}:${userId}`);
+        removeFromIndex(`vault:team-idx:${tid}`, userId).catch(() => {});
+      }
+      await cache.del(`vault:user-teams:${userId}`);
+    }).catch(() => {});
   }
 }
 
@@ -397,45 +545,102 @@ export function decryptTenantKey(encryptedField: EncryptedField, userMasterKey: 
 
 export function storeTenantVaultSession(tenantId: string, userId: string, tenantKey: Buffer): void {
   const ttlMs = config.vaultTtlMinutes * 60 * 1000;
-  const key = `${tenantId}:${userId}`;
-  tenantVaultStore.set(key, {
+  const mapKey = `${tenantId}:${userId}`;
+  // Local map (sync, immediate)
+  tenantVaultStore.set(mapKey, {
     tenantKey: Buffer.from(tenantKey), // defensive copy
     expiresAt: Date.now() + ttlMs,
   });
+  // Cache (async, fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    const encrypted = encrypt(tenantKey.toString('hex'), config.serverEncryptionKey);
+    cache.set(`vault:tenant:${tenantId}:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
+    // Update indexes for prefix-based cleanup
+    addToIndex(`vault:tenant-idx:${tenantId}`, userId).catch(() => {});
+    addToIndex(`vault:user-tenants:${userId}`, tenantId).catch(() => {});
+  }
 }
 
-export function getTenantMasterKey(tenantId: string, userId: string): Buffer | null {
-  const key = `${tenantId}:${userId}`;
-  const session = tenantVaultStore.get(key);
-  if (!session) return null;
-
-  if (session.expiresAt < Date.now()) {
-    session.tenantKey.fill(0);
-    tenantVaultStore.delete(key);
+export async function getTenantMasterKey(tenantId: string, userId: string): Promise<Buffer | null> {
+  const mapKey = `${tenantId}:${userId}`;
+  // Check local map first (fast path)
+  const session = tenantVaultStore.get(mapKey);
+  if (session) {
+    if (session.expiresAt < Date.now()) {
+      session.tenantKey.fill(0);
+      tenantVaultStore.delete(mapKey);
+      // Fall through to cache check
+    } else {
+      // Sliding window
+      const ttlMs = config.vaultTtlMinutes * 60 * 1000;
+      session.expiresAt = Date.now() + ttlMs;
+      if (config.cacheSidecarEnabled) {
+        const encrypted = encrypt(session.tenantKey.toString('hex'), config.serverEncryptionKey);
+        cache.set(`vault:tenant:${tenantId}:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
+      }
+      return session.tenantKey;
+    }
+  }
+  // Cache fallback (cross-instance)
+  if (!config.cacheSidecarEnabled) return null;
+  const buf = await cache.get(`vault:tenant:${tenantId}:${userId}`);
+  if (!buf) return null;
+  try {
+    const encrypted = JSON.parse(buf.toString()) as EncryptedField;
+    const hex = decrypt(encrypted, config.serverEncryptionKey);
+    const tenantKey = Buffer.from(hex, 'hex');
+    const ttlMs = config.vaultTtlMinutes * 60 * 1000;
+    // Hydrate local map
+    tenantVaultStore.set(mapKey, { tenantKey: Buffer.from(tenantKey), expiresAt: Date.now() + ttlMs });
+    // Refresh cache TTL (sliding window)
+    cache.set(`vault:tenant:${tenantId}:${userId}`, buf.toString(), { ttl: ttlMs }).catch(() => {});
+    return tenantKey;
+  } catch {
     return null;
   }
-
-  // Sliding window: reset TTL on every successful access
-  const ttlMs = config.vaultTtlMinutes * 60 * 1000;
-  session.expiresAt = Date.now() + ttlMs;
-  return session.tenantKey;
 }
 
 export function lockTenantVault(tenantId: string): void {
+  // Sync local cleanup
   for (const [key, session] of tenantVaultStore.entries()) {
     if (key.startsWith(`${tenantId}:`)) {
       session.tenantKey.fill(0);
       tenantVaultStore.delete(key);
     }
   }
+  // Async cache cleanup via index (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.get(`vault:tenant-idx:${tenantId}`).then(async (buf) => {
+      if (!buf) return;
+      const userIds: string[] = JSON.parse(buf.toString());
+      for (const uid of userIds) {
+        await cache.del(`vault:tenant:${tenantId}:${uid}`);
+        removeFromIndex(`vault:user-tenants:${uid}`, tenantId).catch(() => {});
+      }
+      await cache.del(`vault:tenant-idx:${tenantId}`);
+    }).catch(() => {});
+  }
 }
 
 export function lockUserTenantVaults(userId: string): void {
+  // Sync local cleanup
   for (const [key, session] of tenantVaultStore.entries()) {
     if (key.endsWith(`:${userId}`)) {
       session.tenantKey.fill(0);
       tenantVaultStore.delete(key);
     }
+  }
+  // Async cache cleanup via reverse index (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.get(`vault:user-tenants:${userId}`).then(async (buf) => {
+      if (!buf) return;
+      const tenantIds: string[] = JSON.parse(buf.toString());
+      for (const tid of tenantIds) {
+        await cache.del(`vault:tenant:${tid}:${userId}`);
+        removeFromIndex(`vault:tenant-idx:${tid}`, userId).catch(() => {});
+      }
+      await cache.del(`vault:user-tenants:${userId}`);
+    }).catch(() => {});
   }
 }
 

@@ -228,6 +228,66 @@ Both Docker and Podman are supported as container runtimes, with rootless Podman
 
 Configuration is handled through a single environment file with sensible defaults for development. Production deployment requires setting cryptographic secrets and connection parameters, all documented with generation commands.
 
+## Distributed State (Go Cache Sidecar)
+
+Arsenale includes a Go-based in-memory cache sidecar (`infrastructure/gocache/`) that enables multi-instance deployments by replacing per-process in-memory stores with distributed, cache-backed alternatives. The sidecar communicates with the TypeScript server over gRPC and provides four primitives: key-value storage with TTL, pub/sub messaging, distributed locks with fencing tokens, and named queues.
+
+### Architecture
+
+The sidecar runs as a separate container (`gocache`) alongside the server. The TypeScript client (`server/src/utils/cacheClient.ts`) connects via gRPC using a dynamically loaded proto definition. All operations gracefully degrade — when the sidecar is unavailable or disabled (`CACHE_SIDECAR_ENABLED=false`), each subsystem falls back to local in-memory behavior, making the sidecar optional for single-instance deployments.
+
+### Distributed Subsystems
+
+| Subsystem | Cache Primitive | Fallback |
+|-----------|----------------|----------|
+| Socket.IO cross-instance events | Pub/sub (custom adapter) | Default in-memory adapter |
+| Auth codes (OAuth/SAML callbacks) | KV with TTL + atomic GetDel | Local `Map<string, AuthCodeEntry>` |
+| Link codes (account linking) | KV with TTL + atomic GetDel | Local `Map<string, LinkCodeEntry>` |
+| Relay state (SAML/OAuth state) | KV with TTL + atomic GetDel | Local `Map<string, LinkCodeEntry>` |
+| Leader election (scheduled jobs) | Distributed locks + heartbeat renewal | Every instance runs every job |
+| Vault session index | KV (JSON arrays for prefix-based cleanup) | Local Map cleanup only |
+
+### Cache Key Patterns
+
+| Pattern | Purpose | TTL |
+|---------|---------|-----|
+| `auth:code:<hex>` | OAuth/SAML one-time auth code | 60s |
+| `link:code:<hex>` | Account-linking one-time code | 60s |
+| `relay:code:<hex>` | SAML/OAuth relay state | 5m |
+| `sio:<namespace>` | Socket.IO broadcast messages | None (pub/sub) |
+| `sio:server:<namespace>` | Socket.IO server-side emit | None (pub/sub) |
+| `sio:*` | Socket.IO subscription pattern | None (pub/sub) |
+
+### Leader Election
+
+In multi-instance deployments, background scheduled jobs (key rotation, cleanup tasks, LDAP sync, health monitors) must run on only one instance to prevent duplicate work. The leader election utility (`server/src/utils/leaderElection.ts`) provides two patterns:
+
+- **`runIfLeader(lockName, fn, ttlMs)`** — acquires a distributed lock, runs the function if acquired, releases on completion. Other instances skip the job.
+- **`startLeaderHeartbeat(lockName, ttlMs, intervalMs)`** — maintains continuous leadership via periodic lock renewal. If the leader loses the lock (crash, network partition), another instance re-acquires it.
+
+When the sidecar is disabled, both functions fall through and execute unconditionally (single-instance behavior).
+
+### Socket.IO Cross-Instance Adapter
+
+The `GoCacheAdapter` (`server/src/utils/cacheAdapter.ts`) replaces Socket.IO's default in-memory adapter with one backed by gocache pub/sub. Each server instance publishes broadcast and serverSideEmit packets to namespaced channels, and subscribes to `sio:*` using pattern matching. Messages include a source instance ID to prevent self-echo. This enables real-time notifications, gateway monitoring, and vault status updates to reach clients connected to any server instance.
+
+### Peer Replication
+
+The sidecar supports multi-instance clustering with peer discovery (Docker label-based, Kubernetes headless service, or manual peer list). KV mutations and pub/sub messages are replicated across peers using a streaming gRPC protocol with last-writer-wins (LWW) conflict resolution based on logical timestamps.
+
+### Configuration
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `CACHE_SIDECAR_URL` | `localhost:6380` | gRPC endpoint of the sidecar |
+| `CACHE_SIDECAR_ENABLED` | `true` | Enable/disable sidecar integration |
+| `CACHE_PROTO_PATH` | `infrastructure/gocache/proto/cache.proto` | Proto file location |
+| `CACHE_LISTEN` | `tcp://localhost:6380` | Sidecar listen address |
+| `CACHE_HEALTH_ADDR` | `0.0.0.0:6381` | Sidecar health HTTP endpoint |
+| `CACHE_MAX_MEMORY` | `256mb` | Maximum memory for KV store |
+| `CACHE_DISCOVERY` | `manual` | Peer discovery mode (`docker`, `kubernetes`, `manual`) |
+| `CACHE_PEERS` | (empty) | Comma-separated peer addresses (manual mode) |
+
 ## Technology
 
-Arsenale is built on a modern open-source stack: a Node.js and TypeScript server with a layered Express architecture backed by PostgreSQL through Prisma ORM, and a React client with Zustand state management and Material UI components. The monorepo includes four npm workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`, plus Go-based gateway components (`gateways/db-proxy/`, `gateways/rdgw/`) and a Go CLI tool (`tools/arsenale-cli/`). Remote desktop rendering uses the Guacamole protocol via guacamole-lite and guacamole-common-js. SSH terminals use XTerm.js with the ssh2 library. Real-time communication uses Socket.IO for terminal I/O, notifications, and monitoring updates. The zero-trust tunnel system uses raw `ws` WebSocket connections with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. The ABAC policy engine evaluates `AccessPolicy` Prisma records at session start time to enforce time-window, trusted-device, and MFA step-up constraints.
+Arsenale is built on a modern open-source stack: a Node.js and TypeScript server with a layered Express architecture backed by PostgreSQL through Prisma ORM, and a React client with Zustand state management and Material UI components. The monorepo includes four npm workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`, plus Go-based gateway components (`gateways/db-proxy/`, `gateways/rdgw/`), a Go CLI tool (`tools/arsenale-cli/`), and the Go cache sidecar (`infrastructure/gocache/`). Remote desktop rendering uses the Guacamole protocol via guacamole-lite and guacamole-common-js. SSH terminals use XTerm.js with the ssh2 library. Real-time communication uses Socket.IO for terminal I/O, notifications, and monitoring updates, with optional cross-instance delivery via the gocache pub/sub adapter. The zero-trust tunnel system uses raw `ws` WebSocket connections with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. The ABAC policy engine evaluates `AccessPolicy` Prisma records at session start time to enforce time-window, trusted-device, and MFA step-up constraints.

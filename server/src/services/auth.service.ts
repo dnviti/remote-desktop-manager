@@ -643,7 +643,7 @@ export async function verifyTotp(tempToken: string, code: string, binding?: { ip
     throw new Error('2FA verification failed');
   }
 
-  const secret = getDecryptedSecret(user, user.id);
+  const secret = await getDecryptedSecret(user, user.id);
   if (!secret) {
     throw new Error('2FA verification failed');
   }
@@ -654,7 +654,7 @@ export async function verifyTotp(tempToken: string, code: string, binding?: { ip
 
   // Lazy migration: encrypt plaintext TOTP secret if not yet encrypted
   if (user.totpSecret && !user.encryptedTotpSecret) {
-    const masterKey = getMasterKey(user.id);
+    const masterKey = await getMasterKey(user.id);
     if (masterKey) {
       const enc = encrypt(user.totpSecret, masterKey);
       await prisma.user.update({

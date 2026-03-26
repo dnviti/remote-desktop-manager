@@ -76,7 +76,7 @@ async function prepareJsonExport(
   userId: string,
   includeCredentials: boolean
 ): Promise<unknown> {
-  const masterKey = includeCredentials ? getMasterKey(userId) : null;
+  const masterKey = includeCredentials ? await getMasterKey(userId) : null;
   if (includeCredentials && !masterKey) {
     throw new AppError('Vault is locked. Cannot export credentials.', 403);
   }
@@ -155,7 +155,7 @@ async function prepareCsvExport(
   userId: string,
   includeCredentials: boolean
 ): Promise<string> {
-  const masterKey = includeCredentials ? getMasterKey(userId) : null;
+  const masterKey = includeCredentials ? await getMasterKey(userId) : null;
   if (includeCredentials && !masterKey) {
     throw new AppError('Vault is locked. Cannot export credentials.', 403);
   }
@@ -251,7 +251,7 @@ export async function importConnectionsFromCsv(
   const { parseCSV } = await import('../utils/csvParser');
   const { headers, rows } = parseCSV(csvData);
 
-  const masterKey = getMasterKey(userId);
+  const masterKey = await getMasterKey(userId);
   if (!masterKey) {
     throw new AppError('Vault is locked. Cannot import connections with credentials.', 403);
   }
@@ -355,7 +355,7 @@ export async function importConnectionsFromJson(
   const { userId, tenantId, duplicateStrategy } = options;
   const result: ImportResult = { imported: 0, skipped: 0, failed: 0, errors: [] };
 
-  const masterKey = getMasterKey(userId);
+  const masterKey = await getMasterKey(userId);
   if (!masterKey) {
     throw new AppError('Vault is locked. Cannot import connections with credentials.', 403);
   }
@@ -457,7 +457,7 @@ export async function importConnectionsFromMremoteng(
   const { userId, tenantId, duplicateStrategy } = options;
   const result: ImportResult = { imported: 0, skipped: 0, failed: 0, errors: [] };
 
-  const masterKey = getMasterKey(userId);
+  const masterKey = await getMasterKey(userId);
   if (!masterKey) {
     throw new AppError('Vault is locked. Cannot import connections with credentials.', 403);
   }
@@ -544,7 +544,7 @@ export async function importConnectionsFromRdp(
   const { userId, tenantId, duplicateStrategy } = options;
   const result: ImportResult = { imported: 0, skipped: 0, failed: 0, errors: [] };
 
-  const masterKey = getMasterKey(userId);
+  const masterKey = await getMasterKey(userId);
   if (!masterKey) {
     throw new AppError('Vault is locked. Cannot import connections with credentials.', 403);
   }

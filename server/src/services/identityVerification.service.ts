@@ -218,7 +218,7 @@ export async function confirmVerification(
         },
       });
       if (!user) throw new AppError('User not found', 404);
-      const secret = getDecryptedSecret(user, userId);
+      const secret = await getDecryptedSecret(user, userId);
       if (!secret) throw new AppError('TOTP is not configured properly.', 400);
       valid = verifyTotpCode(secret, payload.code);
       break;

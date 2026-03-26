@@ -75,7 +75,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
       // consumeRelayCode() does a server-side Map lookup keyed by the opaque token;
       // returns null for empty/invalid/expired codes. The returned userId is server-stored,
       // never derived from user input. No user-controlled condition guards the action.
-      const linkUserId = consumeRelayCode(String(req.query.state ?? ''));
+      const linkUserId = await consumeRelayCode(String(req.query.state ?? ''));
       if (linkUserId) {
         const linkUser = await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } });
         if (linkUser) {
@@ -109,7 +109,7 @@ export function handleCallback(req: Request, res: Response, next: NextFunction) 
       const csrfToken = setCsrfCookie(res);
 
       // Use a short-lived one-time code instead of putting tokens in the URL
-      const code = generateAuthCode({
+      const code = await generateAuthCode({
         accessToken: tokens.accessToken,
         csrfToken,
         needsVaultSetup: !result.user.vaultSetupComplete,
@@ -144,14 +144,14 @@ export function getAvailableProviders(_req: Request, res: Response) {
   res.json(providers);
 }
 
-export function initiateLinkOAuth(req: Request, res: Response, next: NextFunction) {
+export async function initiateLinkOAuth(req: Request, res: Response, next: NextFunction) {
   // Accept a one-time link code (preferred) to avoid JWTs in URL params.
   // Falls back to Authorization header, then query param token for backward compat.
   let userId: string | undefined;
 
   const linkCode = req.query.code as string | undefined;
   if (linkCode) {
-    const resolved = consumeLinkCode(linkCode);
+    const resolved = await consumeLinkCode(linkCode);
     if (!resolved) return next(new AppError('Invalid or expired link code', 401));
     userId = resolved;
   } else {
@@ -173,7 +173,7 @@ export function initiateLinkOAuth(req: Request, res: Response, next: NextFunctio
     return next(new AppError('OAuth provider not available', 400));
   }
 
-  const state = generateRelayCode(userId);
+  const state = await generateRelayCode(userId);
 
   passport.authenticate(provider, {
     scope: getScopes(provider),
@@ -187,19 +187,19 @@ export function initiateLinkOAuth(req: Request, res: Response, next: NextFunctio
  * The client calls this via Axios (with Authorization header),
  * then redirects to the link endpoint with ?code=... instead of ?token=...
  */
-export function generateLinkCodeEndpoint(req: AuthRequest, res: Response) {
+export async function generateLinkCodeEndpoint(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const code = generateLinkCode(req.user.userId);
+  const code = await generateLinkCode(req.user.userId);
   res.json({ code });
 }
 
-export function exchangeCode(req: Request, res: Response, next: NextFunction) {
+export async function exchangeCode(req: Request, res: Response, next: NextFunction) {
   const { code } = req.body as { code?: string };
   if (!code || typeof code !== 'string') {
     return next(new AppError('Missing authorization code', 400));
   }
 
-  const data = consumeAuthCode(code);
+  const data = await consumeAuthCode(code);
   if (!data) {
     return next(new AppError('Invalid or expired authorization code', 400));
   }

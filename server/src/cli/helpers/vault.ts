@@ -11,7 +11,7 @@ export async function unlockUserVault(identifier: string, password?: string): Pr
   }
 
   // Already unlocked in memory?
-  if (getVaultSession(user.id)) {
+  if (await getVaultSession(user.id)) {
     return user;
   }
 

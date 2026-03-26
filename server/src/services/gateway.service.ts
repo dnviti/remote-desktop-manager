@@ -142,7 +142,7 @@ export async function createGateway(
 
   if (input.type === 'SSH_BASTION') {
     if (input.username || input.password || input.sshPrivateKey) {
-      const masterKey = requireMasterKey(userId);
+      const masterKey = await requireMasterKey(userId);
       if (input.username) {
         const enc = encrypt(input.username, masterKey);
         encData.encryptedUsername = enc.ciphertext;
@@ -251,7 +251,7 @@ export async function updateGateway(
     if (existing.type !== 'SSH_BASTION') {
       throw new AppError('Credentials can only be set for SSH_BASTION gateways', 400);
     }
-    const masterKey = requireMasterKey(userId);
+    const masterKey = await requireMasterKey(userId);
     if (input.username !== undefined) {
       const enc = encrypt(input.username, masterKey);
       data.encryptedUsername = enc.ciphertext;
@@ -367,7 +367,7 @@ export async function getGatewayCredentials(
     return { username: null, password: null, sshPrivateKey: null };
   }
 
-  const masterKey = requireMasterKey(userId);
+  const masterKey = await requireMasterKey(userId);
 
   const username =
     gateway.encryptedUsername && gateway.usernameIV && gateway.usernameTag

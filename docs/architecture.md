@@ -57,6 +57,7 @@ flowchart TD
     subgraph Data["Data Layer"]
         DB[(PostgreSQL 16)]
         Prisma["Prisma ORM"]
+        GoCache["gocache Sidecar<br/>gRPC :6380"]
     end
 
     subgraph Gateways["Gateway Infrastructure"]
@@ -84,6 +85,7 @@ flowchart TD
     XTerm -->|Socket.IO /ssh| SIO
     Guac -->|WebSocket| GuacWS
     API --> Prisma --> DB
+    Server -->|gRPC| GoCache
     SIO -->|SSH2| SSHGw
     GuacWS --> GuacD
     GuacD -->|RDP/VNC Protocol| SSHGw
@@ -115,6 +117,9 @@ Additional gateway components (not npm workspaces):
 - `gateways/guacd/` — Custom guacd image with embedded tunnel agent
 - `gateways/guacenc/` — Recording processor (Guacamole → MP4, asciicast → GIF)
 - `gateways/ssh-gateway/` — SSH bastion with embedded tunnel agent
+
+Infrastructure components:
+- `infrastructure/gocache/` — Go-based in-memory cache sidecar (KV, pub/sub, locks, queues over gRPC)
 
 ## Server Architecture
 
@@ -487,6 +492,53 @@ sequenceDiagram
 - Stream ID (4 bytes): Multiplexed stream identifier
 - Payload length (3 bytes)
 - Payload (variable)
+
+## Distributed State (Go Cache Sidecar)
+
+The `gocache` sidecar (`infrastructure/gocache/`) is a Go-based in-memory cache server that enables multi-instance Arsenale deployments by providing distributed KV storage, pub/sub, distributed locks, and named queues over gRPC.
+
+### Integration Architecture
+
+```mermaid
+flowchart TD
+    subgraph Instances["Server Instances"]
+        S1["Server 1"]
+        S2["Server 2"]
+    end
+
+    subgraph Sidecar["gocache Sidecar (gRPC :6380)"]
+        KV["KV Store<br/>TTL + LWW replication"]
+        PS["Pub/Sub Broker<br/>Pattern subscriptions"]
+        LK["Lock Manager<br/>Fencing tokens"]
+        QU["Queue Manager<br/>Named queues"]
+    end
+
+    S1 -->|gRPC| KV
+    S1 -->|gRPC| PS
+    S1 -->|gRPC| LK
+    S2 -->|gRPC| KV
+    S2 -->|gRPC| PS
+    S2 -->|gRPC| LK
+```
+
+### Subsystems Using the Sidecar
+
+| Subsystem | Primitive | Key Pattern | Fallback |
+|-----------|-----------|-------------|----------|
+| Socket.IO adapter | Pub/sub | `sio:<namespace>`, `sio:server:<namespace>` | In-memory adapter |
+| Auth codes | KV (GetDel) | `auth:code:<hex>` | Local Map |
+| Link codes | KV (GetDel) | `link:code:<hex>` | Local Map |
+| Relay state | KV (GetDel) | `relay:code:<hex>` | Local Map |
+| Leader election | Distributed locks | Lock name per job | Every instance runs |
+| Vault session index | KV | JSON index arrays | Local Map cleanup |
+
+### Leader Election
+
+Background jobs use `runIfLeader()` or `startLeaderHeartbeat()` from `server/src/utils/leaderElection.ts` to ensure only one instance executes scheduled work. Locks use configurable TTLs with periodic renewal. If the leader crashes, the lock expires and another instance acquires it.
+
+### Graceful Degradation
+
+All sidecar operations return `null`/`false` on failure rather than throwing. Each store maintains a local in-memory fallback. Setting `CACHE_SIDECAR_ENABLED=false` disables all distributed features, making the sidecar fully optional for single-instance deployments.
 
 ## Security Architecture
 

@@ -45,7 +45,7 @@ export function generateSetup(email: string): { secret: string; otpauthUri: stri
 }
 
 export async function storeSetupSecret(userId: string, secret: string): Promise<void> {
-  const masterKey = requireMasterKey(userId);
+  const masterKey = await requireMasterKey(userId);
   const enc = encrypt(secret, masterKey);
   await prisma.user.update({
     where: { id: userId },
@@ -72,7 +72,7 @@ export async function verifyAndEnable(userId: string, code: string): Promise<voi
   if (!user) throw new AppError('User not found', 404);
   if (user.totpEnabled) throw new AppError('2FA is already enabled', 400);
 
-  const masterKey = requireMasterKey(userId);
+  const masterKey = await requireMasterKey(userId);
   const secret = resolveSecret(user, masterKey);
   if (!secret) throw new AppError('2FA setup not initiated', 400);
 
@@ -107,7 +107,7 @@ export async function disable(userId: string, code: string): Promise<void> {
   if (!user) throw new AppError('User not found', 404);
   if (!user.totpEnabled) throw new AppError('2FA is not enabled', 400);
 
-  const masterKey = requireMasterKey(userId);
+  const masterKey = await requireMasterKey(userId);
   const secret = resolveSecret(user, masterKey);
   if (!secret) throw new AppError('2FA is not enabled', 400);
 
@@ -131,7 +131,7 @@ export async function disable(userId: string, code: string): Promise<void> {
  * Decrypt and return the TOTP secret for a given user.
  * Used by auth.service for login-time TOTP verification.
  */
-export function getDecryptedSecret(
+export async function getDecryptedSecret(
   user: {
     encryptedTotpSecret: string | null;
     totpSecretIV: string | null;
@@ -139,8 +139,8 @@ export function getDecryptedSecret(
     totpSecret: string | null;
   },
   userId: string,
-): string | null {
-  const masterKey = getMasterKey(userId);
+): Promise<string | null> {
+  const masterKey = await getMasterKey(userId);
   if (!masterKey) {
     // Vault not unlocked — fall back to legacy plaintext if available
     return user.totpSecret;
