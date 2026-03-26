@@ -262,6 +262,13 @@ func (s *cacheServiceServer) GetDel(_ context.Context, req *GetDelRequest) (*Get
 	return &GetDelResponse{Value: val, Found: found}, nil
 }
 
+func (s *cacheServiceServer) Expire(_ context.Context, req *ExpireRequest) (*ExpireResponse, error) {
+	ttl := time.Duration(req.TtlMs) * time.Millisecond
+	ok := s.store.Expire(req.Key, ttl)
+	log.Printf("[kv] EXPIRE key=%q ttl=%v ok=%v", req.Key, ttl, ok)
+	return &ExpireResponse{Ok: ok}, nil
+}
+
 func (s *cacheServiceServer) Publish(_ context.Context, req *PublishRequest) (*PublishResponse, error) {
 	count, _ := s.broker.Publish(req.Channel, req.Message)
 	s.replication.ReplicatePubSub(req.Channel, req.Message)

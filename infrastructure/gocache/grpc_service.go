@@ -56,6 +56,14 @@ type GetDelResponse struct {
 	Found bool   `json:"found"`
 }
 
+type ExpireRequest struct {
+	Key   string `json:"key"`
+	TtlMs int64  `json:"ttl_ms"`
+}
+type ExpireResponse struct {
+	Ok bool `json:"ok"`
+}
+
 type PublishRequest struct {
 	Channel string `json:"channel"`
 	Message []byte `json:"message"`
@@ -152,6 +160,7 @@ type CacheServiceServer interface {
 	Delete(context.Context, *DeleteRequest) (*DeleteResponse, error)
 	Incr(context.Context, *IncrRequest) (*IncrResponse, error)
 	GetDel(context.Context, *GetDelRequest) (*GetDelResponse, error)
+	Expire(context.Context, *ExpireRequest) (*ExpireResponse, error)
 	Publish(context.Context, *PublishRequest) (*PublishResponse, error)
 	Subscribe(*SubscribeRequest, CacheService_SubscribeServer) error
 	AcquireLock(context.Context, *AcquireLockRequest) (*AcquireLockResponse, error)
@@ -181,6 +190,9 @@ func (UnimplementedCacheServiceServer) Incr(context.Context, *IncrRequest) (*Inc
 }
 func (UnimplementedCacheServiceServer) GetDel(context.Context, *GetDelRequest) (*GetDelResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GetDel not implemented")
+}
+func (UnimplementedCacheServiceServer) Expire(context.Context, *ExpireRequest) (*ExpireResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Expire not implemented")
 }
 func (UnimplementedCacheServiceServer) Publish(context.Context, *PublishRequest) (*PublishResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Publish not implemented")
@@ -283,6 +295,7 @@ var _CacheService_serviceDesc = grpc.ServiceDesc{
 		{MethodName: "Delete", Handler: _CacheService_Delete_Handler},
 		{MethodName: "Incr", Handler: _CacheService_Incr_Handler},
 		{MethodName: "GetDel", Handler: _CacheService_GetDel_Handler},
+		{MethodName: "Expire", Handler: _CacheService_Expire_Handler},
 		{MethodName: "Publish", Handler: _CacheService_Publish_Handler},
 		{MethodName: "AcquireLock", Handler: _CacheService_AcquireLock_Handler},
 		{MethodName: "ReleaseLock", Handler: _CacheService_ReleaseLock_Handler},
@@ -373,6 +386,20 @@ func _CacheService_GetDel_Handler(srv interface{}, ctx context.Context, dec func
 	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/cache.CacheService/GetDel"}
 	return interceptor(ctx, in, info, func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CacheServiceServer).GetDel(ctx, req.(*GetDelRequest))
+	})
+}
+
+func _CacheService_Expire_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ExpireRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServiceServer).Expire(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/cache.CacheService/Expire"}
+	return interceptor(ctx, in, info, func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServiceServer).Expire(ctx, req.(*ExpireRequest))
 	})
 }
 

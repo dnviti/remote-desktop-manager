@@ -242,7 +242,7 @@ export async function changePassword(
     identityVerification.consumeVerification(verificationId, userId, 'password-change');
 
     // Get master key from in-memory vault session (already unlocked)
-    const sessionKey = getMasterKey(userId);
+    const sessionKey = await getMasterKey(userId);
     if (!sessionKey) throw new AppError('Vault is locked. Please unlock it first.', 403);
     masterKey = Buffer.from(sessionKey);
   } else {

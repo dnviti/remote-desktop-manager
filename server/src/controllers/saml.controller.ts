@@ -25,14 +25,14 @@ export function initiateSaml(req: Request, res: Response, next: NextFunction) {
   passport.authenticate('saml', { session: false })(req, res, next);
 }
 
-export function initiateSamlLink(req: Request, res: Response, next: NextFunction) {
+export async function initiateSamlLink(req: Request, res: Response, next: NextFunction) {
   // Accept a one-time link code (preferred) to avoid JWTs in URL params.
   // Falls back to Authorization header, then query param token for backward compat.
   let userId: string | undefined;
 
   const linkCode = req.query.code as string | undefined;
   if (linkCode) {
-    const resolved = consumeLinkCode(linkCode);
+    const resolved = await consumeLinkCode(linkCode);
     if (!resolved) return next(new AppError('Invalid or expired link code', 401));
     userId = resolved;
   } else {
@@ -53,7 +53,7 @@ export function initiateSamlLink(req: Request, res: Response, next: NextFunction
     return next(new AppError('SAML provider not available', 400));
   }
 
-  const relayState = generateRelayCode(userId);
+  const relayState = await generateRelayCode(userId);
 
   passport.authenticate('saml', {
     session: false,
@@ -83,7 +83,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       // consumeRelayCode() does a server-side Map lookup keyed by the opaque token;
       // returns null for empty/invalid/expired codes. The returned userId is server-stored,
       // never derived from user input. No user-controlled condition guards the action.
-      const linkUserId = consumeRelayCode(String(req.body?.RelayState ?? ''));
+      const linkUserId = await consumeRelayCode(String(req.body?.RelayState ?? ''));
       if (linkUserId) {
         const linkUser = await prisma.user.findUnique({ where: { id: linkUserId }, select: { id: true } });
         if (linkUser) {
@@ -123,7 +123,7 @@ export function handleSamlCallback(req: Request, res: Response, next: NextFuncti
       const csrfToken = setCsrfCookie(res);
 
       // Use a short-lived one-time code instead of putting tokens in the URL
-      const code = generateAuthCode({
+      const code = await generateAuthCode({
         accessToken: tokens.accessToken,
         csrfToken,
         needsVaultSetup: !result.user.vaultSetupComplete,

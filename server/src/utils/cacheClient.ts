@@ -1,15 +1,17 @@
 /**
  * TypeScript gRPC client for the gocache sidecar.
  *
- * Uses @grpc/proto-loader for dynamic proto loading — no code generation required.
+ * The Go sidecar uses a custom JSON codec (registered as "proto") so all gRPC
+ * messages are JSON-encoded, NOT standard protobuf binary. This client matches
+ * that by using a manual service definition with JSON serialize/deserialize.
+ *
  * Graceful fallback: if the sidecar is unavailable, operations return null/false
  * and log a warning rather than crashing the application.
  */
 
-import path from 'path';
 import { logger } from './logger';
 
-// Types are dynamically loaded, but we define the shape for TypeScript usage.
+// Types matching the gRPC service definition (JSON-encoded on the wire).
 interface CacheClient {
   Get(
     req: { key: string },
@@ -30,6 +32,10 @@ interface CacheClient {
   GetDel(
     req: { key: string },
     callback: (err: Error | null, res: { value: Buffer; found: boolean }) => void
+  ): void;
+  Expire(
+    req: { key: string; ttl_ms: number },
+    callback: (err: Error | null, res: { ok: boolean }) => void
   ): void;
   Publish(
     req: { channel: string; message: Buffer },
@@ -60,25 +66,16 @@ interface CacheClient {
 
 let client: CacheClient | null = null;
 let grpcModule: typeof import('@grpc/grpc-js') | null = null;
-let protoLoaderModule: typeof import('@grpc/proto-loader') | null = null;
 
 const SIDECAR_URL = process.env.CACHE_SIDECAR_URL || 'localhost:6380';
-// CACHE_PROTO_PATH allows overriding the proto file location for Docker/production
-// where the infrastructure/ directory is not available. Copy cache.proto into the
-// server build context or set this env var to the correct path.
-const DEFAULT_PROTO_PATH = path.resolve(__dirname, 'cache.proto');
-const PROTO_PATH = process.env.CACHE_PROTO_PATH
-  ? path.resolve(process.env.CACHE_PROTO_PATH)
-  : DEFAULT_PROTO_PATH;
 
 /**
  * Lazily loads gRPC dependencies. Returns false if packages are not installed.
  */
 async function loadGrpcModules(): Promise<boolean> {
-  if (grpcModule && protoLoaderModule) return true;
+  if (grpcModule) return true;
   try {
     grpcModule = await import('@grpc/grpc-js');
-    protoLoaderModule = await import('@grpc/proto-loader');
     return true;
   } catch {
     logger.warn('gRPC packages not installed — cache sidecar client unavailable');
@@ -86,33 +83,80 @@ async function loadGrpcModules(): Promise<boolean> {
   }
 }
 
+// --- JSON codec helpers ---
+// The Go sidecar registers a JSON codec under the name "proto", so all gRPC
+// messages are JSON-encoded. Go's encoding/json encodes []byte as base64.
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function jsonRequestSerialize(value: any): Buffer {
+  const processed = { ...value };
+  for (const key of Object.keys(processed)) {
+    if (Buffer.isBuffer(processed[key])) {
+      processed[key] = processed[key].toString('base64');
+    }
+  }
+  return Buffer.from(JSON.stringify(processed));
+}
+
+function makeResponseDeserialize(bytesFields: string[]) {
+  return (buffer: Buffer) => {
+    const obj = JSON.parse(buffer.toString());
+    for (const field of bytesFields) {
+      if (typeof obj[field] === 'string' && obj[field]) {
+        obj[field] = Buffer.from(obj[field], 'base64');
+      }
+    }
+    return obj;
+  };
+}
+
+function makeMethodDef(
+  rpcPath: string,
+  responseStream: boolean,
+  bytesFields: string[],
+) {
+  return {
+    path: rpcPath,
+    requestStream: false,
+    responseStream,
+    requestSerialize: jsonRequestSerialize,
+    requestDeserialize: (buf: Buffer) => JSON.parse(buf.toString()),
+    responseSerialize: (value: unknown) => Buffer.from(JSON.stringify(value)),
+    responseDeserialize: makeResponseDeserialize(bytesFields),
+  };
+}
+
 /**
  * Returns the singleton cache client, creating it on first call.
- * Returns null if gRPC packages are not installed or the proto file is missing.
+ * Returns null if gRPC packages are not installed.
  */
 export async function getCacheClient(): Promise<CacheClient | null> {
   if (client) return client;
 
   const loaded = await loadGrpcModules();
-  if (!loaded || !grpcModule || !protoLoaderModule) return null;
+  if (!loaded || !grpcModule) return null;
 
   try {
-    const packageDefinition = await protoLoaderModule.load(PROTO_PATH, {
-      keepCase: true,
-      longs: Number,
-      enums: String,
-      defaults: true,
-      oneofs: true,
-    });
+    // Manual service definition with JSON serialization to match the Go sidecar's
+    // custom JSON codec (see infrastructure/gocache/codec.go).
+    const serviceDef = {
+      Get: makeMethodDef('/cache.CacheService/Get', false, ['value']),
+      Set: makeMethodDef('/cache.CacheService/Set', false, []),
+      Delete: makeMethodDef('/cache.CacheService/Delete', false, []),
+      Incr: makeMethodDef('/cache.CacheService/Incr', false, []),
+      GetDel: makeMethodDef('/cache.CacheService/GetDel', false, ['value']),
+      Expire: makeMethodDef('/cache.CacheService/Expire', false, []),
+      Publish: makeMethodDef('/cache.CacheService/Publish', false, []),
+      Subscribe: makeMethodDef('/cache.CacheService/Subscribe', true, ['message']),
+      AcquireLock: makeMethodDef('/cache.CacheService/AcquireLock', false, []),
+      ReleaseLock: makeMethodDef('/cache.CacheService/ReleaseLock', false, []),
+      RenewLock: makeMethodDef('/cache.CacheService/RenewLock', false, []),
+      Enqueue: makeMethodDef('/cache.CacheService/Enqueue', false, []),
+      Dequeue: makeMethodDef('/cache.CacheService/Dequeue', false, ['message']),
+    };
 
-    const proto = grpcModule.loadPackageDefinition(packageDefinition) as Record<string, unknown>;
-    const cachePackage = proto.cache as Record<string, unknown>;
-    const CacheService = cachePackage.CacheService as new (
-      address: string,
-      credentials: ReturnType<typeof import('@grpc/grpc-js').credentials.createInsecure>
-    ) => CacheClient;
-
-    client = new CacheService(SIDECAR_URL, grpcModule.credentials.createInsecure());
+    const CacheService = grpcModule.makeGenericClientConstructor(serviceDef, 'CacheService');
+    client = new CacheService(SIDECAR_URL, grpcModule.credentials.createInsecure()) as unknown as CacheClient;
     logger.info('Cache sidecar client connected to [REDACTED]');
     return client;
   } catch (err) {
@@ -195,6 +239,16 @@ export async function incr(key: string, delta = 1): Promise<number | null> {
   if (!c) return null;
   const res = await promisify(c.Incr, { key, delta }, c);
   return res?.value ?? null;
+}
+
+/**
+ * Set a TTL on an existing key. Returns true if the key existed.
+ */
+export async function expire(key: string, ttlMs: number): Promise<boolean> {
+  const c = await getCacheClient();
+  if (!c) return false;
+  const res = await promisify(c.Expire, { key, ttl_ms: ttlMs }, c);
+  return res?.ok ?? false;
 }
 
 /**

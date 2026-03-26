@@ -362,6 +362,30 @@ Anomaly detection for rapid connection to many distinct targets (MITRE T1021).
 | `LOG_HTTP_REQUESTS` | `false` | Log HTTP requests |
 | `LOG_GUACAMOLE` | `true` | Log guacamole-lite tunneling |
 
+## Cache Sidecar (gocache)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CACHE_SIDECAR_URL` | `localhost:6380` | gRPC endpoint of the gocache sidecar |
+| `CACHE_SIDECAR_ENABLED` | `true` | Set to `false` to disable distributed cache (single-instance fallback) |
+
+> **Note:** The TypeScript gRPC client uses a manual JSON codec service definition that matches the Go sidecar's custom codec (`infrastructure/gocache/codec.go`). No `.proto` file is loaded at runtime.
+
+Sidecar-side configuration (container environment):
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CACHE_LISTEN` | `tcp://localhost:6380` | gRPC listen address (`tcp://` or `unix://`) |
+| `CACHE_HEALTH_ADDR` | `0.0.0.0:6381` | Health HTTP endpoint address |
+| `CACHE_MAX_MEMORY` | `256mb` | Maximum KV store memory |
+| `CACHE_DISCOVERY` | `manual` | Peer discovery: `docker`, `kubernetes`, `manual` |
+| `CACHE_PEERS` | — | Comma-separated peer addresses (manual mode) |
+| `CACHE_K8S_SERVICE` | `gocache` | Kubernetes headless service name |
+| `CACHE_K8S_NAMESPACE` | — | Kubernetes namespace |
+| `CACHE_REPLICATION_ADDR` | `0.0.0.0:7380` | Peer replication listener address |
+| `CACHE_REPLICATION_BUFFER` | `10mb` | Replication buffer size |
+| `CACHE_GRPC_REFLECTION` | `false` | Enable gRPC reflection (debugging) |
+
 ## AI / LLM Integration
 
 | Variable | Default | Description |

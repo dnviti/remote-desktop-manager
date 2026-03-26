@@ -44,12 +44,14 @@ flowchart TD
         GuacD["guacd<br/>:4822"]
         GuacEnc["guacenc<br/>:3003"]
         SSHGw["ssh-gateway<br/>:2222"]
+        GoCache["gocache<br/>:6380"]
     end
 
     Browser --> Client
     Client -->|/api proxy| Server
     Client -->|/guacamole proxy| Server
     Server --> Postgres
+    Server -->|gRPC| GoCache
     Server --> GuacD
     Server --> GuacEnc
     GuacD --> SSHGw
@@ -76,6 +78,7 @@ flowchart TD
 | **guacenc** | `./gateways/guacenc` | Internal | Recording → video conversion |
 | **server** | `./server/Dockerfile` | 3001, 3002 | Express API + Guacamole WS |
 | **client** | `./client/Dockerfile` | 8080 → 3000 | Nginx reverse proxy + SPA |
+| **gocache** | `./infrastructure/gocache` | 6380, 6381 | In-memory cache sidecar (gRPC + health) |
 | **ssh-gateway** | `./gateways/ssh-gateway` | 2222 | SSH bastion (optional) |
 
 ### Volumes
@@ -85,6 +88,7 @@ flowchart TD
 | `pgdata` | PostgreSQL data | Database persistence |
 | `arsenale_drive` | `/guacd-drive` | RDP file drive redirection |
 | `arsenale_recordings` | `/recordings` | Session recordings |
+| `gocache_data` | `/data` | Cache sidecar persistence |
 
 ### Security Hardening
 
@@ -183,6 +187,19 @@ Go-based implementation of the MS-TSGU (Terminal Services Gateway) protocol. Ena
 ### Arsenale Connect CLI (`tools/arsenale-cli/`)
 
 Go CLI tool for native client orchestration. Authenticates via RFC 8628 device authorization, retrieves credentials from the vault, generates SSH proxy tokens or .rdp files, and launches native SSH/RDP clients.
+
+### Go Cache Sidecar (`infrastructure/gocache/Dockerfile`)
+
+Multi-stage build: Go 1.25-alpine (build) → Alpine 3.21 (runtime):
+
+1. Download Go modules and build static binary
+2. Create non-root `gocache` user (UID 10001)
+3. Create `/data` volume for persistence
+
+**Exposed ports:** 6380 (gRPC), 6381 (health HTTP)
+**Health check:** `wget /health` (10s interval, 5s start period)
+**User:** 10001:10001 (non-root)
+**Entry:** `/usr/local/bin/gocache`
 
 ### Guacenc (`gateways/guacenc/Dockerfile`)
 
@@ -290,6 +307,7 @@ All images are pushed to **GitHub Container Registry** (`ghcr.io/dnviti/arsenale
 | Service | Port | Purpose |
 |---------|------|---------|
 | postgres | 127.0.0.1:5432 | Local database |
+| gocache | 127.0.0.1:6380, 6381 | Cache sidecar (distributed state) |
 | guacenc | 3003 | Recording processor (optional) |
 
 Server and client run natively via `npm run dev`.
@@ -303,6 +321,7 @@ Server and client run natively via `npm run dev`.
 | Server | `wget /api/health` | 10s | 30s |
 | Client | Nginx `/health` | 10s | 5s |
 | SSH Gateway | `nc -z localhost $SSH_PORT` | 10s | — |
+| gocache | `wget /health` (HTTP :6381) | 10s | 5s |
 | DB Proxy | `/proc/1/status` | 30s | 10s |
 
 ## Production Checklist

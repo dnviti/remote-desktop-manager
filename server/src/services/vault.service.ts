@@ -22,6 +22,7 @@ import {
 import { verifyCode as verifyTotpCode, getDecryptedSecret } from './totp.service';
 import { AppError } from '../middleware/error.middleware';
 import { processPendingDistributions } from './secret.service';
+import * as cache from '../utils/cacheClient';
 
 // Resolve the effective vault auto-lock TTL for a user (in minutes, 0 = never)
 async function resolveVaultTtl(userId: string): Promise<number> {
@@ -78,6 +79,10 @@ export async function unlockVault(userId: string, password: string) {
     const ttl = await resolveVaultTtl(userId);
     storeVaultSession(userId, masterKey, ttl);
     storeVaultRecovery(userId, masterKey);
+    // Publish vault unlock event (fire-and-forget)
+    if (config.cacheSidecarEnabled) {
+      cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
+    }
     // Process any pending tenant vault key distributions
     processPendingDistributions(userId).catch(() => {/* non-blocking */});
     masterKey.fill(0);
@@ -91,12 +96,13 @@ export async function unlockVault(userId: string, password: string) {
 
 export function lockVault(userId: string) {
   softLockVault(userId);
+  // softLockVault already publishes vault:status event via cache
   return { unlocked: false };
 }
 
 export async function getVaultStatus(userId: string) {
-  const unlocked = checkVaultUnlocked(userId);
-  const recoveryAvailable = hasVaultRecovery(userId);
+  const unlocked = await checkVaultUnlocked(userId);
+  const recoveryAvailable = await hasVaultRecovery(userId);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },
@@ -133,7 +139,7 @@ export async function getVaultStatus(userId: string) {
 // MFA-based vault unlock
 
 export async function unlockVaultWithTotp(userId: string, code: string) {
-  const masterKey = getVaultRecovery(userId);
+  const masterKey = await getVaultRecovery(userId);
   if (!masterKey) throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
 
   const user = await prisma.user.findUnique({
@@ -151,7 +157,7 @@ export async function unlockVaultWithTotp(userId: string, code: string) {
   // Temporarily store so getDecryptedSecret can access the master key
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
-  const secret = getDecryptedSecret(user, userId);
+  const secret = await getDecryptedSecret(user, userId);
   if (!secret) {
     softLockVault(userId);
     masterKey.fill(0);
@@ -164,13 +170,17 @@ export async function unlockVaultWithTotp(userId: string, code: string) {
     throw new AppError('Invalid TOTP code', 401);
   }
 
+  // Publish vault unlock event (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
+  }
   processPendingDistributions(userId).catch(() => {/* non-blocking */});
   masterKey.fill(0);
   return { unlocked: true };
 }
 
 export async function requestVaultWebAuthnOptions(userId: string) {
-  if (!hasVaultRecovery(userId)) {
+  if (!(await hasVaultRecovery(userId))) {
     throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
   }
 
@@ -179,25 +189,29 @@ export async function requestVaultWebAuthnOptions(userId: string) {
 }
 
 export async function unlockVaultWithWebAuthn(userId: string, credential: Record<string, unknown>) {
-  if (!hasVaultRecovery(userId)) {
+  if (!(await hasVaultRecovery(userId))) {
     throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
   }
 
   const { verifyAuthentication } = await import('./webauthn.service');
   await verifyAuthentication(userId, credential as unknown as Parameters<typeof verifyAuthentication>[1]);
 
-  const masterKey = getVaultRecovery(userId);
+  const masterKey = await getVaultRecovery(userId);
   if (!masterKey) throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
 
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
+  // Publish vault unlock event (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
+  }
   processPendingDistributions(userId).catch(() => {/* non-blocking */});
   masterKey.fill(0);
   return { unlocked: true };
 }
 
 export async function requestVaultSmsCode(userId: string) {
-  if (!hasVaultRecovery(userId)) {
+  if (!(await hasVaultRecovery(userId))) {
     throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
   }
 
@@ -214,7 +228,7 @@ export async function requestVaultSmsCode(userId: string) {
 }
 
 export async function unlockVaultWithSms(userId: string, code: string) {
-  const masterKey = getVaultRecovery(userId);
+  const masterKey = await getVaultRecovery(userId);
   if (!masterKey) throw new AppError('MFA vault recovery unavailable. Please use your password.', 403);
 
   const { verifyOtp } = await import('./smsOtp.service');
@@ -226,6 +240,10 @@ export async function unlockVaultWithSms(userId: string, code: string) {
 
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
+  // Publish vault unlock event (fire-and-forget)
+  if (config.cacheSidecarEnabled) {
+    cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
+  }
   processPendingDistributions(userId).catch(() => {/* non-blocking */});
   masterKey.fill(0);
   return { unlocked: true };
@@ -300,7 +318,7 @@ export async function revealPassword(
   const user = await prisma.user.findUnique({ where: { id: userId } });
   if (!user) throw new AppError('User not found', 404);
 
-  let masterKey = getMasterKey(userId);
+  let masterKey = await getMasterKey(userId);
 
   if (!masterKey) {
     if (!user.vaultSalt || !user.encryptedVaultKey || !user.vaultKeyIV || !user.vaultKeyTag) {

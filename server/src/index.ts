@@ -37,6 +37,7 @@ import { rebuildLoginRateLimiter } from './middleware/loginRateLimit.middleware'
 import { rebuildOauthRateLimiters } from './middleware/oauthRateLimit.middleware';
 import { rebuildVaultRateLimiters } from './middleware/vaultRateLimit.middleware';
 import { rebuildSessionRateLimiter } from './middleware/sessionRateLimit.middleware';
+import { runIfLeader } from './utils/leaderElection';
 
 function freePort(port: number): void {
   try {
@@ -156,20 +157,26 @@ async function main() {
   // Managed gateway health check and reconciliation (only if orchestrator available)
   if (orchestrator.type !== OrchestratorType.NONE) {
     setInterval(() => {
-      managedGatewayService.healthCheck().catch((err) => {
-        logger.error('Managed gateway health check failed:', err);
+      runIfLeader('scheduler', async () => {
+        await managedGatewayService.healthCheck();
+      }).catch((err) => {
+        logger.error('Managed gateway health check failed:', err instanceof Error ? err.message : 'Unknown error');
       });
     }, 30 * 1000);
 
     setInterval(() => {
-      managedGatewayService.reconcileAll().catch((err) => {
-        logger.error('Managed gateway reconciliation failed:', err);
+      runIfLeader('scheduler', async () => {
+        await managedGatewayService.reconcileAll();
+      }).catch((err) => {
+        logger.error('Managed gateway reconciliation failed:', err instanceof Error ? err.message : 'Unknown error');
       });
     }, 5 * 60 * 1000);
 
     setInterval(() => {
-      autoscalerService.evaluateScaling().catch((err) => {
-        logger.error('Auto-scaling evaluation failed:', err);
+      runIfLeader('scheduler', async () => {
+        await autoscalerService.evaluateScaling();
+      }).catch((err) => {
+        logger.error('Auto-scaling evaluation failed:', err instanceof Error ? err.message : 'Unknown error');
       });
     }, 30 * 1000);
 
@@ -178,77 +185,94 @@ async function main() {
 
   // Cleanup expired external shares every hour
   setInterval(() => {
-    cleanupExpiredShares().catch((err) => {
-      logger.error('Failed to cleanup expired external shares:', err);
+    runIfLeader('scheduler', async () => {
+      await cleanupExpiredShares();
+    }).catch((err) => {
+      logger.error('Failed to cleanup expired external shares:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 60 * 60 * 1000);
 
   // Cleanup expired refresh tokens every hour
   setInterval(() => {
-    cleanupExpiredTokens().catch((err) => {
-      logger.error('Failed to cleanup expired refresh tokens:', err);
+    runIfLeader('scheduler', async () => {
+      await cleanupExpiredTokens();
+    }).catch((err) => {
+      logger.error('Failed to cleanup expired refresh tokens:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 60 * 60 * 1000);
 
   // Cleanup token families that exceeded absolute session timeout (every 5 minutes)
   setInterval(() => {
-    cleanupAbsolutelyTimedOutFamilies().catch((err) => {
-      logger.error('Absolute timeout family cleanup failed:', err);
+    runIfLeader('scheduler', async () => {
+      await cleanupAbsolutelyTimedOutFamilies();
+    }).catch((err) => {
+      logger.error('Absolute timeout family cleanup failed:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 5 * 60 * 1000);
 
   // Check for expiring secrets every 6 hours
   setInterval(() => {
-    checkExpiringSecrets().catch((err) => {
-      logger.error('Secret expiry check failed:', err);
+    runIfLeader('scheduler', async () => {
+      await checkExpiringSecrets();
+    }).catch((err) => {
+      logger.error('Secret expiry check failed:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 6 * 60 * 60 * 1000);
 
   // Mark idle sessions every minute
   setInterval(() => {
-    sessionService.markIdleSessions(config.sessionIdleThresholdMinutes).then((count) => {
+    runIfLeader('scheduler', async () => {
+      const count = await sessionService.markIdleSessions(config.sessionIdleThresholdMinutes);
       if (count > 0) logger.info(`Marked ${count} session(s) as idle`);
     }).catch((err) => {
-      logger.error('Failed to mark idle sessions:', err);
+      logger.error('Failed to mark idle sessions:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 60 * 1000);
 
   // Close inactive sessions every minute
   setInterval(() => {
-    checkAndCloseInactiveSessions().then((count) => {
+    runIfLeader('scheduler', async () => {
+      const count = await checkAndCloseInactiveSessions();
       if (count > 0) logger.info(`Session cleanup: closed ${count} inactive session(s)`);
     }).catch((err) => {
-      logger.error('Session inactivity cleanup failed:', err);
+      logger.error('Session inactivity cleanup failed:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 60 * 1000);
 
   // Cleanup old closed sessions daily
   setInterval(() => {
-    sessionService.cleanupClosedSessions(config.sessionCleanupRetentionDays).then((count) => {
+    runIfLeader('scheduler', async () => {
+      const count = await sessionService.cleanupClosedSessions(config.sessionCleanupRetentionDays);
       if (count > 0) logger.info(`Cleaned up ${count} old closed session(s)`);
     }).catch((err) => {
-      logger.error('Failed to cleanup closed sessions:', err);
+      logger.error('Failed to cleanup closed sessions:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 24 * 60 * 60 * 1000);
 
   // Cleanup expired recordings daily
   setInterval(() => {
-    cleanupExpiredRecordings().catch((err) => {
-      logger.error('Recording cleanup failed:', err);
+    runIfLeader('scheduler', async () => {
+      await cleanupExpiredRecordings();
+    }).catch((err) => {
+      logger.error('Recording cleanup failed:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 24 * 60 * 60 * 1000);
 
   // Cleanup idle RD Gateway tunnels every minute
   setInterval(() => {
-    cleanupIdleTunnels(config.sessionInactivityTimeoutSeconds).catch((err) => {
-      logger.error('RD Gateway tunnel cleanup failed:', err);
+    runIfLeader('scheduler', async () => {
+      await cleanupIdleTunnels(config.sessionInactivityTimeoutSeconds);
+    }).catch((err) => {
+      logger.error('RD Gateway tunnel cleanup failed:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 60 * 1000);
 
   // Cleanup expired device auth codes every 5 minutes
   setInterval(() => {
-    cleanupExpiredDeviceCodes().catch((err) => {
-      logger.error('Device auth code cleanup failed:', err);
+    runIfLeader('scheduler', async () => {
+      await cleanupExpiredDeviceCodes();
+    }).catch((err) => {
+      logger.error('Device auth code cleanup failed:', err instanceof Error ? err.message : 'Unknown error');
     });
   }, 5 * 60 * 1000);
 

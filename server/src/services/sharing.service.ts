@@ -37,7 +37,7 @@ export async function shareConnection(
 
   await assertShareableTenantBoundary(actingUserId, targetUser.id);
 
-  const targetKey = requireMasterKey(targetUser.id, 'Unable to share with this user at this time.', 400);
+  const targetKey = await requireMasterKey(targetUser.id, 'Unable to share with this user at this time.', 400);
 
   // Vault-backed connections: credentials resolved at session time from the vault secret.
   // No inline credential re-encryption needed — the shared user must have access to the vault secret.
@@ -93,7 +93,7 @@ export async function shareConnection(
 
   const decryptionKey = connection.teamId
     ? await resolveTeamKey(connection.teamId, actingUserId)
-    : requireMasterKey(actingUserId);
+    : await requireMasterKey(actingUserId);
 
   const encUsername = reEncryptField(
     { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },

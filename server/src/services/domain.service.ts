@@ -41,7 +41,7 @@ export async function updateDomainProfile(
       data.domainPasswordTag = null;
     } else {
       // Encrypt domain password with vault master key
-      const masterKey = getMasterKey(userId);
+      const masterKey = await getMasterKey(userId);
       if (!masterKey) throw new AppError('Vault must be unlocked to set domain password', 403);
 
       const enc = encrypt(input.domainPassword, masterKey);
@@ -98,7 +98,7 @@ export async function resolveDomainCredentials(
 
   let password: string | null = null;
   if (user.encryptedDomainPassword && user.domainPasswordIV && user.domainPasswordTag) {
-    const masterKey = getMasterKey(userId);
+    const masterKey = await getMasterKey(userId);
     if (!masterKey) throw new AppError('Vault must be unlocked to access domain credentials', 403);
 
     const field: EncryptedField = {

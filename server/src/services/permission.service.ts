@@ -353,7 +353,7 @@ export async function resolveEncryptionKey(
   if (teamId) {
     return resolveTeamKey(teamId, userId);
   }
-  const key = getMasterKey(userId);
+  const key = await getMasterKey(userId);
   if (!key) throw new AppError('Vault is locked. Please unlock it first.', 403);
   return key;
 }

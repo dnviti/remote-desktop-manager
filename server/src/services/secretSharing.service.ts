@@ -37,7 +37,7 @@ export async function shareSecret(
 
   await assertShareableTenantBoundary(actingUserId, targetUser.id);
 
-  const targetKey = requireMasterKey(targetUser.id, 'Unable to share with this user at this time.', 400);
+  const targetKey = await requireMasterKey(targetUser.id, 'Unable to share with this user at this time.', 400);
 
   // Decrypt with scope-appropriate key and re-encrypt for target user
   const decryptionKey = await resolveSecretEncryptionKey(

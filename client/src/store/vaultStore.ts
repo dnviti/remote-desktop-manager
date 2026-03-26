@@ -12,6 +12,8 @@ interface VaultState {
   mfaUnlockMethods: string[];
   checkStatus: () => Promise<void>;
   setUnlocked: (unlocked: boolean) => void;
+  /** Handle a vault status event pushed via Socket.IO */
+  handleSocketEvent: (data: { unlocked: boolean }) => void;
   startPolling: () => void;
   stopPolling: () => void;
 }
@@ -37,6 +39,10 @@ export const useVaultStore = create<VaultState>((set, get) => ({
   },
 
   setUnlocked: (unlocked) => set({ unlocked }),
+
+  handleSocketEvent: (data: { unlocked: boolean }) => {
+    set({ unlocked: data.unlocked, initialized: true });
+  },
 
   startPolling: () => {
     if (pollTimer) return;

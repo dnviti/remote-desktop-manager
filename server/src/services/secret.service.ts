@@ -61,11 +61,11 @@ export interface SecretListFilters {
 
 export async function resolveTenantKey(tenantId: string, userId: string): Promise<Buffer> {
   // Try cache first
-  const cached = getCachedTenantKey(tenantId, userId);
+  const cached = await getCachedTenantKey(tenantId, userId);
   if (cached) return cached;
 
   // Get user's personal master key
-  const userMasterKey = requireMasterKey(userId);
+  const userMasterKey = await requireMasterKey(userId);
 
   // Load from DB and decrypt
   const membership = await prisma.tenantVaultMember.findUnique({
@@ -98,7 +98,7 @@ export async function resolveSecretEncryptionKey(
 ): Promise<Buffer> {
   switch (scope) {
     case 'PERSONAL': {
-      return requireMasterKey(userId);
+      return await requireMasterKey(userId);
     }
     case 'TEAM': {
       if (!teamId) throw new AppError('teamId is required for team-scoped secrets', 400);
@@ -123,7 +123,7 @@ export async function initTenantVault(
     throw new AppError('Tenant vault is already initialized', 400);
   }
 
-  const initiatorMasterKey = requireMasterKey(initiatorUserId);
+  const initiatorMasterKey = await requireMasterKey(initiatorUserId);
 
   const tenantKey = generateTenantMasterKey();
   const encKeyForInitiator = encryptTenantKey(tenantKey, initiatorMasterKey);
@@ -153,7 +153,7 @@ export async function initTenantVault(
 
     // Distribute to other users whose vaults are currently unlocked
     for (const user of tenantUsers) {
-      const userMasterKey = getMasterKey(user.id);
+      const userMasterKey = await getMasterKey(user.id);
       if (userMasterKey) {
         const encKey = encryptTenantKey(tenantKey, userMasterKey);
         await tx.tenantVaultMember.create({
@@ -217,7 +217,7 @@ export async function distributeTenantKeyToUser(
   const tenantKey = await resolveTenantKey(tenantId, distributorUserId);
 
   // Check if target vault is unlocked
-  const targetMasterKey = getMasterKey(targetUserId);
+  const targetMasterKey = await getMasterKey(targetUserId);
 
   if (targetMasterKey) {
     // Direct distribution — target vault is open
@@ -266,7 +266,7 @@ export async function processPendingDistributions(userId: string): Promise<numbe
 
   if (pending.length === 0) return 0;
 
-  const userMasterKey = requireMasterKey(userId);
+  const userMasterKey = await requireMasterKey(userId);
   let processed = 0;
 
   for (const record of pending) {
@@ -480,7 +480,7 @@ export async function getSecret(
     });
     if (!sharedRecord) throw new AppError('Secret not found', 404);
 
-    const personalKey = requireMasterKey(userId);
+    const personalKey = await requireMasterKey(userId);
 
     const decryptedJson = decrypt(
       { ciphertext: sharedRecord.encryptedData, iv: sharedRecord.dataIV, tag: sharedRecord.dataTag },
@@ -869,7 +869,7 @@ export async function checkSecretBreach(
     });
     if (!sharedRecord) throw new AppError('Secret not found', 404);
 
-    const personalKey = requireMasterKey(userId);
+    const personalKey = await requireMasterKey(userId);
     decryptedJson = decrypt(
       { ciphertext: sharedRecord.encryptedData, iv: sharedRecord.dataIV, tag: sharedRecord.dataTag },
       personalKey

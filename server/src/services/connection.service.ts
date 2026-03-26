@@ -105,7 +105,7 @@ export async function createConnection(userId: string, input: CreateConnectionIn
   if (input.username !== undefined && input.password !== undefined) {
     const encryptionKey = input.teamId
       ? await resolveTeamKey(input.teamId, userId)
-      : requireMasterKey(userId);
+      : await requireMasterKey(userId);
     encUsername = encrypt(input.username, encryptionKey);
     encPassword = encrypt(input.password, encryptionKey);
     if (input.domain) {
@@ -620,7 +620,7 @@ async function resolveCredentialsFromSecret(
       where: { secretId: credentialSecretId, sharedWithUserId: userId },
     });
     if (!sharedRecord) throw new AppError('Credential secret not found', 404);
-    const personalKey = requireMasterKey(userId);
+    const personalKey = await requireMasterKey(userId);
     decryptedData = JSON.parse(
       decrypt({ ciphertext: sharedRecord.encryptedData, iv: sharedRecord.dataIV, tag: sharedRecord.dataTag }, personalKey)
     );
@@ -696,7 +696,7 @@ export async function getConnectionCredentials(
     if (!creds.username && connection.encryptedUsername && connection.usernameIV && connection.usernameTag) {
       const key = access.accessType === 'team' && connection.teamId
         ? await resolveTeamKey(connection.teamId, userId)
-        : requireMasterKey(userId);
+        : await requireMasterKey(userId);
       creds.username = decrypt(
         { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },
         key
@@ -706,7 +706,7 @@ export async function getConnectionCredentials(
     if (!creds.domain && connection.encryptedDomain && connection.domainIV && connection.domainTag) {
       const key = access.accessType === 'team' && connection.teamId
         ? await resolveTeamKey(connection.teamId, userId)
-        : requireMasterKey(userId);
+        : await requireMasterKey(userId);
       creds.domain = decryptDomain(connection, key);
     }
     return creds;
@@ -719,7 +719,7 @@ export async function getConnectionCredentials(
   }
 
   if (access.accessType === 'owner') {
-    const masterKey = requireMasterKey(userId);
+    const masterKey = await requireMasterKey(userId);
     return {
       username: decrypt(
         { ciphertext: connection.encryptedUsername, iv: connection.usernameIV, tag: connection.usernameTag },
@@ -749,7 +749,7 @@ export async function getConnectionCredentials(
   }
 
   // Shared: decrypt from SharedConnection re-encrypted copy
-  const masterKey = requireMasterKey(userId);
+  const masterKey = await requireMasterKey(userId);
   const shared = await prisma.sharedConnection.findFirst({
     where: { connectionId, sharedWithUserId: userId },
   });
