@@ -253,8 +253,10 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
       let recording: Recording;
       if (recordingId) {
         recording = await getRecording(recordingId);
+      } else if (sessionId) {
+        recording = await getSessionRecording(sessionId);
       } else {
-        recording = await getSessionRecording(sessionId!);
+        return;
       }
       setSelectedRecording(recording);
       setRecordingPlayerOpen(true);

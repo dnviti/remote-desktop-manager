@@ -1,4 +1,5 @@
 import api from './client';
+import type { Recording } from './recordings.api';
 
 export type AuditAction =
   | 'LOGIN' | 'LOGIN_OAUTH' | 'LOGIN_TOTP' | 'LOGIN_FAILURE' | 'LOGOUT' | 'REGISTER'
@@ -180,7 +181,7 @@ export async function getRecordingAuditTrail(recordingId: string): Promise<{ dat
   return data;
 }
 
-export async function getSessionRecording(sessionId: string) {
+export async function getSessionRecording(sessionId: string): Promise<Recording> {
   const { data } = await api.get(`/audit/session/${sessionId}/recording`);
   return data;
 }
