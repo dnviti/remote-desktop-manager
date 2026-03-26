@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, Box, IconButton, Typography,
   Chip, Tooltip, CircularProgress, Collapse, Table, TableBody, TableRow,
@@ -48,6 +48,16 @@ export default function RecordingPlayerDialog({
   const [auditTrail, setAuditTrail] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
   const [showAuditTrail, setShowAuditTrail] = useState(false);
+
+  // Reset per-recording cached state when the recording changes
+  useEffect(() => {
+    setAuditTrail([]);
+    setShowAuditTrail(false);
+    setAuditLoading(false);
+    setAnalysis(null);
+    setShowAnalysis(false);
+    setAnalysisError('');
+  }, [recording?.id]);
 
   if (!recording) return null;
 

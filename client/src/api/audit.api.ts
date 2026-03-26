@@ -176,7 +176,7 @@ export async function getConnectionAuditUsers(connectionId: string): Promise<Con
   return data;
 }
 
-export async function getRecordingAuditTrail(recordingId: string): Promise<{ data: AuditLogEntry[]; total: number }> {
+export async function getRecordingAuditTrail(recordingId: string): Promise<{ data: AuditLogEntry[]; hasMore: boolean }> {
   const { data } = await api.get(`/recordings/${recordingId}/audit-trail`);
   return data;
 }

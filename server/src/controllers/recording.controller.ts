@@ -6,6 +6,7 @@ import * as recordingService from '../services/recording.service';
 import * as auditService from '../services/audit.service';
 import prisma from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
+import { hasAnyRole } from '../middleware/tenant.middleware';
 import { validatedQuery } from '../middleware/validate.middleware';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
@@ -194,26 +195,44 @@ export async function exportVideo(req: AuthRequest, res: Response) {
 export async function getAuditTrail(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
   const recordingId = req.params.id as string;
-  const recording = await recordingService.getRecording(recordingId, req.user.userId);
+
+  // Find recording without userId filter — then check ownership or tenant role
+  const recording = await prisma.sessionRecording.findUnique({
+    where: { id: recordingId },
+    select: { id: true, sessionId: true, userId: true },
+  });
   if (!recording) throw new AppError('Recording not found', 404);
+
+  const isOwner = recording.userId === req.user.userId;
+  const isAuditor = Boolean(req.user.tenantId) && hasAnyRole(req.user.tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
+
+  if (!isOwner && !isAuditor) {
+    throw new AppError('Recording not found', 404);
+  }
+
   if (!recording.sessionId) {
-    res.json({ data: [], total: 0 });
+    res.json({ data: [], hasMore: false });
     return;
   }
 
+  const LIMIT = 200;
   const logs = await prisma.auditLog.findMany({
     where: {
-      userId: req.user.userId,
+      // Scope to user's own logs unless they're an auditor
+      ...(!isAuditor ? { userId: req.user.userId } : {}),
       OR: [
         { details: { path: ['sessionId'], equals: recording.sessionId } },
         { details: { path: ['recordingId'], equals: recordingId } },
       ],
     },
     orderBy: { createdAt: 'asc' },
-    take: 200,
+    take: LIMIT + 1,
   });
 
-  res.json({ data: logs, total: logs.length });
+  const hasMore = logs.length > LIMIT;
+  if (hasMore) logs.pop();
+
+  res.json({ data: logs, hasMore });
 }
 
 export async function deleteRecording(req: AuthRequest, res: Response) {

@@ -123,8 +123,11 @@ export async function getSessionRecording(req: AuthRequest, res: Response) {
 
   if (!recording) throw new AppError('Recording not found', 404);
 
-  // Verify the user owns the recording or has audit permission
-  if (recording.userId !== req.user.userId) {
+  // Verify the user owns the recording or is a tenant admin/auditor
+  const isOwner = recording.userId === req.user.userId;
+  const isAuditor = Boolean(req.user.tenantId) && hasAnyRole(req.user.tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
+
+  if (!isOwner && !isAuditor) {
     throw new AppError('Recording not found', 404);
   }
 
