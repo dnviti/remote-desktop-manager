@@ -10,9 +10,9 @@ services:
       - "127.0.0.1:5432:5432"
     volumes:
       - pgdata_dev:/var/lib/postgresql/data
-      - ./infrastructure/postgres-certs/server-cert.pem:/var/lib/postgresql/server.crt:ro
-      - ./infrastructure/postgres-certs/server-key.pem:/var/lib/postgresql/server.key:ro
-      - ./infrastructure/postgres-certs/ca.pem:/var/lib/postgresql/ca.crt:ro
+      - ./dev-certs/postgres/server-cert.pem:/var/lib/postgresql/server.crt:ro
+      - ./dev-certs/postgres/server-key.pem:/var/lib/postgresql/server.key:ro
+      - ./dev-certs/ca.pem:/var/lib/postgresql/ca.crt:ro
     command: >
       bash -c "
         cp /var/lib/postgresql/server.key /tmp/server.key &&
@@ -62,7 +62,7 @@ services:
       - GUACENC_AUTH_TOKEN=${GUACENC_AUTH_TOKEN:-}
     volumes:
       - ${RECORDING_PATH:-./data/recordings}:/recordings
-      - ./infrastructure/guacenc-certs:/certs:ro
+      - ./dev-certs/guacenc:/certs:ro
     networks:
       - arsenale-dev
 
@@ -134,8 +134,10 @@ services:
       - "127.0.0.1:6381:6381"
     volumes:
       - gocache_data_dev:/data
-      # Mount gocache mTLS certificates (read-only)
-      - ./infrastructure/gocache/certs:/certs:ro
+      # Mount gocache mTLS certificates (read-only) — shared CA at /certs/ca.pem
+      - ./dev-certs/ca.pem:/certs/ca.pem:ro
+      - ./dev-certs/gocache/server-cert.pem:/certs/server-cert.pem:ro
+      - ./dev-certs/gocache/server-key.pem:/certs/server-key.pem:ro
     networks:
       - arsenale-dev
     restart: unless-stopped

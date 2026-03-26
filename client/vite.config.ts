@@ -163,8 +163,8 @@ export default defineConfig({
     port: 3000,
     https: (() => {
       // Use provided certs or fall back to auto-generated dev certs from the server
-      const certPath = process.env.VITE_TLS_CERT || '../infrastructure/dev-server-certs/server-cert.pem';
-      const keyPath = process.env.VITE_TLS_KEY || '../infrastructure/dev-server-certs/server-key.pem';
+      const certPath = process.env.VITE_TLS_CERT || '../dev-certs/server/server-cert.pem';
+      const keyPath = process.env.VITE_TLS_KEY || '../dev-certs/server/server-key.pem';
       try {
         return {
           cert: fs.readFileSync(certPath),
