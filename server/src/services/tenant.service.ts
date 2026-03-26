@@ -124,6 +124,14 @@ export async function getTenant(tenantId: string) {
     tunnelRequireForRemote: tenant.tunnelRequireForRemote,
     tunnelTokenMaxLifetimeDays: tenant.tunnelTokenMaxLifetimeDays,
     tunnelAgentAllowedCidrs: tenant.tunnelAgentAllowedCidrs,
+    loginRateLimitWindowMs: tenant.loginRateLimitWindowMs,
+    loginRateLimitMaxAttempts: tenant.loginRateLimitMaxAttempts,
+    accountLockoutThreshold: tenant.accountLockoutThreshold,
+    accountLockoutDurationMs: tenant.accountLockoutDurationMs,
+    impossibleTravelSpeedKmh: tenant.impossibleTravelSpeedKmh,
+    jwtExpiresInSeconds: tenant.jwtExpiresInSeconds,
+    jwtRefreshExpiresInSeconds: tenant.jwtRefreshExpiresInSeconds,
+    vaultDefaultTtlMinutes: tenant.vaultDefaultTtlMinutes,
     recordingEnabled: tenant.recordingEnabled,
     recordingRetentionDays: tenant.recordingRetentionDays,
     fileUploadMaxSizeBytes: tenant.fileUploadMaxSizeBytes,
@@ -153,6 +161,14 @@ export async function updateTenant(tenantId: string, data: {
   tunnelRequireForRemote?: boolean;
   tunnelTokenMaxLifetimeDays?: number | null;
   tunnelAgentAllowedCidrs?: string[];
+  loginRateLimitWindowMs?: number | null;
+  loginRateLimitMaxAttempts?: number | null;
+  accountLockoutThreshold?: number | null;
+  accountLockoutDurationMs?: number | null;
+  impossibleTravelSpeedKmh?: number | null;
+  jwtExpiresInSeconds?: number | null;
+  jwtRefreshExpiresInSeconds?: number | null;
+  vaultDefaultTtlMinutes?: number | null;
   recordingEnabled?: boolean;
   recordingRetentionDays?: number | null;
   fileUploadMaxSizeBytes?: number | null;
@@ -214,6 +230,30 @@ export async function updateTenant(tenantId: string, data: {
   if (data.tunnelAgentAllowedCidrs !== undefined) {
     updateData.tunnelAgentAllowedCidrs = data.tunnelAgentAllowedCidrs;
   }
+  if (data.loginRateLimitWindowMs !== undefined) {
+    updateData.loginRateLimitWindowMs = data.loginRateLimitWindowMs;
+  }
+  if (data.loginRateLimitMaxAttempts !== undefined) {
+    updateData.loginRateLimitMaxAttempts = data.loginRateLimitMaxAttempts;
+  }
+  if (data.accountLockoutThreshold !== undefined) {
+    updateData.accountLockoutThreshold = data.accountLockoutThreshold;
+  }
+  if (data.accountLockoutDurationMs !== undefined) {
+    updateData.accountLockoutDurationMs = data.accountLockoutDurationMs;
+  }
+  if (data.impossibleTravelSpeedKmh !== undefined) {
+    updateData.impossibleTravelSpeedKmh = data.impossibleTravelSpeedKmh;
+  }
+  if (data.jwtExpiresInSeconds !== undefined) {
+    updateData.jwtExpiresInSeconds = data.jwtExpiresInSeconds;
+  }
+  if (data.jwtRefreshExpiresInSeconds !== undefined) {
+    updateData.jwtRefreshExpiresInSeconds = data.jwtRefreshExpiresInSeconds;
+  }
+  if (data.vaultDefaultTtlMinutes !== undefined) {
+    updateData.vaultDefaultTtlMinutes = data.vaultDefaultTtlMinutes;
+  }
   if (data.recordingEnabled !== undefined) {
     updateData.recordingEnabled = data.recordingEnabled;
   }
@@ -256,6 +296,14 @@ export async function updateTenant(tenantId: string, data: {
     tunnelRequireForRemote: tenant.tunnelRequireForRemote,
     tunnelTokenMaxLifetimeDays: tenant.tunnelTokenMaxLifetimeDays,
     tunnelAgentAllowedCidrs: tenant.tunnelAgentAllowedCidrs,
+    loginRateLimitWindowMs: tenant.loginRateLimitWindowMs,
+    loginRateLimitMaxAttempts: tenant.loginRateLimitMaxAttempts,
+    accountLockoutThreshold: tenant.accountLockoutThreshold,
+    accountLockoutDurationMs: tenant.accountLockoutDurationMs,
+    impossibleTravelSpeedKmh: tenant.impossibleTravelSpeedKmh,
+    jwtExpiresInSeconds: tenant.jwtExpiresInSeconds,
+    jwtRefreshExpiresInSeconds: tenant.jwtRefreshExpiresInSeconds,
+    vaultDefaultTtlMinutes: tenant.vaultDefaultTtlMinutes,
     recordingEnabled: tenant.recordingEnabled,
     recordingRetentionDays: tenant.recordingRetentionDays,
     fileUploadMaxSizeBytes: tenant.fileUploadMaxSizeBytes,

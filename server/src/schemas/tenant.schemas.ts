@@ -56,7 +56,25 @@ export const updateTenantSchema = z.object({
         return false;
       });
     }, { message: 'Invalid IP address or CIDR notation' }),
-});
+  // Login security policy
+  loginRateLimitWindowMs: z.number().int().min(1000).max(86400000).nullable().optional(),
+  loginRateLimitMaxAttempts: z.number().int().min(1).max(100).nullable().optional(),
+  accountLockoutThreshold: z.number().int().min(1).max(100).nullable().optional(),
+  accountLockoutDurationMs: z.number().int().min(60000).max(86400000).nullable().optional(),
+  impossibleTravelSpeedKmh: z.number().int().min(0).max(50000).nullable().optional(),
+  // Session & token lifetime policy
+  jwtExpiresInSeconds: z.number().int().min(60).max(86400).nullable().optional(),
+  jwtRefreshExpiresInSeconds: z.number().int().min(300).max(2592000).nullable().optional(),
+  vaultDefaultTtlMinutes: z.number().int().min(0).max(10080).nullable().optional(),
+}).refine((data) => {
+  if (
+    data.vaultDefaultTtlMinutes != null && data.vaultDefaultTtlMinutes > 0 &&
+    data.vaultAutoLockMaxMinutes != null && data.vaultAutoLockMaxMinutes > 0
+  ) {
+    return data.vaultDefaultTtlMinutes <= data.vaultAutoLockMaxMinutes;
+  }
+  return true;
+}, { message: 'vaultDefaultTtlMinutes must not exceed vaultAutoLockMaxMinutes', path: ['vaultDefaultTtlMinutes'] });
 export type UpdateTenantInput = z.infer<typeof updateTenantSchema>;
 
 export const inviteUserSchema = z.object({

@@ -184,7 +184,7 @@ export async function issueTokens(user: {
   // Fetch all tenant memberships for the user
   const allMemberships = await prisma.tenantMember.findMany({
     where: { userId: user.id },
-    include: { tenant: { select: { id: true, name: true, slug: true } } },
+    include: { tenant: { select: { id: true, name: true, slug: true, jwtExpiresInSeconds: true, jwtRefreshExpiresInSeconds: true } } },
     orderBy: { joinedAt: 'asc' },
   });
 
@@ -216,12 +216,21 @@ export async function issueTokens(user: {
     ...(ipUaHash && { ipUaHash }),
     ...(mfaMethod && { mfaMethod }),
   };
+  // Resolve effective token lifetimes (tenant override > config default)
+  const activeTenantSettings = activeMembership?.tenant;
+  const effectiveAccessExpiresIn = activeTenantSettings?.jwtExpiresInSeconds
+    ? `${activeTenantSettings.jwtExpiresInSeconds}s`
+    : (config.jwtExpiresIn as string);
+  const effectiveRefreshExpiresMs = activeTenantSettings?.jwtRefreshExpiresInSeconds
+    ? activeTenantSettings.jwtRefreshExpiresInSeconds * 1000
+    : parseExpiry(config.jwtRefreshExpiresIn);
+
   const accessToken = jwt.sign(payload, config.jwtSecret, {
-    expiresIn: config.jwtExpiresIn as string,
+    expiresIn: effectiveAccessExpiresIn,
   } as jwt.SignOptions);
 
   const refreshTokenValue = uuidv4();
-  const refreshExpiresMs = parseExpiry(config.jwtRefreshExpiresIn);
+  const refreshExpiresMs = effectiveRefreshExpiresMs;
   const family = tokenFamily ?? uuidv4();
 
   // Preserve familyCreatedAt during token rotation (existing family)
@@ -461,7 +470,7 @@ export async function login(email: string, password: string, ipAddress?: string 
       tenantMemberships: {
         where: { isActive: true },
         take: 1,
-        include: { tenant: { select: { mfaRequired: true } } },
+        include: { tenant: { select: { mfaRequired: true, accountLockoutThreshold: true, accountLockoutDurationMs: true } } },
       },
     },
   });
@@ -474,6 +483,11 @@ export async function login(email: string, password: string, ipAddress?: string 
     });
     throw new Error('Invalid email or password');
   }
+
+  // Resolve effective lockout settings (tenant override > config default)
+  const tenantSettings = user.tenantMemberships[0]?.tenant;
+  const effectiveLockoutThreshold = tenantSettings?.accountLockoutThreshold ?? config.accountLockoutThreshold;
+  const effectiveLockoutDurationMs = tenantSettings?.accountLockoutDurationMs ?? config.accountLockoutDurationMs;
 
   // Check if account is disabled
   if (!user.enabled) {
@@ -517,8 +531,8 @@ export async function login(email: string, password: string, ipAddress?: string 
   if (!valid) {
     const newFailedAttempts = user.failedLoginAttempts + 1;
     const lockout =
-      newFailedAttempts >= config.accountLockoutThreshold
-        ? { lockedUntil: new Date(Date.now() + config.accountLockoutDurationMs), failedLoginAttempts: 0 }
+      newFailedAttempts >= effectiveLockoutThreshold
+        ? { lockedUntil: new Date(Date.now() + effectiveLockoutDurationMs), failedLoginAttempts: 0 }
         : { failedLoginAttempts: newFailedAttempts };
     await prisma.user.update({ where: { id: user.id }, data: lockout });
     auditService.log({
@@ -528,7 +542,7 @@ export async function login(email: string, password: string, ipAddress?: string 
         reason: 'invalid_password',
         email,
         failedAttempts: newFailedAttempts,
-        accountLocked: newFailedAttempts >= config.accountLockoutThreshold,
+        accountLocked: newFailedAttempts >= effectiveLockoutThreshold,
       },
       ipAddress,
     });

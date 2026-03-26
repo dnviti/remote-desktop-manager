@@ -41,6 +41,20 @@ function haversineDistanceKm(
  *  3. Derive the required speed (distance / time).
  *  4. If speed exceeds the configurable threshold, flag the entry and notify tenant admins.
  */
+async function resolveSpeedThreshold(userId: string): Promise<number> {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: {
+      tenantMemberships: {
+        where: { isActive: true },
+        take: 1,
+        include: { tenant: { select: { impossibleTravelSpeedKmh: true } } },
+      },
+    },
+  });
+  return user?.tenantMemberships[0]?.tenant.impossibleTravelSpeedKmh ?? config.impossibleTravelSpeedKmh;
+}
+
 export function check(
   auditLogId: string,
   userId: string,
@@ -49,7 +63,6 @@ export function check(
   createdAt: Date,
 ): void {
   if (!AUTH_ACTIONS.includes(action)) return;
-  if (config.impossibleTravelSpeedKmh <= 0) return;
   if (!geoCoords || geoCoords.length < 2) return;
 
   doCheck(auditLogId, userId, geoCoords, createdAt).catch((err) => {
@@ -63,6 +76,9 @@ async function doCheck(
   currentCoords: number[],
   currentTime: Date,
 ): Promise<void> {
+  const threshold = await resolveSpeedThreshold(userId);
+  if (threshold <= 0) return;
+
   // Find the most recent previous auth event with geo data for this user
   const previous = await prisma.auditLog.findFirst({
     where: {
@@ -98,7 +114,7 @@ async function doCheck(
 
   const requiredSpeedKmh = distanceKm / timeDiffHours;
 
-  if (requiredSpeedKmh <= config.impossibleTravelSpeedKmh) return;
+  if (requiredSpeedKmh <= threshold) return;
 
   // --- Impossible travel detected ---
 
@@ -130,7 +146,7 @@ async function doCheck(
           distanceKm: Math.round(distanceKm),
           timeDiffMinutes: Math.round(timeDiffHours * 60),
           requiredSpeedKmh: Math.round(requiredSpeedKmh),
-          thresholdKmh: config.impossibleTravelSpeedKmh,
+          thresholdKmh: threshold,
         },
         ipAddress: currentGeo?.ipAddress ?? null,
         geoCountry: currentGeo?.geoCountry ?? null,

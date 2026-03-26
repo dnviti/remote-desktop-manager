@@ -48,6 +48,16 @@ model Tenant {
   tunnelRequireForRemote       Boolean  @default(false)
   tunnelTokenMaxLifetimeDays   Int?
   tunnelAgentAllowedCidrs      String[] @default([])
+  // Login security policy (null = use system default from env var)
+  loginRateLimitWindowMs       Int?
+  loginRateLimitMaxAttempts    Int?
+  accountLockoutThreshold      Int?
+  accountLockoutDurationMs     Int?
+  impossibleTravelSpeedKmh     Int?
+  // Session & token lifetime policy (null = use system default from env var)
+  jwtExpiresInSeconds          Int?
+  jwtRefreshExpiresInSeconds   Int?
+  vaultDefaultTtlMinutes       Int?
   recordingEnabled             Boolean  @default(true)
   recordingRetentionDays       Int?
   fileUploadMaxSizeBytes       Int?

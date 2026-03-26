@@ -32,15 +32,16 @@ async function resolveVaultTtl(userId: string): Promise<number> {
       tenantMemberships: {
         where: { isActive: true },
         take: 1,
-        include: { tenant: { select: { vaultAutoLockMaxMinutes: true } } },
+        include: { tenant: { select: { vaultAutoLockMaxMinutes: true, vaultDefaultTtlMinutes: true } } },
       },
     },
   });
 
   const userPref = user?.vaultAutoLockMinutes; // null = server default, 0 = never
+  const tenantDefault = user?.tenantMemberships[0]?.tenant.vaultDefaultTtlMinutes; // null = no tenant default
   const tenantMax = user?.tenantMemberships[0]?.tenant.vaultAutoLockMaxMinutes; // null = no enforcement
 
-  let effective = userPref ?? config.vaultTtlMinutes;
+  let effective = userPref ?? tenantDefault ?? config.vaultTtlMinutes;
 
   if (tenantMax !== null && tenantMax !== undefined) {
     if (effective === 0 && tenantMax > 0) {
