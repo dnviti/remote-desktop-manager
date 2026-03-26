@@ -1,604 +1,249 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
 ## Language
 
-Always respond and work in English, even if the user's prompt is written in another language.
+Always respond and work in English, even if the user's prompt is in another language.
 
 ## Workflow & Principles
 
-### Core Principles
-
-- **Simplicity First:** Make every change as simple as possible. Impact minimal code.
+- **Simplicity First:** Simplest change possible. Minimal code impact.
 - **No Laziness:** Find root causes. No temporary fixes. Senior developer standards.
-- **Minimal Impact:** Only touch what's necessary. No side effects introducing new bugs.
-- **Always Ask Before Commit/Push:** Never run `git commit` or `git push` without explicitly asking the user for confirmation first. Present the list of staged files and the proposed commit message, then wait for approval.
-- **Protected Branches — No Direct Commits:** Never commit or push directly to `main`, `staging`, or `develop`. Always work on a dedicated branch (e.g., `task/`, `fix/`, `chore/`, `feat/`) and use pull requests to merge into those standard branches. `main`, `staging`, and `develop` are pull-only — never push to them.
-
-### Plan Mode Default
-
-Enter plan mode for ANY non-trivial task (3+ steps or architectural decisions). If something goes sideways, STOP and re-plan immediately. Use plan mode for verification steps, not just building. Write detailed specs upfront to reduce ambiguity.
-
-### Subagent Strategy
-
-Use subagents liberally to keep the main context window clean. Offload research, exploration, and parallel analysis to subagents. For complex problems, throw more compute at it via subagents. One task per subagent for focused execution.
-
-### Self-Improvement Loop
-
-After ANY correction from the user: update `tasks/lessons.md` with the pattern. Write rules that prevent the same mistake. Ruthlessly iterate on these lessons until the mistake rate drops. Review lessons at session start for the relevant project.
-
-### Verification Before Done
-
-Never mark a task complete without proving it works. Diff behavior between `main` and your changes when relevant. Ask yourself: "Would a staff engineer approve this?" Run tests, check logs, demonstrate correctness. `npm run verify` must pass before closing any task.
-
-### Demand Elegance (Balanced)
-
-For non-trivial changes: pause and ask "is there a more elegant way?" If a fix feels hacky: "Knowing everything I know now, implement the elegant solution." Skip this for simple, obvious fixes — don't over-engineer. Challenge your own work before presenting it.
-
-### Autonomous Bug Fixing
-
-When given a bug report: just fix it. Don't ask for hand-holding. Point at logs, errors, failing tests — then resolve them. Zero context switching required from the user. Go fix failing CI tests without being told how.
+- **Minimal Impact:** Only touch what's necessary. No side effects.
+- **Always Ask Before Commit/Push:** Present staged files and proposed message, wait for approval.
+- **Protected Branches:** Never commit/push directly to `main`, `staging`, or `develop`. Always use dedicated branches (`task/`, `fix/`, `chore/`, `feat/`) and PRs.
+- **Plan Mode Default:** Enter plan mode for any non-trivial task (3+ steps or architectural decisions). STOP and re-plan if things go sideways.
+- **Subagent Strategy:** Use subagents liberally for research, exploration, parallel analysis. One task per subagent.
+- **Self-Improvement:** After any correction, update `tasks/lessons.md`. Review lessons at session start.
+- **Verification:** Never mark a task complete without proving it works. `npm run verify` must pass before closing any task.
+- **Database Migrations:** When a task modifies `schema.prisma`, ALWAYS generate and apply migrations (`npm run db:migrate`) before marking the task complete. Incomplete migrations will break the application. This is mandatory — no exceptions.
+- **Demand Elegance:** For non-trivial changes, ask "is there a more elegant way?" Skip for simple fixes.
+- **Autonomous Bug Fixing:** Given a bug report, just fix it. Zero context switching from the user.
 
 ### Task Execution Workflow
 
-1. **Plan First:** Write plan to `tasks/todo.md` with checkable items
-2. **Verify Plan:** Check in with the user before starting implementation
-3. **Track Progress:** Mark items complete as you go
-4. **Explain Changes:** High-level summary at each step
-5. **Document Results:** Add review section to `tasks/todo.md`
-6. **Capture Lessons:** Update `tasks/lessons.md` after corrections
+1. Write plan to `tasks/todo.md` → get user approval → track progress → explain changes → document results → capture lessons in `tasks/lessons.md`
 
 ## Development Commands
 
 ```bash
-# Full dev setup (starts Docker containers, generates Prisma client, runs server+client)
-# Database migrations run automatically on server start — no manual migrate command needed
-npm run predev && npm run dev
-
-# Run server and client concurrently
-npm run dev
-
-# Run individually
-npm run dev:server          # Express on :3001 (tsx watch, hot reload)
-npm run dev:client          # Vite on :3000 (proxies /api→:3001, /socket.io→:3002)
-
-# Build
-npm run build               # Both server (tsc) and client (vite build)
-npm run build -w server     # Server only
-npm run build -w client     # Client only
-
-# Database (Prisma)
-npm run db:generate         # Generate Prisma client types
-npm run db:push             # Sync schema to database (no migration, manual only)
-npm run db:migrate          # Run migrations (manual only — server auto-migrates on start)
-
-# Code quality & verification
-npm run verify              # Full pipeline: typecheck → lint → audit → build
-npm run typecheck           # TypeScript type-check (both workspaces, no emit)
-npm run lint                # ESLint (both workspaces via root flat config)
-npm run lint:fix            # ESLint with auto-fix
-npm run sast                # npm audit (dependency vulnerability scan)
-npm run codeql              # Local CodeQL security scan (security-extended)
-npm run codeql:full         # Local CodeQL full scan (security-and-quality)
-
-# Docker
-npm run docker:dev          # Start guacd + PostgreSQL containers (required for dev)
-npm run docker:dev:down     # Stop dev containers
-npm run docker:prod         # Full production stack (requires .env.production)
+npm run predev && npm run dev   # Full dev setup (Docker + Prisma + server + client)
+npm run dev                     # Server (:3001) + Client (:3000, proxies /api→:3001, /socket.io→:3002)
+npm run dev:server              # Express on :3001 (tsx watch)
+npm run dev:client              # Vite on :3000
+npm run build                   # Both (tsc + vite build)
+npm run verify                  # typecheck → lint → audit → build (MUST pass before closing tasks)
+npm run typecheck               # TypeScript (both workspaces)
+npm run lint / lint:fix         # ESLint (both workspaces)
+npm run sast                    # npm audit
+npm run codeql                  # CodeQL security-extended
+npm run db:generate             # Prisma client types
+npm run db:push                 # Sync schema (no migration, manual)
+npm run db:migrate              # Run migrations (server auto-migrates on start)
+npm run docker:dev / docker:dev:down  # Start/stop guacd + PostgreSQL
+npm run docker:prod             # Full production stack
 
 # CodeClaw Configuration
-DEV_PORTS="3000 3001 3002"               # Client, Server, Guacamole WebSocket
-START_COMMAND="npm run dev"              # Command to start dev server
-PREDEV_COMMAND="npm run predev"          # Pre-start setup (Docker + Prisma generate)
-VERIFY_COMMAND="npm run verify"          # Quality gate (typecheck → lint → audit → test → build)
-
-TEST_FRAMEWORK="vitest"                  # Test runner
-TEST_COMMAND="npm run test"              # Run tests (all workspaces)
-TEST_FILE_PATTERN="**/*.test.{ts,tsx}"   # Test file pattern
-
+DEV_PORTS="3000 3001 3002"
+START_COMMAND="npm run dev"
+PREDEV_COMMAND="npm run predev"
+VERIFY_COMMAND="npm run verify"
+TEST_FRAMEWORK="vitest"
+TEST_COMMAND="npm run test"
+TEST_FILE_PATTERN="**/*.test.{ts,tsx}"
 CI_RUNTIME_SETUP="uses: actions/setup-node@v6\nwith:\n  node-version: 22"
-
 DEVELOPMENT_BRANCH="develop"
 STAGING_BRANCH="staging"
 PRODUCTION_BRANCH="main"
-
 PACKAGE_JSON_PATHS="package.json client/package.json server/package.json gateways/tunnel-agent/package.json extra-clients/browser-extensions/package.json"
 CHANGELOG_FILE="CHANGELOG.md"
 TAG_PREFIX="v"
 GITHUB_REPO_URL="https://github.com/dnviti/arsenale"
 ```
 
-**Important:** `npm run verify` must pass before closing any task. It runs typecheck, lint, dependency audit, and build in sequence.
-
 ## Environment Setup
 
-Copy `.env.example` to `.env`. PostgreSQL is used in both development and production. Docker is required for both PostgreSQL and `guacd` (Guacamole daemon). The `predev` script starts both containers automatically.
-
-**Important:** The `.env` file lives at the **monorepo root**, not inside `server/`. Prisma CLI commands (`db:push`, `db:migrate`) run from the `server/` workspace directory, so `server/prisma.config.ts` explicitly resolves the `.env` path to `../.env`. Never add a separate `server/.env` — all env vars are loaded from the root `.env`.
+Copy `.env.example` to `.env` at **monorepo root** (not inside `server/`). `server/prisma.config.ts` resolves `.env` to `../.env`. Never add a separate `server/.env`. Docker required for PostgreSQL + `guacd`; `predev` starts both automatically.
 
 ## Version Bumping
 
-When bumping the app version, update all four `package.json` files and regenerate `package-lock.json`:
+Update all these locations, then run `npm install --package-lock-only`:
 
 | File | Field |
 |------|-------|
-| `package.json` (root) | `"version"` |
-| `client/package.json` | `"version"` |
-| `server/package.json` | `"version"` |
-| `gateways/tunnel-agent/package.json` | `"version"` |
-| `extra-clients/browser-extensions/package.json` | `"version"` |
+| `package.json` (root), `client/`, `server/`, `gateways/tunnel-agent/`, `extra-clients/browser-extensions/` | `"version"` |
 | `extra-clients/browser-extensions/manifest.json` | `"version"` |
 | `server/src/cli.ts` | `.version('X.Y.Z')` |
 | `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
-| `docs/index.md` | `Version:` line at bottom |
+| `docs/index.md` | `Version:` line |
 
-After editing the package.json files, run `npm install --package-lock-only` to update `package-lock.json`. All versions must always be kept in sync.
+## Documentation
 
-## Documentation Maintenance
-
-`docs/rag-summary.md` must be kept in sync whenever documentation or features change. If any feature is added, modified, or removed, update this file to reflect the current state.
+`docs/rag-summary.md` must be kept in sync whenever documentation or features change.
 
 ## Architecture
 
-**Monorepo** with npm workspaces: `server/`, `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`.
+**Monorepo** (npm workspaces): `server/`, `client/`, `gateways/tunnel-agent/`, `extra-clients/browser-extensions/`.
 
 ### Server (Express + TypeScript)
 
-Layered architecture: **Routes → Controllers → Services → Prisma ORM**
+Layered: **Routes → Controllers → Services → Prisma ORM**
 
-- `server/src/index.ts` — Entry point: runs `prisma migrate deploy` automatically, creates HTTP server, attaches Socket.IO and Guacamole WebSocket server
-- `server/src/app.ts` — Express app setup with middleware and route mounting
-- `server/src/routes/*.routes.ts` — Route definitions (auth, connections, folders, sharing, vault)
-- `server/src/controllers/*.controller.ts` — Request parsing and validation
-- `server/src/services/*.service.ts` — Business logic and database operations
-- `server/src/socket/` — Socket.IO handlers for SSH terminal sessions
-- `server/src/middleware/` — JWT auth middleware, error handler
-- `server/src/types/index.ts` — Shared types (`AuthPayload`, `AuthRequest`, `EncryptedField`, `VaultSession`)
-- `server/prisma/schema.prisma` — Data models: User, Connection, Folder, SharedConnection, RefreshToken
+- Entry: `server/src/index.ts` (auto-migrates, creates HTTP server, attaches Socket.IO + Guacamole WS)
+- App: `server/src/app.ts` (Express setup, middleware, routes)
+- Routes/Controllers/Services: `server/src/routes|controllers|services/*.{routes|controller|service}.ts`
+- Socket: `server/src/socket/` (SSH terminal via Socket.IO)
+- Middleware: `server/src/middleware/` (JWT auth, error handler)
+- Types: `server/src/types/index.ts` (`AuthPayload`, `AuthRequest`, `EncryptedField`, `VaultSession`)
+- Schema: `server/prisma/schema.prisma` (User, Connection, Folder, SharedConnection, RefreshToken)
 
-### Client (React 19 + Vite)
+### Client (React 19 + Vite + MUI v7)
 
-- `client/src/api/` — Axios client with automatic JWT refresh on 401
-- `client/src/store/*Store.ts` — Zustand stores: `authStore`, `connectionsStore`, `tabsStore`, `vaultStore`
-- `client/src/pages/` — Page components (Login, Register, Dashboard)
-- `client/src/components/` — UI components (Layout, RDP viewer, Terminal, Dialogs, Tabs)
-- `client/src/hooks/` — Custom hooks (`useAuth`, `useSocket`)
-- UI framework: Material-UI (MUI) v7
+- API: `client/src/api/` (Axios + auto JWT refresh on 401)
+- Stores: `client/src/store/*Store.ts` (Zustand: auth, connections, tabs, vault)
+- Pages: `client/src/pages/` (Login, Register, Dashboard)
+- Components: `client/src/components/` (Layout, RDP, Terminal, Dialogs, Tabs)
+- Hooks: `client/src/hooks/` (`useAuth`, `useSocket`)
 
 ### Browser Extension (Chrome Manifest V3)
 
-- `extra-clients/browser-extensions/` — Browser extension workspace (Chrome primary, Firefox secondary)
-- `extra-clients/browser-extensions/src/background.ts` — Service worker: handles all API calls to Arsenale servers (bypasses CORS), token refresh via chrome.alarms
-- `extra-clients/browser-extensions/src/popup/` — React popup app: account switcher, keychain browsing, connection listing
-- `extra-clients/browser-extensions/src/options/` — React options/settings page: multi-account management, server URL configuration
-- `extra-clients/browser-extensions/src/content/` — Content scripts for credential autofill on web pages
-- `extra-clients/browser-extensions/src/lib/` — Shared utilities: account storage, API client, auth, vault/secrets/connections API wrappers
+Located at `extra-clients/browser-extensions/`:
+- `src/background.ts` — Service worker (API calls, CORS bypass, token refresh via chrome.alarms)
+- `src/popup/` — React popup (account switcher, keychain, connections)
+- `src/options/` — React settings (multi-account, server URL config)
+- `src/content/` — Credential autofill content scripts
+- `src/lib/` — Shared utilities (account storage, API client, auth, vault/secrets/connections wrappers)
 
 ## Key Patterns
 
 ### Configuration Strategy
 
-All application configuration **must** use environment variables as the primary source of truth. The UI Settings panel provides a user-friendly way to view and adjust settings, but environment variables always take precedence:
-
-- **Env var set** → value is used as-is and the corresponding UI field shows it as a preset/override (read-only or visually distinguished).
-- **Env var unset** → the UI setting is editable and its value is persisted to the database.
-- **New features** must define their configuration as env vars in `server/src/config.ts` first, with sensible defaults. If the setting should also be adjustable at runtime via the UI, add a corresponding tenant/system setting that the env var overrides.
-
-This ensures deployments can be fully configured via `.env` / Docker Compose / Kubernetes ConfigMaps without requiring UI interaction, while still allowing runtime tuning through the Settings panel.
+Env vars are the primary config source. UI Settings panel is secondary:
+- **Env var set** → used as-is, UI field is read-only
+- **Env var unset** → UI setting is editable, persisted to DB
+- **New features** must define env vars in `server/src/config.ts` first with sensible defaults
 
 ### Real-Time Connections
 
-- **SSH**: Client opens tab → Socket.IO connects to `/ssh` namespace → server creates SSH2 session → bidirectional terminal data via WebSocket. Terminal rendered with XTerm.js.
-- **RDP**: Client requests token from `/sessions/rdp` → Guacamole WebSocket tunnel on port 3002 → `guacd` handles RDP protocol. Rendered with `guacamole-common-js`.
+- **SSH**: Tab → Socket.IO `/ssh` → SSH2 session → bidirectional WS. Rendered with XTerm.js.
+- **RDP**: Token from `/sessions/rdp` → Guacamole WS on :3002 → `guacd`. Rendered with `guacamole-common-js`.
 
 ### Vault & Encryption
 
-All connection credentials are encrypted at rest using AES-256-GCM. Each user has a master key derived from their password via Argon2. The master key is held in-memory server-side with a configurable TTL (vault sessions auto-expire). When the vault is locked, users must re-enter their password to decrypt credentials.
+Credentials encrypted at rest (AES-256-GCM). Per-user master key from password via Argon2, held in-memory with configurable TTL. Vault lock requires re-auth to decrypt.
 
-### Logging Security (No Clear-Text Sensitive Data)
+### Logging Security
 
-**Never log sensitive data in clear text.** This is enforced by CodeQL (`js/clear-text-logging`) and must be followed in all new code.
+**Never log sensitive data in clear text** (enforced by CodeQL `js/clear-text-logging`).
 
-**What must NOT appear in log output:**
-- Passwords, temporary passwords, recovery keys, master keys
-- Tokens (JWT, access, refresh, API keys, reset tokens, verification codes)
-- OAuth client secrets, private keys, credentials
-- SMS/email bodies that may contain OTPs or credentials
-- Full error objects from Prisma or other ORMs (may embed query data with secrets)
+Forbidden in logs: passwords, tokens (JWT/access/refresh/API keys), OAuth secrets, private keys, OTPs, full ORM error objects.
 
-**Rules for all logger/console calls:**
-1. **Never pass raw error objects** to `logger.error()` — use `err instanceof Error ? err.message : 'Unknown error'` instead. Prisma and ORM errors can include query data containing passwords/tokens in their message/stack.
-2. **Never interpolate sensitive variables** in log template literals — use `[REDACTED]` placeholder instead.
-3. **Never log properties from sensitive config objects** (e.g., `config.oauth.*`) in log messages — CodeQL taints the entire object tree. Use static strings.
-4. **Dev-mode fallback logs** (email/SMS when no provider is configured) must redact all secrets, codes, tokens, and message bodies.
-5. **CLI commands** that intentionally display credentials (recovery keys, setup passwords) are acceptable but must use `console.log` directly — never route through the logger.
+Rules:
+1. Never pass raw error objects to `logger.error()` — use `err instanceof Error ? err.message : 'Unknown error'`
+2. Use `[REDACTED]` for sensitive variables in log templates
+3. Never log properties from sensitive config objects (CodeQL taints entire tree)
+4. Dev-mode fallback logs must redact all secrets
+5. CLI credential display (recovery keys) uses `console.log` directly, never the logger
 
-**The logger (`server/src/utils/logger.ts`) provides defense-in-depth:**
-- `SENSITIVE_KEYS` set: redacts known sensitive object keys (password, token, secret, etc.)
-- `SENSITIVE_VALUE_PATTERNS`: regex-based scrubbing of JWT tokens, Bearer headers, and key=value pairs with sensitive names from Error messages and strings
-- All log methods pass arguments through `sanitize()` → `formatArgs()` before output
-
-**When adding new logger calls**, ask: "Could any argument contain a password, token, key, or credential — even transitively through an error object?" If yes, extract only the safe message string.
+The logger (`server/src/utils/logger.ts`) provides defense-in-depth with `SENSITIVE_KEYS`, `SENSITIVE_VALUE_PATTERNS`, and `sanitize()` → `formatArgs()` pipeline.
 
 ### Authentication
 
-JWT-based with access tokens (short-lived) and refresh tokens (stored in DB). The Axios client interceptor automatically refreshes expired access tokens. Socket.IO connections authenticate via JWT middleware.
+JWT with short-lived access tokens + refresh tokens (stored in DB). Axios interceptor auto-refreshes. Socket.IO authenticates via JWT middleware.
 
 ### Full-Screen Dialogs Over Navigation
 
-Features that overlay the main workspace (settings, keychain, audit log, etc.) **must** be implemented as full-screen MUI `Dialog` components rendered from `MainLayout`, not as separate page routes. This preserves active RDP/SSH sessions. The only routed page is the main connections dashboard.
+Features overlaying the workspace **must** use full-screen MUI `Dialog` from `MainLayout` (not page routes) to preserve active RDP/SSH sessions.
 
-**Pattern (SettingsDialog / AuditLogDialog / KeychainDialog):**
-- Import the shared `SlideUp` transition: `import { SlideUp } from '../common/SlideUp'`
-- Props: `{ open: boolean; onClose: () => void }`
-- Root element: `<Dialog fullScreen open={open} onClose={onClose} TransitionComponent={SlideUp}>`
-- AppBar: `<AppBar position="static" sx={{ position: 'relative' }}>` + `<Toolbar variant="dense">` with `CloseIcon` button and title
-- Content: `<Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', ... }}>`
-- State managed in `MainLayout` as `const [xyzOpen, setXyzOpen] = useState(false)`
-- Dialog rendered at the fragment root level in `MainLayout`, outside the blur wrapper `Box`
-
-**Rule:** Never create a new page route for UI that opens over the dashboard. Use this dialog pattern instead.
+**Pattern:** Import `SlideUp` from `'../common/SlideUp'`. Props: `{ open, onClose }`. Use `<Dialog fullScreen TransitionComponent={SlideUp}>` with `<AppBar position="static">` + `<Toolbar variant="dense">`. State in `MainLayout`. Dialog rendered outside blur wrapper `Box`.
 
 ### API Error Handling
 
-Use `extractApiError(err, fallbackMessage)` from `client/src/utils/apiError.ts` for API error extraction in catch blocks. Never use inline type casts for Axios error responses. For dialog form submissions with loading/error state, prefer the `useAsyncAction` hook from `client/src/hooks/useAsyncAction.ts`.
+Use `extractApiError(err, fallbackMessage)` from `client/src/utils/apiError.ts`. For dialog forms with loading/error state, use `useAsyncAction` hook from `client/src/hooks/useAsyncAction.ts`.
 
 ### UI Preferences Persistence
 
-All user-facing UI layout state **must** be persisted via the centralized `uiPreferencesStore` (`client/src/store/uiPreferencesStore.ts`), which uses Zustand's `persist` middleware with localStorage key `arsenale-ui-preferences`.
-
-**What must be persisted:** panel open/closed states, sidebar section collapse/expand, drawer states, view mode toggles (compact, list/grid), positions and sizes of movable/resizable elements, folder expand/collapse states, and any user-configurable layout preference.
-
-**Rules for any new feature:**
-- Import from `useUiPreferencesStore` — never use raw `localStorage.getItem/setItem` for UI preferences
-- Provide sensible defaults so the app works without any stored preferences
-- Namespace by userId (the store handles this internally)
-- Key naming: `camelCase` with component area prefix (e.g., `sidebarCompact`, `sidebarFavoritesOpen`, `rdpFileBrowserOpen`)
-- Add new preference keys and their defaults to the store's type and initial state
-- Exclude transient state (dialogs, menus, loading flags) — only persist what the user would expect to survive a page reload
-
-### Task & Idea Management
-
-Tasks and ideas are managed through one of three modes, controlled by `.claude/issues-tracker.json` (preferred) or `.claude/github-issues.json` (legacy fallback):
-
-| `enabled` | `sync` | Mode | Data Source |
-|-----------|--------|------|-------------|
-| `true` | `false` (or absent) | **Platform-only** | GitHub/GitLab Issues only. No local files. |
-| `true` | `true` | **Dual sync** | Local files first, then platform issues. |
-| `false` | — | **Local only** | Local text files only. |
-
-**Platform-only mode (current):** Tasks are GitHub Issues with status labels (`status:todo`, `status:in-progress`, `status:to-test`, `status:done`). Ideas are GitHub Issues with the `idea` label. No local task/idea text files exist. Tasks in `status:in-progress` may also carry `status:to-test`, indicating they are awaiting test verification before release.
-
-**Local/Dual mode (when enabled):** Tasks are split across three files by status:
-
-| File | Status | Symbol |
-|------|--------|--------|
-| `to-do.txt` | Pending tasks | `[ ]` |
-| `progressing.txt` | In-progress tasks | `[~]` |
-| `done.txt` | Completed tasks | `[x]` |
-
-Ideas are stored separately:
-
-| File | Purpose |
-|------|---------|
-| `ideas.txt` | Ideas awaiting evaluation |
-| `idea-disapproved.txt` | Rejected ideas archive |
-
-Use `/idea-create` to add ideas, `/idea-approve` to promote an idea to a task, `/idea-refactor` to update ideas based on codebase changes, and `/idea-disapprove` to reject an idea. Ideas must never be picked up directly by `/task-pick`.
-
-### Release Planning
-
-Tasks can be grouped into planned releases via `releases.json` at the project root. This is the single source of truth for release plans — platform labels (`release:vX.Y.Z`) and milestones are kept in sync as secondary artifacts.
-
-**`releases.json` structure:** An array of release entries, each with `version` (semver, no `v` prefix), `status` (`planned`|`in-progress`|`released`), `theme` (grouping description), `target_date` (optional), `tasks` (array of task codes), and `created_at`/`released_at` timestamps.
-
-**Key skills:**
-- `/release-plan` — Manage release plans: list, create, assign/unassign tasks, suggest groupings, view timeline
-- `/release-plan suggest` — AI-driven grouping of unassigned tasks by prefix affinity, dependency chains, section cohesion, and description similarity
-
-**Integration with existing skills:**
-- `/task-create` and `/idea-approve` — Offer to assign newly created tasks to a planned release
-- `/task-pick` and `/task-continue` — Show release assignment in briefing
-- `/task-status` — Includes release plan overview section
-- `/release` — Uses planned version from `releases.json` instead of auto-detecting from commits; marks release as released after publishing
-- `/git-publish` — Advisory warning if next planned release has incomplete tasks
-
-**Task block `Release:` field:** In local/dual mode, tasks have a `Release:` field after `Dependencies:`. In platform-only mode, the `release:vX.Y.Z` label on the issue serves the same purpose.
-
-**Backward compatibility:** All release planning features are optional. If `releases.json` does not exist, all skills behave identically to their pre-release-planning behavior.
+All UI layout state must use `uiPreferencesStore` (`client/src/store/uiPreferencesStore.ts`, Zustand persist with `arsenale-ui-preferences` localStorage key). Never use raw `localStorage`. Namespace by userId. Key naming: `camelCase` with component area prefix. Exclude transient state (dialogs, menus, loading flags).
 
 ### File Naming Conventions
 
 | Layer | Pattern | Example |
 |-------|---------|---------|
-| Server routes | `*.routes.ts` | `auth.routes.ts` |
-| Server controllers | `*.controller.ts` | `connection.controller.ts` |
-| Server services | `*.service.ts` | `encryption.service.ts` |
-| Server middleware | `*.middleware.ts` | `auth.middleware.ts` |
+| Server routes/controllers/services/middleware | `*.routes|controller|service|middleware.ts` | `auth.routes.ts` |
 | Client stores | `*Store.ts` | `authStore.ts` |
 | Client API | `*.api.ts` | `connections.api.ts` |
 | Client hooks | `use*.ts` | `useAuth.ts` |
 
-### Issues Tracker Integration
+### Task & Idea Management
 
-**Config file:** `.claude/issues-tracker.json` — controls the operating mode, target platform/repo, and label mappings. Copy `.claude/issues-tracker.example.json` to get started. Legacy fallback: `.claude/github-issues.json`.
+Controlled by `.claude/issues-tracker.json` (legacy: `.claude/github-issues.json`):
 
-**Skill scripts:** Python utilities in `.claude/scripts/` (zero external dependencies, stdlib only):
-- `task_manager.py` — Task/idea parsing, ID generation, platform detection, PostToolUse hook
-- `app_manager.py` — Cross-platform port checking, process management
-- `release_manager.py` — Version detection, commit parsing, changelog generation, release plan management
-- `setup_labels.py` — Cross-platform label creation (GitHub/GitLab)
+| `enabled` | `sync` | Mode | Data Source |
+|-----------|--------|------|-------------|
+| `true` | `false` | **Platform-only** (current) | GitHub/GitLab Issues only |
+| `true` | `true` | **Dual sync** | Local files first, then platform |
+| `false` | — | **Local only** | Local text files only |
 
-**Config parameters:**
-- `platform` (string): `"github"` or `"gitlab"` — determines which CLI tool (`gh` or `glab`) is used
-- `enabled` (boolean): Whether platform issues integration is active
-- `sync` (boolean): Whether to maintain dual sync with local text files. When `false` (or absent), the platform is the sole data source.
-- `repo` (string): Target repository (e.g., `dnviti/arsenale`)
-- `labels` (object): Label mappings for source, type, priority, status (including `to-test`), and sections
+**Platform-only mode:** Tasks are GitHub Issues with labels (`claude-code`, `task`, `priority:*`, `status:{todo,in-progress,to-test,done}`, `section:*`). Ideas use `idea` label. Priority order: high > medium > low. `/task-pick` creates branch `task/<code>` from `develop`, opens PR to `develop` on completion.
 
-**Setup:**
-1. Copy `.claude/issues-tracker.example.json` to `.claude/issues-tracker.json` (or use legacy `.claude/github-issues.json`)
-2. Set `"platform"`, `"enabled": true`, and configure `"sync"` (`false` for platform-only, `true` for dual sync)
-3. Run `python3 .claude/scripts/setup_labels.py` to create all required labels (cross-platform; legacy: `bash scripts/setup-labels.sh`)
-4. Ensure `gh` CLI (GitHub) or `glab` CLI (GitLab) is authenticated
+**Local/Dual mode:** Tasks in `to-do.txt` (`[ ]`), `progressing.txt` (`[~]`), `done.txt` (`[x]`). Ideas in `ideas.txt` / `idea-disapproved.txt`. Dual sync stores `GitHub: #NNN` in each block.
 
-**Behavior in platform-only mode** (`enabled: true`, `sync: false`):
-- All task/idea data lives exclusively in platform issues — no local text files
-- `/task-create` creates an issue with labels (`claude-code`, `task`, `priority:*`, `status:todo`, `section:*`)
-- `/task-pick` picks `status:todo` tasks, updates labels (todo → in-progress → to-test → done) and closes on completion
-- `/task-pick` selects next task by priority label: `priority:high` > `priority:medium` > `priority:low`
-- `/test-engineer TASK-CODE` runs the testing workflow for `status:to-test` tasks (automated + manual)
-- `/idea-create` creates an issue with `idea` label
-- `/idea-approve` closes idea issue, creates task issue with cross-reference
-- `/idea-disapprove` closes idea issue with reason
-- `/idea-refactor` updates issue body when ideas are revised
-- `/git-publish` checks for untested tasks (`status:to-test`) before publishing, links PRs to issues via `Refs #N`
-- `/release` checks for untested tasks before releasing, enriches GitHub Releases with issue cross-references
-- All new content is written in English
+**Skills:** `/idea-create`, `/idea-approve` (→ task), `/idea-disapprove`, `/idea-refactor`. Ideas must never be picked up directly by `/task-pick`.
 
-**Behavior in dual sync mode** (`enabled: true`, `sync: true`):
-- Skills write to local text files first, then sync to GitHub
-- If GitHub sync fails, warn but don't fail the operation
-- Text files win in case of discrepancy
-- `GitHub: #NNN` is stored in each task/idea block for fast lookup
-- Task/idea content is written in Italian (local files) with English communication
+**Issue title format:** `[PREFIX-NNN] Title` — used for lookup via `gh issue list --search`.
 
-**Issue title format:** `[PREFIX-NNN] Task Title` or `[IDEA-NNN] Idea Title` — the bracketed code is used to look up issues via `gh issue list --search`.
+**Scripts** (`.claude/scripts/`, Python stdlib only): `task_manager.py`, `app_manager.py`, `release_manager.py`, `setup_labels.py`.
 
-**Task branch workflow:** `/task-pick` must always create a dedicated branch (`task/<code>`) from `develop` and, upon completion, open a pull request targeting `develop` via `gh pr create --base develop`. Never merge directly into `develop` without a PR.
+### Release Planning
+
+`releases.json` at project root is the single source of truth. Structure: `version`, `status` (planned|in-progress|released), `theme`, `target_date`, `tasks`, timestamps.
+
+Skills: `/release-plan` (manage plans), `/release-plan suggest` (AI grouping). Integrated with `/task-create`, `/idea-approve`, `/task-pick`, `/task-continue`, `/task-status`, `/release`, `/git-publish`. All features optional — without `releases.json`, skills behave as before.
+
+### Worktree-Based Task Isolation
+
+Tasks use isolated git worktrees at `.worktrees/task/<code>/` (must be in `.gitignore`). `/task pick` creates worktree, auto-removed on close. `/task continue` creates fresh worktree from existing branch. `task_manager.py` reads/writes task files from main repo root. Run `/release` and `/setup env` from main repository.
 
 <!-- CodeClaw:START -->
 
 ## Agent Teams Mode
 
-**Agent Teams is the default execution mode.** Whenever a task involves development, research, or any work that can benefit from parallel agents, **always use Agent Teams** with the defined roles and coordination rules below. Do not fall back to standalone subagents unless Agent Teams tools (`TeamCreate`, `TaskCreate`, `SendMessage`, `TeamDelete`) are explicitly unavailable.
-
-### When to Use Agent Teams
-
-- **Development tasks** (feature implementation, bug fixes, refactoring) — use the Implementation team roles
-- **Research & exploration** (codebase analysis, architecture review, dependency audits) — use the Explore agent as a team member alongside a security or QA reviewer
-- **Release & CI flows** (PR analysis, release pipeline, CI monitoring) — use the Other Flows team roles
-- **Task/idea batch operations** (`/task pick all`, `/task continue all`, `/crazy`) — always use full team composition
-- **Any work spanning 2+ files or layers** (server + client, API + UI, schema + service) — split across backend-dev and frontend-dev roles
+**Default execution mode.** Use Agent Teams for any task involving development, research, or parallel work. Fall back to standalone subagents only if Teams tools are unavailable.
 
 ### Team Lifecycle
 
-1. `TeamCreate` with descriptive `team_name` and `description`
-2. `TaskCreate` for each unit of work (implementation, review, security scan)
-3. `Agent` with `team_name` and `name` — spawn teammates
-4. Teammates claim tasks via `TaskUpdate`, communicate via `SendMessage`, complete via `TaskUpdate`
-5. `SendMessage` with `{type: "shutdown_request"}` to all teammates
-6. `TeamDelete` to clean up
+`TeamCreate` → `TaskCreate` per unit of work → `Agent` (spawn teammates) → teammates claim/complete via `TaskUpdate`, communicate via `SendMessage` → `SendMessage` shutdown → `TeamDelete`
 
-### Standard Team Roles — Implementation
-
-Used by `/task pick all`, `/task continue all`, and `/crazy` for task implementation batches:
+### Implementation Roles
 
 | Role | Purpose | Config |
 |------|---------|--------|
-| `backend-dev-{CODE}` | Server-side logic, API, data layer. Messages `frontend-dev` when done | `isolation: "worktree"`, `mode: "bypassPermissions"` |
-| `frontend-dev-{CODE}` | UI, client-side, animations. Waits for `backend-dev` message before finalizing | `isolation: "worktree"`, `mode: "bypassPermissions"` |
-| `qa-agent` | Reviews implementation, tests functionality, sends bugs back to devs for another pass | `mode: "bypassPermissions"` |
-| `documenter` | Updates documentation while implementation is in progress | `mode: "bypassPermissions"` |
-| `security-scanner` | Strict security testing, forces devs to fix critical issues before continuing | `mode: "bypassPermissions"` |
+| `backend-dev-{CODE}` | Server-side logic, API, data. Messages frontend-dev when done | `isolation: "worktree"`, `mode: "bypassPermissions"` |
+| `frontend-dev-{CODE}` | UI, client-side. Waits for backend-dev | `isolation: "worktree"`, `mode: "bypassPermissions"` |
+| `qa-agent` | Reviews, tests, sends bugs back to devs | `mode: "bypassPermissions"` |
+| `documenter` | Updates docs in parallel | `mode: "bypassPermissions"` |
+| `security-scanner` | Security testing, blocks on critical issues | `mode: "bypassPermissions"` |
 
-### Standard Team Roles — Other Flows
+### Other Flow Roles
 
 | Role | Purpose | Config |
 |------|---------|--------|
-| `pr-analyst-{N}` | Analyzes a PR in release pipeline | `isolation: "worktree"`, `mode: "bypassPermissions"` |
+| `pr-analyst-{N}` | PR analysis in release pipeline | `isolation: "worktree"`, `mode: "bypassPermissions"` |
 | `security-auditor` | Cross-PR security validation | `mode: "bypassPermissions"` |
-| `ci-monitor-{N}` | Monitors a CI workflow run | `mode: "bypassPermissions"` |
-| `task-creator-{N}` | Converts an idea into a task spec | `isolation: "worktree"`, `mode: "bypassPermissions"` |
-| `consistency-reviewer` | Reviews task specs for consistency | `mode: "bypassPermissions"` |
+| `ci-monitor-{N}` | CI workflow monitoring | `mode: "bypassPermissions"` |
+| `task-creator-{N}` | Idea → task spec conversion | `isolation: "worktree"`, `mode: "bypassPermissions"` |
+| `consistency-reviewer` | Task spec consistency review | `mode: "bypassPermissions"` |
 
-### Implementation Coordination Flow
+### Coordination Flow
 
-1. **Backend dev** implements server-side logic for the task
-2. When done → `SendMessage` to frontend dev with API contracts and integration points
-3. **Frontend dev** implements UI/client-side using backend APIs
-4. **Documenter** works in parallel throughout, updating docs as code lands
-5. **Security scanner** reviews changes from both devs; critical issues → devs must fix before continuing
-6. **QA agent** reviews final implementation from both devs, tests functionality; bugs → sent back to responsible dev
-7. QA + security approve → task marked done
-
-### Quality & Security Guarantees
-
-Every implementation batch in Agent Teams mode includes:
-- **QA agent** — validates correctness, tests functionality, catches regressions, sends bugs back
-- **Security scanner** — validates OWASP Top 10, secrets, injection, auth, input validation, quality gate; blocks on critical
-- **Documenter** — ensures docs stay current with implementation
-- QA + security must both approve before tasks complete
-- Critical findings block completion and escalate to team lead
-
-## Key Patterns
-
-### Task Files
-
-Tasks are split across three files by status:
-
-| File | Status | Symbol |
-|------|--------|--------|
-| `to-do.txt` | Pending tasks | `[ ]` |
-| `progressing.txt` | In-progress tasks | `[~]` |
-| `done.txt` | Completed tasks | `[x]` |
-
-When a task changes status, move it to the corresponding file.
-
-**Additional platform label:** Tasks in `progressing.txt` may also carry `status:to-test` on the platform, indicating they are awaiting test verification. Task branches must not be merged into the release branch until testing is confirmed.
-
-### Idea Files
-
-Ideas are stored separately from tasks and must be explicitly approved before entering the task pipeline:
-
-| File | Purpose |
-|------|---------|
-| `ideas.txt` | Ideas awaiting evaluation |
-| `idea-disapproved.txt` | Rejected ideas archive |
-
-Use `/idea create` to add ideas, `/idea approve` to promote an idea to a task, `/idea refactor` to update ideas based on codebase changes, and `/idea disapprove` to reject an idea. Ideas must never be picked up directly by `/task pick`.
-
-### Task & Idea Management Modes
-
-Tasks and ideas support three operating modes, controlled by `.claude/issues-tracker.json` (or legacy `.claude/github-issues.json`):
-
-| `enabled` | `sync` | Mode | Data Source |
-|-----------|--------|------|-------------|
-| `true` | `false` (or absent) | **Platform-only** | GitHub Issues or GitLab Issues only. No local files. |
-| `true` | `true` | **Dual sync** | Local files first, then platform issues. |
-| `false` | — | **Local only** | Local text files only (default). |
-
-The `platform` field (`"github"` or `"gitlab"`) determines which CLI tool (`gh` or `glab`) is used. If omitted, defaults to `"github"`.
-
-### Worktree-Based Task Isolation
-
-Tasks are developed in isolated git worktrees instead of branch switching, enabling parallel task work:
-
-| Concept | Location |
-|---------|----------|
-| Worktree directory | `.worktrees/task/<code-lowercase>/` (mirrors branch name) |
-| Branch naming | `task/<code-lowercase>` |
-| Task files | Always in main repository root |
-| Source code | In the worktree directory |
-
-**Lifecycle:**
-- `/task pick` creates a worktree when a task is picked up
-- When a task is closed (marked done), the worktree is **automatically removed**
-- `/task continue` creates a **fresh worktree** from the existing branch (since the old one was dismissed at close)
-- `task_manager.py` always reads/writes task files from the main repo root via `get_main_repo_root()`
-- `/release` and `/setup env` should be run from the main repository
-- `.worktrees/` must be in `.gitignore`
+Backend dev → messages frontend dev with API contracts → frontend dev implements → documenter works in parallel → security scanner reviews (critical = blocks) → QA reviews (bugs → back to devs) → QA + security approve → done.
 
 ## Cross-Platform Notes
 
-This framework supports **Windows, macOS, and Linux** with automatic OS detection.
+Supports Windows, macOS, Linux with auto OS detection.
 
-### Python Command Auto-Detection
+**Python auto-detection:** `platform_utils.detect_python_cmd()` tries `python3` then `python`. Override via `python_command` in `config/project-config.json`.
 
-All scripts and skills reference `python3`. On Windows where only `python` is available, CodeClaw auto-detects the correct command:
+**Utilities:** `platform_utils.py` (cmd detection, shell info, file copy), `app_manager.py` (port/process mgmt), `task_manager.py find-files` (cross-platform find).
 
-- **Auto-detection:** `platform_utils.detect_python_cmd()` tries `python3` first, then `python`, verifying each is Python 3.x via `shutil.which()`.
-- **Manual override:** Set `python_command` in `config/project-config.json` to skip auto-detection (e.g., `"python_command": "python"`).
-- **CI/CD:** The CI workflow includes a `Detect Python command` step that sets the correct command per OS.
-
-### Cross-Platform Utilities
-
-| Utility | File | Purpose |
-|---------|------|---------|
-| `platform_utils.py` | `scripts/` | Python cmd detection, shell info, safe file copy, command runner |
-| `app_manager.py` | `scripts/` | Port/process management — `lsof`/`ss` on Unix, `netstat`/`taskkill` on Windows |
-| `task_manager.py find-files` | `scripts/` | Cross-platform file discovery (replaces Unix `find`) |
-
-### Windows Requirements
-
-- **PowerShell Core (pwsh):** Required for shell-expansion features (e.g., inline file reading in agent invocations). Install from https://github.com/PowerShell/PowerShell. The legacy `cmd.exe` has limited support — commands that rely on inline expansion will fall back to direct Python file reading.
-- **Long path support:** Enable long paths in the Windows registry or via Group Policy if your project has deeply nested directories. Run: `New-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\FileSystem" -Name "LongPathsEnabled" -Value 1 -PropertyType DWORD -Force`
-- **Line endings:** Configure Git to handle line endings automatically: `git config --global core.autocrlf true`. CodeClaw text files use LF; Git will convert on checkout/commit.
-- **Symlink permissions:** If your project uses symlinks, enable Developer Mode in Windows Settings or grant `SeCreateSymbolicLinkPrivilege` to your user account.
-
-### Troubleshooting (Windows)
-
-| Issue | Solution |
-|-------|----------|
-| `python3` not found | Install Python 3 from python.org and ensure "Add to PATH" is checked. Or set `python_command` in project config. |
-| `cp -r` fails | All CodeClaw scripts use `shutil.copytree()` instead. If you see this error, update to the latest CodeClaw version. |
-| `$(cat file)` fails in cmd.exe | CodeClaw uses direct file reading in Python. For manual commands, use PowerShell: `$(Get-Content -Raw file)` |
-| Port check fails | Ensure `netstat` is available (built into Windows). Run as Administrator if needed. |
-| Permission denied on kill | Run the terminal as Administrator for `taskkill` operations. |
-
-### Vector Memory
-
-CodeClaw includes a vector memory layer that indexes source code, tasks, and generated documents for semantic search. It can be accessed via **MCP tools** (preferred when the server is running) or **CLI scripts** (fallback).
-
-**Claude MUST use the MCP claw-vector-memory tools whenever they are available.** At the start of every session:
-1. Call `mcp__claw-vector-memory__backend_health` to check if the vector memory server is running
-2. If healthy, use MCP tools for all vector memory operations throughout the session
-3. If unhealthy or unavailable, fall back to the CLI scripts below
-
-#### MCP Tools (preferred)
-
-When the `claw-vector-memory` MCP server is running, use these tools directly:
-
-| MCP Tool | Purpose |
-|----------|---------|
-| `mcp__claw-vector-memory__semantic_search` | Find relevant code/context via semantic similarity |
-| `mcp__claw-vector-memory__store_memory` | Persist learnings, discoveries, and notes into vector memory |
-| `mcp__claw-vector-memory__index_repository` | Trigger incremental or full codebase re-indexing |
-| `mcp__claw-vector-memory__get_task_context` | Get comprehensive context for a task (code, deps, notes) |
-| `mcp__claw-vector-memory__backend_health` | Check backend health and availability |
-| `mcp__claw-vector-memory__list_backends` | List configured backends and their status |
-
-**When to use MCP vector memory:**
-- Before starting any task: `semantic_search` for related code and prior learnings
-- Before picking up a task: `get_task_context` for full task context including dependencies
-- After completing significant work: `store_memory` to persist architectural decisions, gotchas, and patterns discovered
-- After editing multiple files: `index_repository` (incremental) to keep the index fresh
-- **Before spawning agents/subagents:** `index_repository` (incremental) so spawned agents read up-to-date indexed data
-- **After finishing code edits:** `index_repository` (incremental) immediately after writing/editing files, before any other action
-
-**Memory storage rule:** Never use the file-based `MEMORY.md` / memory file system (`~/.claude/projects/.../memory/`). All persistent memory — storing learnings, searching prior context, indexing — must go through the MCP `claw-vector-memory` tools exclusively. If the MCP server is unavailable, skip persistence rather than falling back to memory files.
-
-**User request triggers — use MCP vector memory when the user asks about:**
-- "project memory", "project store", "update/check/clear the store" → `store_memory` / `semantic_search`
-- "code search", "find in code", "search the codebase", "what's about X" → `semantic_search` first, fall back to Grep/Glob only if MCP is unavailable
-- "remember this", "save this to the store", "add to memory" → `store_memory`
-- Any automatic/hook-triggered context gathering before a task → `semantic_search` + `get_task_context`
-
-#### Data Alignment Rule (MANDATORY)
-
-This rule applies to the **main process, all agents, and all subagents equally.** Every process that reads or writes code must keep the vector index in sync:
-
-1. **Write-then-index:** After any file edit or write operation, call `index_repository` (incremental) before proceeding. This ensures subsequent searches by any process reflect the latest state.
-2. **Index-before-spawn:** Before launching any agent or subagent, the parent process must call `index_repository` (incremental) so the spawned process starts with aligned data.
-3. **Agents must search:** Agents and subagents must call `semantic_search` at the start of their work to leverage existing context and avoid redundant exploration.
-4. **Agents must store:** When an agent discovers something significant (architectural pattern, gotcha, decision), it must call `store_memory` before returning results, so the knowledge is available to all future processes.
-
-The goal is **zero stale reads**: every process — main, agent, or subagent — works with the same up-to-date indexed codebase. Skipping index updates creates drift between what processes "know" and what the code actually says.
-
-#### CLI Scripts (fallback)
-
-| Component | Purpose |
-|-----------|---------|
-| `vector_memory.py index` | Build/update the semantic index |
-| `vector_memory.py search "query"` | Search indexed content semantically |
-| `vector_memory.py status` | Check index health and staleness |
-| `vector_memory.py clear --force` | Reset the vector index |
-
-#### Setup
-
-1. Install dependencies: `pip install lancedb onnxruntime tokenizers numpy pyarrow`
-2. Enable in `project-config.json`: set `vector_memory.enabled` to `true`
-3. Run initial index: `python3 scripts/vector_memory.py index --full`
-
-#### Configuration (`project-config.json` > `vector_memory`)
-
-- `enabled`: Enable/disable vector memory (default: `false`)
-- `auto_index`: Auto-reindex on file Edit/Write hooks (default: `false`)
-- `embedding_provider`: `"local"` (default), `"openai"`, or `"voyage"`
-- `embedding_model`: Model name (default: `"all-MiniLM-L6-v2"`)
-- `chunk_size`: Max characters per chunk (default: `2000`)
-- `index_path`: Index storage path (default: `".claude/memory/vectors"`)
-
-Vectors are stored in `.claude/memory/vectors/` (auto-added to `.gitignore`).
+**Windows:** Requires PowerShell Core (pwsh). Enable long paths, configure `core.autocrlf true`, enable symlinks via Developer Mode. See Windows troubleshooting in project docs if issues arise.
 <!-- CodeClaw:END -->
