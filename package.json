@@ -31,7 +31,7 @@
     "extra-clients/browser-extensions"
   ],
   "scripts": {
-    "predev": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up -d postgres && npm run db:generate",
+    "predev": "$(./scripts/container-runtime.sh) compose -f compose.dev.yml up -d postgres gocache && npm run db:generate",
     "db:push": "npm run db:push -w server",
     "dev": "concurrently -n server,client -c blue,green \"npm run dev:server\" \"npm run dev:client:wait\"",
     "dev:server": "npm run dev -w server",

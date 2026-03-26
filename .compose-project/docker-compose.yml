@@ -148,6 +148,32 @@ services:
       - arsenale_net
 
   # ---------------------------------------------------------------------------
+  # GoCache — In-memory cache sidecar (gRPC)
+  # ---------------------------------------------------------------------------
+  # Lightweight in-memory cache for session data, rate limiting, and temporary
+  # state. Communicates with the server over gRPC on port 6380.
+  gocache:
+    build:
+      context: ./arsenale/infrastructure/gocache
+      dockerfile: Dockerfile
+    container_name: arsenale-gocache
+    environment:
+      CACHE_LISTEN: "tcp://0.0.0.0:6380"
+      CACHE_HEALTH_ADDR: "0.0.0.0:6381"
+      CACHE_DISCOVERY: "manual"
+    volumes:
+      - gocache_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6381/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - arsenale_net
+
+  # ---------------------------------------------------------------------------
   # Server — Express.js API + WebSocket backend
   # ---------------------------------------------------------------------------
   # The core Arsenale server. Handles:
@@ -194,6 +220,9 @@ services:
         condition: service_healthy
       # Don't start until guacd is ready (RDP/VNC connections need it).
       guacd:
+        condition: service_healthy
+      # Don't start until the cache sidecar is ready.
+      gocache:
         condition: service_healthy
     env_file:
       - .env
@@ -299,6 +328,9 @@ services:
 # To see volume locations: docker volume inspect arsenale-pgdata
 # To back up: see ./manage.sh backup
 volumes:
+  # GoCache data directory. Persists cache state across container restarts.
+  gocache_data:
+
   # PostgreSQL data directory. Contains all database tables, indexes, and WAL.
   # This is the most critical volume — losing it means losing all data.
   pgdata:

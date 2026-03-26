@@ -326,4 +326,8 @@ export const config = {
     queryGenerationModel: process.env.AI_QUERY_GENERATION_MODEL || '',
     maxRequestsPerDay: parseInt(process.env.AI_MAX_REQUESTS_PER_DAY || '100', 10),
   },
+  // Cache sidecar (gocache)
+  cacheSidecarUrl: process.env.CACHE_SIDECAR_URL || 'gocache:6380',
+  cacheSidecarEnabled: process.env.CACHE_SIDECAR_ENABLED !== 'false',
+  cacheProtoPath: process.env.CACHE_PROTO_PATH || '',
 };

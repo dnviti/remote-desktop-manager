@@ -1,4 +1,4 @@
-name: Gateways — Build & Scan
+name: Infra & Gateways — Build & Scan
 
 on:
   push:
@@ -6,10 +6,12 @@ on:
     branches: [staging, main]
     paths:
       - "gateways/**"
+      - "infrastructure/gocache/**"
   pull_request:
     branches: [develop, staging, main]
     paths:
       - "gateways/**"
+      - "infrastructure/gocache/**"
   workflow_dispatch:
 
 env:
@@ -17,6 +19,26 @@ env:
   REGISTRY: ghcr.io
 
 jobs:
+  go-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: infrastructure/gocache/go.mod
+
+      - name: Run Go tests
+        working-directory: infrastructure/gocache
+        run: |
+          go vet ./...
+          go test -race -count=1 ./...
+
   build-and-scan:
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -45,6 +67,10 @@ jobs:
             dockerfile: ./gateways/tunnel-agent/Dockerfile
             context: ./gateways/tunnel-agent
             trivy-category: trivy-tunnel-agent
+          - name: gocache
+            dockerfile: ./infrastructure/gocache/Dockerfile
+            context: ./infrastructure/gocache
+            trivy-category: trivy-gocache
 
     concurrency:
       group: gateway-${{ matrix.gateway.name }}-${{ github.ref }}

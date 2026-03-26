@@ -61,6 +61,7 @@ Always respond and work in English, even if the user's prompt is in another lang
 - **Subagent Strategy:** Use subagents liberally for research, exploration, parallel analysis. One task per subagent.
 - **Self-Improvement:** After any correction, update `tasks/lessons.md`. Review lessons at session start.
 - **Verification:** Never mark a task complete without proving it works. `npm run verify` must pass before closing any task.
+- **Rootless Containers:** All Dockerfiles/container images MUST be rootless and Podman-compatible. No process runs as root. No privileged operations at runtime. Use high ports (>1024). Test with `podman build`/`podman run`.
 - **Database Migrations:** When a task modifies `schema.prisma`, ALWAYS generate and apply migrations (`npm run db:migrate`) before marking the task complete. Incomplete migrations will break the application. This is mandatory — no exceptions.
 - **Demand Elegance:** For non-trivial changes, ask "is there a more elegant way?" Skip for simple fixes.
 - **Autonomous Bug Fixing:** Given a bug report, just fix it. Zero context switching from the user.

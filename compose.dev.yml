@@ -98,9 +98,34 @@ services:
   #   depends_on:
   #     - server
 
+  gocache:
+    build:
+      context: infrastructure/gocache
+      dockerfile: Dockerfile
+    container_name: gocache
+    environment:
+      CACHE_LISTEN: "tcp://0.0.0.0:6380"
+      CACHE_HEALTH_ADDR: "0.0.0.0:6381"
+      CACHE_DISCOVERY: "manual"
+    ports:
+      - "127.0.0.1:6380:6380"
+      - "127.0.0.1:6381:6381"
+    volumes:
+      - gocache_data_dev:/data
+    networks:
+      - arsenale-dev
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6381/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+
 networks:
   arsenale-dev:
     name: arsenale-dev
 
 volumes:
   pgdata_dev:
+  gocache_data_dev:

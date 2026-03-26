@@ -19,6 +19,9 @@ RUN npx prisma generate
 COPY server/src ./src
 RUN npx tsc
 
+# Copy cache proto for gRPC client (resolves to dist/utils/cache.proto at runtime)
+COPY infrastructure/gocache/proto/cache.proto ./dist/utils/cache.proto
+
 RUN npm prune --production
 
 RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/arsenale && chmod +x /usr/local/bin/arsenale
