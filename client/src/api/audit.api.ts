@@ -37,6 +37,8 @@ export type AuditAction =
   | 'SECRET_SHARE_UPDATE'
   | 'GATEWAY_RECONCILE'
   | 'CONNECTION_FAVORITE'
+  | 'RECORDING_START' | 'RECORDING_VIEW' | 'RECORDING_DELETE' | 'RECORDING_EXPORT_VIDEO'
+  | 'SESSION_TERMINATED_POLICY_VIOLATION' | 'TOKEN_HIJACK_ATTEMPT'
   | 'IMPOSSIBLE_TRAVEL_DETECTED'
   | 'ANOMALOUS_LATERAL_MOVEMENT'
   | 'DB_QUERY_EXECUTED' | 'DB_QUERY_BLOCKED'
@@ -170,5 +172,15 @@ export async function getConnectionAuditLogs(
 
 export async function getConnectionAuditUsers(connectionId: string): Promise<ConnectionAuditUser[]> {
   const { data } = await api.get(`/audit/connection/${connectionId}/users`);
+  return data;
+}
+
+export async function getRecordingAuditTrail(recordingId: string): Promise<{ data: AuditLogEntry[]; total: number }> {
+  const { data } = await api.get(`/recordings/${recordingId}/audit-trail`);
+  return data;
+}
+
+export async function getSessionRecording(sessionId: string) {
+  const { data } = await api.get(`/audit/session/${sessionId}/recording`);
   return data;
 }
