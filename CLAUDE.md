@@ -207,7 +207,7 @@ Tasks use isolated git worktrees at `.worktrees/task/<code>/` (must be in `.giti
 
 ## Agent Teams Mode
 
-**Default execution mode.** Use Agent Teams for any task involving development, research, or parallel work. Immediately create the agent team and spawn teammates for each unit of work as per the configurations below. Expecially when using the yolo mode.
+**Default execution mode.** Use Agent Teams for any task involving development, research, or parallel work. Fall back to standalone subagents only if Teams tools are unavailable.
 
 ### Team Lifecycle
 
