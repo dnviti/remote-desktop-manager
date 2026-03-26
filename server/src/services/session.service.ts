@@ -25,6 +25,7 @@ export interface StartSessionParams {
   ipAddress?: string | string[];
   metadata?: Record<string, unknown>;
   routingDecision?: RoutingDecisionMeta;
+  recordingId?: string;
 }
 
 export interface ActiveSessionFilter {
@@ -93,6 +94,7 @@ export async function startSession(params: StartSessionParams): Promise<string> 
         sessionId: session.id,
         protocol: params.protocol,
         ...(params.metadata ?? {}),
+        ...(params.recordingId ? { recordingId: params.recordingId } : {}),
         ...(params.gatewayId ? { gatewayName: session.gateway?.name ?? null, instanceId: params.instanceId ?? null } : {}),
         ...(params.routingDecision ? {
           lbStrategy: params.routingDecision.strategy,
@@ -133,6 +135,12 @@ export async function endSession(
 
     log.debug(`Ended session ${sessionId} (duration ${durationMs}ms)`);
 
+    const recording = await prisma.sessionRecording.findFirst({
+      where: { sessionId },
+      select: { id: true },
+      orderBy: { createdAt: 'desc' },
+    });
+
     auditService.log({
       userId: session.userId,
       action: 'SESSION_END',
@@ -144,6 +152,7 @@ export async function endSession(
         durationMs,
         durationFormatted: formatDuration(durationMs),
         ...(reason ? { reason } : {}),
+        ...(recording ? { recordingId: recording.id } : {}),
         ...(session.gatewayId ? { gatewayName: session.gateway?.name ?? null, instanceId: session.instanceId } : {}),
       },
       ipAddress: session.ipAddress ?? undefined,

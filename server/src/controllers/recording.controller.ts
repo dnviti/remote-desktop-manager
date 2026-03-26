@@ -4,7 +4,9 @@ import fs from 'fs';
 import { AuthRequest, assertAuthenticated } from '../types';
 import * as recordingService from '../services/recording.service';
 import * as auditService from '../services/audit.service';
+import prisma from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
+import { hasAnyRole } from '../middleware/tenant.middleware';
 import { validatedQuery } from '../middleware/validate.middleware';
 import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
@@ -31,7 +33,7 @@ export async function getRecording(req: AuthRequest, res: Response) {
     action: 'RECORDING_VIEW',
     targetType: 'Recording',
     targetId: recording.id,
-    details: { protocol: recording.protocol, connectionId: recording.connectionId },
+    details: { recordingId: recording.id, protocol: recording.protocol, connectionId: recording.connectionId },
     ipAddress: getClientIp(req),
   });
 
@@ -185,8 +187,52 @@ export async function exportVideo(req: AuthRequest, res: Response) {
     action: 'RECORDING_EXPORT_VIDEO',
     targetType: 'Recording',
     targetId: req.params.id as string,
+    details: { recordingId: req.params.id as string },
     ipAddress: getClientIp(req),
   });
+}
+
+export async function getAuditTrail(req: AuthRequest, res: Response) {
+  assertAuthenticated(req);
+  const recordingId = req.params.id as string;
+
+  // Find recording without userId filter — then check ownership or tenant role
+  const recording = await prisma.sessionRecording.findUnique({
+    where: { id: recordingId },
+    select: { id: true, sessionId: true, userId: true },
+  });
+  if (!recording) throw new AppError('Recording not found', 404);
+
+  const isOwner = recording.userId === req.user.userId;
+  const isAuditor = Boolean(req.user.tenantId) && hasAnyRole(req.user.tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
+
+  if (!isOwner && !isAuditor) {
+    throw new AppError('Recording not found', 404);
+  }
+
+  if (!recording.sessionId) {
+    res.json({ data: [], hasMore: false });
+    return;
+  }
+
+  const LIMIT = 200;
+  const logs = await prisma.auditLog.findMany({
+    where: {
+      // Scope to user's own logs unless they're an auditor
+      ...(!isAuditor ? { userId: req.user.userId } : {}),
+      OR: [
+        { details: { path: ['sessionId'], equals: recording.sessionId } },
+        { details: { path: ['recordingId'], equals: recordingId } },
+      ],
+    },
+    orderBy: { createdAt: 'asc' },
+    take: LIMIT + 1,
+  });
+
+  const hasMore = logs.length > LIMIT;
+  if (hasMore) logs.pop();
+
+  res.json({ data: logs, hasMore });
 }
 
 export async function deleteRecording(req: AuthRequest, res: Response) {
@@ -199,6 +245,7 @@ export async function deleteRecording(req: AuthRequest, res: Response) {
     action: 'RECORDING_DELETE',
     targetType: 'Recording',
     targetId: req.params.id as string,
+    details: { recordingId: req.params.id as string },
     ipAddress: getClientIp(req),
   });
 

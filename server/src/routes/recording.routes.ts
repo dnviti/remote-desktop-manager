@@ -13,6 +13,7 @@ router.get('/:id', validateUuidParam(), asyncHandler(recordingController.getReco
 router.get('/:id/stream', validateUuidParam(), asyncHandler(recordingController.streamRecording));
 router.get('/:id/analyze', validateUuidParam(), asyncHandler(recordingController.analyzeRecording));
 router.get('/:id/video', validateUuidParam(), asyncHandler(recordingController.exportVideo));
+router.get('/:id/audit-trail', validateUuidParam(), asyncHandler(recordingController.getAuditTrail));
 router.delete('/:id', validateUuidParam(), asyncHandler(recordingController.deleteRecording));
 
 export default router;

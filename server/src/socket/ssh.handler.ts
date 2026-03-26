@@ -420,6 +420,14 @@ export function setupSshHandler(io: Server) {
           ipAddress: clientIp,
           metadata: { host: conn.host, port: conn.port, credentialSource },
           routingDecision,
+          recordingId: recordingId ?? undefined,
+        }).then((sessionId) => {
+          if (recordingId && sessionId) {
+            prisma.sessionRecording.update({
+              where: { id: recordingId },
+              data: { sessionId },
+            }).catch((err) => { logger.error('Failed to link recording to session:', err); });
+          }
         }).catch((err) => {
           logger.error('Failed to persist SSH session record:', err);
         });
@@ -497,6 +505,8 @@ export function setupSshHandler(io: Server) {
                       policyAction: match.action,
                       matchedPattern: match.matchedPattern,
                       matchedInput: match.matchedInput,
+                      ...(recordingId ? { recordingId } : {}),
+                      sessionId: `${user.userId}:${socket.id}`,
                     },
                     ipAddress: clientIp,
                   });

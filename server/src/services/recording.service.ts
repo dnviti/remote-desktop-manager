@@ -9,6 +9,7 @@ import { AppError } from '../middleware/error.middleware';
 import type { SessionProtocol, RecordingStatus } from '../lib/prisma';
 import { createNotificationAsync } from './notification.service';
 import { emitNotification } from '../socket/notification.handler';
+import * as auditService from './audit.service';
 
 // ── Video conversion concurrency lock ────────────────────────────────
 const activeConversions = new Map<string, Promise<{ videoPath: string; fileSize: number }>>();
@@ -93,6 +94,20 @@ export async function startRecording(params: {
       status: 'RECORDING',
     },
   });
+
+  auditService.log({
+    userId: params.userId,
+    action: 'RECORDING_START',
+    targetType: 'Recording',
+    targetId: recording.id,
+    details: {
+      recordingId: recording.id,
+      protocol: params.protocol,
+      connectionId: params.connectionId,
+      ...(params.sessionId ? { sessionId: params.sessionId } : {}),
+    },
+  });
+
   return recording.id;
 }
 

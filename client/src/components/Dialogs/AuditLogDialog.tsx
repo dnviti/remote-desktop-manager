@@ -12,7 +12,7 @@ import {
   KeyboardArrowDown as ExpandIcon,
   KeyboardArrowUp as CollapseIcon,
   Pause as PauseIcon,
-  PlayArrow as PlayIcon,
+  PlayArrow as PlayArrowIcon,
   Warning as WarningIcon,
   Storage as StorageIcon,
   List as ListIcon,
@@ -29,6 +29,10 @@ import { ACTION_LABELS, getActionColor, formatDetails, ALL_ACTIONS, TARGET_TYPES
 import IpGeoCell from '../Audit/IpGeoCell';
 import { SlideUp } from '../common/SlideUp';
 import QueryVisualizer from '../DatabaseClient/QueryVisualizer';
+import RecordingPlayerDialog from '../Recording/RecordingPlayerDialog';
+import { getRecording } from '../../api/recordings.api';
+import type { Recording } from '../../api/recordings.api';
+import { getSessionRecording } from '../../api/audit.api';
 
 interface AuditLogDialogProps {
   open: boolean;
@@ -108,6 +112,11 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
 
   // ---- Query Visualizer state ----
   const [visualizerEntry, setVisualizerEntry] = useState<DbAuditLogEntry | null>(null);
+
+  // ---- Recording Player state ----
+  const [selectedRecording, setSelectedRecording] = useState<Recording | null>(null);
+  const [recordingPlayerOpen, setRecordingPlayerOpen] = useState(false);
+  const [loadingRecordingId, setLoadingRecordingId] = useState<string | null>(null);
 
   const activeTab = auditLogTab || 'general';
 
@@ -234,6 +243,30 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
   const hasActiveFilters = auditLogAction || auditLogSearch || auditLogTargetType || auditLogGatewayId || ipAddress || geoCountry || startDate || endDate || flaggedOnly;
   const hasDbActiveFilters = dbSearch || dbQueryType || dbConnectionId || dbUserId || dbBlocked || dbStartDate || dbEndDate;
 
+  const handleViewRecording = async (log: AuditLogEntry) => {
+    const sessionId = (log.details as Record<string, unknown>)?.sessionId as string | undefined;
+    const recordingId = (log.details as Record<string, unknown>)?.recordingId as string | undefined;
+    if (!sessionId && !recordingId) return;
+
+    setLoadingRecordingId(log.id);
+    try {
+      let recording: Recording;
+      if (recordingId) {
+        recording = await getRecording(recordingId);
+      } else if (sessionId) {
+        recording = await getSessionRecording(sessionId);
+      } else {
+        return;
+      }
+      setSelectedRecording(recording);
+      setRecordingPlayerOpen(true);
+    } catch {
+      // Recording not found or not available
+    } finally {
+      setLoadingRecordingId(null);
+    }
+  };
+
   return (
     <Dialog
       fullScreen
@@ -253,7 +286,7 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
               onClick={() => setUiPref('auditLogAutoRefreshPaused', !autoRefreshPaused)}
               sx={{ mr: 0.5 }}
             >
-              {autoRefreshPaused ? <PlayIcon /> : <PauseIcon />}
+              {autoRefreshPaused ? <PlayArrowIcon /> : <PauseIcon />}
             </IconButton>
           </Tooltip>
           <Chip
@@ -498,6 +531,18 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
                                   {log.flags?.includes('IMPOSSIBLE_TRAVEL') && (
                                     <Tooltip title="Impossible travel detected">
                                       <WarningIcon color="warning" fontSize="small" />
+                                    </Tooltip>
+                                  )}
+                                  {['SESSION_START', 'SESSION_END', 'SESSION_TERMINATED_POLICY_VIOLATION'].includes(log.action) &&
+                                    Boolean((log.details as Record<string, unknown>)?.sessionId) && (
+                                    <Tooltip title="View Recording">
+                                      <IconButton
+                                        size="small"
+                                        onClick={(e) => { e.stopPropagation(); handleViewRecording(log); }}
+                                        disabled={loadingRecordingId === log.id}
+                                      >
+                                        {loadingRecordingId === log.id ? <CircularProgress size={16} /> : <PlayArrowIcon fontSize="small" />}
+                                      </IconButton>
                                     </Tooltip>
                                   )}
                                 </Box>
@@ -812,6 +857,12 @@ export default function AuditLogDialog({ open, onClose, onGeoIpClick }: AuditLog
         blocked={visualizerEntry?.blocked ?? false}
         blockReason={visualizerEntry?.blockReason}
         storedExecutionPlan={visualizerEntry?.executionPlan ?? null}
+      />
+
+      <RecordingPlayerDialog
+        open={recordingPlayerOpen}
+        onClose={() => { setRecordingPlayerOpen(false); setSelectedRecording(null); }}
+        recording={selectedRecording}
       />
     </Dialog>
   );

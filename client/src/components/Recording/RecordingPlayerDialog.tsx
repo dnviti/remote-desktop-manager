@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog, DialogTitle, DialogContent, Box, IconButton, Typography,
   Chip, Tooltip, CircularProgress, Collapse, Table, TableBody, TableRow,
@@ -10,11 +10,15 @@ import {
   FullscreenExit as FullscreenExitIcon,
   OpenInNew as OpenInNewIcon,
   Analytics as AnalyticsIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import type { Recording } from '../../api/recordings.api';
 import { analyzeRecording, type RecordingAnalysis } from '../../api/recordings.api';
 import { openRecordingWindow } from '../../utils/openRecordingWindow';
 import { extractApiError } from '../../utils/apiError';
+import { getRecordingAuditTrail } from '../../api/audit.api';
+import type { AuditLogEntry } from '../../api/audit.api';
+import { ACTION_LABELS, getActionColor } from '../Audit/auditConstants';
 import GuacPlayer from './GuacPlayer';
 import SshPlayer from './SshPlayer';
 
@@ -41,6 +45,19 @@ export default function RecordingPlayerDialog({
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState('');
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [auditTrail, setAuditTrail] = useState<AuditLogEntry[]>([]);
+  const [auditLoading, setAuditLoading] = useState(false);
+  const [showAuditTrail, setShowAuditTrail] = useState(false);
+
+  // Reset per-recording cached state when the recording changes
+  useEffect(() => {
+    setAuditTrail([]);
+    setShowAuditTrail(false);
+    setAuditLoading(false);
+    setAnalysis(null);
+    setShowAnalysis(false);
+    setAnalysisError('');
+  }, [recording?.id]);
 
   if (!recording) return null;
 
@@ -72,6 +89,21 @@ export default function RecordingPlayerDialog({
   const handleOpenInNewWindow = () => {
     openRecordingWindow(recording.id, recording.width, recording.height);
     onClose();
+  };
+
+  const handleAuditTrail = async () => {
+    if (!recording) return;
+    if (auditTrail.length > 0) { setShowAuditTrail((v) => !v); return; }
+    setAuditLoading(true);
+    try {
+      const result = await getRecordingAuditTrail(recording.id);
+      setAuditTrail(result.data);
+      setShowAuditTrail(true);
+    } catch {
+      // Audit trail not available
+    } finally {
+      setAuditLoading(false);
+    }
   };
 
   return (
@@ -109,6 +141,11 @@ export default function RecordingPlayerDialog({
             </IconButton>
           </Tooltip>
         )}
+        <Tooltip title={auditTrail.length > 0 ? (showAuditTrail ? 'Hide audit trail' : 'Show audit trail') : 'Load audit trail'}>
+          <IconButton onClick={handleAuditTrail} size="small" disabled={auditLoading}>
+            {auditLoading ? <CircularProgress size={18} /> : <TimelineIcon fontSize="small" />}
+          </IconButton>
+        </Tooltip>
         <Tooltip title="Open in new window">
           <IconButton onClick={handleOpenInNewWindow} size="small">
             <OpenInNewIcon fontSize="small" />
@@ -143,6 +180,32 @@ export default function RecordingPlayerDialog({
               </Table>
             </Box>
           )}
+        </Collapse>
+        <Collapse in={showAuditTrail && auditTrail.length > 0}>
+          <Box sx={{ p: 2, bgcolor: 'action.hover', maxHeight: 200, overflow: 'auto', borderBottom: 1, borderColor: 'divider' }}>
+            <Typography variant="subtitle2" gutterBottom>Audit Trail</Typography>
+            <Table size="small">
+              <TableBody>
+                {auditTrail.map((entry) => (
+                  <TableRow key={entry.id}>
+                    <TableCell sx={{ whiteSpace: 'nowrap', width: 160 }}>
+                      {new Date(entry.createdAt).toLocaleString()}
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={ACTION_LABELS[entry.action] || entry.action}
+                        color={getActionColor(entry.action)}
+                        size="small"
+                      />
+                    </TableCell>
+                    <TableCell sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {entry.details ? Object.entries(entry.details).map(([k, v]) => `${k}: ${v}`).join(' | ') : ''}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Box>
         </Collapse>
         <Box
           sx={{

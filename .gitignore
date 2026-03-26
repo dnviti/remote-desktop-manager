@@ -398,3 +398,5 @@ __marimo__/
 .mcp.json
 
 *.sql
+
+recordings/

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth.middleware';
 import { requireTenant, requirePermission } from '../middleware/tenant.middleware';
-import { validate } from '../middleware/validate.middleware';
+import { validate, validateUuidParam } from '../middleware/validate.middleware';
 import { auditQuerySchema, tenantAuditQuerySchema, connectionIdSchema, connectionAuditQuerySchema } from '../schemas/audit.schemas';
 import * as auditController from '../controllers/audit.controller';
 import { asyncHandler } from '../middleware/asyncHandler';
@@ -17,6 +17,7 @@ router.get('/connection/:connectionId/users', validate(connectionIdSchema, 'para
 router.get('/connection/:connectionId', validate({ params: connectionIdSchema, query: connectionAuditQuerySchema }), asyncHandler(auditController.listConnectionLogs));
 router.get('/countries', asyncHandler(auditController.listCountries));
 router.get('/gateways', asyncHandler(auditController.listGateways));
+router.get('/session/:sessionId/recording', validateUuidParam('sessionId'), asyncHandler(auditController.getSessionRecording));
 router.get('/', validate(auditQuerySchema, 'query'), asyncHandler(auditController.list));
 
 export default router;

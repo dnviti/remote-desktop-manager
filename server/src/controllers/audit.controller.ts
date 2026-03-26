@@ -3,6 +3,7 @@ import { AuthRequest, assertAuthenticated, assertTenantAuthenticated } from '../
 import { hasAnyRole } from '../middleware/tenant.middleware';
 import * as auditService from '../services/audit.service';
 import * as permissionService from '../services/permission.service';
+import prisma from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { validatedQuery, validatedParams } from '../middleware/validate.middleware';
 import { AuditAction } from '../lib/prisma';
@@ -106,4 +107,29 @@ export async function listTenantCountries(req: AuthRequest, res: Response) {
   assertTenantAuthenticated(req);
   const countries = await auditService.getTenantAuditCountries(req.user.tenantId);
   res.json(countries);
+}
+
+export async function getSessionRecording(req: AuthRequest, res: Response) {
+  assertAuthenticated(req);
+  const sessionId = req.params.sessionId as string;
+
+  const recording = await prisma.sessionRecording.findFirst({
+    where: { sessionId },
+    include: {
+      connection: { select: { id: true, name: true, type: true, host: true, port: true } },
+    },
+    orderBy: { createdAt: 'desc' },
+  });
+
+  if (!recording) throw new AppError('Recording not found', 404);
+
+  // Verify the user owns the recording or is a tenant admin/auditor
+  const isOwner = recording.userId === req.user.userId;
+  const isAuditor = Boolean(req.user.tenantId) && hasAnyRole(req.user.tenantRole, 'ADMIN', 'OWNER', 'AUDITOR');
+
+  if (!isOwner && !isAuditor) {
+    throw new AppError('Recording not found', 404);
+  }
+
+  res.json(recording);
 }
