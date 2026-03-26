@@ -13,19 +13,10 @@ services:
       - ./dev-certs/postgres/server-cert.pem:/var/lib/postgresql/server.crt:ro
       - ./dev-certs/postgres/server-key.pem:/var/lib/postgresql/server.key:ro
       - ./dev-certs/ca.pem:/var/lib/postgresql/ca.crt:ro
-    command: >
-      bash -c "
-        cp /var/lib/postgresql/server.key /tmp/server.key &&
-        chown 999:999 /tmp/server.key &&
-        chmod 600 /tmp/server.key &&
-        exec postgres
-        -c ssl=on
-        -c ssl_cert_file=/var/lib/postgresql/server.crt
-        -c ssl_key_file=/tmp/server.key
-        -c ssl_ca_file=/var/lib/postgresql/ca.crt
-      "
+      - ./infrastructure/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    command: ["bash", "-c", "cp /var/lib/postgresql/server.key /tmp/server.key && chown 999:999 /tmp/server.key && chmod 600 /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/tmp/server.key -c ssl_ca_file=/var/lib/postgresql/ca.crt -c hba_file=/etc/postgresql/pg_hba.conf"]
     networks:
-      - arsenale-dev
+      - net-db
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arsenale -d arsenale"]
@@ -38,7 +29,7 @@ services:
   #   volumes:
   #     - ${RECORDING_PATH:-./data/recordings}:/recordings
   #   networks:
-  #     - arsenale-dev
+  #     - net-guacd
   #   restart: always
   #   healthcheck:
   #     test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
@@ -64,7 +55,7 @@ services:
       - ${RECORDING_PATH:-./data/recordings}:/recordings
       - ./dev-certs/guacenc:/certs:ro
     networks:
-      - arsenale-dev
+      - net-guacenc
 
   # server:
   #   build:
@@ -92,7 +83,11 @@ services:
   #     DOCKER_SOCKET_PATH: /var/run/docker.sock
   #     NODE_ENV: development
   #   networks:
-  #     - arsenale-dev
+  #     - net-db
+  #     - net-guacd
+  #     - net-guacenc
+  #     - net-cache
+  #     - net-gateway
   #   depends_on:
   #     postgres:
   #       condition: service_healthy
@@ -112,7 +107,11 @@ services:
   #     VITE_API_TARGET: http://server:3001
   #     VITE_GUAC_TARGET: http://server:3002
   #   networks:
-  #     - arsenale-dev
+  #     - net-db
+  #     - net-guacd
+  #     - net-guacenc
+  #     - net-cache
+  #     - net-gateway
   #   depends_on:
   #     - server
 
@@ -139,7 +138,7 @@ services:
       - ./dev-certs/gocache/server-cert.pem:/certs/server-cert.pem:ro
       - ./dev-certs/gocache/server-key.pem:/certs/server-key.pem:ro
     networks:
-      - arsenale-dev
+      - net-cache
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://localhost:6381/health || wget -qO- http://localhost:6381/health || exit 1"]
@@ -149,8 +148,21 @@ services:
       start_period: 5s
 
 networks:
-  arsenale-dev:
-    name: arsenale-dev
+  # Server↔PostgreSQL only
+  net-db:
+    name: arsenale-net-db
+  # Server↔guacd only
+  net-guacd:
+    name: arsenale-net-guacd
+  # Server↔guacenc only
+  net-guacenc:
+    name: arsenale-net-guacenc
+  # Server↔gocache + gocache peers
+  net-cache:
+    name: arsenale-net-cache
+  # Server↔gateways (SSH, managed containers)
+  net-gateway:
+    name: arsenale-net-gateway
 
 volumes:
   pgdata_dev:

@@ -68,6 +68,10 @@ services:
       # Named volume for database persistence across container restarts.
       # WARNING: Deleting this volume destroys all data. Back up regularly.
       - pgdata:/var/lib/postgresql/data
+      # Custom HBA: SSL-only remote connections, reject plaintext
+      - ./arsenale/infrastructure/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+    # Load custom pg_hba.conf to enforce SSL-only remote connections
+    command: ["postgres", "-c", "hba_file=/etc/postgresql/pg_hba.conf"]
     restart: always
     healthcheck:
       # pg_isready checks if PostgreSQL is accepting connections.
@@ -81,7 +85,7 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - arsenale_net
+      - net-db
 
   # ---------------------------------------------------------------------------
   # Apache Guacamole Daemon (guacd) — RDP/VNC protocol handler
@@ -113,7 +117,7 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - arsenale_net
+      - net-guacd
 
   # ---------------------------------------------------------------------------
   # Guacenc — Session recording video converter (optional)
@@ -145,7 +149,7 @@ services:
       retries: 3
       start_period: 5s
     networks:
-      - arsenale_net
+      - net-guacenc
 
   # ---------------------------------------------------------------------------
   # GoCache — In-memory cache sidecar (gRPC)
@@ -177,7 +181,7 @@ services:
       retries: 3
       start_period: 5s
     networks:
-      - arsenale_net
+      - net-cache
 
   # ---------------------------------------------------------------------------
   # Server — Express.js API + WebSocket backend
@@ -244,7 +248,11 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     restart: always
     networks:
-      - arsenale_net
+      - net-db
+      - net-guacd
+      - net-guacenc
+      - net-cache
+      - net-gateway
 
   # ---------------------------------------------------------------------------
   # Client — React SPA served by Nginx
@@ -284,7 +292,7 @@ services:
         condition: service_healthy
     restart: always
     networks:
-      - arsenale_net
+      - net-gateway
 
   # ---------------------------------------------------------------------------
   # SSH Gateway — Managed SSH tunnel for TCP port forwarding (optional)
@@ -325,7 +333,7 @@ services:
       - ./config/ssh-gateway/authorized_keys:/config/authorized_keys:ro
     restart: always
     networks:
-      - arsenale_net
+      - net-gateway
 
 # =============================================================================
 # Volumes — Persistent data storage
@@ -352,13 +360,31 @@ volumes:
   arsenale_recordings:
 
 # =============================================================================
-# Network — Isolated container network
+# Networks — Zero-trust segmented container networks
 # =============================================================================
-# All services communicate over this internal bridge network using Docker DNS.
-# Service names (postgres, guacd, server, etc.) resolve to container IPs
-# automatically. No service ports are exposed to the host except those
-# explicitly listed in the 'ports' section above.
+# Each service connects ONLY to its dedicated network. The server container
+# is the sole hub that bridges all networks. No service can reach another
+# service outside its designated network segment.
+#
+#   net-db:      server ↔ postgres (SSL-only via pg_hba.conf)
+#   net-guacd:   server ↔ guacd
+#   net-guacenc: server ↔ guacenc
+#   net-cache:   server ↔ gocache (+ gocache peers)
+#   net-gateway: server ↔ client, ssh-gateway, managed gateways
+#
 networks:
-  arsenale_net:
-    name: arsenale_net
-    driver: bridge
+  # Server↔PostgreSQL only
+  net-db:
+    name: arsenale-net-db
+  # Server↔guacd only
+  net-guacd:
+    name: arsenale-net-guacd
+  # Server↔guacenc only
+  net-guacenc:
+    name: arsenale-net-guacenc
+  # Server↔gocache + gocache peers
+  net-cache:
+    name: arsenale-net-cache
+  # Server↔gateways + client (user-facing)
+  net-gateway:
+    name: arsenale-net-gateway
