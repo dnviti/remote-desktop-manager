@@ -203,11 +203,9 @@ Skills: `/release-plan` (manage plans), `/release-plan suggest` (AI grouping). I
 
 Tasks use isolated git worktrees at `.worktrees/task/<code>/` (must be in `.gitignore`). `/task pick` creates worktree, auto-removed on close. `/task continue` creates fresh worktree from existing branch. `task_manager.py` reads/writes task files from main repo root. Run `/release` and `/setup env` from main repository.
 
-<!-- CodeClaw:START -->
-
 ## Agent Teams Mode
 
-**Default execution mode.** Use Agent Teams for any task involving development, research, or parallel work. Fall back to standalone subagents only if Teams tools are unavailable.
+**Default execution mode.** Use Agent Teams for any task involving development (/claw:task skill), research (/claw:idea skill), or parallel work in general. No exceptions. This is the core of the CLAUDE workflow.
 
 ### Team Lifecycle
 
@@ -246,4 +244,3 @@ Supports Windows, macOS, Linux with auto OS detection.
 **Utilities:** `platform_utils.py` (cmd detection, shell info, file copy), `app_manager.py` (port/process mgmt), `task_manager.py find-files` (cross-platform find).
 
 **Windows:** Requires PowerShell Core (pwsh). Enable long paths, configure `core.autocrlf true`, enable symlinks via Developer Mode. See Windows troubleshooting in project docs if issues arise.
-<!-- CodeClaw:END -->
