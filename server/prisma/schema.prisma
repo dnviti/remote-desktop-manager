@@ -62,6 +62,7 @@ model Tenant {
   sshKeyPair         SshKeyPair?
   vaultSecrets       VaultSecret[]
   tenantVaultMembers TenantVaultMember[]
+  pendingVaultKeyDistributions PendingVaultKeyDistribution[]
   syncProfiles       SyncProfile[]
   externalVaultProviders ExternalVaultProvider[]
   aiConfig           TenantAiConfig?
@@ -177,6 +178,8 @@ model User {
   secretVersionChanges   VaultSecretVersion[]   @relation("SecretVersionChanger")
   vaultFolders           VaultFolder[]
   tenantVaultMemberships TenantVaultMember[]
+  pendingVaultKeyTargets       PendingVaultKeyDistribution[] @relation("PendingVaultKeyTarget")
+  pendingVaultKeyDistributions PendingVaultKeyDistribution[] @relation("PendingVaultKeyDistributor")
   secretsSharedWithMe    SharedSecret[]         @relation("SecretSharedWith")
   secretsSharedByMe      SharedSecret[]         @relation("SecretSharedBy")
   externalSecretShares   ExternalSecretShare[]
@@ -776,6 +779,7 @@ enum NotificationType {
   SECRET_CHECKOUT_EXPIRED
   LATERAL_MOVEMENT_ALERT
   SESSION_TERMINATED_POLICY_VIOLATION
+  TENANT_VAULT_KEY_RECEIVED
 }
 
 model Notification {
@@ -958,6 +962,23 @@ model TenantVaultMember {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([tenantId, userId])
+}
+
+model PendingVaultKeyDistribution {
+  id                      String   @id @default(uuid())
+  tenantId                String
+  targetUserId            String
+  encryptedTenantVaultKey String
+  tenantVaultKeyIV        String
+  tenantVaultKeyTag       String
+  distributorUserId       String
+  createdAt               DateTime @default(now())
+
+  tenant      Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  targetUser  User   @relation("PendingVaultKeyTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  distributor User   @relation("PendingVaultKeyDistributor", fields: [distributorUserId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, targetUserId])
 }
 
 model ExternalSecretShare {

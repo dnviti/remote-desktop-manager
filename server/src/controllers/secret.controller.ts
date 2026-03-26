@@ -314,7 +314,7 @@ export async function distributeTenantKey(req: AuthRequest, res: Response) {
   }
 
   const { targetUserId } = req.body as DistributeTenantKeyInput;
-  await secretService.distributeTenantKeyToUser(
+  const result = await secretService.distributeTenantKeyToUser(
     req.user.tenantId,
     targetUserId,
     req.user.userId
@@ -325,11 +325,11 @@ export async function distributeTenantKey(req: AuthRequest, res: Response) {
     action: 'TENANT_VAULT_KEY_DISTRIBUTE',
     targetType: 'User',
     targetId: targetUserId,
-    details: { tenantId: req.user.tenantId },
+    details: { tenantId: req.user.tenantId, pending: result.pending },
     ipAddress: getClientIp(req),
   });
 
-  res.json({ distributed: true });
+  res.json(result);
 }
 
 export async function tenantVaultStatus(req: AuthRequest, res: Response) {

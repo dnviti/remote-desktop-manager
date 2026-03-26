@@ -1,4 +1,4 @@
-import crypto from 'crypto';
+import crypto, { createHmac } from 'crypto';
 import argon2 from 'argon2';
 import { EncryptedField, VaultSession } from '../types';
 import { config } from '../config';
@@ -437,4 +437,21 @@ export function lockUserTenantVaults(userId: string): void {
       tenantVaultStore.delete(key);
     }
   }
+}
+
+// Escrow key derivation for pending vault key distribution
+
+export function deriveEscrowKey(tenantId: string): Buffer {
+  return createHmac('sha256', config.serverEncryptionKey)
+    .update(tenantId)
+    .digest();
+}
+
+export function encryptWithEscrow(tenantKey: Buffer, escrowKey: Buffer): EncryptedField {
+  return encrypt(tenantKey.toString('hex'), escrowKey);
+}
+
+export function decryptWithEscrow(field: EncryptedField, escrowKey: Buffer): Buffer {
+  const hex = decrypt(field, escrowKey);
+  return Buffer.from(hex, 'hex');
 }
