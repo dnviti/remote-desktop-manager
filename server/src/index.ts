@@ -27,7 +27,7 @@ import { completeGuacRecording, cleanupExpiredRecordings } from './services/reco
 import { initGeoIp } from './services/geoip.service';
 import { setupTunnelHandler } from './socket/tunnel.handler';
 import { generateSelfSignedServerCert } from './utils/certGenerator';
-import { pushKeysToAllTenantGateways } from './services/gateway.service';
+import { startGatewayEventSubscriptions, publishGatewayEvent, GatewayEventType } from './services/gatewayEventBus.service';
 import { startSshProxyServer, stopSshProxyServer, restartSshProxy } from './services/sshProxy.service';
 import { cleanupIdleTunnels } from './services/rdGateway.service';
 import { cleanupExpiredDeviceCodes } from './services/deviceAuth.service';
@@ -243,6 +243,9 @@ async function main() {
 
   // Start gateway health monitors
   startAllMonitors();
+
+  // Start gateway event bus (must subscribe before events are published)
+  await startGatewayEventSubscriptions();
 
   // Detect and initialize container orchestrator
   const orchestrator = await detectOrchestrator();
@@ -577,15 +580,13 @@ async function main() {
     logger.info(`Environment: ${config.nodeEnv}`);
     markServerReady();
 
-    // Auto-push SSH keys to all managed gateways after startup
-    // Delay gives gateways time to start their gRPC servers
-    setTimeout(() => {
-      runIfLeader('scheduler', async () => {
-        await pushKeysToAllTenantGateways();
-      }).catch((err) => {
-        logger.error('Startup SSH key push failed:', err instanceof Error ? err.message : 'Unknown error');
-      });
-    }, 10_000);
+    // Publish server-ready event — event bus handles SSH key push with delay
+    publishGatewayEvent(GatewayEventType.SERVER_READY, {
+      tenantId: '*',
+      gatewayId: '*',
+    }).catch((err) => {
+      logger.error('Failed to publish SERVER_READY event:', err instanceof Error ? err.message : 'Unknown error');
+    });
   });
 
   // If the tunnel server is separate (TLS-enabled), start it on port+10
