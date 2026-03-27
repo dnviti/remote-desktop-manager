@@ -39,7 +39,12 @@ FROM alpine:3.18
 
 RUN apk update && apk upgrade --no-cache
 
-RUN apk add --no-cache python3 ffmpeg-libs ffmpeg libpng cairo libjpeg-turbo libuuid
+RUN apk add --no-cache python3 py3-pip ffmpeg-libs ffmpeg libpng cairo libjpeg-turbo libuuid
+
+# grpcio for gocache pub/sub subscriber (JSON codec for dynamic secret updates)
+RUN apk add --no-cache --virtual .build-deps gcc musl-dev python3-dev linux-headers && \
+    pip3 install --no-cache-dir --break-system-packages grpcio && \
+    apk del .build-deps
 
 RUN addgroup -S guacenc && adduser -S -G guacenc guacenc
 

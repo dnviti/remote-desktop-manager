@@ -14,6 +14,7 @@ Endpoints:
   POST /cleanup           — Bulk-delete old video files from /recordings/
 """
 
+import base64
 import hmac
 import json
 import os
@@ -23,6 +24,12 @@ import threading
 import time
 import uuid
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
+try:
+    import grpc
+    HAS_GRPC = True
+except ImportError:
+    HAS_GRPC = False
 
 # ── Configuration ────────────────────────────────────────────────────
 
@@ -37,6 +44,24 @@ AGG_THEME = os.environ.get("AGG_THEME", "monokai")
 CLEANUP_DEFAULT_MAX_AGE_DAYS = 90
 
 START_TIME = time.monotonic()
+
+# ── Thread-safe dynamic auth token ──────────────────────────────────
+
+_auth_token_lock = threading.Lock()
+_auth_token = None  # Initialized in __main__ after read_secret is defined
+
+
+def get_auth_token():
+    """Get the current auth token (thread-safe)."""
+    with _auth_token_lock:
+        return _auth_token
+
+
+def set_auth_token(token):
+    """Update auth token dynamically (called by gocache subscriber)."""
+    global _auth_token
+    with _auth_token_lock:
+        _auth_token = token
 
 
 def read_secret(secret_name, env_fallback, default=''):
@@ -300,7 +325,7 @@ class GuacencHandler(BaseHTTPRequestHandler):
 
     def _check_auth(self):
         """Validate bearer token if GUACENC_AUTH_TOKEN is set."""
-        expected = read_secret('guacenc_auth_token', 'GUACENC_AUTH_TOKEN')
+        expected = get_auth_token()
         if not expected:
             return True
         auth_header = self.headers.get('Authorization', '')
@@ -528,9 +553,90 @@ class GuacencHandler(BaseHTTPRequestHandler):
         print(f"[guacenc] {fmt % args}")
 
 
+# ── GoCache gRPC Subscriber ──────────────────────────────────────────
+
+
+def gocache_subscriber():
+    """Background thread: subscribe to gocache for auth token updates.
+
+    The gocache server uses a custom JSON codec (not standard protobuf binary).
+    Messages are JSON-encoded; `bytes` fields are base64-encoded strings.
+    """
+    cache_url = os.environ.get('CACHE_SIDECAR_URL', 'gocache:6380')
+    tls_ca = os.environ.get('CACHE_SIDECAR_TLS_CA', '')
+    tls_cert = os.environ.get('CACHE_SIDECAR_TLS_CERT', '')
+    tls_key = os.environ.get('CACHE_SIDECAR_TLS_KEY', '')
+
+    retry_delay = 1  # Start with 1 second
+    max_retry_delay = 60
+
+    while True:
+        try:
+            # Create channel (mTLS or insecure)
+            if tls_ca and tls_cert and tls_key:
+                with open(tls_ca, 'rb') as f:
+                    ca_data = f.read()
+                with open(tls_cert, 'rb') as f:
+                    cert_data = f.read()
+                with open(tls_key, 'rb') as f:
+                    key_data = f.read()
+                credentials = grpc.ssl_channel_credentials(
+                    root_certificates=ca_data,
+                    private_key=key_data,
+                    certificate_chain=cert_data,
+                )
+                channel = grpc.secure_channel(cache_url, credentials)
+            else:
+                channel = grpc.insecure_channel(cache_url)
+
+            print(f'[guacenc] Connecting to gocache at {cache_url} for secret updates...')
+
+            # Subscribe using the JSON codec — gocache uses custom JSON, not protobuf
+            subscribe_method = channel.unary_stream(
+                '/cache.CacheService/Subscribe',
+                request_serializer=lambda req: json.dumps(req).encode('utf-8'),
+                response_deserializer=lambda data: json.loads(data),
+            )
+
+            request = {'channel': 'system:secret:guacenc', 'pattern': False}
+            responses = subscribe_method(request)
+
+            retry_delay = 1  # Reset on successful connection
+            print('[guacenc] Subscribed to gocache channel: system:secret:guacenc')
+
+            for response in responses:
+                try:
+                    # Response: {"channel": "...", "message": "<base64>"}
+                    msg_b64 = response.get('message', '')
+                    if not msg_b64:
+                        continue
+                    msg_bytes = base64.b64decode(msg_b64)
+                    msg = json.loads(msg_bytes)
+
+                    if 'value' in msg:
+                        set_auth_token(msg['value'])
+                        version = msg.get('version', '?')
+                        print(f'[guacenc] Auth token updated via gocache (version {version})')
+                except Exception as e:
+                    print(f'[guacenc] Error processing secret update: {e}')
+
+        except grpc.RpcError as e:
+            print(f'[guacenc] gocache connection error: {e.code()} - {e.details()}')
+        except Exception as e:
+            print(f'[guacenc] gocache subscriber error: {e}')
+
+        # Exponential backoff on reconnect
+        print(f'[guacenc] Reconnecting to gocache in {retry_delay}s...')
+        time.sleep(retry_delay)
+        retry_delay = min(retry_delay * 2, max_retry_delay)
+
+
 # ── Main ─────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
+    # Initialize auth token from secret/env
+    set_auth_token(read_secret('guacenc_auth_token', 'GUACENC_AUTH_TOKEN'))
+
     job_store = JobStore()
     GuacencHandler.job_store = job_store
 
@@ -548,8 +654,21 @@ if __name__ == "__main__":
     else:
         print("[guacenc] WARNING: Running without TLS")
 
-    auth_token = read_secret('guacenc_auth_token', 'GUACENC_AUTH_TOKEN')
-    print(f"[guacenc] Bearer auth: {'enabled' if auth_token else 'disabled'}")
+    print(f"[guacenc] Bearer auth: {'enabled' if get_auth_token() else 'disabled'}")
+
+    # Start gocache subscriber for dynamic secret updates
+    cache_url = os.environ.get('CACHE_SIDECAR_URL', '')
+    if cache_url and HAS_GRPC:
+        subscriber_thread = threading.Thread(
+            target=gocache_subscriber, daemon=True, name='gocache-subscriber',
+        )
+        subscriber_thread.start()
+        print(f'[guacenc] gocache subscriber started (target: {cache_url})')
+    elif cache_url and not HAS_GRPC:
+        print('[guacenc] WARNING: grpcio not installed — gocache subscriber disabled')
+    else:
+        print('[guacenc] CACHE_SIDECAR_URL not set — gocache subscriber disabled')
+
     print(f"[guacenc] Listening on port {PORT}")
     print(f"[guacenc] Max concurrent jobs: {MAX_CONCURRENT_JOBS}")
     print(f"[guacenc] Conversion timeout: {GUACENC_TIMEOUT}s")

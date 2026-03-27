@@ -64,8 +64,13 @@ services:
       - /tmp
     security_opt:
       - label:disable
+    environment:
+      CACHE_SIDECAR_URL: "gocache:6380"
     volumes:
       - arsenale_recordings:/recordings
+    depends_on:
+      gocache:
+        condition: service_healthy
     restart: always
     healthcheck:
       test:

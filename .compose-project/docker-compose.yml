@@ -151,10 +151,18 @@ services:
     read_only: true
     tmpfs:
       - /tmp
+    environment:
+      CACHE_SIDECAR_URL: "gocache:6380"
+      CACHE_SIDECAR_TLS_CA: "${CACHE_TLS_CA:-}"
+      CACHE_SIDECAR_TLS_CERT: "${CACHE_TLS_CERT:-}"
+      CACHE_SIDECAR_TLS_KEY: "${CACHE_TLS_KEY:-}"
     volumes:
       # Same recordings volume as guacd — guacenc reads raw recordings and
       # writes converted video files back to the same directory.
       - arsenale_recordings:/recordings
+    depends_on:
+      gocache:
+        condition: service_healthy
     restart: always
     healthcheck:
       test:
@@ -168,6 +176,7 @@ services:
       start_period: 5s
     networks:
       - net-guacenc
+      - net-cache
 
   # ---------------------------------------------------------------------------
   # GoCache — In-memory cache sidecar (gRPC)

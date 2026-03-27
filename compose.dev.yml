@@ -86,11 +86,19 @@ services:
       GUACENC_TLS_CERT: ${GUACENC_TLS_CERT}
       GUACENC_TLS_KEY: ${GUACENC_TLS_KEY}
       GUACENC_AUTH_TOKEN: ${GUACENC_AUTH_TOKEN:-}
+      CACHE_SIDECAR_URL: ${CACHE_SIDECAR_URL_DOCKER:-gocache:6380}
+      CACHE_SIDECAR_TLS_CA: ${CACHE_SIDECAR_TLS_CA_DOCKER:-}
+      CACHE_SIDECAR_TLS_CERT: ${CACHE_SIDECAR_TLS_CERT_DOCKER:-}
+      CACHE_SIDECAR_TLS_KEY: ${CACHE_SIDECAR_TLS_KEY_DOCKER:-}
     volumes:
       - ${RECORDING_PATH:-./data/recordings}:/recordings
       - ./dev-certs/guacenc:/certs:ro
+    depends_on:
+      gocache:
+        condition: service_healthy
     networks:
       - net-guacenc
+      - net-cache
     healthcheck:
       test:
         [
@@ -148,6 +156,7 @@ services:
     tmpfs:
       - /app/node_modules/.vite
       - /app/server/dist
+      - /app/server/src/generated
       - /tmp
     command: >
       sh -c "npx prisma generate --schema=server/prisma/schema.prisma &&

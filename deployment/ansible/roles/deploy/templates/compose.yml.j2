@@ -93,10 +93,18 @@ services:
       - /tmp
     environment:
       GUACENC_AUTH_TOKEN_FILE: /run/secrets/guacenc_auth_token
+      CACHE_SIDECAR_URL: "gocache:6380"
+      CACHE_SIDECAR_TLS_CA: /certs/gocache/ca.pem
+      CACHE_SIDECAR_TLS_CERT: /certs/gocache/client-cert.pem
+      CACHE_SIDECAR_TLS_KEY: /certs/gocache/client-key.pem
     secrets:
       - guacenc_auth_token
     volumes:
       - arsenale_recordings:/recordings
+      - {{ arsenale_cert_dir }}:/certs:ro
+    depends_on:
+      gocache:
+        condition: service_healthy
     restart: always
     cap_drop:
       - ALL
@@ -110,6 +118,7 @@ services:
       start_period: 5s
     networks:
       - net-guacenc
+      - net-cache
 
   # ---------------------------------------------------------------------------
   # GoCache — In-memory cache sidecar (gRPC)
