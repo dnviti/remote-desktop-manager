@@ -202,6 +202,7 @@ services:
       start_period: 30s
 
   client:
+    # read_only: false — dev mode requires writable FS for HMR/cache
     build:
       context: .
       dockerfile: client/Dockerfile
@@ -244,6 +245,9 @@ services:
       context: .
       dockerfile: gateways/ssh-gateway/Dockerfile
     container_name: arsenale-ssh-gateway
+    read_only: true
+    tmpfs:
+      - /tmp
     environment:
       SSH_PORT: ${SSH_PORT}
       # gRPC key management mTLS (replaces old HTTPS + bearer token API)
@@ -273,6 +277,9 @@ services:
       context: gateways/tunnel-agent
       dockerfile: Dockerfile
     container_name: arsenale-tunnel-agent
+    read_only: true
+    tmpfs:
+      - /tmp
     command:
       - sh
       - -c
