@@ -13,6 +13,7 @@ import {
   storeVaultRecovery,
 } from './crypto.service';
 import { logger } from '../utils/logger';
+import { getAllSecretsForDisplay } from './systemSecrets.service';
 import type { SetupCompleteInput } from '../schemas/setup.schemas';
 
 const BCRYPT_ROUNDS = 12;
@@ -169,6 +170,9 @@ export async function completeSetup(data: SetupCompleteInput) {
 
   logger.info(`Setup wizard completed: admin=${admin.email}, tenant=${tenant.name}`);
 
+  // 6. Retrieve auto-generated system secrets for display (only works before setup is cached)
+  const systemSecrets = await getAllSecretsForDisplay();
+
   return {
     recoveryKey,
     user: {
@@ -180,6 +184,7 @@ export async function completeSetup(data: SetupCompleteInput) {
     accessToken: tokens.accessToken,
     refreshToken: tokens.refreshToken,
     tenantMemberships: tokens.tenantMemberships,
+    systemSecrets,
   };
 }
 

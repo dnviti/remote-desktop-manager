@@ -53,6 +53,7 @@ export async function completeSetup(req: Request, res: Response, next: NextFunct
       user: result.user,
       tenant: result.tenant,
       tenantMemberships: result.tenantMemberships,
+      systemSecrets: result.systemSecrets,
     });
   } catch (err) {
     next(err);
