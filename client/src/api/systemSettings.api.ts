@@ -45,15 +45,6 @@ export async function updateSystemSetting(
   return data;
 }
 
-export async function bulkUpdateSystemSettings(
-  updates: Array<{ key: string; value: unknown }>,
-): Promise<{ results: Array<{ key: string; success: boolean; error?: string }> }> {
-  const { data } = await api.put<{
-    results: Array<{ key: string; success: boolean; error?: string }>;
-  }>('/admin/system-settings', { updates });
-  return data;
-}
-
 export interface DbStatusResponse {
   host: string;
   port: number;

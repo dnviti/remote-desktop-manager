@@ -13,11 +13,13 @@ import RdpSettingsSection from './RdpSettingsSection';
 
 export default function ConnectionDefaultsSection() {
   const notify = useNotificationStore((s) => s.notify);
-  const { updateDefaults, loading: sshLoading } = useTerminalSettingsStore();
+  const updateDefaults = useTerminalSettingsStore((s) => s.updateDefaults);
+  const sshLoading = useTerminalSettingsStore((s) => s.loading);
   const [sshConfig, setSshConfig] = useState<Partial<SshTerminalConfig>>({});
   const [sshError, setSshError] = useState('');
 
-  const { updateDefaults: updateRdpDefaults, loading: rdpLoading } = useRdpSettingsStore();
+  const updateRdpDefaults = useRdpSettingsStore((s) => s.updateDefaults);
+  const rdpLoading = useRdpSettingsStore((s) => s.loading);
   const [rdpConfig, setRdpConfig] = useState<Partial<RdpSettings>>({});
   const [rdpError, setRdpError] = useState('');
 

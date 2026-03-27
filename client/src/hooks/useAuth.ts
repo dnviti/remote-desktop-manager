@@ -5,7 +5,10 @@ import { refreshApi } from '../api/auth.api';
 
 export function useAuth() {
   const navigate = useNavigate();
-  const { isAuthenticated, accessToken, setAccessToken, logout } = useAuthStore();
+  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
+  const accessToken = useAuthStore((s) => s.accessToken);
+  const setAccessToken = useAuthStore((s) => s.setAccessToken);
+  const logout = useAuthStore((s) => s.logout);
   const [loading, setLoading] = useState(isAuthenticated && !accessToken);
 
   useEffect(() => {

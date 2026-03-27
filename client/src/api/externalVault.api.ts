@@ -65,11 +65,6 @@ export async function listVaultProviders(): Promise<VaultProviderData[]> {
   return data;
 }
 
-export async function getVaultProvider(providerId: string): Promise<VaultProviderData> {
-  const { data } = await api.get(`/vault-providers/${providerId}`);
-  return data;
-}
-
 export async function createVaultProvider(input: CreateVaultProviderInput): Promise<VaultProviderData> {
   const { data } = await api.post('/vault-providers', input);
   return data;

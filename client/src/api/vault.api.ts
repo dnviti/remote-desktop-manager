@@ -22,11 +22,6 @@ export async function getVaultStatus() {
   return data as VaultStatusResponse;
 }
 
-export async function revealPassword(connectionId: string, password?: string) {
-  const { data } = await api.post('/vault/reveal-password', { connectionId, password });
-  return data as { password: string };
-}
-
 // MFA-based vault unlock
 
 export async function unlockVaultWithTotp(code: string) {

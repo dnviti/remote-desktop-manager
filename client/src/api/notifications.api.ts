@@ -66,13 +66,6 @@ export async function updatePreference(
   return data;
 }
 
-export async function bulkUpdatePreferences(
-  preferences: Array<{ type: NotificationType; inApp?: boolean; email?: boolean }>
-): Promise<NotificationPreference[]> {
-  const { data } = await api.put('/notifications/preferences', { preferences });
-  return data;
-}
-
 // ---------------------------------------------------------------------------
 // Notification Schedule (DND / Quiet Hours)
 // ---------------------------------------------------------------------------

@@ -22,15 +22,6 @@ export async function unshareConnection(connectionId: string, userId: string) {
   return data;
 }
 
-export async function updateSharePermission(
-  connectionId: string,
-  userId: string,
-  permission: 'READ_ONLY' | 'FULL_ACCESS'
-) {
-  const { data } = await api.put(`/connections/${connectionId}/share/${userId}`, { permission });
-  return data;
-}
-
 export async function listShares(connectionId: string): Promise<ShareData[]> {
   const { data } = await api.get(`/connections/${connectionId}/shares`);
   return data;
@@ -53,12 +44,3 @@ export async function batchShareConnections(
   return data;
 }
 
-export async function createSession(connectionId: string) {
-  const { data } = await api.post('/sessions/rdp', { connectionId });
-  return data as { token: string } | { connectionId: string; type: string };
-}
-
-export async function createSshSession(connectionId: string) {
-  const { data } = await api.post('/sessions/ssh', { connectionId });
-  return data;
-}
