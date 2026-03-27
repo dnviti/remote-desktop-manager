@@ -5,8 +5,8 @@
 Port 2222
 PidFile /tmp/sshd.pid
 
-HostKey /etc/ssh/ssh_host_ed25519_key
-HostKey /etc/ssh/ssh_host_rsa_key
+HostKey /tmp/ssh-hostkeys/ssh_host_ed25519_key
+HostKey /tmp/ssh-hostkeys/ssh_host_rsa_key
 
 PermitRootLogin no
 PasswordAuthentication no

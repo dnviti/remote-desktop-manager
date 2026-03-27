@@ -86,11 +86,7 @@ services:
       - arsenale_recordings:/recordings
     restart: always
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          'python3 -c "import urllib.request; urllib.request.urlopen(''http://127.0.0.1:3003/health'')" || exit 1',
-        ]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3003/health || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -148,7 +144,6 @@ services:
     image: ghcr.io/dnviti/arsenale/server
     container_name: server
     pull_policy: always
-    user: "0:0" # rootless Podman maps UID 0 → host user (socket owner)
     security_opt:
       - label:disable
     healthcheck:
@@ -175,7 +170,6 @@ services:
     volumes:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
-      - /var/run/docker.sock:/var/run/docker.sock
     restart: always
     networks:
       - arsenale-front-net
@@ -185,7 +179,6 @@ services:
     image: ghcr.io/dnviti/arsenale/server
     container_name: demo-seed
     pull_policy: always
-    user: "0:0"
     security_opt:
       - label:disable
     healthcheck:

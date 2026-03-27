@@ -24,11 +24,14 @@
     _home: "{{ (playbook_dir + '/../../..') if _is_dev | bool else (arsenale_home | default('/opt/arsenale')) }}"
     # Environment-specific overrides
     arsenale_node_env: "{{ 'development' if _is_dev | bool else 'production' }}"
-    arsenale_log_level: "{{ 'debug' if _is_dev | bool else 'info' }}"
-    arsenale_log_http_requests: "{{ 'true' if _is_dev | bool else 'false' }}"
-    arsenale_log_guacamole: "{{ 'true' if _is_dev | bool else 'false' }}"
+    arsenale_log_level: "info"
+    arsenale_log_http_requests: "false"
+    arsenale_log_guacamole: "false"
     arsenale_log_timestamps: "true"
     arsenale_firewall_enabled: "{{ false if _is_dev | bool else true }}"
+    arsenale_trust_proxy_effective: "{{ 1 if _is_dev | bool else (arsenale_trust_proxy | default(false)) }}"
+    _cookie_secure: "{{ true if _is_dev | bool else (arsenale_cookie_secure | default(true)) }}"
+    _client_bind_host: "{{ '127.0.0.1' if _is_dev | bool else (arsenale_client_bind_host | default('0.0.0.0')) }}"
     _build: "{{ true if _is_dev | bool else (arsenale_build_images | default(true)) }}"
     arsenale_cert_dir: "{{ (_home + '/dev-certs') if _is_dev | bool else (_home + '/certs') }}"
 

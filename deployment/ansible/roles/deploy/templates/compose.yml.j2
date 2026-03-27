@@ -15,6 +15,9 @@ services:
     image: postgres:16
     container_name: arsenale-postgres
     read_only: true
+    cpus: "{{ arsenale_resource_limits.postgres.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.postgres.memory }}"
+    pids_limit: {{ arsenale_resource_limits.postgres.pids }}
     tmpfs:
       - /tmp
       - /run/postgresql
@@ -56,6 +59,9 @@ services:
     image: {{ arsenale_guacd_image }}
     container_name: arsenale-guacd
     read_only: true
+    cpus: "{{ arsenale_resource_limits.guacd.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.guacd.memory }}"
+    pids_limit: {{ arsenale_resource_limits.guacd.pids }}
     tmpfs:
       - /tmp
     environment:
@@ -93,6 +99,9 @@ services:
 {% endif %}
     container_name: arsenale-guacenc
     read_only: true
+    cpus: "{{ arsenale_resource_limits.guacenc.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.guacenc.memory }}"
+    pids_limit: {{ arsenale_resource_limits.guacenc.pids }}
     tmpfs:
       - /tmp
     environment:
@@ -117,7 +126,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import ssl, urllib.request; urllib.request.urlopen('https://localhost:3003/health', context=ssl._create_unverified_context())\" || exit 1"]
+      test: ["CMD-SHELL", "curl --silent --show-error --fail --cacert /certs/ca.pem https://localhost:3003/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -145,6 +154,9 @@ services:
       replicas: {{ arsenale_gocache_cache_replicas }}
 {% endif %}
     read_only: true
+    cpus: "{{ arsenale_resource_limits.gocache_cache.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.gocache_cache.memory }}"
+    pids_limit: {{ arsenale_resource_limits.gocache_cache.pids }}
     tmpfs:
       - /tmp
     environment:
@@ -169,7 +181,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:6381/health || exit 1"]
+      test: ["CMD-SHELL", "curl --silent --show-error --fail --cacert /certs/ca.pem https://localhost:6381/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -196,6 +208,9 @@ services:
       replicas: {{ arsenale_gocache_pubsub_replicas }}
 {% endif %}
     read_only: true
+    cpus: "{{ arsenale_resource_limits.gocache_pubsub.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.gocache_pubsub.memory }}"
+    pids_limit: {{ arsenale_resource_limits.gocache_pubsub.pids }}
     tmpfs:
       - /tmp
     environment:
@@ -217,7 +232,7 @@ services:
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:6381/health || exit 1"]
+      test: ["CMD-SHELL", "curl --silent --show-error --fail --cacert /certs/ca.pem https://localhost:6381/health >/dev/null || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -247,12 +262,13 @@ services:
       replicas: {{ arsenale_server_replicas }}
 {% endif %}
     read_only: true
+    cpus: "{{ arsenale_resource_limits.server.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.server.memory }}"
+    pids_limit: {{ arsenale_resource_limits.server.pids }}
     tmpfs:
       - /tmp
     cap_drop:
       - ALL
-    cap_add:
-      - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
     secrets:
@@ -285,7 +301,8 @@ services:
       GUACAMOLE_WS_PORT: "3002"
       DATABASE_URL: ""
       CLIENT_URL: "https://{{ arsenale_domain }}:{{ arsenale_client_port }}"
-      TRUST_PROXY: "{{ arsenale_trust_proxy | string | lower }}"
+      TRUST_PROXY: "{{ arsenale_trust_proxy_effective | string | lower }}"
+      COOKIE_SECURE: "{{ _cookie_secure | string | lower }}"
       GUACD_HOST: guacd
       GUACD_PORT: "4822"
       GUACD_SSL: "true"
@@ -313,14 +330,19 @@ services:
       SELF_SIGNUP_ENABLED: "{{ arsenale_self_signup_enabled | string | lower }}"
       EMAIL_PROVIDER: "{{ arsenale_email_provider }}"
       GATEWAY_GRPC_TLS_CA: /certs/ca.pem
-      GATEWAY_GRPC_TLS_CERT: /certs/ssh-gateway/server-cert.pem
-      GATEWAY_GRPC_TLS_KEY: /certs/ssh-gateway/server-key.pem
+      GATEWAY_GRPC_TLS_CERT: /certs/ssh-gateway/client-cert.pem
+      GATEWAY_GRPC_TLS_KEY: /certs/ssh-gateway/client-key.pem
     volumes:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
-      - {{ arsenale_cert_dir }}:/certs:ro
+      - {{ arsenale_cert_dir }}/ca.pem:/certs/ca.pem:ro
+      - {{ arsenale_cert_dir }}/server:/certs/server:ro
+      - {{ arsenale_cert_dir }}/gocache-cache:/certs/gocache-cache:ro
+      - {{ arsenale_cert_dir }}/gocache-pubsub:/certs/gocache-pubsub:ro
+      - {{ arsenale_cert_dir }}/guacenc:/certs/guacenc:ro
+      - {{ arsenale_cert_dir }}/ssh-gateway:/certs/ssh-gateway:ro
     healthcheck:
-      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://localhost:3001/api/health || exit 1"]
+      test: ["CMD-SHELL", "node -e \"const fs=require('fs');const http=require('http');const https=require('https');const useTls=Boolean(process.env.SERVER_TLS_CERT&&process.env.SERVER_TLS_KEY);const request=useTls?https:http;const options=useTls?{hostname:'localhost',port:3001,path:'/api/health',ca:fs.readFileSync('/certs/ca.pem')}:{hostname:'localhost',port:3001,path:'/api/health'};request.get(options,res=>{res.resume();process.exit(res.statusCode===200?0:1);}).on('error',()=>process.exit(1));\""]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -340,6 +362,7 @@ services:
       - net-guacd
       - net-guacenc
       - net-cache
+      - net-edge
       - net-gateway
 
   # ---------------------------------------------------------------------------
@@ -356,6 +379,9 @@ services:
 {% endif %}
     container_name: arsenale-client
     read_only: true
+    cpus: "{{ arsenale_resource_limits.client.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.client.memory }}"
+    pids_limit: {{ arsenale_resource_limits.client.pids }}
     tmpfs:
       - /tmp
       - /run
@@ -365,18 +391,22 @@ services:
     security_opt:
       - no-new-privileges:true
     ports:
-      - "{{ arsenale_client_port }}:8080"
+      - "{{ _client_bind_host }}:{{ arsenale_client_port }}:8080"
+{% if not (_is_dev | default(false) | bool) %}
+    volumes:
+      - {{ arsenale_cert_dir }}/ca.pem:/certs/ca.pem:ro
+{% endif %}
 {% if _is_dev | default(false) | bool %}
     volumes:
-      - {{ arsenale_cert_dir }}/server:/certs:ro
+      - {{ arsenale_cert_dir }}/client:/certs:ro
       - {{ _home }}/client/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
     entrypoint: ["nginx", "-g", "daemon off;"]
 {% endif %}
     healthcheck:
 {% if _is_dev | default(false) | bool %}
-      test: ["CMD-SHELL", "wget -qO- --no-check-certificate https://127.0.0.1:8080/health || exit 1"]
+      test: ["CMD-SHELL", "curl --silent --show-error --fail --cacert /certs/ca.pem https://localhost:8080/health >/dev/null || exit 1"]
 {% else %}
-      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/health || exit 1"]
+      test: ["CMD-SHELL", "curl --silent --show-error --fail http://127.0.0.1:8080/health >/dev/null || exit 1"]
 {% endif %}
       interval: 10s
       timeout: 5s
@@ -387,7 +417,7 @@ services:
         condition: service_healthy
     restart: always
     networks:
-      - net-gateway
+      - net-edge
 
   # ---------------------------------------------------------------------------
   # SSH Gateway — Managed SSH tunnel for TCP port forwarding
@@ -403,6 +433,9 @@ services:
 {% endif %}
     container_name: arsenale-ssh-gateway
     read_only: true
+    cpus: "{{ arsenale_resource_limits.ssh_gateway.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.ssh_gateway.memory }}"
+    pids_limit: {{ arsenale_resource_limits.ssh_gateway.pids }}
     tmpfs:
       - /tmp
     cap_drop:
@@ -413,8 +446,10 @@ services:
       GATEWAY_API_TLS_CERT: /certs/server-cert.pem
       GATEWAY_API_TLS_KEY: /certs/server-key.pem
       GATEWAY_GRPC_TLS_CA: /certs/ca.pem
+      GATEWAY_GRPC_CLIENT_CA: /certs/client-ca.pem
       GATEWAY_GRPC_TLS_CERT: /certs/server-cert.pem
       GATEWAY_GRPC_TLS_KEY: /certs/server-key.pem
+      GATEWAY_GRPC_EXPECTED_CN: "arsenale-server"
 {% if not (_is_dev | default(false) | bool) %}
     ports:
       - "{{ arsenale_ssh_port }}:2222"
@@ -501,5 +536,9 @@ networks:
   net-cache:
     name: arsenale-net-cache
     internal: true
+  net-edge:
+    name: arsenale-net-edge
+    internal: true
   net-gateway:
     name: arsenale-net-gateway
+    internal: true

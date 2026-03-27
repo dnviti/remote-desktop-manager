@@ -105,6 +105,6 @@ USER appuser
 EXPOSE 3001 3002
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
-    CMD wget --no-check-certificate -qO- https://localhost:3001/api/health || exit 1
+    CMD sh -c 'node -e "const fs=require(\"fs\");const http=require(\"http\");const https=require(\"https\");const useTls=Boolean(process.env.SERVER_TLS_CERT&&process.env.SERVER_TLS_KEY);const request=useTls?https:http;const options=useTls?{hostname:\"localhost\",port:3001,path:\"/api/health\",ca:fs.readFileSync(\"/certs/ca.pem\")}:{hostname:\"localhost\",port:3001,path:\"/api/health\"};request.get(options,res=>{res.resume();process.exit(res.statusCode===200?0:1);}).on(\"error\",()=>process.exit(1));"' || exit 1
 
 CMD ["node", "dist/index.js"]

@@ -25,7 +25,10 @@ RUNTIME_KEY_MODE=0644
 echo "=== Generating shared CA ==="
 openssl ecparam -genkey -name prime256v1 -out "$CERT_DIR/ca-key.pem" 2>/dev/null
 openssl req -new -x509 -sha256 -key "$CERT_DIR/ca-key.pem" -out "$CERT_DIR/ca.pem" \
-  -days "$DAYS" -subj "/CN=arsenale-dev-ca/O=Arsenale" -batch 2>/dev/null
+  -days "$DAYS" -subj "/CN=arsenale-dev-ca/O=Arsenale" \
+  -addext "basicConstraints = critical, CA:TRUE" \
+  -addext "keyUsage = critical, keyCertSign, cRLSign" \
+  -batch 2>/dev/null
 chmod 600 "$CERT_DIR/ca-key.pem"
 
 generate_server_cert() {
@@ -51,7 +54,7 @@ EOF
 }
 
 generate_client_cert() {
-  local dir="$1" cn="$2"
+  local dir="$1" cn="$2" ca_cert="${3:-$CERT_DIR/ca.pem}" ca_key="${4:-$CERT_DIR/ca-key.pem}"
   openssl ecparam -genkey -name prime256v1 -out "$dir/client-key.pem" 2>/dev/null
   openssl req -new -sha256 -key "$dir/client-key.pem" -out "$dir/client.csr" \
     -subj "/CN=$cn/O=Arsenale" -batch 2>/dev/null
@@ -60,7 +63,7 @@ keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = clientAuth
 EOF
   openssl x509 -req -sha256 -in "$dir/client.csr" \
-    -CA "$CERT_DIR/ca.pem" -CAkey "$CERT_DIR/ca-key.pem" \
+    -CA "$ca_cert" -CAkey "$ca_key" \
     -CAcreateserial -out "$dir/client-cert.pem" -days "$DAYS" \
     -extfile "$dir/client-ext.cnf" 2>/dev/null
   rm -f "$dir"/*.csr "$dir"/*.cnf
@@ -101,7 +104,14 @@ chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacd/server-key.pem"
 # 7. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
 echo "=== SSH Gateway gRPC mTLS ==="
 generate_server_cert "$CERT_DIR/ssh-gateway" "ssh-gateway" "DNS:ssh-gateway, DNS:arsenale-ssh-gateway, DNS:localhost, IP:127.0.0.1" "clientAuth"
-generate_client_cert "$CERT_DIR/ssh-gateway" "arsenale-server"
+openssl ecparam -genkey -name prime256v1 -out "$CERT_DIR/ssh-gateway/client-ca-key.pem" 2>/dev/null
+openssl req -new -x509 -sha256 -key "$CERT_DIR/ssh-gateway/client-ca-key.pem" -out "$CERT_DIR/ssh-gateway/client-ca.pem" \
+  -days "$DAYS" -subj "/CN=arsenale-ssh-gateway-client-ca/O=Arsenale" \
+  -addext "basicConstraints = critical, CA:TRUE" \
+  -addext "keyUsage = critical, keyCertSign, cRLSign" \
+  -batch 2>/dev/null
+generate_client_cert "$CERT_DIR/ssh-gateway" "arsenale-server" "$CERT_DIR/ssh-gateway/client-ca.pem" "$CERT_DIR/ssh-gateway/client-ca-key.pem"
+chmod 600 "$CERT_DIR/ssh-gateway/client-ca-key.pem"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/ssh-gateway"/*-key.pem
 
 # 8. RD Gateway (MS-TSGU proxy)
@@ -109,9 +119,14 @@ echo "=== RD Gateway HTTPS ==="
 generate_server_cert "$CERT_DIR/rdgw" "rdgw" "DNS:rdgw, DNS:arsenale-rdgw, DNS:localhost, IP:127.0.0.1"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/rdgw/server-key.pem"
 
-# 9. Express + guacamole-lite
+# 9. Frontend HTTPS
+echo "=== Frontend HTTPS ==="
+generate_server_cert "$CERT_DIR/client" "localhost" "DNS:arsenale-client, DNS:localhost, IP:127.0.0.1, IP:::1"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/client/server-key.pem"
+
+# 10. Express + guacamole-lite
 echo "=== Dev Server HTTPS ==="
-generate_server_cert "$CERT_DIR/server" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1"
+generate_server_cert "$CERT_DIR/server" "arsenale-server" "DNS:arsenale-server, DNS:server, DNS:localhost, IP:127.0.0.1, IP:::1"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/server/server-key.pem"
 
 # Cleanup CA serial file
@@ -127,4 +142,5 @@ echo "  guacenc:     $CERT_DIR/guacenc/"
 echo "  guacd:       $CERT_DIR/guacd/"
 echo "  ssh-gateway: $CERT_DIR/ssh-gateway/"
 echo "  rdgw:        $CERT_DIR/rdgw/"
+echo "  client:      $CERT_DIR/client/"
 echo "  server:      $CERT_DIR/server/"

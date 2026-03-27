@@ -27,6 +27,22 @@ fi
 
 chmod 600 "$AUTH_KEYS_FILE"
 
+# Generate per-container SSH host keys in tmpfs so they are not baked into the image.
+HOSTKEY_DIR="/tmp/ssh-hostkeys"
+mkdir -p "$HOSTKEY_DIR"
+chmod 700 "$HOSTKEY_DIR"
+
+if [ ! -f "$HOSTKEY_DIR/ssh_host_ed25519_key" ]; then
+  ssh-keygen -q -t ed25519 -N '' -f "$HOSTKEY_DIR/ssh_host_ed25519_key"
+fi
+
+if [ ! -f "$HOSTKEY_DIR/ssh_host_rsa_key" ]; then
+  ssh-keygen -q -t rsa -b 3072 -N '' -f "$HOSTKEY_DIR/ssh_host_rsa_key"
+fi
+
+chmod 600 "$HOSTKEY_DIR/ssh_host_ed25519_key" "$HOSTKEY_DIR/ssh_host_rsa_key"
+chmod 644 "$HOSTKEY_DIR/ssh_host_ed25519_key.pub" "$HOSTKEY_DIR/ssh_host_rsa_key.pub"
+
 # Materialize inline gRPC TLS PEMs into container-local files for managed deployments.
 if [ -n "$GATEWAY_GRPC_TLS_CA_PEM" ] && [ -n "$GATEWAY_GRPC_TLS_CERT_PEM" ] && [ -n "$GATEWAY_GRPC_TLS_KEY_PEM" ]; then
   GRPC_TLS_DIR="/tmp/arsenale-grpc"

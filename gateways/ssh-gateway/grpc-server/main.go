@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	defaultPort         = "9022"
-	authorizedKeysPath  = "/tmp/.ssh/authorized_keys"
-	configKeysPath      = "/config/authorized_keys"
+	defaultPort        = "9022"
+	authorizedKeysPath = "/tmp/.ssh/authorized_keys"
+	configKeysPath     = "/config/authorized_keys"
 )
 
 // keyManagementServer implements the KeyManagement gRPC service.
@@ -80,12 +80,16 @@ func (s *keyManagementServer) GetKeys(_ context.Context, _ *GetKeysRequest) (*Ge
 	return &GetKeysResponse{Keys: keys}, nil
 }
 
-func buildServerTLSConfig() *tls.Config {
+func buildServerTLSConfig(expectedCN string) *tls.Config {
 	caPath := os.Getenv("GATEWAY_GRPC_TLS_CA")
+	clientCAPath := os.Getenv("GATEWAY_GRPC_CLIENT_CA")
+	if clientCAPath == "" {
+		clientCAPath = caPath
+	}
 	certPath := os.Getenv("GATEWAY_GRPC_TLS_CERT")
 	keyPath := os.Getenv("GATEWAY_GRPC_TLS_KEY")
 
-	if caPath == "" || certPath == "" || keyPath == "" {
+	if caPath == "" || clientCAPath == "" || certPath == "" || keyPath == "" {
 		return nil
 	}
 
@@ -94,22 +98,37 @@ func buildServerTLSConfig() *tls.Config {
 		log.Fatalf("[tls] failed to load cert/key (%s, %s): %v", certPath, keyPath, err)
 	}
 
-	caPEM, err := os.ReadFile(caPath)
+	clientCAPEM, err := os.ReadFile(clientCAPath)
 	if err != nil {
-		log.Fatalf("[tls] failed to read CA %s: %v", caPath, err)
+		log.Fatalf("[tls] failed to read client CA %s: %v", clientCAPath, err)
 	}
 
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(caPEM) {
-		log.Fatalf("[tls] failed to parse CA from %s", caPath)
+	clientCAPool := x509.NewCertPool()
+	if !clientCAPool.AppendCertsFromPEM(clientCAPEM) {
+		log.Fatalf("[tls] failed to parse client CA from %s", clientCAPath)
 	}
 
-	return &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    caPool,
+		ClientCAs:    clientCAPool,
 		MinVersion:   tls.VersionTLS12,
 	}
+
+	if expectedCN != "" {
+		tlsConfig.VerifyPeerCertificate = func(_ [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
+				return fmt.Errorf("no verified client certificate")
+			}
+			clientCN := verifiedChains[0][0].Subject.CommonName
+			if clientCN != expectedCN {
+				return fmt.Errorf("client CN %q not allowed", clientCN)
+			}
+			return nil
+		}
+	}
+
+	return tlsConfig
 }
 
 // cnVerifyInterceptor optionally verifies the client certificate CN.
@@ -145,8 +164,9 @@ func main() {
 	}
 
 	var grpcOpts []grpc.ServerOption
+	expectedCN := os.Getenv("GATEWAY_GRPC_EXPECTED_CN")
 
-	if tlsConfig := buildServerTLSConfig(); tlsConfig != nil {
+	if tlsConfig := buildServerTLSConfig(expectedCN); tlsConfig != nil {
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
 		log.Printf("[main] gRPC server using mTLS (RequireAndVerifyClientCert)")
 	} else {
@@ -154,7 +174,7 @@ func main() {
 	}
 
 	// Optional CN verification
-	if expectedCN := os.Getenv("GATEWAY_GRPC_EXPECTED_CN"); expectedCN != "" {
+	if expectedCN != "" {
 		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(cnVerifyInterceptor(expectedCN)))
 		log.Printf("[main] enforcing client CN=%q", expectedCN)
 	}

@@ -9,12 +9,8 @@ import { config } from '../config';
 
 const router = Router();
 
-/* eslint-disable @typescript-eslint/no-require-imports */
-const { version } = require('../../package.json') as { version: string };
-/* eslint-enable @typescript-eslint/no-require-imports */
-
 router.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', version });
+  res.json({ status: 'ok' });
 });
 
 router.get('/ready', async (_req: Request, res: Response) => {

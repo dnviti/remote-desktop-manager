@@ -142,7 +142,12 @@ export const config = {
     refreshTokenName: 'arsenale-rt',
     csrfTokenName: 'arsenale-csrf',
     path: '/api/auth',
-    secure: process.env.NODE_ENV === 'production',
+    secure: (() => {
+      const explicit = process.env.COOKIE_SECURE;
+      if (explicit === 'true') return true;
+      if (explicit === 'false') return false;
+      return process.env.NODE_ENV === 'production';
+    })(),
     sameSite: 'strict' as const,
     httpOnly: true,
   },
@@ -163,13 +168,14 @@ export const config = {
   oauthAccountRateLimitMaxAttempts: parseInt(process.env.OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS || '15', 10),
   oauthLinkRateLimitWindowMs: parseInt(process.env.OAUTH_LINK_RATE_LIMIT_WINDOW_MS || String(15 * 60 * 1000), 10),
   oauthLinkRateLimitMaxAttempts: parseInt(process.env.OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS || '10', 10),
-  // IP-based whitelist for global rate limiter bypass (loopback + RFC 1918 by default)
+  // IP-based whitelist for global rate limiter bypass.
+  // Default is empty: rate limiting applies to all clients unless explicitly whitelisted.
   rateLimitWhitelistCidrs: (() => {
     const val = process.env.RATE_LIMIT_WHITELIST_CIDRS;
     if (val !== undefined) {
       return val.trim() === '' ? [] : val.split(',').map(s => s.trim()).filter(Boolean);
     }
-    return ['127.0.0.1/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
+    return [];
   })(),
   sessionHeartbeatIntervalMs: parseInt(process.env.SESSION_HEARTBEAT_INTERVAL_MS || String(30 * 1000), 10),
   sessionIdleThresholdMinutes: parseInt(process.env.SESSION_IDLE_THRESHOLD_MINUTES || '5', 10),

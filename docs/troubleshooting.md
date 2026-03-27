@@ -1,364 +1,246 @@
 ---
 title: Troubleshooting
-description: Common errors, debugging tips, and frequently asked questions
-generated-by: ctdf-docs
-generated-at: 2026-03-24T23:40:00Z
+description: Common errors, debugging techniques, and frequently asked questions
+generated-by: claw-docs
+generated-at: 2026-03-27T12:00:00Z
 source-files:
   - server/src/index.ts
+  - server/src/config.ts
+  - server/src/utils/logger.ts
   - server/src/middleware/error.middleware.ts
   - server/src/middleware/auth.middleware.ts
-  - server/src/utils/logger.ts
-  - client/src/api/auth.api.ts
-  - server/src/config.ts
-  - server/src/services/keystrokeInspection.service.ts
-  - .env.example
+  - server/src/middleware/globalRateLimit.middleware.ts
+  - client/src/api/client.ts
+  - dev-certs/generate.sh
+  - Makefile
 ---
 
-# Troubleshooting
+## 🐛 Common Errors
 
-## Startup Issues
+### Database Connection
 
-### Database Connection Failed
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `ECONNREFUSED 127.0.0.1:5432` | PostgreSQL not running | Run `make dev` to start containers |
+| `FATAL: password authentication failed` | Wrong DB password | Check `vault.yml` or regenerate with `make vault` |
+| `SSL connection required` | Missing SSL certs | Ensure `DATABASE_URL` includes `?sslmode=require` |
+| `P1001: Can't reach database server` | Prisma can't connect | Verify `DATABASE_URL` in `.env`, check `make status` |
+| `P3009: Migration failed` | Schema conflict | Run `npm run db:push` to force-sync, then `npm run db:migrate` |
 
-**Error:** `Can't reach database server at localhost:5432`
+### TLS and Certificates
 
-**Causes and fixes:**
-1. PostgreSQL container not running: `make dev`
-2. Wrong `DATABASE_URL` in `.env`: verify host, port, credentials
-3. Port conflict: `sudo lsof -i :5432` to check
-4. Docker/Podman not running: start Docker daemon
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `UNABLE_TO_VERIFY_LEAF_SIGNATURE` | CA not trusted | Set `NODE_EXTRA_CA_CERTS=dev-certs/ca.pem` in `.env` |
+| `ERR_CERT_AUTHORITY_INVALID` | Browser doesn't trust dev CA | Import `dev-certs/ca.pem` into browser trust store |
+| `DEPTH_ZERO_SELF_SIGNED_CERT` | Self-signed cert without CA | Run `make certs` to regenerate with proper CA chain |
+| `certificate has expired` | Expired dev certs | Run `make certs` to regenerate (default: 10-year validity) |
+| `ENOENT: dev-certs/server/server-cert.pem` | Missing cert files | Run `./dev-certs/generate.sh` or `make setup` |
 
-### Prisma Migration Failed
+### Authentication
 
-**Error:** `Error: P3009: migrate found failed migrations`
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `401 Unauthorized` on every request | Expired or invalid JWT | Check `JWT_SECRET` matches between restarts |
+| `403 CSRF validation failed` | CSRF token mismatch | Ensure `X-CSRF-Token` header matches `arsenale-csrf` cookie |
+| `403 Account locked` | Too many failed logins | Wait for lockout duration (default: 30 min) or reset via CLI |
+| `TOKEN_HIJACK_ATTEMPT` in logs | IP or User-Agent changed | Disable `TOKEN_BINDING_ENABLED` or re-login from new location |
+| `429 Too Many Requests` | Rate limit exceeded | Wait for window to expire, or add IP to `RATE_LIMIT_WHITELIST_CIDRS` |
 
-**Fix:** Check `server/prisma/migrations/` for failed migration. If in development:
+### Server Startup
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `EADDRINUSE :::3001` | Port already in use | The server auto-cleans stale processes in dev; otherwise `kill` the process |
+| `JWT_SECRET is required in production` | Missing env var | Set `JWT_SECRET` (64 hex chars) in `.env` or vault |
+| `Cannot find module '@prisma/client'` | Prisma not generated | Run `npm run db:generate` |
+| `guacd connection refused` | guacd not running | Run `make dev` or check guacd container: `make status` |
+| `GUACD_SSL=true but no GUACD_CA_CERT` | TLS misconfigured for guacd | Set `GUACD_CA_CERT` path or disable `GUACD_SSL` |
+
+### Client / Frontend
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| Blank page after build | Asset paths wrong | Check `CLIENT_URL` matches actual deployment URL |
+| `Mixed Content` errors | HTTP/HTTPS mismatch | Ensure all URLs use HTTPS; check `CLIENT_URL` |
+| WebSocket connection failed | Proxy not forwarding | Check Nginx config proxies `/socket.io` and `/guacamole` |
+| `CORS error` on API calls | Origin mismatch | Set `CLIENT_URL` to match the exact origin (including port) |
+| HMR not working in dev | Vite WebSocket blocked | Check browser dev tools for blocked WebSocket connections |
+
+### RDP/VNC Sessions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Guacamole connection failed` | guacd unreachable or creds wrong | Check `make status` for guacd, verify connection credentials |
+| Black screen after connect | Display resolution issue | Try different resolution in connection settings |
+| `AES decryption failed` | Guacamole secret mismatch | Ensure `GUACAMOLE_SECRET` is consistent between server and guacamole-lite |
+| Session disconnects after 24h | WebSocket timeout | Default Nginx timeout is 86400s; check reverse proxy config |
+
+### SSH Sessions
+
+| Error | Cause | Solution |
+|-------|-------|----------|
+| `Authentication failed` | Wrong credentials | Verify connection username/password or SSH key |
+| `Connection refused` | Target SSH server down | Check target host connectivity |
+| Terminal garbled output | Encoding mismatch | Set terminal encoding to UTF-8 in connection settings |
+| `ALLOW_LOCAL_NETWORK is false` | Blocked RFC 1918 target | Set `ALLOW_LOCAL_NETWORK=true` or `ALLOW_LOOPBACK=true` |
+
+## 🔍 Debugging Techniques
+
+### Enable Verbose Logging
+
 ```bash
-npm run db:push    # Force-sync schema (drops data)
+# In .env
+LOG_LEVEL=debug
+LOG_HTTP_REQUESTS=true
+LOG_GUACAMOLE=true
 ```
 
-For production, investigate the specific migration error and fix the SQL.
+**Log levels:** `error` < `warn` < `info` < `verbose` < `debug`
 
-### Port Already in Use
+### Structured JSON Logs
 
-**Error:** `EADDRINUSE: address already in use :::3001`
+For log aggregation (ELK, Datadog, etc.):
 
-**Fix:**
 ```bash
-# Find and kill the process
-lsof -i :3001
-kill <PID>
+LOG_FORMAT=json
 ```
 
-Common ports: 3000 (client), 3001 (server), 3002 (Guacamole WS), 5432 (PostgreSQL).
+### View Container Logs
 
-### .env File Not Found
-
-**Error:** `Error: .env file not found`
-
-**Fix:** The `.env` file must be at the **monorepo root**, not inside `server/` or `client/`:
 ```bash
-cp .env.example .env
+make logs              # All services
+make logs SVC=server   # Server only
+make logs SVC=guacd    # guacd only
+make logs SVC=postgres # PostgreSQL only
 ```
 
-### Prisma Client Not Generated
+### Check Service Health
 
-**Error:** `@prisma/client did not initialize yet`
-
-**Fix:**
 ```bash
-npm run db:generate
+# Container status
+make status
+
+# API health check
+curl -k https://localhost:3001/api/health
+
+# Readiness check (includes DB, guacd)
+curl -k https://localhost:3001/api/ready
 ```
 
-This is automatically done by `npm run predev`.
+### Database Debugging
 
-## Authentication Issues
-
-### JWT Token Expired
-
-**Error:** `401 Unauthorized` on API calls
-
-**How it works:** Access tokens expire after 15 minutes (default). The Axios client interceptor automatically refreshes tokens on 401. If refresh also fails, the user is redirected to login.
-
-**If tokens keep expiring:**
-- Check `JWT_EXPIRES_IN` and `JWT_REFRESH_EXPIRES_IN` in `.env`
-- Verify server clock is synchronized
-- Check for `TOKEN_HIJACK_ATTEMPT` in audit logs (IP/User-Agent mismatch)
-
-### CSRF Token Mismatch
-
-**Error:** `403 Forbidden: CSRF token mismatch`
-
-**Causes:**
-- Browser cookies blocked or cleared
-- Cross-origin request without proper CSRF header
-- Extension client not sending `Authorization: Bearer` header (extension clients bypass CSRF)
-
-**Fix:** Ensure the client sends the CSRF token from cookies in the `x-csrf-token` header.
-
-### OAuth Callback Error
-
-**Error:** OAuth redirect fails or loops
-
-**Causes:**
-- `CLIENT_URL` in `.env` doesn't match the actual client URL
-- OAuth callback URL in provider settings doesn't match
-- Missing or wrong `GOOGLE_CLIENT_SECRET`, `MICROSOFT_CLIENT_SECRET`, etc.
-
-### Microsoft OAuth Returns "User Not In Tenant"
-
-**Error:** Microsoft login fails with tenant validation error
-
-**Cause:** `MICROSOFT_TENANT_ID` is set to a specific Azure AD tenant ID, but the user's account belongs to a different tenant.
-
-**Fix:** Set `MICROSOFT_TENANT_ID=common` in `.env` to allow any Microsoft account, or verify the tenant ID matches your Azure AD directory. Default is `common` (all Microsoft accounts accepted).
-
-### Google OAuth Rejects Users Outside Domain
-
-**Error:** Google login fails for users not in the expected domain
-
-**Cause:** `GOOGLE_HD` (hosted domain) is set to restrict login to a specific Google Workspace domain.
-
-**Fix:** Clear `GOOGLE_HD` in `.env` to allow any Google account, or set it to your organization's domain (e.g., `GOOGLE_HD=example.com`). When set, only users with an email in that domain can authenticate via Google OAuth.
-
-### Account Lockout
-
-**Error:** `Account locked` after too many failed attempts
-
-**Default:** 10 failed attempts → 30 minute lockout.
-
-**Fix:** Wait for lockout to expire, or adjust `ACCOUNT_LOCKOUT_THRESHOLD` and `ACCOUNT_LOCKOUT_DURATION_MS` in `.env`.
-
-### Self-Signup Not Working
-
-**Error:** Registration page not available or returns `403 Forbidden`
-
-**Cause:** Self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`). The admin must create user accounts.
-
-**Fix:** Either create accounts from the admin panel, or enable self-signup:
-- Set `SELF_SIGNUP_ENABLED=true` in `.env`, or
-- Toggle the setting in **Settings → System Settings** in the admin panel
-
-### Email Verification Blocking Login
-
-**Error:** User cannot log in because email is not verified, but no verification email was received
-
-**Cause:** Email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`). If it has been enabled without configuring an email provider, verification emails cannot be sent.
-
-**Fix:** Either disable email verification (`EMAIL_VERIFY_REQUIRED=false`) or configure an email provider (SMTP, SendGrid, SES, Resend, or Mailgun) in `.env`. See [Configuration — Email](configuration.md#email).
-
-## Vault Issues
-
-### Vault Won't Unlock
-
-**Error:** `Invalid password` on vault unlock
-
-**Causes:**
-- Wrong password (master key derived from password via Argon2)
-- Vault not initialized (first-time users need vault setup)
-- Corrupted vault data
-
-**Alternative:** Use MFA-based vault unlock if TOTP/WebAuthn/SMS is configured.
-
-### Vault Auto-Locks Too Quickly
-
-**Configuration:** `VAULT_TTL_MINUTES` (default: 30). Set to `0` for never-auto-lock.
-
-Users can also set per-user auto-lock via `PUT /api/vault/auto-lock`.
-
-## Connection Issues
-
-### SSH Connection Fails
-
-**Error:** `SSH connection error` in terminal
-
-**Debugging:**
-1. Verify target host is reachable from the server
-2. Check credentials are correct (vault must be unlocked)
-3. If using a gateway, verify gateway health in the Gateway Manager
-4. Check `ALLOW_LOCAL_NETWORK` if connecting to private IPs (default: `true`)
-5. Check DLP policies if copy/paste is blocked
-
-### RDP/VNC Black Screen
-
-**Error:** RDP connects but shows nothing
-
-**Causes:**
-1. `guacd` not running: check container health (`nc -z localhost 4822`)
-2. Wrong Guacamole secret: verify `GUACAMOLE_SECRET` matches between server and guacd
-3. Target RDP/VNC service not accepting connections
-4. Firewall blocking port 3389 (RDP) or 5900 (VNC) on target
-
-### RDP Clipboard Not Working
-
-**Possible causes:**
-- DLP policy `dlpDisableCopy` or `dlpDisablePaste` enabled on tenant or connection
-- Guacamole connection settings don't include clipboard
-- Browser permissions blocking clipboard access
-
-### Session Recording Not Working
-
-**Configuration:**
-- `RECORDING_ENABLED=true` in `.env`
-- `RECORDING_PATH` must be writable
-- `guacenc` container must be running for video export
-
-### Gateway Shows "Unreachable"
-
-**Debugging:**
-1. Check gateway container is running
-2. Test network connectivity from server to gateway
-3. For tunnel-based gateways, verify tunnel agent is connected
-4. Check `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID` on the agent
-
-## Build and Type Errors
-
-### TypeScript Errors After Schema Change
-
-**Fix:** Regenerate Prisma client:
 ```bash
-npm run db:generate
+# Connect directly to PostgreSQL
+psql "$DATABASE_URL"
+
+# Check Prisma schema sync
+npx prisma db pull    # Pull current DB schema
+npx prisma validate   # Validate schema.prisma
 ```
 
-### ESLint Errors in New Code
+### Network Debugging
 
-**Fix:**
 ```bash
-npm run lint:fix   # Auto-fix what's possible
+# Test guacd connectivity
+nc -zv localhost 4822
+
+# Test gocache connectivity
+nc -zv localhost 6380
+
+# Test PostgreSQL connectivity
+pg_isready -h localhost -p 5432
 ```
 
-Common issues:
-- `no-console` in server code (use the logger utility; create child loggers via `logger.child('module')` for prefixed output)
-- Missing React hook dependencies
-- `@typescript-eslint/no-explicit-any` (use proper types)
+### Reset Development Environment
 
-### Build Fails with Chunk Size Warning
-
-Vite warns at 700 KB chunk size. The manual chunk splitting in `client/vite.config.ts` handles most cases. If you import a large library, add it to the manual chunks configuration.
-
-## Docker Issues
-
-### Docker Socket Permission Denied
-
-**Error:** `permission denied while trying to connect to the Docker daemon socket`
-
-**Fix:**
 ```bash
-# Add user to docker group
-sudo usermod -aG docker $USER
-# Re-login or:
-newgrp docker
+make dev-down          # Stop containers
+make clean             # Remove everything
+make setup             # Regenerate vault + certs
+make dev               # Fresh start
+npm run db:push        # Sync schema
 ```
 
-For Podman, ensure the socket path is correct: `PODMAN_SOCKET_PATH=$XDG_RUNTIME_DIR/podman/podman.sock`
+## ❓ FAQ
 
-### Container Orchestration Not Working
+### How do I reset the admin password?
 
-**Error:** `Orchestrator type not detected`
+Use the CLI tool:
 
-**Fix:** Set `ORCHESTRATOR_TYPE` explicitly in `.env`:
-- `docker` — Docker socket at `/var/run/docker.sock`
-- `podman` — Podman socket
-- `kubernetes` — In-cluster or kubeconfig
-- `none` — Disable managed gateways
+```bash
+npm run cli:dev -- user reset-password --email admin@example.com
+```
 
-### PostgreSQL Data Lost After Restart
+Requires `CLI_ENABLED=true` in `.env`.
 
-**Cause:** Volume not persisted.
+### How do I add a new OAuth provider?
 
-**Fix:** Ensure `pgdata` volume is defined in the compose template (managed by Ansible in `deployment/ansible/`).
+1. Set the provider's env vars (e.g., `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`)
+2. Restart the server (or use the live reload system via Settings UI)
+3. The login page will automatically show the new provider
 
-## Network Issues
+### How do I enable session recording?
 
-### CORS Errors in Browser
+Set in `.env`:
+```bash
+RECORDING_ENABLED=true
+RECORDING_PATH=/recordings
+```
 
-**Error:** `Access-Control-Allow-Origin` header missing
+For video conversion, deploy the guacenc container and set `GUACENC_SERVICE_URL`.
 
-**Fix:** Set `CLIENT_URL` in `.env` to match exactly the URL in the browser address bar (including port).
+### How do I connect to hosts on the local network?
 
-### WebSocket Connection Failed
+By default, `ALLOW_LOCAL_NETWORK=true` in development. For production:
+```bash
+ALLOW_LOCAL_NETWORK=true   # RFC 1918 addresses (10.x, 172.16-31.x, 192.168.x)
+ALLOW_LOOPBACK=true        # 127.x, ::1 (opt-in, default false)
+```
 
-**Error:** Socket.IO or Guacamole WebSocket can't connect
+### How do I scale to multiple server instances?
 
-**Causes:**
-1. Client proxy not configured (check `client/vite.config.ts` proxy settings)
-2. In production, Nginx proxy config missing WebSocket upgrade headers
-3. Firewall or reverse proxy blocking WebSocket upgrade
+1. Set `arsenale_server_replicas` in Ansible vars
+2. Ensure `CACHE_SIDECAR_ENABLED=true` (required for distributed state)
+3. GoCacheKV handles rate limits, session state, and Socket.IO events across instances
+4. Leader election ensures singleton jobs run on one instance only
 
-**Vite proxy override:** Set `VITE_API_TARGET` environment variable to override the default proxy target.
+### How do I rotate secrets?
 
-### Impossible Travel False Positives
+```bash
+make rotate            # Rotate JWT, Guacamole, and encryption keys
+```
 
-**Fix:** Adjust `IMPOSSIBLE_TRAVEL_SPEED_KMH` in `.env` (default: 900 km/h). Set to `0` to disable.
+This generates new secrets, updates the vault, and restarts affected services.
 
-## Performance
+### Why does my browser show a certificate warning?
 
-### Slow API Responses
+Development uses self-signed certificates. Options:
+1. Import `dev-certs/ca.pem` into your browser's trust store
+2. Click "Advanced" -> "Proceed anyway" (not recommended for production)
+3. Set `NODE_EXTRA_CA_CERTS=dev-certs/ca.pem` for Node.js processes
 
-**Debugging:**
-1. Enable `LOG_HTTP_REQUESTS=true` to see request timing
-2. Set `LOG_FORMAT=json` for structured log output that is easier to parse with log aggregation tools
-3. Check database query performance with `npx prisma studio`
-4. Verify PostgreSQL has adequate resources
-5. Check for missing database indexes
+### How do I debug rate limiting?
 
-### High Memory Usage
+Check the response headers:
+```
+RateLimit-Limit: 200
+RateLimit-Remaining: 150
+RateLimit-Reset: 1711540800
+```
 
-**Common causes:**
-1. Large number of concurrent SSH sessions (each holds a stream buffer)
-2. Vault sessions accumulating (check `VAULT_TTL_MINUTES`)
-3. Node.js default heap size too low: `NODE_OPTIONS=--max-old-space-size=4096`
+To bypass in development, add your IP to `RATE_LIMIT_WHITELIST_CIDRS`.
 
-## Keystroke Policy Issues
+### Where are audit logs stored?
 
-### Policy Not Matching
+Audit logs are stored in the `AuditLog` table in PostgreSQL. Access via:
+- **UI**: Settings -> Audit Log
+- **API**: `GET /api/audit` or `GET /api/audit/tenant`
+- **Direct SQL**: `SELECT * FROM "AuditLog" ORDER BY "createdAt" DESC LIMIT 100;`
 
-**Symptom:** SSH commands not being caught by keystroke policies.
+### How do I enable the database proxy?
 
-**Causes and fixes:**
-1. Policy not enabled: verify `enabled: true` in policy settings
-2. Regex pattern error: check pattern validity in the API response
-3. Cache delay: policies refresh every 30 seconds — wait and retry
-4. ReDoS safety: patterns with nested quantifiers are automatically rejected
-
-### Session Terminated Unexpectedly
-
-**Symptom:** SSH session closed with "input matched a security policy rule"
-
-**Cause:** A `BLOCK_AND_TERMINATE` keystroke policy matched the entered command.
-
-**Fix:** Review keystroke policies in Settings → Keystroke Policies. Check audit log for the matched pattern.
-
-## Database Connection Issues
-
-### Database Proxy Not Connecting
-
-**Symptom:** Database sessions fail to establish via the proxy gateway.
-
-**Causes and fixes:**
-1. DB proxy container not running: check gateway status in Settings → Gateways
-2. Wrong protocol ports: verify Oracle (1521), MSSQL (1433), DB2 (50000) configuration
-3. Network connectivity: ensure the proxy container can reach the target database server
-
-## FAQ
-
-**Q: Can I use MySQL instead of PostgreSQL?**
-A: No. The Prisma schema uses PostgreSQL-specific features (enums, UUID generation, JSON columns).
-
-**Q: Can I run without Docker?**
-A: You need PostgreSQL accessible somewhere. `guacd` is required for RDP/VNC. SSH-only setups can skip guacd.
-
-**Q: How do I reset my vault password?**
-A: If recovery keys were generated during vault setup, use them. Otherwise, the vault must be re-initialized (credentials will be lost).
-
-**Q: How do I add a new OAuth provider?**
-A: Set the provider's `CLIENT_ID` and `CLIENT_SECRET` in `.env`. The server auto-detects configured providers.
-
-**Q: Why are my connections not showing after login?**
-A: The vault must be unlocked to decrypt connection credentials. Check vault status.
-
-**Q: How do I debug WebSocket issues?**
-A: Enable `LOG_GUACAMOLE=true` in `.env`. For Socket.IO, set `LOG_LEVEL=verbose` for intermediate detail or `LOG_LEVEL=debug` for full trace output. Valid levels from least to most verbose: `error`, `warn`, `info`, `verbose`, `debug`.
-
-**Q: Why are sensitive values showing as `[REDACTED]` in logs?**
-A: The logger automatically sanitizes output. Known sensitive keys (password, token, secret, apikey, etc.) are redacted in objects, and patterns like JWTs and Bearer tokens are scrubbed from strings. This is by design to prevent clear-text credential leaks. Error objects are also sanitized -- only the message string is logged, never the raw object.
+The database proxy is enabled by default (`FEATURE_DATABASE_PROXY_ENABLED=true`). To use it:
+1. Create a connection with type `DATABASE` or `DB_TUNNEL`
+2. Specify the target database host, port, and type (PostgreSQL, MySQL, etc.)
+3. Optionally configure a bastion connection for tunneling

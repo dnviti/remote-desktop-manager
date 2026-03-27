@@ -1,8 +1,8 @@
 ---
 title: Development
 description: Contributing guide, local development setup, testing, code quality, and branch strategy
-generated-by: ctdf-docs
-generated-at: 2026-03-24T23:40:00Z
+generated-by: claw-docs
+generated-at: 2026-03-27T12:00:00Z
 source-files:
   - package.json
   - server/package.json
@@ -12,292 +12,305 @@ source-files:
   - eslint.config.mjs
   - server/vitest.config.ts
   - client/vitest.config.ts
-  - CLAUDE.md
+  - client/vite.config.ts
+  - server/tsconfig.json
+  - client/tsconfig.json
   - Makefile
+  - CLAUDE.md
 ---
 
-# Development
+## 🏗 Monorepo Structure
 
-## Local Development Setup
+Arsenale uses **npm workspaces** to manage four packages:
 
-### Prerequisites
+| Workspace | Path | Technology |
+|-----------|------|-----------|
+| Server | `server/` | Express 5 + TypeScript + Prisma |
+| Client | `client/` | React 19 + Vite + MUI v7 + Zustand |
+| Tunnel Agent | `gateways/tunnel-agent/` | Node.js + TypeScript |
+| Browser Extension | `extra-clients/browser-extensions/` | Chrome MV3 + React |
 
-- Node.js 22+, npm 10+
-- Docker or Podman (for PostgreSQL and guacd)
-- Git
+Install all dependencies with `npm install` at the root.
 
-### First Run
-
-```bash
-npm install                    # Install all workspace dependencies
-cp .env.example .env           # Configure environment
-npm run predev && npm run dev  # Start containers + server + client
-```
-
-### Running Services
-
-| Command | What It Does |
-|---------|-------------|
-| `npm run dev` | Runs server (3001) + client (3000) concurrently |
-| `npm run dev:server` | Express with tsx watch, hot reload |
-| `npm run dev:client` | Vite dev server, proxies to server |
-| `npm run dev:client:wait` | Waits for server health check, then starts client |
-| `make dev` | Start dev infrastructure (postgres + split cache/pubsub backends via Ansible) |
-| `make dev-down` | Stop dev infrastructure |
-
-### Database Operations
-
-| Command | Purpose |
-|---------|---------|
-| `npm run db:generate` | Generate Prisma client types after schema changes |
-| `npm run db:push` | Sync schema to database (no migration file) |
-| `npm run db:migrate` | Create new migration interactively |
-
-Migrations run automatically on server start via `prisma migrate deploy` -- no manual migration step needed for development.
-
-### Makefile Shortcuts
-
-```bash
-make full-stack     # Install + run everything
-make server-dev     # Server with Prisma generate + watch
-make client-dev     # Client dev server
-make prisma-studio  # Open Prisma Studio GUI
-make migrate-dev    # Interactive migration creation
-```
-
-## Code Quality
-
-### Verification Pipeline
-
-```bash
-npm run verify   # Must pass before closing any task
-```
-
-Runs in sequence: **typecheck -> lint -> audit -> test -> build**
-
-### Individual Checks
-
-| Command | Scope |
-|---------|-------|
-| `npm run typecheck` | TypeScript type-check (all workspaces, no emit) |
-| `npm run lint` | ESLint across all workspaces (flat config) |
-| `npm run lint:fix` | ESLint with auto-fix |
-| `npm run sast` | npm audit (critical severity) |
-| `npm run codeql` | Local CodeQL security scan (security-extended) |
-| `npm run codeql:full` | Local CodeQL full scan (security-and-quality) |
-| `npm run security` | Full security scan (npm audit + CodeQL + dependency check) |
-| `npm run security:quick` | Quick security scan |
-| `npm run security:docker` | Docker image security scan |
-| `npm run build` | Build all workspaces |
-
-### ESLint Configuration
-
-The flat ESLint config (`eslint.config.mjs`) applies:
-
-- **TypeScript strict rules** across all workspaces
-- **Security plugin** (eslint-plugin-security)
-- **Server-specific:** Discourages `console` usage (use logger utility instead)
-- **Client/Extensions:** React Hooks + React Refresh rules
-- **Test files:** Relaxed rules (no-explicit-any and non-null-assertion allowed)
-- **Ignored:** `dist/`, `node_modules/`, `generated/`
-
-### TypeScript Configuration
-
-| Workspace | Target | Module | JSX | Strict |
-|-----------|--------|--------|-----|--------|
-| Server | ES2022 | CommonJS | -- | Yes |
-| Client | ES2022 | ESNext | react-jsx | Yes |
-| Tunnel Agent | ES2022 | CommonJS | -- | Yes |
-| Browser Extensions | ES2022 | ESNext | react-jsx | Yes |
-
-## Testing
-
-### Running Tests
-
-```bash
-npm run test:watch           # Watch mode (server + client)
-npm run test -w server       # Server tests only
-npm run test -w client       # Client tests only
-```
-
-Test framework: **Vitest** across all workspaces.
-
-### Test File Locations
-
-Tests follow the convention of placing test files alongside source files or in `__tests__/` directories.
-
-## Branch Strategy
+## 🔀 Branch Strategy
 
 ```mermaid
 gitgraph
-    commit id: "main"
+    commit id: "main (production)"
+    branch staging
+    commit id: "staging (pre-prod)"
     branch develop
+    commit id: "develop (integration)"
+    branch task/FEAT-0001
     commit id: "feature work"
-    branch task/TASK-001
-    commit id: "implement feature"
+    commit id: "more work"
     checkout develop
-    merge task/TASK-001 id: "PR merge"
-    branch task/TASK-002
-    commit id: "fix bug"
-    checkout develop
-    merge task/TASK-002 id: "PR merge 2"
+    merge task/FEAT-0001 id: "PR merge"
+    checkout staging
+    merge develop id: "staging deploy"
     checkout main
-    merge develop id: "release v1.7.1"
+    merge staging id: "release"
 ```
 
-| Branch | Purpose | Merges Into |
-|--------|---------|-------------|
-| `main` | Production releases | -- |
-| `develop` | Integration branch | `main` (via release) |
-| `staging` | Pre-release testing | `main` |
-| `task/<code>` | Feature/fix branches | `develop` (via PR) |
+**Protected branches:** `main`, `staging`, `develop` -- never commit directly.
 
-**Rules:**
-- All work happens on `task/<code>` branches created from `develop`
-- Every task branch requires a pull request targeting `develop`
-- Never merge directly into `develop` or `main`
-- Never delete the `develop` branch
+| Branch Pattern | Purpose | PR Target |
+|---------------|---------|-----------|
+| `task/<CODE>` | Feature/task work | `develop` |
+| `fix/<CODE>` | Bug fixes | `develop` |
+| `chore/<CODE>` | Maintenance | `develop` |
+| `feat/<CODE>` | Features | `develop` |
 
-## File Naming Conventions
+## 🧪 Testing
+
+### Framework
+
+- **Vitest** for all workspaces
+- Server: Node environment, fork pool for isolation
+- Client: jsdom environment for DOM simulation
+- Globals enabled across all workspaces
+
+### Commands
+
+```bash
+npm run test              # Run all tests
+npm run test -w server    # Server tests only
+npm run test -w client    # Client tests only
+npm run test:watch        # Watch mode (re-runs on change)
+```
+
+### Test File Naming
+
+Test files follow the pattern `**/*.test.{ts,tsx}` and are colocated with source files or in `__tests__/` directories.
+
+### Writing Tests
+
+```typescript
+// server/src/utils/ip.test.ts
+import { describe, it, expect } from 'vitest';
+import { isPrivateIP } from './ip';
+
+describe('isPrivateIP', () => {
+  it('returns true for RFC 1918 addresses', () => {
+    expect(isPrivateIP('10.0.0.1')).toBe(true);
+    expect(isPrivateIP('192.168.1.1')).toBe(true);
+  });
+});
+```
+
+## 🔍 Code Quality
+
+### TypeScript
+
+- **Strict mode** enabled in all workspaces
+- Server: ES2022, CommonJS modules
+- Client: ES2022, ESNext modules (Vite handles bundling)
+
+```bash
+npm run typecheck         # Check all workspaces
+```
+
+### ESLint
+
+Flat config format (`eslint.config.mjs`):
+- TypeScript strict rules + security plugin
+- Server: warns on `console.*` (use logger instead)
+- Client: React hooks rules, refresh detection
+- Tests: relaxed rules
+
+```bash
+npm run lint              # Check all
+npm run lint:fix          # Auto-fix
+```
+
+### Security Scanning
+
+```bash
+npm run sast              # npm audit (critical severity)
+npm run codeql            # CodeQL static analysis
+```
+
+### Full Quality Gate
+
+```bash
+npm run verify            # typecheck -> lint -> audit -> test -> build
+```
+
+This must pass before closing any task.
+
+## 📐 File Naming Conventions
 
 | Layer | Pattern | Example |
 |-------|---------|---------|
 | Server routes | `*.routes.ts` | `auth.routes.ts` |
-| Server controllers | `*.controller.ts` | `connection.controller.ts` |
-| Server services | `*.service.ts` | `encryption.service.ts` |
+| Server controllers | `*.controller.ts` | `auth.controller.ts` |
+| Server services | `*.service.ts` | `auth.service.ts` |
 | Server middleware | `*.middleware.ts` | `auth.middleware.ts` |
 | Client stores | `*Store.ts` | `authStore.ts` |
 | Client API | `*.api.ts` | `connections.api.ts` |
 | Client hooks | `use*.ts` | `useAuth.ts` |
+| Tests | `*.test.ts` / `*.test.tsx` | `ip.test.ts` |
 
-## Key Development Patterns
+## 🧱 Architecture Patterns
 
-### Layered Architecture (Server)
+### Server: Routes -> Controllers -> Services -> Prisma
 
 ```
-Routes -> Controllers -> Services -> Prisma ORM
+routes/auth.routes.ts         # HTTP binding, middleware chain
+controllers/auth.controller.ts # Request/response transformation
+services/auth.service.ts       # Business logic
+lib/prisma.ts                  # Database access
 ```
 
-- **Routes:** Define endpoints, apply middleware (auth, validation, rate limiting, feature gates)
-- **Controllers:** Parse requests, extract params, delegate to services
-- **Services:** Business logic, database operations, encryption
-- **Prisma ORM:** Type-safe database queries
+### Client: Pages -> Components -> Stores -> API
 
-### Full-Screen Dialog Pattern (Client)
+```
+pages/DashboardPage.tsx        # Page-level component
+components/Sidebar/            # UI components
+store/connectionsStore.ts      # Zustand state management
+api/connections.api.ts          # Axios HTTP calls
+```
 
-Features that overlay the workspace use full-screen MUI `Dialog` components, not routes:
+### API Error Handling
 
-```tsx
-<Dialog fullScreen open={open} onClose={onClose} TransitionComponent={SlideUp}>
-  <AppBar position="static" sx={{ position: 'relative' }}>
-    <Toolbar variant="dense">
-      <IconButton onClick={onClose}><CloseIcon /></IconButton>
-      <Typography>Title</Typography>
-    </Toolbar>
+Client-side: use `extractApiError(err, fallbackMessage)` from `client/src/utils/apiError.ts`.
+For dialog forms: use `useAsyncAction` hook from `client/src/hooks/useAsyncAction.ts`.
+
+### Full-Screen Dialogs
+
+Features overlaying the workspace must use full-screen MUI `Dialog` from `MainLayout` (not page routes) to preserve active SSH/RDP sessions.
+
+```typescript
+import { SlideUp } from '../common/SlideUp';
+
+<Dialog fullScreen TransitionComponent={SlideUp} open={open} onClose={onClose}>
+  <AppBar position="static">
+    <Toolbar variant="dense">...</Toolbar>
   </AppBar>
-  <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex' }}>
-    {/* content */}
-  </Box>
+  {/* Content */}
 </Dialog>
-```
-
-State managed in `MainLayout` as `useState<boolean>`.
-
-### Error Handling
-
-**Server:**
-```typescript
-throw new AppError('Connection not found', 404);
-// Caught by asyncHandler -> global error middleware
-```
-
-**Client:**
-```typescript
-import { extractApiError } from '../utils/apiError';
-const message = extractApiError(err, 'Failed to create connection');
 ```
 
 ### UI Preferences
 
-All layout state persists via `useUiPreferencesStore`:
-```typescript
-const { sidebarCompact, set } = useUiPreferencesStore();
-set('sidebarCompact', !sidebarCompact);
+All UI layout state uses `uiPreferencesStore` (Zustand + `arsenale-ui-preferences` localStorage key). Never use raw `localStorage`. Namespace by userId.
+
+### Configuration Pattern
+
+```
+Env var set    -> used as-is, UI field read-only
+Env var unset  -> UI setting editable, persisted to DB
+New features   -> define env var in server/src/config.ts first
 ```
 
-Never use raw `localStorage.getItem/setItem` for UI preferences.
+## 🗄 Database
 
-### Async Actions in Dialogs
+### Schema
 
-```typescript
-const { loading, error, run } = useAsyncAction();
-const handleSubmit = () => run(async () => {
-  await api.createConnection(data);
-  onClose();
-});
+Prisma schema at `server/prisma/schema.prisma` defines 32+ models. Key commands:
+
+```bash
+npm run db:generate       # Regenerate Prisma client types
+npm run db:push           # Sync schema (no migration, for prototyping)
+npm run db:migrate        # Create and apply migration
 ```
 
-## Version Bumping
+When modifying `schema.prisma`, always run `npm run db:migrate` before closing the task.
 
-When bumping the version, update all locations:
+### Prisma Config
+
+`server/prisma.config.ts` resolves `.env` to `../../.env` (monorepo root). Never add a separate `server/.env`.
+
+## 🐳 Container Standards
+
+All Dockerfiles must be:
+- **Rootless**: Non-root user, no privileged operations
+- **Podman-compatible**: Test with `podman build` / `podman run`
+- **High ports only**: > 1024 (no binding to privileged ports)
+- **Multi-stage**: Separate build and runtime stages
+
+## 🔒 Security Standards
+
+### Logging
+
+Never log sensitive data in clear text. Use the logger from `server/src/utils/logger.ts`:
+
+```typescript
+// Correct
+logger.error(`Auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+
+// Incorrect - never do this
+logger.error('Login failed', { password, token });
+```
+
+### Vault and Encryption
+
+- Credentials encrypted at rest with AES-256-GCM
+- Per-user master key derived from password via Argon2
+- Vault lock requires re-auth to decrypt
+
+## 📦 Client Build
+
+### Vite Configuration
+
+- **PWA support**: Service worker with offline caching
+- **Code splitting**: Vendor chunks for React, MUI, XTerm, Guacamole, network libraries
+- **Chunk limit**: 700 KB warning threshold
+
+### Dev Server Proxies
+
+| Path | Target | Protocol |
+|------|--------|----------|
+| `/api` | `https://localhost:3001` | HTTPS |
+| `/socket.io` | `https://localhost:3001` | WSS |
+| `/guacamole` | `https://localhost:3002` | WSS |
+
+## 📱 Browser Extension
+
+Located at `extra-clients/browser-extensions/`:
+
+- **Chrome Manifest V3** with service worker
+- **Multi-account support**: Connect to multiple Arsenale instances
+- **Autofill**: Form detection + credential injection
+- **Keychain integration**: Browse and copy secrets
+
+```bash
+cd extra-clients/browser-extensions
+npm run dev           # Watch build
+npm run build         # Production build
+```
+
+Load unpacked extension from the `dist/` directory in Chrome.
+
+## 🔧 Gateway Development
+
+### Tunnel Agent
+
+```bash
+cd gateways/tunnel-agent
+npm run dev           # Watch mode (tsx)
+npm run test          # Vitest
+npm run build         # TypeScript compile
+```
+
+### Go Services (gocache, guacenc)
+
+```bash
+cd infrastructure/gocache
+go test ./...         # Run tests
+go build              # Build binary
+```
+
+## 📐 Version Bumping
+
+When releasing, update version in all locations:
 
 | File | Field |
 |------|-------|
-| `package.json` (root) | `"version"` |
-| `client/package.json` | `"version"` |
-| `server/package.json` | `"version"` |
-| `gateways/tunnel-agent/package.json` | `"version"` |
-| `extra-clients/browser-extensions/package.json` | `"version"` |
+| `package.json` (root, client, server, tunnel-agent, browser-extension) | `"version"` |
 | `extra-clients/browser-extensions/manifest.json` | `"version"` |
 | `server/src/cli.ts` | `.version('X.Y.Z')` |
 | `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
-| `docs/index.md` | `Version:` line at bottom |
+| `docs/index.md` | `Version:` line |
 
-Then run `npm install --package-lock-only` to update the lockfile.
-
-## Workspace Structure
-
-```
-arsenale/
-├── server/                          # Express API + Socket.IO
-│   ├── src/
-│   │   ├── index.ts                 # Entry point
-│   │   ├── app.ts                   # Express app setup
-│   │   ├── config.ts                # Configuration
-│   │   ├── cli.ts                   # CLI tool
-│   │   ├── routes/                  # Route definitions (43 files)
-│   │   ├── controllers/             # Request handlers
-│   │   ├── services/                # Business logic
-│   │   ├── middleware/              # Auth, CSRF, peekAuth, rate limiting, feature gates, validation
-│   │   ├── socket/                  # Socket.IO + WebSocket handlers
-│   │   ├── orchestrator/            # Container orchestration (Docker/Podman/Kubernetes)
-│   │   ├── schemas/                 # Zod validation schemas
-│   │   └── types/                   # Shared TypeScript types
-│   └── prisma/
-│       └── schema.prisma            # Database schema (42 models)
-├── client/                          # React 19 SPA
-│   ├── src/
-│   │   ├── main.tsx                 # Entry point
-│   │   ├── App.tsx                  # Router
-│   │   ├── api/                     # Axios API modules (37 files)
-│   │   ├── store/                   # Zustand stores (17 files)
-│   │   ├── pages/                   # Route components
-│   │   ├── components/              # UI components
-│   │   ├── hooks/                   # Custom React hooks
-│   │   ├── theme/                   # 6 themes x 2 modes
-│   │   └── utils/                   # Utilities
-│   ├── vite.config.ts               # Vite + PWA config
-│   └── nginx.conf                   # Production Nginx config
-├── gateways/
-│   ├── tunnel-agent/                # Zero-trust tunnel agent
-│   ├── guacd/                       # Custom guacd with tunnel
-│   ├── guacenc/                     # Recording processor
-│   └── ssh-gateway/                 # SSH bastion with tunnel
-├── extra-clients/
-│   └── browser-extensions/          # Chrome extension
-├── Makefile                         # Ansible deployment UX (make dev/deploy/etc.)
-├── deployment/ansible/              # Ansible playbooks, roles, and templates
-├── .env.example                     # Environment template
-├── eslint.config.mjs                # Shared ESLint config
-└── CLAUDE.md                        # AI assistant instructions
-```
+Then run `npm install --package-lock-only` to sync the lockfile.

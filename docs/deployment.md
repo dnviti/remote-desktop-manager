@@ -1,367 +1,316 @@
 ---
 title: Deployment
-description: Ansible deployment, container images, CI/CD pipelines, and infrastructure
-generated-by: ctdf-docs
-generated-at: 2026-03-27T00:00:00Z
+description: Ansible deployment, container images, CI/CD pipelines, TLS, and production infrastructure
+generated-by: claw-docs
+generated-at: 2026-03-27T12:00:00Z
 source-files:
   - Makefile
-  - deployment/ansible/
+  - compose.demo.yml
   - server/Dockerfile
   - client/Dockerfile
+  - gateways/ssh-gateway/Dockerfile
   - gateways/guacd/Dockerfile
   - gateways/guacenc/Dockerfile
-  - gateways/ssh-gateway/Dockerfile
-  - gateways/tunnel-agent/Dockerfile
   - gateways/db-proxy/Dockerfile
-  - gateways/rdgw/Dockerfile
-  - tools/arsenale-cli/main.go
-  - client/nginx.conf
-  - client/nginx.main.conf
-  - .github/workflows/verify.yml
+  - gateways/tunnel-agent/Dockerfile
+  - infrastructure/gocache/Dockerfile
+  - deployment/ansible/playbooks/deploy.yml
+  - deployment/ansible/inventory/group_vars/all/vars.yml
+  - deployment/ansible/roles/certificates/tasks/main.yml
+  - deployment/ansible/roles/deploy/templates/compose.yml.j2
+  - dev-certs/generate.sh
   - .github/workflows/docker-build.yml
   - .github/workflows/gateways-build.yml
-  - .github/workflows/security.yml
   - .github/workflows/release.yml
+  - client/nginx.conf
+  - client/nginx.dev.conf
 ---
 
-# Deployment
+## 🎯 Overview
 
-Arsenale uses **Ansible** as the sole deployment method, with a root `Makefile` providing single-command UX.
-
-## Quick Start
-
-```bash
-make setup          # First-time: install Ansible collections, generate vault
-make deploy         # Full production deployment
-make status         # Verify health
-make help           # All available targets
-```
-
-See [deployment/ansible/README.md](../deployment/ansible/README.md) for detailed Ansible configuration.
-
-## Production Stack
-
-The production stack is deployed via `make deploy` (Ansible manages the Podman compose file):
-
-```mermaid
-flowchart TD
-    subgraph External["External Access"]
-        Browser["Browser<br/>Port 3000"]
-    end
-
-    subgraph Stack["Docker Compose Stack"]
-        Client["client<br/>(Nginx :8080)"]
-        Server["server<br/>(:3001 + :3002)"]
-        Postgres[(postgres<br/>:5432)]
-        GuacD["guacd<br/>:4822"]
-        GuacEnc["guacenc<br/>:3003"]
-        SSHGw["ssh-gateway<br/>:2222"]
-        CacheSvc["gocache-cache<br/>:6380"]
-        PubSubSvc["gocache-pubsub<br/>:6380"]
-    end
-
-    Browser --> Client
-    Client -->|/api proxy| Server
-    Client -->|/guacamole proxy| Server
-    Server --> Postgres
-    Server -->|KV/locks/queues| CacheSvc
-    Server -->|Pub/Sub wiring| PubSubSvc
-    Server --> GuacD
-    Server --> GuacEnc
-    GuacEnc -->|Secret updates| PubSubSvc
-    GuacD --> SSHGw
-
-    subgraph Volumes
-        pgdata["pgdata"]
-        drive["arsenale_drive"]
-        recordings["arsenale_recordings"]
-    end
-
-    Postgres --> pgdata
-    Server --> drive
-    Server --> recordings
-    GuacD --> drive
-    GuacD --> recordings
-```
-
-### Services
-
-| Service | Image | Ports | Purpose |
-|---------|-------|-------|---------|
-| **postgres** | `postgres:16` | Internal | Database with health check |
-| **guacd** | `${ORCHESTRATOR_GUACD_IMAGE}` | 4822 | RDP/VNC protocol handler |
-| **guacenc** | `./gateways/guacenc` | Internal | Recording → video conversion |
-| **server** | `./server/Dockerfile` | 3001, 3002 | Express API + Guacamole WS |
-| **client** | `./client/Dockerfile` | 8080 → 3000 | Nginx reverse proxy + SPA |
-| **gocache-cache** | `./infrastructure/gocache` | 6380, 6381 | KV store, TTLs, distributed locks, and queues |
-| **gocache-pubsub** | `./infrastructure/gocache` | 6380, 6381 | Central service-to-service pub/sub and data wiring bus |
-| **ssh-gateway** | `./gateways/ssh-gateway` | 2222 | SSH bastion (optional) |
-
-### Volumes
-
-| Volume | Mount | Purpose |
-|--------|-------|---------|
-| `pgdata` | PostgreSQL data | Database persistence |
-| `arsenale_drive` | `/guacd-drive` | RDP file drive redirection |
-| `arsenale_recordings` | `/recordings` | Session recordings |
-| `gocache_cache_data` | `/data` | Cache backend persistence |
-
-### Security Hardening
-
-All containers run with:
-- `cap_drop: ALL` + `cap_add: NET_BIND_SERVICE`
-- `security_opt: no-new-privileges:true`
-- `security_opt: label:disable` (Podman/SELinux compatibility)
-- Non-root users where possible
-
-### Scalability
-
-Configure replica counts in `deployment/ansible/inventory/group_vars/all/vars.yml`:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `arsenale_server_replicas` | `1` | Number of server instances |
-| `arsenale_gocache_cache_replicas` | `1` | Number of cache backend instances |
-| `arsenale_gocache_pubsub_replicas` | `1` | Number of pubsub bus instances |
-
-### Starting Production
-
-```bash
-# First-time setup
-make setup
-
-# Deploy full stack (Ansible manages secrets, certs, containers)
-make deploy
-
-# Verify
-make status
-```
-
-## Container Images
-
-### Server (`server/Dockerfile`)
-
-Multi-stage build on `node:22-alpine`:
-
-1. Install dependencies from `package-lock.json`
-2. Generate Prisma client from schema
-3. Compile TypeScript to `dist/`
-4. Prune to production dependencies
-5. Install `arsenale` CLI shim at `/usr/local/bin/arsenale`
-6. Create non-root `appuser`
-7. Create `/guacd-drive` and `/recordings` directories
-
-**Exposed ports:** 3001 (API), 3002 (Guacamole WS)
-**Health check:** `GET /api/health` (10s interval, 5 retries, 30s start period)
-**Entry:** `node dist/index.js`
-
-### Client (`client/Dockerfile`)
-
-Multi-stage build: Node 22-alpine (build) → Nginx 1.28-alpine (runtime):
-
-1. Install dependencies and build with Vite
-2. Copy built assets to Nginx html directory
-3. Apply custom Nginx configuration
-
-**Exposed port:** 8080
-**Health check:** `GET /health` (10s interval)
-**Entry:** `nginx -g 'daemon off;'`
-
-### Guacd Gateway (`gateways/guacd/Dockerfile`)
-
-Multi-stage: tunnel-agent builder → guacamole/guacd:1.6.0 runtime:
-
-1. Build tunnel-agent from TypeScript
-2. Install Node.js in guacd base image
-3. Copy pre-built tunnel agent
-4. Custom entrypoint starts both guacd and tunnel agent
-
-**Exposed port:** 4822
-**User:** daemon (non-root)
-
-### SSH Gateway (`gateways/ssh-gateway/Dockerfile`)
-
-Multi-stage: tunnel-agent builder → Alpine 3.21 runtime:
-
-1. Build tunnel-agent
-2. Install OpenSSH server
-3. Configure SSH with host keys
-4. Copy tunnel agent + key API script
-
-**Exposed ports:** 2222 (SSH), 8022 (key API)
-**User:** tunnel (non-root)
-
-### Database Proxy Gateway (`gateways/db-proxy/Dockerfile`)
-
-Multi-stage build: tunnel-agent builder (Node 22-alpine) + Node 22-alpine runtime:
-
-1. Build tunnel-agent from TypeScript
-2. Install runtime dependencies (libaio, libnsl, unixODBC, FreeTDS, libxml2)
-3. Embed pre-built tunnel agent
-4. Copy Go protocol adapters
-5. Create non-root `dbproxy` user
-
-Protocol-aware proxy supporting PostgreSQL, MySQL, and MongoDB. Credentials are injected per-session from the Arsenale vault.
-
-**Exposed port:** 5432 (configurable via `DB_LISTEN_PORT`)
-**Health check:** Process-level (`/proc/1/status`, 30s interval, 10s start period)
-**User:** dbproxy (non-root)
-**Entry:** `/entrypoint.sh`
-
-### RD Gateway (`gateways/rdgw/`)
-
-Go-based implementation of the MS-TSGU (Terminal Services Gateway) protocol. Enables native Windows RDP clients (mstsc.exe) to connect through Arsenale with vault credential injection and audit logging.
-
-### Arsenale Connect CLI (`tools/arsenale-cli/`)
-
-Go CLI tool for native client orchestration. Authenticates via RFC 8628 device authorization, retrieves credentials from the vault, generates SSH proxy tokens or .rdp files, and launches native SSH/RDP clients.
-
-### Go Cache Backends (`infrastructure/gocache/Dockerfile`)
-
-Multi-stage build: Go 1.25-alpine (build) → Alpine 3.21 (runtime):
-
-1. Download Go modules and build static binary
-2. Create non-root `gocache` user (UID 10001)
-3. Create `/data` volume for persistence
-
-**Exposed ports:** 6380 (gRPC), 6381 (health HTTP)
-**Health check:** `wget /health` (10s interval, 5s start period)
-**User:** 10001:10001 (non-root)
-**Entry:** `/usr/local/bin/gocache`
-
-### Guacenc (`gateways/guacenc/Dockerfile`)
-
-Multi-stage: guacamole-server builder → agg builder → Alpine runtime:
-
-1. Compile guacamole-server 1.6.0 with guacenc support
-2. Build agg (asciicast-to-GIF converter, multi-arch)
-3. Runtime with Python 3, ffmpeg, guacenc binary, agg binary
-
-**Exposed port:** 3003
-**User:** guacenc (non-root)
-**Entry:** `python3 /opt/guacenc/server.py`
-
-### Tunnel Agent (`gateways/tunnel-agent/Dockerfile`)
-
-Multi-stage: Node 22-alpine builder → Node 22-alpine runtime:
-
-**Required env:** `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`
-**User:** agent (non-root)
-**Entry:** `node dist/index.js`
-
-## Nginx Configuration
-
-### Reverse Proxy Routes
-
-| Location | Target | Features |
-|----------|--------|----------|
-| `/api` | `http://server:3001` | WebSocket upgrade headers |
-| `/socket.io` | `http://server:3001` | WebSocket upgrade |
-| `/guacamole` | `http://server:3002/` | 86400s timeouts (long sessions) |
-| `/health` | 200 JSON | No logging |
-| `/assets/` | Static files | Cache 1 year (immutable, Vite hashes) |
-| `/index.html` | Static file | no-cache, no-store |
-| `/*` | Static files | SPA fallback to index.html |
-
-### Security Headers
-
-- `X-Frame-Options: DENY`
-- `X-Content-Type-Options: nosniff`
-- `Strict-Transport-Security: max-age=31536000`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy: camera=(), microphone=(), geolocation=()`
-- `Content-Security-Policy`: Restrictive (self, unsafe-inline for styles, ws/wss for connect)
-
-## CI/CD Pipelines
-
-### Verification Workflow
+Arsenale uses **Ansible** for both development and production deployments. The same playbook handles both environments, with the target determined by environment variables.
 
 ```mermaid
 flowchart LR
-    Push["Push/PR to main"] --> Verify["Verify"]
-    Verify --> TC["TypeCheck"]
-    TC --> Lint["Lint"]
-    Lint --> Audit["npm audit"]
-    Audit --> Build["Build"]
+    Dev["make dev"] -->|"localhost"| Ansible["Ansible Playbook"]
+    Prod["make deploy"] -->|"remote host"| Ansible
+    Ansible --> Roles["Roles"]
+    Roles --> Certs["certificates"]
+    Roles --> Secrets["podman_secrets"]
+    Roles --> Deploy["deploy"]
+    Roles --> FW["firewall"]
+    Roles --> HC["healthcheck"]
+    Deploy --> Compose["compose up"]
 ```
 
-**verify.yml:** Reusable workflow accepting a `workspace` input (`server` or `client`). Steps: checkout → Node 22 → npm ci → db:generate (server only) → typecheck → lint → audit → build. Called by `docker-build.yml` for both workspaces. Cancels in-progress jobs on new pushes.
+## 🐳 Container Images
 
-### Docker Build Workflows
+All containers are **rootless** and **Podman-compatible**. No process runs as root.
+
+### Application Containers
+
+| Image | Base | Ports | Purpose |
+|-------|------|-------|---------|
+| `server` | Node.js 22-alpine | 3001, 3002 | Express API + guacamole-lite WS |
+| `client` | Nginx 1.28-alpine | 8080 | React SPA reverse proxy |
+
+**Server Dockerfile** (multi-stage):
+1. `deps` -- Install all dependencies with build tools
+2. `dev` -- Development target (source bind-mounted)
+3. `build` -- Prisma generate + TypeScript compile
+4. `prod-deps` -- Production dependencies only
+5. `final` -- Minimal runtime as `appuser:appgroup`
+
+**Client Dockerfile** (multi-stage):
+1. `deps` -- Install Node.js dependencies
+2. `build` -- Vite production build
+3. `final` -- Nginx rootless on port 8080
+
+### Gateway Containers
+
+| Image | Base | Ports | Purpose |
+|-------|------|-------|---------|
+| `ssh-gateway` | Alpine 3.21 | 2222, 9022 | SSH bastion + gRPC key management |
+| `guacd` | guacamole/guacd:1.6.0 | 4822 | RDP/VNC protocol proxy |
+| `guacenc` | Alpine 3.18 | 3003 | Recording to video converter |
+| `db-proxy` | Node.js 22-alpine | 5432 | Database protocol proxy |
+| `tunnel-agent` | Node.js 22-alpine | - | Zero-trust tunnel client |
+
+### Infrastructure Containers
+
+| Image | Base | Ports | Purpose |
+|-------|------|-------|---------|
+| `gocache` | Go 1.25 + Alpine 3.21 | 6380, 6381 | In-memory cache (KV + PubSub) |
+| `postgres` | PostgreSQL 16 | 5432 | Database |
+
+All gateway containers embed the **tunnel agent** for zero-trust connectivity.
+
+## 🌐 Network Architecture
+
+Production deployment uses 5 isolated networks:
 
 ```mermaid
 flowchart TD
-    Tag["Version tag (v*)"] --> Verify
-    Tag --> Security["Security Scan"]
-    Verify --> BuildScan["Build & Scan"]
-    Security --> BuildScan
-    BuildScan --> Buildx["Docker Buildx"]
-    Buildx --> Trivy["Trivy Scanner<br/>(CRITICAL, HIGH)"]
-    Trivy --> SARIF["Upload SARIF"]
-    Trivy --> Push["Push to ghcr.io<br/>(tags only)"]
+    subgraph proxy["proxy-net (External)"]
+        Client["client :8080"]
+    end
+
+    subgraph front["arsenale-front-net (Internal)"]
+        Server["server :3001/:3002"]
+    end
+
+    subgraph back["arsenale-back-net (Internal)"]
+        Postgres["postgres :5432"]
+        Guacd["guacd :4822"]
+        SSHGw["ssh-gateway :2222/:9022"]
+        Guacenc["guacenc :3003"]
+    end
+
+    subgraph cache["cache (Internal)"]
+        KV["gocache-cache :6380"]
+        PubSub["gocache-pubsub :6380"]
+    end
+
+    Client -->|"HTTPS"| Server
+    Server -->|"SSL"| Postgres
+    Server -->|"TLS"| Guacd
+    Server -->|"gRPC+mTLS"| KV
+    Server -->|"gRPC+mTLS"| PubSub
+    Server -->|"HTTPS+mTLS"| Guacenc
+    SSHGw -->|"gRPC+mTLS"| Server
 ```
 
-**docker-build.yml:** Consolidated workflow for server and client images using a matrix strategy. Triggers on pushes to `main` and version tags, or PRs to `main`/`staging` touching `server/` or `client/` paths:
-1. Call `verify.yml` for both server and client workspaces
-2. Call `security.yml` (CodeQL for server, Trivy filesystem for both)
-3. Build Docker images with Buildx (matrix: server, client)
-4. Scan with Trivy (CRITICAL + HIGH severity)
-5. Upload SARIF results to GitHub Security
-6. Push to `ghcr.io/dnviti/arsenale/server` and `ghcr.io/dnviti/arsenale/client` (version tags only)
+All internal networks are isolated -- no external routing.
 
-**gateways-build.yml:** Consolidated gateway workflow using a matrix strategy (guacd, guacenc, ssh-gateway, tunnel-agent). Triggers on `gateways/` path changes. Same build-scan-push pipeline with multi-arch support (linux/amd64, linux/arm64).
+## 🔐 TLS and mTLS
 
-### Release Workflow
+Every service-to-service connection uses TLS or mTLS. Certificates are generated per-service with ECC (secp256r1).
 
-**release.yml:** Triggers on version tag pushes (`v*`). Creates a draft GitHub Release with auto-generated release notes. Tags containing `-beta` are marked as pre-releases.
+### Certificate Structure
 
-### Registry
+```
+certs/                        # Generated by Ansible or dev-certs/generate.sh
+├── ca.pem, ca-key.pem       # Shared CA (10-year validity)
+├── server/                   # Express + guacamole-lite
+├── client/                   # Nginx
+├── postgres/                 # PostgreSQL SSL
+├── gocache-cache/            # KV gRPC mTLS
+├── gocache-pubsub/           # PubSub gRPC mTLS
+├── guacd/                    # Guacamole TLS
+├── guacenc/                  # Video converter HTTPS
+├── ssh-gateway/              # SSH gateway API
+└── tunnel/                   # Tunnel mTLS
+```
 
-All images are pushed to **GitHub Container Registry** (`ghcr.io/dnviti/arsenale/`):
+### Service-to-Service Connections
 
-| Image | Path |
-|-------|------|
-| Server | `ghcr.io/dnviti/arsenale/server` |
-| Client | `ghcr.io/dnviti/arsenale/client` |
-| Guacd | `ghcr.io/dnviti/arsenale/guacd` |
-| SSH Gateway | `ghcr.io/dnviti/arsenale/ssh-gateway` |
-| Guacenc | `ghcr.io/dnviti/arsenale/guacenc` |
-| Tunnel Agent | `ghcr.io/dnviti/arsenale/tunnel-agent` |
+| Source | Target | Protocol | Verification |
+|--------|--------|----------|-------------|
+| Nginx | Express | HTTPS | Server cert verify via CA |
+| Express | PostgreSQL | SSL | Certificate mode |
+| Express | guacd | TLS | CA verify |
+| Express | GoCacheKV | gRPC | Mutual TLS (client + server certs) |
+| Express | GoCachePubSub | gRPC | Mutual TLS (client + server certs) |
+| Express | guacenc | HTTPS | Mutual TLS |
+| SSH Gateway | Express | gRPC | Mutual TLS |
 
-## Development Infrastructure
+## 🚀 Deployment Workflows
 
-`make dev` starts lightweight containers for local development via Ansible:
+### Development
 
-| Service | Port | Purpose |
-|---------|------|---------|
-| postgres | 127.0.0.1:5432 | Local database |
-| gocache-cache | 127.0.0.1:6380, 6381 | Cache backend (distributed state) |
-| gocache-pubsub | 127.0.0.1:6480, 6481 | Pub/sub data wiring backend |
+```bash
+make setup     # First time: Ansible collections, vault, certs
+make dev       # Start PostgreSQL, guacd, gocache via Ansible (localhost)
+npm run dev    # Start Express + Vite with hot-reload
+```
 
-The `.env` file is auto-generated by Ansible during `make dev`. Server and client run natively via `npm run dev`. Stop infrastructure with `make dev-down`.
+### Production
 
-## Health Checks
+```bash
+make setup     # First time
+make vault     # Configure secrets (Ansible Vault encrypted)
+make deploy    # Full deployment to remote host
+```
 
-| Service | Probe | Interval | Start Period |
-|---------|-------|----------|--------------|
-| PostgreSQL | `pg_isready -U $POSTGRES_USER` | 5s | — |
-| guacd | `nc -z localhost 4822` | 10s | — |
-| Server | `wget /api/health` | 10s | 30s |
-| Client | Nginx `/health` | 10s | 5s |
-| SSH Gateway | `nc -z localhost $SSH_PORT` | 10s | — |
-| gocache-cache | `wget /health` (HTTP :6381) | 10s | 5s |
-| gocache-pubsub | `wget /health` (HTTP :6481) | 10s | 5s |
-| DB Proxy | `/proc/1/status` | 30s | 10s |
+The Ansible playbook runs these roles in order:
+1. **prerequisites** -- System packages (production only)
+2. **certificates** -- Generate CA + service certs
+3. **podman_secrets** -- Create external secrets via `podman secret create`
+4. **deploy** -- Template compose.yml + .env, build/pull images, `compose up -d`
+5. **firewall** -- Open ports 22, 2222, 3000 (when enabled)
+6. **healthcheck** -- Verify all services are running
 
-## Production Checklist
+### Makefile Targets
 
-1. Set all required secrets (`JWT_SECRET`, `GUACAMOLE_SECRET`, `SERVER_ENCRYPTION_KEY`)
-2. Use strong PostgreSQL credentials
-3. Configure `CLIENT_URL` to match your domain
-4. Set `TRUST_PROXY` if behind a reverse proxy
-5. Configure email provider for verification and notifications
-6. Set `WEBAUTHN_RP_ID` and `WEBAUTHN_RP_ORIGIN` to match your domain
-7. Optionally configure GeoIP database for impossible travel detection
-8. Review rate limiting defaults
-9. Set `RECORDING_ENABLED=true` if session recording is needed
-10. Configure container orchestration for managed gateways
+```bash
+make setup      # First-time setup
+make dev        # Start dev infrastructure
+make dev-down   # Stop dev infrastructure
+make deploy     # Full production deployment
+make status     # Show service status
+make logs       # Tail logs (SVC=server for specific)
+make backup     # Database backup
+make rotate     # Rotate system secrets
+make vault      # Edit Ansible Vault
+make certs      # Regenerate certificates
+make clean      # Teardown everything
+make help       # Show all targets
+```
+
+## 🔑 Secret Management
+
+### Development (vault.yml)
+
+Auto-generated by `make setup`. Contains:
+- `vault_jwt_secret` -- JWT signing key
+- `vault_guacamole_secret` -- RDP/VNC encryption
+- `vault_server_encryption_key` -- SSH key encryption
+- `vault_postgres_password` -- Database password
+- `vault_database_url` -- Full PostgreSQL URL
+- `vault_guacenc_auth_token` -- Video converter auth
+
+### Production (Ansible Vault)
+
+Same secrets, encrypted with `ansible-vault`. Decrypted at deploy-time.
+
+### Runtime (Podman Secrets)
+
+Secrets are injected via Podman external secrets:
+- Mounted at `/run/secrets/` (read-only)
+- Referenced in compose via `secrets:` section
+- Never in environment variables or logs
+
+```mermaid
+flowchart LR
+    Vault["vault.yml\n(Ansible Vault)"] -->|"Deploy"| Podman["podman secret create"]
+    Podman -->|"Mount"| Container["/run/secrets/\n(read-only)"]
+    Container -->|"readSecret()"| Config["server/src/config.ts"]
+```
+
+## 📦 Nginx Configuration
+
+### Production (`client/nginx.conf`)
+
+- Listens on port 8080 (HTTP, behind reverse proxy)
+- Strict security headers: CSP, HSTS (1 year), X-Frame-Options DENY
+- Proxy routes:
+  - `/api` -> `https://server:3001` (HTTPS with cert verify)
+  - `/socket.io` -> `https://server:3001` (WebSocket upgrade)
+  - `/guacamole` -> `https://server:3002` (WebSocket, 86400s timeout)
+- Static assets: 1-year immutable cache
+- SPA fallback: all routes -> `index.html`
+
+### Development (`client/nginx.dev.conf`)
+
+- Same structure but with TLS enabled (`listen 8080 ssl`)
+- Self-signed certs from `dev-certs/`
+
+## 🔄 CI/CD Pipelines
+
+### Application Build (`.github/workflows/docker-build.yml`)
+
+```mermaid
+flowchart TD
+    Trigger["Push to main/staging/tag\nor PR to develop/staging/main"]
+    Trigger --> Verify["verify-server\nverify-client\n(lint, test, typecheck)"]
+    Verify --> Security["security-server\nsecurity-client\n(CodeQL)"]
+    Security --> Build["build-and-scan\n(Matrix: server, client)"]
+    Build --> Trivy["Trivy Scan\n(SARIF upload)"]
+    Trivy --> Push["Push to ghcr.io\n(on tag/main/staging)"]
+```
+
+- **Matrix build**: server and client in parallel
+- **Multi-arch**: linux/amd64, linux/arm64
+- **Cache**: GitHub Actions cache for Docker layers
+- **Security**: CodeQL analysis + Trivy container scanning
+
+### Gateway Build (`.github/workflows/gateways-build.yml`)
+
+- Triggers on changes to `gateways/` or `infrastructure/gocache/`
+- Go tests: `go vet` + `go test -race`
+- Matrix: guacd, guacenc, ssh-gateway, tunnel-agent, gocache
+- Same scan/push pipeline as application
+
+### Release (`.github/workflows/release.yml`)
+
+- Triggers on `v*` tags
+- Creates GitHub Release with auto-generated notes
+- Draft release; pre-release if `-beta` tag
+
+## 📊 Volumes and Data Persistence
+
+| Volume | Mount Point | Purpose |
+|--------|------------|---------|
+| `pgdata` | `/var/lib/postgresql/data` | PostgreSQL data |
+| `arsenale_drive` | `/guacd-drive` | SFTP file sharing |
+| `arsenale_recordings` | `/recordings` | Session recordings |
+| `gocache_cache_data` | `/data` | Cache persistence |
+
+## 🔧 Ansible Variables
+
+Key production variables in `deployment/ansible/inventory/group_vars/all/vars.yml`:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `arsenale_domain` | `localhost` | Public domain |
+| `arsenale_node_env` | `production` | Node environment |
+| `arsenale_build_images` | `true` | Build locally vs pull from registry |
+| `arsenale_registry` | `ghcr.io/dnviti/arsenale` | Container registry |
+| `arsenale_server_replicas` | `1` | Server instance count |
+| `arsenale_generate_certs` | `true` | Auto-generate TLS certs |
+| `arsenale_firewall_enabled` | `true` | Enable firewall rules |
+| `arsenale_backup_retention_days` | `30` | Backup retention |
+
+## 🔄 Scaling
+
+Arsenale supports horizontal scaling via the GoCacheKV distributed adapter:
+
+| Component | Scaling | Configuration |
+|-----------|---------|--------------|
+| Server | Replicas | `arsenale_server_replicas` |
+| GoCacheKV | Replicas | `arsenale_gocache_cache_replicas` |
+| GoCachePubSub | Replicas | `arsenale_gocache_pubsub_replicas` |
+| PostgreSQL | Single (external HA recommended) | - |
+| Managed Gateways | Auto-scaling | Per-gateway scaling config |
+
+Leader election via GoCacheKV ensures singleton jobs run on exactly one instance.

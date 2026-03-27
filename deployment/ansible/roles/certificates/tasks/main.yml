@@ -47,7 +47,8 @@
 - name: Define service certificates
   set_fact:
     cert_services:
-      - { name: server, cn: arsenale-server, san: "DNS:arsenale-server,DNS:localhost,IP:127.0.0.1", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: client, cn: arsenale-client, san: "DNS:arsenale-client,DNS:localhost,IP:127.0.0.1,IP:::1", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: server, cn: arsenale-server, san: "DNS:arsenale-server,DNS:server,DNS:localhost,IP:127.0.0.1", key_mode: "{{ _runtime_key_mode }}" }
       - { name: postgres, cn: arsenale-postgres, san: "DNS:arsenale-postgres,DNS:postgres,DNS:localhost", key_mode: "0600" }
       - { name: gocache-cache, cn: arsenale-gocache-cache, san: "DNS:arsenale-gocache-cache,DNS:gocache-cache,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
       - { name: gocache-pubsub, cn: arsenale-gocache-pubsub, san: "DNS:arsenale-gocache-pubsub,DNS:gocache-pubsub,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
@@ -134,6 +135,15 @@
     path: "{{ arsenale_cert_dir }}/gocache-cache/client.csr"
     privatekey_path: "{{ arsenale_cert_dir }}/gocache-cache/client-key.pem"
     common_name: arsenale-server-cache-client
+    subject_alt_name:
+      - DNS:arsenale-server-cache-client
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
 
 - name: Sign gocache cache client certificate
   community.crypto.x509_certificate:
@@ -157,6 +167,15 @@
     path: "{{ arsenale_cert_dir }}/gocache-pubsub/client.csr"
     privatekey_path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-key.pem"
     common_name: arsenale-server-pubsub-client
+    subject_alt_name:
+      - DNS:arsenale-server-pubsub-client
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
 
 - name: Sign gocache pubsub client certificate
   community.crypto.x509_certificate:
@@ -175,4 +194,79 @@
   loop:
     - gocache-cache
     - gocache-pubsub
+  failed_when: false
+
+- name: Generate SSH gateway client CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "0600"
+
+- name: Generate SSH gateway client CA certificate
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    common_name: arsenale-ssh-gateway-client-ca
+    organization_name: Arsenale
+    use_common_name_for_san: false
+    basic_constraints:
+      - CA:TRUE
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+
+- name: Self-sign SSH gateway client CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.pem"
+    csr_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ arsenale_ca_validity_days }}d"
+    mode: "0644"
+
+- name: Generate SSH gateway client certificate (for server key-management mTLS)
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ _runtime_key_mode }}"
+
+- name: Generate SSH gateway client CSR
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-key.pem"
+    common_name: arsenale-server
+    subject_alt_name:
+      - DNS:arsenale-server
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
+
+- name: Sign SSH gateway client certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/ssh-gateway/client.csr"
+    ownca_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.pem"
+    ownca_privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+
+- name: Ensure SSH gateway client key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-key.pem"
+    mode: "{{ _runtime_key_mode }}"
+  failed_when: false
+
+- name: Ensure SSH gateway client CA key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    mode: "0600"
   failed_when: false

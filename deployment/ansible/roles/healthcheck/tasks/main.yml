@@ -46,7 +46,8 @@
 - name: Verify API health endpoint
   uri:
     url: "https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api/health"
-    validate_certs: false
+    validate_certs: true
+    ca_path: "{{ arsenale_cert_dir }}/ca.pem"
     status_code: 200
   retries: 12
   delay: 5
