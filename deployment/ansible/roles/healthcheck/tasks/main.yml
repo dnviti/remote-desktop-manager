@@ -1,7 +1,21 @@
 ---
 - name: Set compose command for health checks
   set_fact:
-    _hc_compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ arsenale_home }}/docker-compose.yml"
+    _hc_compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ _home }}/docker-compose.yml"
+
+- name: Get expected compose service count
+  command: >
+    {{ _hc_compose_cmd }} config --services
+  register: compose_services
+  changed_when: false
+  environment: "{{ _hc_env }}"
+  vars:
+    _hc_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}
 
 - name: Wait for all containers to be healthy
   command: >
@@ -10,7 +24,15 @@
   retries: 24
   delay: 5
   until: >
-    (compose_status.stdout | from_json | selectattr('Health', 'equalto', 'healthy') | list | length) >= 5
+    (compose_status.stdout | from_json | list | length) >= (compose_services.stdout_lines | length)
+    and
+    (
+      compose_status.stdout
+      | from_json
+      | selectattr('Status', 'search', '\\(healthy\\)')
+      | list
+      | length
+    ) >= (compose_services.stdout_lines | length)
   changed_when: false
   environment: "{{ _hc_env }}"
   vars:

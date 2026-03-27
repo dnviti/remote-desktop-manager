@@ -22,7 +22,7 @@ import (
 
 const (
 	defaultPort         = "9022"
-	authorizedKeysPath  = "/home/tunnel/.ssh/authorized_keys"
+	authorizedKeysPath  = "/tmp/.ssh/authorized_keys"
 	configKeysPath      = "/config/authorized_keys"
 )
 

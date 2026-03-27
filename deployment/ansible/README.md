@@ -13,7 +13,7 @@ The preferred way to interact with Ansible is through the root `Makefile`. All c
 make setup          # Install Ansible collections, generate vault + certs
 
 # Development
-make dev            # Start postgres + gocache, generate .env
+make dev            # Start postgres + split cache/pubsub backends, generate .env
 npm run dev         # Start server + client
 
 # Production

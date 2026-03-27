@@ -33,7 +33,7 @@
           vault_guacenc_auth_token: "{{ generated_guacenc_token }}"
 
           # Constructed from components
-          vault_database_url: "postgresql://{% raw %}{{ arsenale_db_user }}{% endraw %}:{{ generated_postgres_password }}@postgres:5432/{% raw %}{{ arsenale_db_name }}{% endraw %}?sslmode=require"
+          vault_database_url: "postgresql://{% raw %}{{ arsenale_db_user }}{% endraw %}:{{ generated_postgres_password }}@postgres:5432/{% raw %}{{ arsenale_db_name }}{% endraw %}?sslmode=verify-full"
 
           # Optional secrets (fill in as needed)
           vault_smtp_pass: ""

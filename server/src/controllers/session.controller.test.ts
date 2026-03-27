@@ -45,6 +45,7 @@ vi.mock('../services/gateway.service', () => ({
 vi.mock('../services/tunnel.service', () => ({
   isTunnelConnected: vi.fn(),
   createTcpProxy: vi.fn(),
+  closeTcpProxy: vi.fn(),
 }));
 vi.mock('../services/sessionCleanup.service', () => ({
   forceDisconnectSession: vi.fn(),
@@ -94,6 +95,7 @@ import { checkLateralMovement } from '../services/lateralMovement.service';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
 import { forceDisconnectSession } from '../services/sessionCleanup.service';
+import { getDefaultGateway } from '../services/gateway.service';
 
 // ---- Test helpers ----
 
@@ -140,6 +142,15 @@ describe('session.controller', () => {
     vi.mocked(checkLateralMovement).mockResolvedValue({ allowed: true } as never);
     vi.mocked(prisma.user.findUnique).mockResolvedValue({ rdpDefaults: null } as never);
     vi.mocked(prisma.tenant.findUnique).mockResolvedValue(null);
+    vi.mocked(getDefaultGateway).mockResolvedValue({
+      id: 'gw-1',
+      type: 'GUACD',
+      host: 'gateway.local',
+      port: 4822,
+      isManaged: false,
+      lbStrategy: 'ROUND_ROBIN',
+      tunnelEnabled: false,
+    } as never);
   });
 
   // ==================== createRdpSession ====================

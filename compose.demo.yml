@@ -98,18 +98,42 @@ services:
     networks:
       - arsenale-back-net
 
-  gocache:
+  gocache-cache:
     image: ghcr.io/dnviti/arsenale/gocache
-    container_name: gocache
+    container_name: gocache-cache
     pull_policy: always
     security_opt:
       - label:disable
     environment:
+      CACHE_ROLE: "cache"
       CACHE_LISTEN: "tcp://0.0.0.0:6380"
       CACHE_HEALTH_ADDR: "0.0.0.0:6381"
-      CACHE_DISCOVERY: "manual"
+      CACHE_DISCOVERY: "dns"
+      CACHE_DNS_NAME: "gocache-cache"
     volumes:
-      - gocache_data:/data
+      - gocache_cache_data:/data
+    restart: always
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6381/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks:
+      - arsenale-back-net
+
+  gocache-pubsub:
+    image: ghcr.io/dnviti/arsenale/gocache
+    container_name: gocache-pubsub
+    pull_policy: always
+    security_opt:
+      - label:disable
+    environment:
+      CACHE_ROLE: "pubsub"
+      CACHE_LISTEN: "tcp://0.0.0.0:6380"
+      CACHE_HEALTH_ADDR: "0.0.0.0:6381"
+      CACHE_DISCOVERY: "dns"
+      CACHE_DNS_NAME: "gocache-pubsub"
     restart: always
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:6381/health || exit 1"]
@@ -139,8 +163,13 @@ services:
         condition: service_healthy
       guacd:
         condition: service_healthy
-      gocache:
+      gocache-cache:
         condition: service_healthy
+      gocache-pubsub:
+        condition: service_healthy
+    environment:
+      CACHE_KV_URL: "gocache-cache:6380"
+      CACHE_PUBSUB_URL: "gocache-pubsub:6380"
     env_file:
       - .env.prod
     volumes:
@@ -239,7 +268,7 @@ volumes:
   arsenale_drive:
   arsenale_recordings:
   ollama_models:
-  gocache_data:
+  gocache_cache_data:
 
 networks:
   proxy-net:

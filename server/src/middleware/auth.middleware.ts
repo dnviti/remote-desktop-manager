@@ -5,7 +5,10 @@ import { config } from '../config';
 import { getClientIp } from '../utils/ip';
 import { computeBindingHash } from '../utils/tokenBinding';
 import * as auditService from '../services/audit.service';
-import prisma from '../lib/prisma';
+import {
+  getTenantMembershipContext,
+  isTenantMembershipUsable,
+} from '../utils/tenantMembership';
 
 const ROLE_HIERARCHY: Record<string, number> = {
   GUEST:      0.1,
@@ -17,11 +20,11 @@ const ROLE_HIERARCHY: Record<string, number> = {
   OWNER:      4,
 };
 
-export function authenticate(
+export async function authenticate(
   req: AuthRequest,
   res: Response,
   next: NextFunction
-): void {
+): Promise<void> {
   const authHeader = req.headers.authorization;
   if (!authHeader?.startsWith('Bearer ')) {
     res.status(401).json({ error: 'Missing or invalid authorization header' });
@@ -59,6 +62,20 @@ export function authenticate(
       }
     }
 
+    // Normalize tenant context against the live membership row so role changes,
+    // pending invitations, and expirations take effect before route handlers run.
+    if (payload.tenantId) {
+      const membership = await getTenantMembershipContext(payload.userId, payload.tenantId);
+      if (isTenantMembershipUsable(membership)) {
+        payload.tenantRole = membership.role;
+      } else {
+        delete payload.tenantId;
+        delete payload.tenantRole;
+      }
+    } else if (payload.tenantRole) {
+      delete payload.tenantRole;
+    }
+
     req.user = payload;
     next();
   } catch {
@@ -67,36 +84,19 @@ export function authenticate(
 }
 
 /**
- * Middleware that verifies the JWT-claimed role against the database.
- * Prevents privilege escalation via stale or forged JWT claims.
+ * Middleware that enforces a tenant role after `authenticate` has normalized
+ * the request's tenant context against the live membership row.
  * Must be used AFTER `authenticate`.
  */
 export function requireVerifiedRole(minRole: TenantRoleType) {
-  return async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
-    const user = req.user;
-    if (!user?.userId || !user?.tenantId) {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    const userRole = req.user?.tenantRole;
+    if (!req.user?.tenantId || !userRole) {
       res.status(403).json({ error: 'Tenant membership required' });
       return;
     }
 
-    const membership = await prisma.tenantMember.findUnique({
-      where: { tenantId_userId: { tenantId: user.tenantId, userId: user.userId } },
-      select: { role: true, expiresAt: true },
-    });
-
-    if (!membership) {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    // Reject expired memberships
-    if (membership.expiresAt && membership.expiresAt < new Date()) {
-      res.status(403).json({ error: 'Access denied' });
-      return;
-    }
-
-    const dbRole = membership.role as string;
-    if ((ROLE_HIERARCHY[dbRole] ?? 0) < (ROLE_HIERARCHY[minRole] ?? Infinity)) {
+    if ((ROLE_HIERARCHY[userRole] ?? 0) < (ROLE_HIERARCHY[minRole] ?? Infinity)) {
       res.status(403).json({ error: 'Insufficient tenant role' });
       return;
     }

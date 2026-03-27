@@ -1,8 +1,8 @@
 import fs from 'fs';
 import fsp from 'fs/promises';
-import https from 'https';
 import path from 'path';
 import { Readable } from 'stream';
+import { Agent } from 'undici';
 import prisma from '../lib/prisma';
 import { config } from '../config';
 import { logger } from '../utils/logger';
@@ -29,7 +29,7 @@ function guacencFetchOptions(): Record<string, unknown> {
     try {
       // eslint-disable-next-line security/detect-non-literal-fs-filename
       const ca = fs.readFileSync(config.guacencTlsCa);
-      return { dispatcher: new https.Agent({ ca }) };
+      return { dispatcher: new Agent({ connect: { ca } }) };
     } catch (err) {
       logger.warn(`Failed to load guacenc TLS CA from ${config.guacencTlsCa}: ${err instanceof Error ? err.message : 'Unknown error'}`);
     }

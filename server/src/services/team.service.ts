@@ -209,7 +209,7 @@ export async function addMember(
   const targetMembership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId: team.tenantId, userId: targetUserId } },
   });
-  if (!targetMembership) {
+  if (!targetMembership || targetMembership.status !== 'ACCEPTED' || (targetMembership.expiresAt && targetMembership.expiresAt <= new Date())) {
     throw new AppError('User is not a member of this organization', 400);
   }
 

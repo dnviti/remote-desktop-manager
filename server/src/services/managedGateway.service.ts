@@ -1,3 +1,4 @@
+import fs from 'fs';
 import prisma, { ManagedInstanceStatus } from '../lib/prisma';
 import {
   getOrchestrator,
@@ -46,6 +47,32 @@ interface TunnelEnvOptions {
   clientKey?: string;
 }
 
+function buildManagedSshGrpcEnv(): Record<string, string> {
+  const { gatewayGrpcTlsCa, gatewayGrpcTlsCert, gatewayGrpcTlsKey } = config;
+  if (!gatewayGrpcTlsCa || !gatewayGrpcTlsCert || !gatewayGrpcTlsKey) {
+    throw new AppError(
+      'Managed SSH gateways require GATEWAY_GRPC_TLS_CA/CERT/KEY to enable mTLS key management.',
+      500,
+    );
+  }
+
+  try {
+    return {
+      GATEWAY_GRPC_TLS_CA: '/tmp/arsenale-grpc/ca.pem',
+      GATEWAY_GRPC_TLS_CERT: '/tmp/arsenale-grpc/cert.pem',
+      GATEWAY_GRPC_TLS_KEY: '/tmp/arsenale-grpc/key.pem',
+      GATEWAY_GRPC_TLS_CA_PEM: fs.readFileSync(gatewayGrpcTlsCa, 'utf8'),
+      GATEWAY_GRPC_TLS_CERT_PEM: fs.readFileSync(gatewayGrpcTlsCert, 'utf8'),
+      GATEWAY_GRPC_TLS_KEY_PEM: fs.readFileSync(gatewayGrpcTlsKey, 'utf8'),
+    };
+  } catch (err) {
+    throw new AppError(
+      `Failed to load managed SSH gRPC mTLS material: ${err instanceof Error ? err.message : 'Unknown error'}`,
+      500,
+    );
+  }
+}
+
 function buildContainerConfig(
   gateway: { id: string; name: string; type: string; port: number; tenantId: string },
   instanceIndex: number,
@@ -53,6 +80,7 @@ function buildContainerConfig(
   hostPort?: number,
   apiHostPort?: number,
   tunnelEnv?: TunnelEnvOptions,
+  managedSshGrpcEnv?: Record<string, string>,
 ): ContainerConfig {
   const suffix = `${gateway.id.slice(0, 8)}-${instanceIndex}`;
   const tenantSlug = gateway.tenantId.slice(0, 8);
@@ -83,8 +111,7 @@ function buildContainerConfig(
       namespace: k8sNamespace,
       env: {
         ...(publicKey ? { SSH_AUTHORIZED_KEYS: publicKey } : {}),
-        // gRPC key management uses mTLS (certs mounted via volumes), no token needed
-        GATEWAY_GRPC_INSECURE: 'true',
+        ...(managedSshGrpcEnv ?? {}),
         ...tunnelEnvVars,
       },
       ports: [
@@ -244,7 +271,7 @@ export async function deployGatewayInstance(
         serverUrl: tunnelServerUrl,
         token: plainToken,
         gatewayId: gateway.id,
-        ...(gateway.tunnelCaCert ? { caCert: gateway.tunnelCaCert } : {}),
+        ...(gateway.tenant.tunnelCaCert ? { caCert: gateway.tenant.tunnelCaCert } : {}),
         ...(gateway.tunnelClientCert ? { clientCert: gateway.tunnelClientCert } : {}),
         ...(clientKey ? { clientKey } : {}),
       };
@@ -255,7 +282,19 @@ export async function deployGatewayInstance(
     }
   }
 
-  const containerConfig = buildContainerConfig(gateway, existingCount, publicKey, hostPort, apiHostPort, tunnelEnvOptions);
+  const managedSshGrpcEnv = gateway.type === 'MANAGED_SSH'
+    ? buildManagedSshGrpcEnv()
+    : undefined;
+
+  const containerConfig = buildContainerConfig(
+    gateway,
+    existingCount,
+    publicKey,
+    hostPort,
+    apiHostPort,
+    tunnelEnvOptions,
+    managedSshGrpcEnv,
+  );
   log.debug(`Container config for gateway ${gatewayId}: image=${containerConfig.image}, name=${containerConfig.name}`);
 
   let containerInfo;
@@ -873,14 +912,15 @@ export async function pushSshKeyToInstances(
 
 /**
  * Perform a rolling restart of all RUNNING instances for a managed gateway
- * so that they pick up a newly rotated mTLS client certificate.
+ * so that they pick up newly rotated mTLS client credentials.
  *
  * Instances are restarted one at a time to avoid total service interruption.
- * Each instance receives the updated TUNNEL_CLIENT_CERT env var before restart.
+ * Each instance receives the updated tunnel cert/key env vars before restart.
  */
 export async function rollingRestartForCertRotation(
   gatewayId: string,
   newClientCert: string,
+  newClientKey: string,
 ): Promise<void> {
   const orchestrator = getOrchestrator();
   if (orchestrator.type === OrchestratorType.NONE) {
@@ -908,9 +948,11 @@ export async function rollingRestartForCertRotation(
 
   for (const instance of instances) {
     try {
-      // Inject the new client cert into the container's environment
+      // Inject the new client cert and key into the container environment.
+      // Both must rotate together or the next mTLS handshake will fail.
       await orchestrator.updateContainerEnv(instance.containerId, {
         TUNNEL_CLIENT_CERT: newClientCert,
+        TUNNEL_CLIENT_KEY: newClientKey,
       });
 
       await orchestrator.restartContainer(instance.containerId);

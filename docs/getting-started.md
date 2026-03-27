@@ -115,7 +115,8 @@ make dev
 
 This starts via Ansible:
 - **PostgreSQL 16** -- Database on `127.0.0.1:5432`
-- **gocache** -- Cache sidecar on `127.0.0.1:6380`
+- **gocache-cache** -- Cache backend on `127.0.0.1:6380`
+- **gocache-pubsub** -- Pub/sub wiring backend on `127.0.0.1:6480`
 
 It also auto-generates the `.env` file from Ansible templates. For first-time setup, run `make setup` first.
 

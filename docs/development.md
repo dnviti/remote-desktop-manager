@@ -42,7 +42,7 @@ npm run predev && npm run dev  # Start containers + server + client
 | `npm run dev:server` | Express with tsx watch, hot reload |
 | `npm run dev:client` | Vite dev server, proxies to server |
 | `npm run dev:client:wait` | Waits for server health check, then starts client |
-| `make dev` | Start dev infrastructure (postgres + gocache via Ansible) |
+| `make dev` | Start dev infrastructure (postgres + split cache/pubsub backends via Ansible) |
 | `make dev-down` | Stop dev infrastructure |
 
 ### Database Operations

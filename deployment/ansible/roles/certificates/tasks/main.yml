@@ -1,45 +1,92 @@
 ---
+# Skip cert generation if CA already exists (e.g., dev-certs from generate.sh)
+- name: Check for existing CA certificate (ca.pem)
+  stat:
+    path: "{{ arsenale_cert_dir }}/ca.pem"
+  register: _ca_check_short
+
+- name: Check for existing CA certificate (ca-cert.pem)
+  stat:
+    path: "{{ arsenale_cert_dir }}/ca-cert.pem"
+  register: _ca_check_long
+
+- name: Set CA paths
+  set_fact:
+    _ca_cert_path: "{{ arsenale_cert_dir }}/{{ 'ca.pem' if _ca_check_short.stat.exists else 'ca-cert.pem' }}"
+    _ca_key_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    _certs_exist: "{{ _ca_check_short.stat.exists or _ca_check_long.stat.exists }}"
+
+- name: Set runtime private key mode
+  set_fact:
+    _runtime_key_mode: "{{ '0644' if (_is_dev | default(false) | bool) else '0600' }}"
+
 - name: Generate CA private key
   community.crypto.openssl_privatekey:
-    path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    path: "{{ _ca_key_path }}"
     type: ECC
     curve: secp256r1
     mode: "0600"
   register: ca_key
+  when: not _certs_exist
 
 - name: Generate CA certificate
   community.crypto.x509_certificate:
-    path: "{{ arsenale_cert_dir }}/ca-cert.pem"
-    privatekey_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    path: "{{ _ca_cert_path }}"
+    privatekey_path: "{{ _ca_key_path }}"
     provider: selfsigned
     selfsigned_not_after: "+{{ arsenale_ca_validity_days }}d"
     mode: "0644"
-  when: ca_key.changed
+  when: not _certs_exist
+
+- name: Ensure CA private key permissions
+  file:
+    path: "{{ _ca_key_path }}"
+    mode: "0600"
+  failed_when: false
 
 - name: Define service certificates
   set_fact:
     cert_services:
-      - { name: server, cn: arsenale-server, san: "DNS:arsenale-server,DNS:localhost,IP:127.0.0.1" }
-      - { name: postgres, cn: arsenale-postgres, san: "DNS:arsenale-postgres,DNS:postgres,DNS:localhost" }
-      - { name: gocache, cn: arsenale-gocache, san: "DNS:arsenale-gocache,DNS:gocache,DNS:localhost" }
-      - { name: guacenc, cn: arsenale-guacenc, san: "DNS:arsenale-guacenc,DNS:guacenc,DNS:localhost" }
-      - { name: guacd, cn: arsenale-guacd, san: "DNS:arsenale-guacd,DNS:guacd,DNS:localhost" }
-      - { name: ssh-gateway, cn: arsenale-ssh-gateway, san: "DNS:arsenale-ssh-gateway,DNS:ssh-gateway,DNS:localhost" }
+      - { name: server, cn: arsenale-server, san: "DNS:arsenale-server,DNS:localhost,IP:127.0.0.1", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: postgres, cn: arsenale-postgres, san: "DNS:arsenale-postgres,DNS:postgres,DNS:localhost", key_mode: "0600" }
+      - { name: gocache-cache, cn: arsenale-gocache-cache, san: "DNS:arsenale-gocache-cache,DNS:gocache-cache,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: gocache-pubsub, cn: arsenale-gocache-pubsub, san: "DNS:arsenale-gocache-pubsub,DNS:gocache-pubsub,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: guacenc, cn: arsenale-guacenc, san: "DNS:arsenale-guacenc,DNS:guacenc,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: guacd, cn: arsenale-guacd, san: "DNS:arsenale-guacd,DNS:guacd,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
+      - { name: ssh-gateway, cn: arsenale-ssh-gateway, san: "DNS:arsenale-ssh-gateway,DNS:ssh-gateway,DNS:localhost", key_mode: "{{ _runtime_key_mode }}" }
+
+- name: Check which service certs already exist
+  stat:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-cert.pem"
+  loop: "{{ cert_services }}"
+  register: _svc_cert_check
+
+- name: Filter services needing certs
+  set_fact:
+    _services_need_certs: "{{ cert_services | zip(_svc_cert_check.results) | rejectattr('1.stat.exists') | map(attribute='0') | list }}"
 
 - name: Create service cert directories
   file:
     path: "{{ arsenale_cert_dir }}/{{ item.name }}"
     state: directory
-    mode: "0750"
+    mode: "0755"
+  loop: "{{ _services_need_certs }}"
+  when: _services_need_certs | length > 0
+
+- name: Ensure existing cert directories are traversable (rootless Podman UID mapping)
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}"
+    mode: "0755"
   loop: "{{ cert_services }}"
+  failed_when: false
 
 - name: Generate service private keys
   community.crypto.openssl_privatekey:
     path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-key.pem"
     type: ECC
     curve: secp256r1
-    mode: "0600"
-  loop: "{{ cert_services }}"
+    mode: "{{ item.key_mode }}"
+  loop: "{{ _services_need_certs }}"
 
 - name: Generate service CSRs
   community.crypto.openssl_csr:
@@ -47,46 +94,85 @@
     privatekey_path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-key.pem"
     common_name: "{{ item.cn }}"
     subject_alt_name: "{{ item.san.split(',') }}"
-  loop: "{{ cert_services }}"
+  loop: "{{ _services_need_certs }}"
 
 - name: Sign service certificates with CA
   community.crypto.x509_certificate:
     path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-cert.pem"
     csr_path: "{{ arsenale_cert_dir }}/{{ item.name }}/server.csr"
-    ownca_path: "{{ arsenale_cert_dir }}/ca-cert.pem"
-    ownca_privatekey_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    ownca_path: "{{ _ca_cert_path }}"
+    ownca_privatekey_path: "{{ _ca_key_path }}"
     provider: ownca
     ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
     mode: "0644"
-  loop: "{{ cert_services }}"
+  loop: "{{ _services_need_certs }}"
 
 - name: Copy CA cert to each service directory
   copy:
-    src: "{{ arsenale_cert_dir }}/ca-cert.pem"
+    src: "{{ _ca_cert_path }}"
     dest: "{{ arsenale_cert_dir }}/{{ item.name }}/ca.pem"
     remote_src: true
     mode: "0644"
   loop: "{{ cert_services }}"
 
-- name: Generate gocache client certificates (for server mTLS)
+- name: Ensure service private key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-key.pem"
+    mode: "{{ item.key_mode }}"
+  loop: "{{ cert_services }}"
+  failed_when: false
+
+- name: Generate gocache cache client certificates (for server mTLS)
   community.crypto.openssl_privatekey:
-    path: "{{ arsenale_cert_dir }}/gocache/client-key.pem"
+    path: "{{ arsenale_cert_dir }}/gocache-cache/client-key.pem"
     type: ECC
     curve: secp256r1
-    mode: "0600"
+    mode: "{{ _runtime_key_mode }}"
 
-- name: Generate gocache client CSR
+- name: Generate gocache cache client CSR
   community.crypto.openssl_csr:
-    path: "{{ arsenale_cert_dir }}/gocache/client.csr"
-    privatekey_path: "{{ arsenale_cert_dir }}/gocache/client-key.pem"
+    path: "{{ arsenale_cert_dir }}/gocache-cache/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/gocache-cache/client-key.pem"
     common_name: arsenale-server-cache-client
 
-- name: Sign gocache client certificate
+- name: Sign gocache cache client certificate
   community.crypto.x509_certificate:
-    path: "{{ arsenale_cert_dir }}/gocache/client-cert.pem"
-    csr_path: "{{ arsenale_cert_dir }}/gocache/client.csr"
-    ownca_path: "{{ arsenale_cert_dir }}/ca-cert.pem"
+    path: "{{ arsenale_cert_dir }}/gocache-cache/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/gocache-cache/client.csr"
+    ownca_path: "{{ _ca_cert_path }}"
     ownca_privatekey_path: "{{ arsenale_cert_dir }}/ca-key.pem"
     provider: ownca
     ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
     mode: "0644"
+
+- name: Generate gocache pubsub client certificates (for server mTLS)
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ _runtime_key_mode }}"
+
+- name: Generate gocache pubsub client CSR
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/gocache-pubsub/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-key.pem"
+    common_name: arsenale-server-pubsub-client
+
+- name: Sign gocache pubsub client certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/gocache-pubsub/client.csr"
+    ownca_path: "{{ _ca_cert_path }}"
+    ownca_privatekey_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+
+- name: Ensure gocache client key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item }}/client-key.pem"
+    mode: "{{ _runtime_key_mode }}"
+  loop:
+    - gocache-cache
+    - gocache-pubsub
+  failed_when: false

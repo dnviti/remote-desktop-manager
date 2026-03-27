@@ -134,9 +134,11 @@ function checkProductionSecurityConfig(): void {
 }
 
 async function main() {
-  // Kill stale processes from previous runs (e.g. tsx watch restart, debugger)
-  freePort(config.port);
-  freePort(config.guacamoleWsPort);
+  // Only do dev-time port cleanup for local watch/debug workflows.
+  if (config.nodeEnv === 'development') {
+    freePort(config.port);
+    freePort(config.guacamoleWsPort);
+  }
 
   await runDatabaseMigrations();
   await runStartupMigrations();

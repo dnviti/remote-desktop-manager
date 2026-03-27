@@ -28,6 +28,7 @@ service CacheService {
   rpc Dequeue(DequeueRequest) returns (DequeueResponse);
 
   // Internal peer replication
+  rpc GetSnapshot(SnapshotRequest) returns (SnapshotResponse);
   rpc ReplicateKV(stream ReplicateKVRequest) returns (ReplicateKVResponse);
   rpc ReplicatePubSub(stream ReplicatePubSubRequest) returns (ReplicatePubSubResponse);
   rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
@@ -164,6 +165,19 @@ message DequeueResponse {
 }
 
 // Replication Messages
+
+message SnapshotRequest {}
+
+message SnapshotEntry {
+  string key = 1;
+  bytes value = 2;
+  int64 ttl_ms = 3;
+  uint64 timestamp = 4;
+}
+
+message SnapshotResponse {
+  repeated SnapshotEntry entries = 1;
+}
 
 message ReplicateKVRequest {
   string key = 1;

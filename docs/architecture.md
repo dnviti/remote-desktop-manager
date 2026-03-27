@@ -57,7 +57,8 @@ flowchart TD
     subgraph Data["Data Layer"]
         DB[(PostgreSQL 16)]
         Prisma["Prisma ORM"]
-        GoCache["gocache Sidecar<br/>gRPC :6380"]
+        CacheSvc["gocache-cache<br/>gRPC :6380"]
+        PubSubSvc["gocache-pubsub<br/>gRPC :6480"]
     end
 
     subgraph Gateways["Gateway Infrastructure"]
@@ -119,7 +120,7 @@ Additional gateway components (not npm workspaces):
 - `gateways/ssh-gateway/` — SSH bastion with embedded tunnel agent
 
 Infrastructure components:
-- `infrastructure/gocache/` — Go-based in-memory cache sidecar (KV, pub/sub, locks, queues over gRPC)
+- `infrastructure/gocache/` — Go-based split cache backends (KV/locks/queues + dedicated pub/sub over gRPC)
 
 ## Server Architecture
 
@@ -493,9 +494,9 @@ sequenceDiagram
 - Payload length (3 bytes)
 - Payload (variable)
 
-## Distributed State (Go Cache Sidecar)
+## Distributed State (Go Cache Backends)
 
-The `gocache` sidecar (`infrastructure/gocache/`) is a Go-based in-memory cache server that enables multi-instance Arsenale deployments by providing distributed KV storage, pub/sub, distributed locks, and named queues over gRPC.
+The `infrastructure/gocache/` runtime provides split Go backends for distributed KV storage, pub/sub, distributed locks, and named queues over gRPC. `gocache-cache` owns stateful primitives, while `gocache-pubsub` is the central service-to-service event bus.
 
 ### Integration Architecture
 
@@ -506,11 +507,9 @@ flowchart TD
         S2["Server 2"]
     end
 
-    subgraph Sidecar["gocache Sidecar (gRPC :6380)"]
-        KV["KV Store<br/>TTL + LWW replication"]
-        PS["Pub/Sub Broker<br/>Pattern subscriptions"]
-        LK["Lock Manager<br/>Fencing tokens"]
-        QU["Queue Manager<br/>Named queues"]
+    subgraph Backends["Go Cache Backends"]
+        KV["gocache-cache<br/>KV + locks + queues"]
+        PS["gocache-pubsub<br/>Pub/Sub broker"]
     end
 
     S1 -->|gRPC| KV

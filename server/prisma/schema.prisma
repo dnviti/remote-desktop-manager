@@ -24,6 +24,11 @@ enum TeamRole {
   TEAM_VIEWER
 }
 
+enum TenantMembershipStatus {
+  PENDING
+  ACCEPTED
+}
+
 model Tenant {
   id                 String   @id @default(uuid())
   name               String
@@ -62,6 +67,11 @@ model Tenant {
   recordingRetentionDays       Int?
   fileUploadMaxSizeBytes       Int?
   userDriveQuotaBytes          Int?
+  tunnelCaCert                 String?
+  tunnelCaKey                  String?
+  tunnelCaKeyIV                String?
+  tunnelCaKeyTag               String?
+  tunnelCaCertFingerprint      String?
   createdAt                    DateTime @default(now())
   updatedAt          DateTime @updatedAt
 
@@ -410,16 +420,11 @@ model Gateway {
   tunnelLastHeartbeat    DateTime?
   tunnelClientVersion    String?
   tunnelClientIp         String?
-  tunnelCaCert           String?
-  tunnelCaKey            String?
-  tunnelCaKeyIV          String?
-  tunnelCaKeyTag         String?
   tunnelClientCert       String?
   tunnelClientCertExp    DateTime?
   tunnelClientKey        String?
   tunnelClientKeyIV      String?
   tunnelClientKeyTag     String?
-  tunnelCaCertFingerprint String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -950,6 +955,7 @@ model TenantMember {
   tenantId  String
   userId    String
   role                TenantRole @default(MEMBER)
+  status              TenantMembershipStatus @default(ACCEPTED)
   isActive            Boolean    @default(false)
   permissionOverrides Json?
   joinedAt            DateTime   @default(now())

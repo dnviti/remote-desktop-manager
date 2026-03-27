@@ -512,7 +512,7 @@ export async function pushKeyToGateway(
 
   if (instances.length === 0) {
     // No managed instances — try direct push to the gateway host.
-    // This handles static containers (compose.dev.yml) and external gateways.
+    // This handles static containers (Ansible dev compose) and external gateways.
     const directGw = await prisma.gateway.findFirst({
       where: { id: gatewayId, tenantId },
       select: { host: true, apiPort: true },
@@ -620,14 +620,18 @@ export async function generateGatewayTunnelToken(
     select: {
       id: true,
       tenantId: true,
-      tunnelCaCert: true,
       tunnelClientCert: true,
+      tenant: {
+        select: {
+          tunnelCaCert: true,
+        },
+      },
     },
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
 
   // Auto-generate mTLS certificates if not already present
-  if (!gateway.tunnelCaCert || !gateway.tunnelClientCert) {
+  if (!gateway.tenant.tunnelCaCert || !gateway.tunnelClientCert) {
     await ensureMtlsCerts(tenantId, gatewayId, operatorUserId);
   }
 
@@ -635,32 +639,22 @@ export async function generateGatewayTunnelToken(
 }
 
 /**
- * Ensure mTLS CA and client certificates exist for a gateway.
- * Reuses the tenant-level CA if another gateway in the same tenant already has one.
+ * Ensure a tenant CA and gateway leaf certificate exist.
+ * The tenant CA is generated once at tenant creation; this method also performs
+ * a lazy backfill for pre-existing tenants that do not yet have CA material.
  */
 async function ensureMtlsCerts(
   tenantId: string,
   gatewayId: string,
   operatorUserId: string,
 ): Promise<void> {
-  // Use a serializable transaction to prevent duplicate CA generation
-  // when multiple gateways in the same tenant are provisioned concurrently.
-  const { caFingerprintResult, clientExpiry } = await prisma.$transaction(async (tx) => {
-    // Acquire a per-tenant advisory lock to serialize CA generation.
-    // This prevents duplicate CAs when concurrent transactions target different
-    // gateway rows in the same tenant (which Serializable isolation alone doesn't cover).
+  const { caFingerprintResult, clientExpiry, tenantCaGenerated } = await prisma.$transaction(async (tx) => {
+    // Serialize tenant-CA backfill to avoid duplicate CAs for older tenants.
     const lockKey = BigInt('0x' + crypto.createHash('md5').update(tenantId).digest('hex').slice(0, 15));
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(${lockKey})`;
 
-    // Try to find an existing CA from another gateway in the same tenant
-    const existingCaGw = await tx.gateway.findFirst({
-      where: {
-        tenantId,
-        tunnelCaCert: { not: null },
-        tunnelCaKey: { not: null },
-        tunnelCaKeyIV: { not: null },
-        tunnelCaKeyTag: { not: null },
-      },
+    const tenant = await tx.tenant.findUnique({
+      where: { id: tenantId },
       select: {
         tunnelCaCert: true,
         tunnelCaKey: true,
@@ -669,41 +663,45 @@ async function ensureMtlsCerts(
         tunnelCaCertFingerprint: true,
       },
     });
+    if (!tenant) throw new AppError('Tenant not found', 404);
 
     let caCertPem: string;
     let caKeyPem: string;
-    let encCaKey: { ciphertext: string; iv: string; tag: string };
     let caFingerprint: string;
+    let tenantCaGenerated = false;
 
-    if (existingCaGw?.tunnelCaCert && existingCaGw.tunnelCaKey && existingCaGw.tunnelCaKeyIV && existingCaGw.tunnelCaKeyTag) {
-      // Reuse existing tenant CA
-      caCertPem = existingCaGw.tunnelCaCert;
-      caKeyPem = decryptCaKey(existingCaGw);
-      encCaKey = encryptWithServerKey(caKeyPem);
-      caFingerprint = existingCaGw.tunnelCaCertFingerprint ?? certFingerprint(caCertPem);
-      log.info(`[tunnel] Reusing tenant CA for gateway ${gatewayId}`);
+    if (tenant.tunnelCaCert && tenant.tunnelCaKey && tenant.tunnelCaKeyIV && tenant.tunnelCaKeyTag) {
+      caCertPem = tenant.tunnelCaCert;
+      caKeyPem = decryptTenantCaKey(tenant);
+      caFingerprint = tenant.tunnelCaCertFingerprint ?? certFingerprint(caCertPem);
     } else {
-      // Generate a new CA for this tenant
       const ca = generateCaCert(`arsenale-tenant-${tenantId}`);
       caCertPem = ca.certPem;
       caKeyPem = ca.keyPem;
-      encCaKey = encryptWithServerKey(caKeyPem);
       caFingerprint = certFingerprint(caCertPem);
-      log.info(`[tunnel] Generated new tenant CA for gateway ${gatewayId} (fingerprint=${caFingerprint.slice(0, 16)}…)`);
+      tenantCaGenerated = true;
+
+      const encCaKey = encryptWithServerKey(caKeyPem);
+      await tx.tenant.update({
+        where: { id: tenantId },
+        data: {
+          tunnelCaCert: caCertPem,
+          tunnelCaKey: encCaKey.ciphertext,
+          tunnelCaKeyIV: encCaKey.iv,
+          tunnelCaKeyTag: encCaKey.tag,
+          tunnelCaCertFingerprint: caFingerprint,
+        },
+      });
+
+      log.info(`[tunnel] Generated tenant CA for tenant ${tenantId} during gateway ${gatewayId} enrollment`);
     }
 
-    // Generate client cert signed by the CA (90-day validity, CN = gatewayId)
     const client = generateClientCertificate(caCertPem, caKeyPem, gatewayId, 90);
     const encClientKey = encryptWithServerKey(client.keyPem);
 
     await tx.gateway.update({
       where: { id: gatewayId },
       data: {
-        tunnelCaCert: caCertPem,
-        tunnelCaKey: encCaKey.ciphertext,
-        tunnelCaKeyIV: encCaKey.iv,
-        tunnelCaKeyTag: encCaKey.tag,
-        tunnelCaCertFingerprint: caFingerprint,
         tunnelClientCert: client.certPem,
         tunnelClientKey: encClientKey.ciphertext,
         tunnelClientKeyIV: encClientKey.iv,
@@ -712,7 +710,11 @@ async function ensureMtlsCerts(
       },
     });
 
-    return { caFingerprintResult: caFingerprint, clientExpiry: client.expiry };
+    return {
+      caFingerprintResult: caFingerprint,
+      clientExpiry: client.expiry,
+      tenantCaGenerated,
+    };
   }, { isolationLevel: 'Serializable' });
 
   auditService.log({
@@ -723,6 +725,7 @@ async function ensureMtlsCerts(
     details: {
       mtlsCertsGenerated: true,
       tenantId,
+      tenantCaGenerated,
       caFingerprint: caFingerprintResult.slice(0, 16),
       clientCertExpiry: clientExpiry.toISOString(),
     },
@@ -731,16 +734,16 @@ async function ensureMtlsCerts(
   log.info(`[tunnel] mTLS certs generated for gateway ${gatewayId} (client cert expires ${clientExpiry.toISOString()})`);
 }
 
-/** Helper to decrypt a CA key from encrypted fields. */
-function decryptCaKey(gw: {
+/** Helper to decrypt an encrypted tenant CA key. */
+function decryptTenantCaKey(tenant: {
   tunnelCaKey: string | null;
   tunnelCaKeyIV: string | null;
   tunnelCaKeyTag: string | null;
 }): string {
   return decryptWithServerKey({
-    ciphertext: gw.tunnelCaKey!,
-    iv: gw.tunnelCaKeyIV!,
-    tag: gw.tunnelCaKeyTag!,
+    ciphertext: tenant.tunnelCaKey!,
+    iv: tenant.tunnelCaKeyIV!,
+    tag: tenant.tunnelCaKeyTag!,
   });
 }
 

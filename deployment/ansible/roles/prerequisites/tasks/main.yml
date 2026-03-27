@@ -74,7 +74,7 @@
     dest: "{{ arsenale_home }}/arsenale"
     version: "{{ arsenale_version }}"
     force: false
-  when: arsenale_build_images | bool
+  when: _build | default(true) | bool
 
 - name: Create empty authorized_keys
   file:

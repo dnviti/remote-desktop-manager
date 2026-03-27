@@ -217,7 +217,7 @@ Keystroke policies are managed per-tenant via the `/api/keystroke-policies` endp
 |----------|---------|-------------|
 | `EMAIL_PROVIDER` | `smtp` | Provider: smtp, sendgrid, ses, resend, mailgun |
 | `EMAIL_VERIFY_REQUIRED` | `false` | Enforce email verification |
-| `SELF_SIGNUP_ENABLED` | `false` | Allow self-registration |
+| `SELF_SIGNUP_ENABLED` | `false` | Allow self-registration. When `false`, the setting is locked off at the environment level. |
 | `SMTP_HOST` | — | SMTP server hostname |
 | `SMTP_PORT` | `587` | SMTP port |
 | `SMTP_USER` | — | SMTP username |
@@ -362,23 +362,28 @@ Anomaly detection for rapid connection to many distinct targets (MITRE T1021).
 | `LOG_HTTP_REQUESTS` | `false` | Log HTTP requests |
 | `LOG_GUACAMOLE` | `true` | Log guacamole-lite tunneling |
 
-## Cache Sidecar (gocache)
+## Cache Backends (gocache-cache + gocache-pubsub)
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `CACHE_SIDECAR_URL` | `localhost:6380` | gRPC endpoint of the gocache sidecar |
+| `CACHE_KV_URL` | `localhost:6380` | gRPC endpoint of the dedicated cache backend |
+| `CACHE_PUBSUB_URL` | `localhost:6480` | gRPC endpoint of the dedicated pubsub backend |
 | `CACHE_SIDECAR_ENABLED` | `true` | Set to `false` to disable distributed cache (single-instance fallback) |
 
-> **Note:** The TypeScript gRPC client uses a manual JSON codec service definition that matches the Go sidecar's custom codec (`infrastructure/gocache/codec.go`). No `.proto` file is loaded at runtime.
+> `CACHE_SIDECAR_URL` remains as a backward-compatible fallback for deployments that have not yet split cache and pubsub.
 
-Sidecar-side configuration (container environment):
+> **Note:** The TypeScript gRPC client uses a manual JSON codec service definition that matches the Go backend's custom codec (`infrastructure/gocache/codec.go`). No `.proto` file is loaded at runtime.
+
+Backend-side configuration (container environment):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `CACHE_ROLE` | `all` | Runtime role: `cache`, `pubsub`, or `all` (legacy monolith mode) |
 | `CACHE_LISTEN` | `tcp://localhost:6380` | gRPC listen address (`tcp://` or `unix://`) |
 | `CACHE_HEALTH_ADDR` | `0.0.0.0:6381` | Health HTTP endpoint address |
 | `CACHE_MAX_MEMORY` | `256mb` | Maximum KV store memory |
-| `CACHE_DISCOVERY` | `manual` | Peer discovery: `docker`, `kubernetes`, `manual` |
+| `CACHE_DISCOVERY` | `manual` | Peer discovery: `dns`, `docker`, `kubernetes`, `manual` |
+| `CACHE_DNS_NAME` | — | DNS service name used in `dns` discovery mode |
 | `CACHE_PEERS` | — | Comma-separated peer addresses (manual mode) |
 | `CACHE_K8S_SERVICE` | `gocache` | Kubernetes headless service name |
 | `CACHE_K8S_NAMESPACE` | — | Kubernetes namespace |

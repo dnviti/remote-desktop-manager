@@ -262,7 +262,7 @@ export async function getActiveSessions(
   if (filters?.userId) where.userId = filters.userId;
   if (filters?.protocol) where.protocol = filters.protocol;
   if (filters?.gatewayId) where.gatewayId = filters.gatewayId;
-  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId } } };
+  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId, status: 'ACCEPTED' } } };
 
   const sessions = await prisma.activeSession.findMany({
     where,
@@ -307,7 +307,7 @@ export async function getActiveSessionCount(
   if (filters?.userId) where.userId = filters.userId;
   if (filters?.protocol) where.protocol = filters.protocol;
   if (filters?.gatewayId) where.gatewayId = filters.gatewayId;
-  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId } } };
+  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId, status: 'ACCEPTED' } } };
 
   return prisma.activeSession.count({ where });
 }

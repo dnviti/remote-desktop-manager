@@ -7,7 +7,8 @@
 # Structure:
 #   dev-certs/
 #     ca.pem / ca-key.pem         — shared CA (trusted by all services)
-#     gocache/                    — gocache gRPC mTLS (server + client)
+#     gocache-cache/              — cache service gRPC mTLS (server + client)
+#     gocache-pubsub/             — pubsub service gRPC mTLS (server + client)
 #     tunnel/                     — tunnel mTLS server
 #     postgres/                   — PostgreSQL SSL
 #     guacenc/                    — guacenc sidecar HTTPS
@@ -19,11 +20,13 @@
 set -euo pipefail
 CERT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DAYS=3650
+RUNTIME_KEY_MODE=0644
 
 echo "=== Generating shared CA ==="
 openssl ecparam -genkey -name prime256v1 -out "$CERT_DIR/ca-key.pem" 2>/dev/null
 openssl req -new -x509 -sha256 -key "$CERT_DIR/ca-key.pem" -out "$CERT_DIR/ca.pem" \
   -days "$DAYS" -subj "/CN=arsenale-dev-ca/O=Arsenale" -batch 2>/dev/null
+chmod 600 "$CERT_DIR/ca-key.pem"
 
 generate_server_cert() {
   local dir="$1" cn="$2" sans="$3" extra_eku="${4:-}"
@@ -63,52 +66,61 @@ EOF
   rm -f "$dir"/*.csr "$dir"/*.cnf
 }
 
-# 1. gocache (gRPC mTLS — server + client)
-echo "=== gocache mTLS ==="
-generate_server_cert "$CERT_DIR/gocache" "gocache" "DNS:gocache, DNS:localhost, IP:127.0.0.1, IP:::1" "clientAuth"
-generate_client_cert "$CERT_DIR/gocache" "arsenale-server"
-chmod 600 "$CERT_DIR/gocache"/*-key.pem  # Rootless container UID 10001 — mounted :ro
+# 1. gocache-cache (gRPC mTLS — server + client)
+echo "=== gocache-cache mTLS ==="
+generate_server_cert "$CERT_DIR/gocache-cache" "gocache-cache" "DNS:gocache-cache, DNS:localhost, IP:127.0.0.1, IP:::1" "clientAuth"
+generate_client_cert "$CERT_DIR/gocache-cache" "arsenale-server-cache"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/gocache-cache"/*-key.pem
 
-# 2. tunnel (mTLS server)
+# 2. gocache-pubsub (gRPC mTLS — server + client)
+echo "=== gocache-pubsub mTLS ==="
+generate_server_cert "$CERT_DIR/gocache-pubsub" "gocache-pubsub" "DNS:gocache-pubsub, DNS:localhost, IP:127.0.0.1, IP:::1" "clientAuth"
+generate_client_cert "$CERT_DIR/gocache-pubsub" "arsenale-server-pubsub"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/gocache-pubsub"/*-key.pem
+
+# 3. tunnel (mTLS server)
 echo "=== Tunnel mTLS ==="
 generate_server_cert "$CERT_DIR/tunnel" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/tunnel/server-key.pem"
 
-# 3. PostgreSQL
+# 4. PostgreSQL
 echo "=== PostgreSQL SSL ==="
 generate_server_cert "$CERT_DIR/postgres" "postgres" "DNS:postgres, DNS:localhost, IP:127.0.0.1"
 chmod 600 "$CERT_DIR/postgres/server-key.pem"  # PostgreSQL requires strict perms
 
-# 4. guacenc sidecar
+# 5. guacenc sidecar
 echo "=== Guacenc HTTPS ==="
 generate_server_cert "$CERT_DIR/guacenc" "guacenc" "DNS:guacenc, DNS:localhost, IP:127.0.0.1"
-chmod 600 "$CERT_DIR/guacenc/server-key.pem"  # Rootless container — mounted :ro
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacenc/server-key.pem"
 
-# 5. guacd (Guacamole Daemon — TLS listener)
+# 6. guacd (Guacamole Daemon — TLS listener)
 echo "=== guacd TLS ==="
 generate_server_cert "$CERT_DIR/guacd" "guacd" "DNS:guacd, DNS:localhost, IP:127.0.0.1"
-chmod 600 "$CERT_DIR/guacd/server-key.pem"  # guacd container — mounted :ro
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacd/server-key.pem"
 
-# 6. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
+# 7. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
 echo "=== SSH Gateway gRPC mTLS ==="
 generate_server_cert "$CERT_DIR/ssh-gateway" "ssh-gateway" "DNS:ssh-gateway, DNS:arsenale-ssh-gateway, DNS:localhost, IP:127.0.0.1" "clientAuth"
 generate_client_cert "$CERT_DIR/ssh-gateway" "arsenale-server"
-chmod 600 "$CERT_DIR/ssh-gateway/server-key.pem"  # Rootless container — mounted :ro
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/ssh-gateway"/*-key.pem
 
-# 7. RD Gateway (MS-TSGU proxy)
+# 8. RD Gateway (MS-TSGU proxy)
 echo "=== RD Gateway HTTPS ==="
 generate_server_cert "$CERT_DIR/rdgw" "rdgw" "DNS:rdgw, DNS:arsenale-rdgw, DNS:localhost, IP:127.0.0.1"
-chmod 600 "$CERT_DIR/rdgw/server-key.pem"  # Rootless container — mounted :ro
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/rdgw/server-key.pem"
 
-# 8. Express + guacamole-lite
+# 9. Express + guacamole-lite
 echo "=== Dev Server HTTPS ==="
 generate_server_cert "$CERT_DIR/server" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/server/server-key.pem"
 
 # Cleanup CA serial file
 rm -f "$CERT_DIR"/*.srl
 
 echo ""
 echo "=== All certificates generated (shared CA: $CERT_DIR/ca.pem) ==="
-echo "  gocache:     $CERT_DIR/gocache/"
+echo "  gocache-cache:   $CERT_DIR/gocache-cache/"
+echo "  gocache-pubsub: $CERT_DIR/gocache-pubsub/"
 echo "  tunnel:      $CERT_DIR/tunnel/"
 echo "  PostgreSQL:  $CERT_DIR/postgres/"
 echo "  guacenc:     $CERT_DIR/guacenc/"

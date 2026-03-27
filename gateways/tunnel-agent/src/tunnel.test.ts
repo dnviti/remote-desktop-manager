@@ -319,6 +319,28 @@ describe('TunnelAgent', () => {
       exitSpy.mockRestore();
     });
 
+    it('reloads tunnel client credentials and reconnects on CERT_RENEW', () => {
+      const agent = new TunnelAgent(makeConfig());
+      const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);
+      const handler = getMessageHandler(agent);
+
+      const frame = buildFrame(
+        MsgType.CERT_RENEW,
+        0,
+        Buffer.from(JSON.stringify({
+          clientCert: '-----BEGIN CERTIFICATE-----\nrenewed\n-----END CERTIFICATE-----',
+          clientKey: '-----BEGIN PRIVATE KEY-----\nrenewed\n-----END PRIVATE KEY-----',
+        })),
+      );
+      handler(frame);
+
+      expect((agent as unknown as { cfg: TunnelConfig }).cfg.clientCert).toContain('renewed');
+      expect((agent as unknown as { cfg: TunnelConfig }).cfg.clientKey).toContain('renewed');
+      expect(mockWsInstance.close).toHaveBeenCalledWith(1012, 'client certificate renewed');
+
+      exitSpy.mockRestore();
+    });
+
     it('ignores frames that are too short', () => {
       const agent = new TunnelAgent(makeConfig());
       const exitSpy = vi.spyOn(process, 'exit').mockImplementation(() => undefined as never);

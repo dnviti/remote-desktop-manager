@@ -121,15 +121,16 @@ export default function LoginPage() {
 
   const completeLogin = (data: AuthSuccessResponse) => {
     const memberships = data.tenantMemberships ?? [];
+    const acceptedMemberships = memberships.filter((m) => !m.pending);
 
-    if (memberships.length >= 2) {
+    if (acceptedMemberships.length >= 2) {
       setPendingLoginData(data);
-      setTenantMemberships(memberships);
+      setTenantMemberships(acceptedMemberships);
 
       const lastId = useUiPreferencesStore.getState().lastActiveTenantId;
-      const preselect = memberships.find((m) => m.tenantId === lastId)
-        ?? memberships.find((m) => m.isActive)
-        ?? memberships[0];
+      const preselect = acceptedMemberships.find((m) => m.tenantId === lastId)
+        ?? acceptedMemberships.find((m) => m.isActive)
+        ?? acceptedMemberships[0];
       setSelectedTenantId(preselect.tenantId);
 
       setStep('tenant-select');
@@ -138,8 +139,9 @@ export default function LoginPage() {
 
     setAuth(data.accessToken, data.csrfToken, data.user);
     setVaultUnlocked(true);
-    if (memberships.length === 1) {
-      useUiPreferencesStore.getState().set('lastActiveTenantId', memberships[0].tenantId);
+    const activeMembership = memberships.find((m) => m.isActive) ?? acceptedMemberships[0];
+    if (activeMembership) {
+      useUiPreferencesStore.getState().set('lastActiveTenantId', activeMembership.tenantId);
     }
     navigate(buildRedirect());
   };

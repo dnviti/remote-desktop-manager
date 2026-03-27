@@ -18,7 +18,9 @@ import {
   generateRecoveryKey,
   encryptMasterKeyWithRecovery,
   lockVault,
+  encryptWithServerKey,
 } from './crypto.service';
+import { certFingerprint, generateCaCert } from '../utils/certGenerator';
 
 const BCRYPT_ROUNDS = 12;
 
@@ -58,6 +60,20 @@ export async function createTenant(userId: string, name: string) {
     const t = await tx.tenant.create({
       data: { name, slug },
     });
+    const ca = generateCaCert(`arsenale-tenant-${t.id}`);
+    const encryptedCaKey = encryptWithServerKey(ca.keyPem);
+    const caFingerprint = certFingerprint(ca.certPem);
+
+    await tx.tenant.update({
+      where: { id: t.id },
+      data: {
+        tunnelCaCert: ca.certPem,
+        tunnelCaKey: encryptedCaKey.ciphertext,
+        tunnelCaKeyIV: encryptedCaKey.iv,
+        tunnelCaKeyTag: encryptedCaKey.tag,
+        tunnelCaCertFingerprint: caFingerprint,
+      },
+    });
     // Deactivate any existing active membership
     await tx.tenantMember.updateMany({
       where: { userId, isActive: true },
@@ -65,7 +81,7 @@ export async function createTenant(userId: string, name: string) {
     });
     // Create OWNER membership for the new tenant
     await tx.tenantMember.create({
-      data: { tenantId: t.id, userId, role: 'OWNER', isActive: true },
+      data: { tenantId: t.id, userId, role: 'OWNER', status: 'ACCEPTED', isActive: true },
     });
     return t;
   });
@@ -96,12 +112,17 @@ export async function createTenant(userId: string, name: string) {
 }
 
 export async function getTenant(tenantId: string) {
-  const tenant = await prisma.tenant.findUnique({
-    where: { id: tenantId },
-    include: {
-      _count: { select: { members: true, teams: true } },
-    },
-  });
+  const [tenant, acceptedUserCount] = await Promise.all([
+    prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: {
+        _count: { select: { teams: true } },
+      },
+    }),
+    prisma.tenantMember.count({
+      where: { tenantId, status: 'ACCEPTED' },
+    }),
+  ]);
   if (!tenant) throw new AppError('Organization not found', 404);
 
   return {
@@ -136,7 +157,7 @@ export async function getTenant(tenantId: string) {
     recordingRetentionDays: tenant.recordingRetentionDays,
     fileUploadMaxSizeBytes: tenant.fileUploadMaxSizeBytes,
     userDriveQuotaBytes: tenant.userDriveQuotaBytes,
-    userCount: tenant._count.members,
+    userCount: acceptedUserCount,
     teamCount: tenant._count.teams,
     createdAt: tenant.createdAt,
     updatedAt: tenant.updatedAt,
@@ -380,6 +401,8 @@ export async function listTenantUsers(tenantId: string) {
       username: m.user.username,
       avatarData: m.user.avatarData,
       role: m.role,
+      status: m.status,
+      pending: m.status === 'PENDING',
       totpEnabled: m.user.totpEnabled,
       smsMfaEnabled: m.user.smsMfaEnabled,
       enabled: m.user.enabled,
@@ -388,6 +411,9 @@ export async function listTenantUsers(tenantId: string) {
       expired: m.expiresAt ? m.expiresAt <= new Date() : false,
     }))
     .sort((a, b) => {
+      const aPending = a.pending ? 1 : 0;
+      const bPending = b.pending ? 1 : 0;
+      if (aPending !== bPending) return aPending - bPending;
       const aOrder = roleOrder[a.role] ?? 3;
       const bOrder = roleOrder[b.role] ?? 3;
       if (aOrder !== bOrder) return aOrder - bOrder;
@@ -478,7 +504,14 @@ export async function inviteUser(tenantId: string, email: string, role: TenantRo
 
   const [membership, tenant] = await Promise.all([
     prisma.tenantMember.create({
-      data: { tenantId, userId: targetUser.id, role: role as TenantRole, isActive: false, ...(expiresAt && { expiresAt }) },
+      data: {
+        tenantId,
+        userId: targetUser.id,
+        role: role as TenantRole,
+        status: 'PENDING',
+        isActive: false,
+        ...(expiresAt && { expiresAt }),
+      },
     }),
     prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } }),
   ]);
@@ -512,6 +545,7 @@ export async function inviteUser(tenantId: string, email: string, role: TenantRo
     email: targetUser.email,
     username: targetUser.username,
     role,
+    status: membership.status,
   };
 }
 
@@ -652,7 +686,14 @@ export async function createUser(
     });
 
     const membership = await tx.tenantMember.create({
-      data: { tenantId, userId: user.id, role: data.role as TenantRole, isActive: false, ...(data.expiresAt && { expiresAt: new Date(data.expiresAt) }) },
+      data: {
+        tenantId,
+        userId: user.id,
+        role: data.role as TenantRole,
+        status: 'ACCEPTED',
+        isActive: false,
+        ...(data.expiresAt && { expiresAt: new Date(data.expiresAt) }),
+      },
     });
 
     return { ...user, role: membership.role };
@@ -729,10 +770,12 @@ export async function updateMembershipExpiry(
   if (membership.role === 'OWNER') {
     throw new AppError('Cannot set expiration on owner membership', 400);
   }
-  return prisma.tenantMember.update({
+  const updated = await prisma.tenantMember.update({
     where: { tenantId_userId: { tenantId, userId: targetUserId } },
     data: { expiresAt },
   });
+  invalidatePermissionCache(targetUserId, tenantId);
+  return updated;
 }
 
 // ---------------------------------------------------------------------------
@@ -948,7 +991,13 @@ export async function adminResetPasswordDirect(
 
 export async function listUserTenants(userId: string) {
   const memberships = await prisma.tenantMember.findMany({
-    where: { userId },
+    where: {
+      userId,
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } },
+      ],
+    },
     include: {
       tenant: { select: { id: true, name: true, slug: true } },
     },
@@ -960,9 +1009,16 @@ export async function listUserTenants(userId: string) {
     name: m.tenant.name,
     slug: m.tenant.slug,
     role: m.role,
+    status: m.status,
+    pending: m.status === 'PENDING',
     isActive: m.isActive,
     joinedAt: m.joinedAt,
-  }));
+  })).sort((a, b) => {
+    const aRank = a.isActive ? 0 : a.pending ? 2 : 1;
+    const bRank = b.isActive ? 0 : b.pending ? 2 : 1;
+    if (aRank !== bRank) return aRank - bRank;
+    return a.name.localeCompare(b.name);
+  });
 }
 
 export async function getIpAllowlist(tenantId: string) {

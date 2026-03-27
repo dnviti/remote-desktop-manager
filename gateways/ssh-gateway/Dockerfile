@@ -34,9 +34,6 @@ LABEL org.opencontainers.image.licenses="MIT"
 RUN apk add --no-cache openssh-server netcat-openbsd busybox-extras nodejs \
     && adduser -D -s /sbin/nologin tunnel \
     && sed -i 's/^tunnel:!/tunnel:*/' /etc/shadow \
-    && mkdir -p /home/tunnel/.ssh \
-    && chown tunnel:tunnel /home/tunnel/.ssh \
-    && chmod 700 /home/tunnel/.ssh \
     && mkdir -p /config
 
 COPY gateways/ssh-gateway/sshd_config /etc/ssh/sshd_config

@@ -50,7 +50,7 @@ npm run verify                  # typecheck -> lint -> audit -> build
 npm run db:generate             # Regenerate Prisma client
 npm run db:push                 # Sync schema to DB (no migration)
 npm run db:migrate              # Run Prisma migrations
-make dev                        # Start dev infrastructure (postgres + gocache via Ansible)
+make dev                        # Start dev infrastructure (postgres + split cache/pubsub backends via Ansible)
 make dev-down                   # Stop dev infrastructure
 make deploy                     # Full production deployment via Ansible
 npm run build                   # Build all workspaces

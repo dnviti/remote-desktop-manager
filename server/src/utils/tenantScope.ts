@@ -46,11 +46,25 @@ export async function assertShareableTenantBoundary(
 
   const [actingMemberships, targetMemberships] = await Promise.all([
     prisma.tenantMember.findMany({
-      where: { userId: actingUserId },
+      where: {
+        userId: actingUserId,
+        status: 'ACCEPTED',
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: new Date() } },
+        ],
+      },
       select: { tenantId: true },
     }),
     prisma.tenantMember.findMany({
-      where: { userId: targetUserId },
+      where: {
+        userId: targetUserId,
+        status: 'ACCEPTED',
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gt: new Date() } },
+        ],
+      },
       select: { tenantId: true },
     }),
   ]);

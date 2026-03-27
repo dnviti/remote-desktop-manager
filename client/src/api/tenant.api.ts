@@ -3,6 +3,7 @@ import type { TenantRole } from '../utils/roles';
 import type { SshTerminalConfig } from '../constants/terminalThemes';
 import type { RdpSettings } from '../constants/rdpDefaults';
 import type { VncSettings } from '../constants/vncDefaults';
+import type { TenantMembershipStatus } from './auth.api';
 
 export interface EnforcedConnectionSettings {
   ssh?: Partial<SshTerminalConfig>;
@@ -54,6 +55,8 @@ export interface TenantUser {
   username: string | null;
   avatarData: string | null;
   role: string;
+  status: TenantMembershipStatus;
+  pending: boolean;
   totpEnabled: boolean;
   smsMfaEnabled: boolean;
   enabled: boolean;
@@ -67,6 +70,8 @@ export interface TenantMembership {
   name: string;
   slug: string;
   role: string;
+  status: TenantMembershipStatus;
+  pending: boolean;
   isActive: boolean;
   joinedAt: string;
 }
@@ -96,6 +101,8 @@ export interface InviteResult {
   email: string;
   username: string | null;
   role: string;
+  status: TenantMembershipStatus;
+  pending: boolean;
 }
 
 export interface CreateTenantResponse {

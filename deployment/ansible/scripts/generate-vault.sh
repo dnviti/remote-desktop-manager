@@ -149,6 +149,15 @@ if [[ ${#generated[@]} -gt 0 ]]; then
   for s in "${generated[@]}"; do
     echo "  - ${s}"
   done
+
+  # Write auto-generated values back to SECRETS.env so they persist
+  sed -i "s|^JWT_SECRET=.*|JWT_SECRET=${JWT_SECRET}|" "${ENV_FILE}"
+  sed -i "s|^GUACAMOLE_SECRET=.*|GUACAMOLE_SECRET=${GUACAMOLE_SECRET}|" "${ENV_FILE}"
+  sed -i "s|^SERVER_ENCRYPTION_KEY=.*|SERVER_ENCRYPTION_KEY=${SERVER_ENCRYPTION_KEY}|" "${ENV_FILE}"
+  sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" "${ENV_FILE}"
+  sed -i "s|^GUACENC_AUTH_TOKEN=.*|GUACENC_AUTH_TOKEN=${GUACENC_AUTH_TOKEN}|" "${ENV_FILE}"
+  echo ""
+  echo "Saved generated secrets to: ${ENV_FILE}"
 fi
 
 # Optional secrets — read from env file, default to empty
@@ -196,7 +205,7 @@ vault_postgres_password: "${POSTGRES_PASSWORD}"
 vault_guacenc_auth_token: "${GUACENC_AUTH_TOKEN}"
 
 # Constructed from components
-vault_database_url: "postgresql://{{ arsenale_db_user }}:${POSTGRES_PASSWORD}@postgres:5432/{{ arsenale_db_name }}?sslmode=require"
+vault_database_url: "postgresql://{{ arsenale_db_user }}:${POSTGRES_PASSWORD}@postgres:5432/{{ arsenale_db_name }}?sslmode=verify-full"
 
 # Optional secrets
 vault_smtp_pass: "${SMTP_PASS}"

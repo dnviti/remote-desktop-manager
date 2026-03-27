@@ -474,12 +474,12 @@ export default function SetupWizardPage() {
               {recoveryKey}
               <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5 }}>
                 <Tooltip title={copied ? 'Copied!' : 'Copy'}>
-                  <IconButton size="small" onClick={handleCopyRecoveryKey}>
+                  <IconButton size="small" onClick={handleCopyRecoveryKey} aria-label="Copy recovery key to clipboard">
                     <CopyIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Download as file">
-                  <IconButton size="small" onClick={handleDownloadRecoveryKey}>
+                  <IconButton size="small" onClick={handleDownloadRecoveryKey} aria-label="Download recovery key as file">
                     <DownloadIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
@@ -515,6 +515,7 @@ export default function SetupWizardPage() {
                         <IconButton
                           size="small"
                           onClick={() => navigator.clipboard.writeText(secret.value)}
+                          aria-label={`Copy ${secret.name} to clipboard`}
                         >
                           <CopyIcon fontSize="small" />
                         </IconButton>

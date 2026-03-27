@@ -410,3 +410,5 @@ deployment/ansible/SECRETS.env
 
 # Ansible-generated local compose files
 docker-compose.yml
+
+*.csr

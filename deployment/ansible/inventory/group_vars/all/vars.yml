@@ -37,9 +37,12 @@ arsenale_allowed_web_sources: ["0.0.0.0/0"]
 
 # Scalability
 arsenale_server_replicas: 1
-arsenale_gocache_replicas: 1
-arsenale_gocache_peer_discovery: manual
-arsenale_gocache_peers: ""
+arsenale_gocache_cache_replicas: 1
+arsenale_gocache_pubsub_replicas: 1
+arsenale_gocache_cache_peer_discovery: dns
+arsenale_gocache_pubsub_peer_discovery: dns
+arsenale_gocache_cache_peers: ""
+arsenale_gocache_pubsub_peers: ""
 
 # Backup
 arsenale_backup_dir: "{{ arsenale_home }}/backups"

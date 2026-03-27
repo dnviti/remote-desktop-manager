@@ -14,7 +14,7 @@ import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { getDefaultGateway } from '../services/gateway.service';
-import { isTunnelConnected, createTcpProxy } from '../services/tunnel.service';
+import { isTunnelConnected, createTcpProxy, closeTcpProxy } from '../services/tunnel.service';
 import { AppError } from '../middleware/error.middleware';
 import { forceDisconnectSession } from '../services/sessionCleanup.service';
 import { config } from '../config';
@@ -35,6 +35,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
   let connHost: string | undefined;
   let connPort: number | undefined;
   let gatewayId: string | null | undefined;
+  let tunnelProxyServer: import('net').Server | undefined;
 
   try {
     assertAuthenticated(req);
@@ -117,7 +118,8 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       if (!isTunnelConnected(gateway.id)) {
         throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
-      const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, guacdHost, guacdPort);
+      const { server, localPort } = await createTcpProxy(gateway.id, guacdHost, guacdPort);
+      tunnelProxyServer = server;
       guacdHost = '127.0.0.1';
       guacdPort = localPort;
     }
@@ -261,6 +263,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
 
     res.json({ token, enableDrive, sessionId, recordingId: rdpRecordingId, dlpPolicy });
   } catch (err) {
+    await closeTcpProxy(tunnelProxyServer);
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
     auditService.log({
@@ -288,6 +291,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
   let connHost: string | undefined;
   let connPort: number | undefined;
   let gatewayId: string | null | undefined;
+  let tunnelProxyServer: import('net').Server | undefined;
 
   try {
     assertAuthenticated(req);
@@ -370,7 +374,8 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       if (!isTunnelConnected(gateway.id)) {
         throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
-      const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, guacdHost, guacdPort);
+      const { server, localPort } = await createTcpProxy(gateway.id, guacdHost, guacdPort);
+      tunnelProxyServer = server;
       guacdHost = '127.0.0.1';
       guacdPort = localPort;
     }
@@ -470,6 +475,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
 
     res.json({ token, sessionId, recordingId: vncRecordingId, dlpPolicy: vncDlpPolicy });
   } catch (err) {
+    await closeTcpProxy(tunnelProxyServer);
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
 
     auditService.log({

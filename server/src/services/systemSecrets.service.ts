@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import prisma from '../lib/prisma';
 import { encryptWithServerKey, decryptWithServerKey } from './crypto.service';
-import { config, setSystemSecret } from '../config';
+import { setSystemSecret } from '../config';
 import { readSecret } from '../utils/secrets';
 import { publish } from '../utils/cacheClient';
 import { logger } from '../utils/logger';
@@ -43,8 +43,6 @@ const SYSTEM_SECRET_DEFS = [
     description: 'Bearer auth token for the video conversion service',
   },
 ] as const;
-
-type SecretConfigKey = typeof SYSTEM_SECRET_DEFS[number]['configKey'];
 
 // In-memory cache: name -> { current plaintext, previous plaintext | null }
 const secretCache = new Map<string, { current: string; previous: string | null }>();
@@ -89,25 +87,31 @@ export async function ensureSystemSecrets(): Promise<void> {
       });
       if (dbValue !== externalValue) {
         const encrypted = encryptWithServerKey(externalValue);
+        const rotatedAt = new Date();
         await prisma.systemSecret.update({
           where: { name: def.name },
           data: {
             encryptedValue: encrypted.ciphertext,
             valueIV: encrypted.iv,
             valueTag: encrypted.tag,
+            previousEncryptedValue: dbRow.encryptedValue,
+            previousValueIV: dbRow.valueIV,
+            previousValueTag: dbRow.valueTag,
+            currentVersion: dbRow.currentVersion + 1,
+            rotatedAt,
           },
         });
+        previousValue = dbValue;
         logger.info(`[system-secrets] Updated "${def.name}" from external source`);
-      }
-      currentValue = externalValue;
-      // Preserve previous version if it exists
-      if (dbRow.previousEncryptedValue && dbRow.previousValueIV && dbRow.previousValueTag) {
+      } else if (dbRow.previousEncryptedValue && dbRow.previousValueIV && dbRow.previousValueTag) {
+        // Preserve previous version if the external value matches current state.
         previousValue = decryptWithServerKey({
           ciphertext: dbRow.previousEncryptedValue,
           iv: dbRow.previousValueIV,
           tag: dbRow.previousValueTag,
         });
       }
+      currentValue = externalValue;
     } else if (!externalValue && !dbRow) {
       // No external, no DB — auto-generate
       currentValue = crypto.randomBytes(def.bytes).toString('hex');
@@ -196,44 +200,43 @@ export async function rotateSecret(name: string): Promise<void> {
     tag: dbRow.valueTag,
   });
 
-  // Encrypt new and old values
+  // Encrypt new value; copy current ciphertext directly to previous (avoid re-encryption)
   const encryptedNew = encryptWithServerKey(newValue);
-  const encryptedOld = encryptWithServerKey(oldValue);
+  const newVersion = dbRow.currentVersion + 1;
 
-  // Update DB: new → current, old current → previous
+  // Update DB: new → current, old current ciphertext → previous (no re-encryption)
   await prisma.systemSecret.update({
     where: { name },
     data: {
       encryptedValue: encryptedNew.ciphertext,
       valueIV: encryptedNew.iv,
       valueTag: encryptedNew.tag,
-      previousEncryptedValue: encryptedOld.ciphertext,
-      previousValueIV: encryptedOld.iv,
-      previousValueTag: encryptedOld.tag,
-      currentVersion: dbRow.currentVersion + 1,
+      previousEncryptedValue: dbRow.encryptedValue,
+      previousValueIV: dbRow.valueIV,
+      previousValueTag: dbRow.valueTag,
+      currentVersion: newVersion,
       rotatedAt: new Date(),
     },
   });
 
-  // Update in-memory cache
-  secretCache.set(name, { current: newValue, previous: oldValue });
-
-  // Update runtime config
-  setSystemSecret(def.configKey, newValue);
-
-  // Publish to distributed services if applicable
+  // Publish to distributed services BEFORE updating local state
+  // (ensures remote services get the update even if local cache update fails)
   if (def.distribute && def.target) {
     const payload = JSON.stringify({
       name: def.name,
       value: newValue,
-      version: dbRow.currentVersion + 1,
+      version: newVersion,
       rotatedAt: new Date().toISOString(),
     });
     await publish(`system:secret:${def.target}`, payload);
-    logger.info(`[system-secrets] Published rotated secret "${name}" to [REDACTED] channel`);
+    logger.info(`[system-secrets] Published rotated secret "${name}" to distributed channel`);
   }
 
-  logger.info(`[system-secrets] Rotated secret "${name}" to v${dbRow.currentVersion + 1}`);
+  // Update in-memory cache and runtime config
+  secretCache.set(name, { current: newValue, previous: oldValue });
+  setSystemSecret(def.configKey, newValue);
+
+  logger.info(`[system-secrets] Rotated secret "${name}" to v${newVersion}`);
 }
 
 export async function processSecretRotations(): Promise<void> {
@@ -265,14 +268,19 @@ export async function processSecretRotations(): Promise<void> {
 // ---------------------------------------------------------------------------
 
 export async function publishDistributedSecrets(): Promise<void> {
-  for (const def of SYSTEM_SECRET_DEFS) {
-    if (!def.distribute || !def.target) continue;
+  const distributedDefs = SYSTEM_SECRET_DEFS.filter((d) => d.distribute && d.target);
+  if (distributedDefs.length === 0) return;
 
+  // Single query for all distributed secrets (avoids N+1)
+  const dbRows = await prisma.systemSecret.findMany({
+    where: { name: { in: distributedDefs.map((d) => d.name) } },
+  });
+  const dbMap = new Map(dbRows.map((r) => [r.name, r]));
+
+  for (const def of distributedDefs) {
     const entry = secretCache.get(def.name);
-    if (!entry) continue;
-
-    const dbRow = await prisma.systemSecret.findUnique({ where: { name: def.name } });
-    if (!dbRow) continue;
+    const dbRow = dbMap.get(def.name);
+    if (!entry || !dbRow) continue;
 
     const payload = JSON.stringify({
       name: def.name,
@@ -281,8 +289,8 @@ export async function publishDistributedSecrets(): Promise<void> {
       rotatedAt: dbRow.rotatedAt?.toISOString() ?? null,
     });
 
-    await publish(`system:secret:${def.target}`, payload);
-    logger.info(`[system-secrets] Published secret "${def.name}" to [REDACTED] channel`);
+    await publish(`system:secret:${def.target!}`, payload);
+    logger.info(`[system-secrets] Published secret "${def.name}" to distributed channel`);
   }
 }
 

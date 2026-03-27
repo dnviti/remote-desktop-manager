@@ -242,7 +242,7 @@ export async function getTenantAuditLogs(query: TenantAuditLogQuery): Promise<Pa
   const skip = (page - 1) * limit;
 
   const where: Prisma.AuditLogWhereInput = {
-    user: { tenantMemberships: { some: { tenantId: query.tenantId } } },
+    user: { tenantMemberships: { some: { tenantId: query.tenantId, status: 'ACCEPTED' } } },
     ...(query.userId && { userId: query.userId }),
     ...buildCommonWhereClause(query),
   };

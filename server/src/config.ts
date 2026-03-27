@@ -333,13 +333,18 @@ export const config = {
     maxRequestsPerDay: parseInt(process.env.AI_MAX_REQUESTS_PER_DAY || '100', 10),
   },
   // Cache sidecar (gocache)
-  cacheSidecarUrl: process.env.CACHE_SIDECAR_URL || 'gocache:6380',
   cacheSidecarEnabled: process.env.CACHE_SIDECAR_ENABLED !== 'false',
   cacheProtoPath: process.env.CACHE_PROTO_PATH || '',
-  // Cache sidecar mTLS — paths to PEM files for gRPC channel encryption
-  cacheSidecarTlsCa: process.env.CACHE_SIDECAR_TLS_CA || '',
-  cacheSidecarTlsCert: process.env.CACHE_SIDECAR_TLS_CERT || '',
-  cacheSidecarTlsKey: process.env.CACHE_SIDECAR_TLS_KEY || '',
+  cacheKvUrl: process.env.CACHE_KV_URL || process.env.CACHE_SIDECAR_URL || 'localhost:6380',
+  cachePubSubUrl: process.env.CACHE_PUBSUB_URL || process.env.CACHE_SIDECAR_URL || 'localhost:6480',
+  // Cache service mTLS — paths to PEM files for gRPC channel encryption
+  cacheKvTlsCa: process.env.CACHE_KV_TLS_CA || process.env.CACHE_SIDECAR_TLS_CA || '',
+  cacheKvTlsCert: process.env.CACHE_KV_TLS_CERT || process.env.CACHE_SIDECAR_TLS_CERT || '',
+  cacheKvTlsKey: process.env.CACHE_KV_TLS_KEY || process.env.CACHE_SIDECAR_TLS_KEY || '',
+  // PubSub service mTLS — paths to PEM files for gRPC channel encryption
+  cachePubSubTlsCa: process.env.CACHE_PUBSUB_TLS_CA || process.env.CACHE_SIDECAR_TLS_CA || '',
+  cachePubSubTlsCert: process.env.CACHE_PUBSUB_TLS_CERT || process.env.CACHE_SIDECAR_TLS_CERT || '',
+  cachePubSubTlsKey: process.env.CACHE_PUBSUB_TLS_KEY || process.env.CACHE_SIDECAR_TLS_KEY || '',
 };
 
 // Runtime setter for auto-managed system secrets (populated from DB after startup)

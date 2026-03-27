@@ -562,16 +562,30 @@ def gocache_subscriber():
     The gocache server uses a custom JSON codec (not standard protobuf binary).
     Messages are JSON-encoded; `bytes` fields are base64-encoded strings.
     """
-    cache_url = os.environ.get('CACHE_SIDECAR_URL', 'gocache:6380')
-    tls_ca = os.environ.get('CACHE_SIDECAR_TLS_CA', '')
-    tls_cert = os.environ.get('CACHE_SIDECAR_TLS_CERT', '')
-    tls_key = os.environ.get('CACHE_SIDECAR_TLS_KEY', '')
+    cache_url = os.environ.get('CACHE_PUBSUB_URL', os.environ.get('CACHE_SIDECAR_URL', 'gocache-pubsub:6380'))
+    tls_ca = os.environ.get('CACHE_PUBSUB_TLS_CA', os.environ.get('CACHE_SIDECAR_TLS_CA', ''))
+    tls_cert = os.environ.get('CACHE_PUBSUB_TLS_CERT', os.environ.get('CACHE_SIDECAR_TLS_CERT', ''))
+    tls_key = os.environ.get('CACHE_PUBSUB_TLS_KEY', os.environ.get('CACHE_SIDECAR_TLS_KEY', ''))
 
     retry_delay = 1  # Start with 1 second
     max_retry_delay = 60
 
+    channel = None
+    channel_opts = [
+        ('grpc.keepalive_time_ms', 30000),
+        ('grpc.keepalive_timeout_ms', 10000),
+        ('grpc.keepalive_permit_without_calls', 1),
+    ]
+
     while True:
         try:
+            # Close previous channel to avoid resource leaks
+            if channel is not None:
+                try:
+                    channel.close()
+                except Exception:
+                    pass
+
             # Create channel (mTLS or insecure)
             if tls_ca and tls_cert and tls_key:
                 with open(tls_ca, 'rb') as f:
@@ -585,9 +599,9 @@ def gocache_subscriber():
                     private_key=key_data,
                     certificate_chain=cert_data,
                 )
-                channel = grpc.secure_channel(cache_url, credentials)
+                channel = grpc.secure_channel(cache_url, credentials, options=channel_opts)
             else:
-                channel = grpc.insecure_channel(cache_url)
+                channel = grpc.insecure_channel(cache_url, options=channel_opts)
 
             print(f'[guacenc] Connecting to gocache at {cache_url} for secret updates...')
 
@@ -617,6 +631,8 @@ def gocache_subscriber():
                         set_auth_token(msg['value'])
                         version = msg.get('version', '?')
                         print(f'[guacenc] Auth token updated via gocache (version {version})')
+                except (json.JSONDecodeError, base64.binascii.Error) as e:
+                    print(f'[guacenc] Malformed secret message (skipping): {e}')
                 except Exception as e:
                     print(f'[guacenc] Error processing secret update: {e}')
 
@@ -657,7 +673,7 @@ if __name__ == "__main__":
     print(f"[guacenc] Bearer auth: {'enabled' if get_auth_token() else 'disabled'}")
 
     # Start gocache subscriber for dynamic secret updates
-    cache_url = os.environ.get('CACHE_SIDECAR_URL', '')
+    cache_url = os.environ.get('CACHE_PUBSUB_URL', os.environ.get('CACHE_SIDECAR_URL', ''))
     if cache_url and HAS_GRPC:
         subscriber_thread = threading.Thread(
             target=gocache_subscriber, daemon=True, name='gocache-subscriber',
@@ -667,7 +683,7 @@ if __name__ == "__main__":
     elif cache_url and not HAS_GRPC:
         print('[guacenc] WARNING: grpcio not installed — gocache subscriber disabled')
     else:
-        print('[guacenc] CACHE_SIDECAR_URL not set — gocache subscriber disabled')
+        print('[guacenc] CACHE_PUBSUB_URL not set — gocache subscriber disabled')
 
     print(f"[guacenc] Listening on port {PORT}")
     print(f"[guacenc] Max concurrent jobs: {MAX_CONCURRENT_JOBS}")

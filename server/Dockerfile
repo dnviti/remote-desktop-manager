@@ -79,6 +79,7 @@ WORKDIR /app
 
 # Production node_modules (with Prisma client generated)
 COPY --from=prod-deps /app/node_modules ./node_modules
+COPY package.json ./package.json
 
 # Compiled JavaScript output
 COPY --from=build /app/server/dist ./dist

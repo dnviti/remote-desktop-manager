@@ -169,7 +169,7 @@ async function enforceConcurrentSessionLimit(
 
 async function getEffectiveAbsoluteTimeout(userId: string): Promise<number> {
   const membership = await prisma.tenantMember.findFirst({
-    where: { userId, isActive: true },
+    where: { userId, isActive: true, status: 'ACCEPTED' },
     include: { tenant: { select: { absoluteSessionTimeoutSeconds: true } } },
   });
   return membership?.tenant.absoluteSessionTimeoutSeconds ?? config.absoluteSessionTimeoutSeconds;
@@ -193,15 +193,16 @@ export async function issueTokens(user: {
   const validMemberships = allMemberships.filter(
     (m) => !m.expiresAt || m.expiresAt > now,
   );
+  const acceptedMemberships = validMemberships.filter((m) => m.status === 'ACCEPTED');
 
   // Resolve active membership, auto-activating if exactly one exists
-  let activeMembership = validMemberships.find((m) => m.isActive);
-  if (!activeMembership && validMemberships.length === 1) {
+  let activeMembership = acceptedMemberships.find((m) => m.isActive);
+  if (!activeMembership && acceptedMemberships.length === 1) {
     await prisma.tenantMember.update({
-      where: { id: validMemberships[0].id },
+      where: { id: acceptedMemberships[0].id },
       data: { isActive: true },
     });
-    activeMembership = { ...validMemberships[0], isActive: true };
+    activeMembership = { ...acceptedMemberships[0], isActive: true };
   }
 
   const ipUaHash = binding && config.tokenBindingEnabled
@@ -269,18 +270,28 @@ export async function issueTokens(user: {
       tenantId: activeMembership?.tenantId,
       tenantRole: activeMembership?.role,
     },
-    tenantMemberships: validMemberships.map((m) => ({
-      tenantId: m.tenant.id,
-      name: m.tenant.name,
-      slug: m.tenant.slug,
-      role: m.role,
-      isActive: m.isActive,
-    })),
+    tenantMemberships: validMemberships
+      .map((m) => ({
+        tenantId: m.tenant.id,
+        name: m.tenant.name,
+        slug: m.tenant.slug,
+        role: m.role,
+        status: m.status,
+        pending: m.status === 'PENDING',
+        isActive: m.isActive,
+      }))
+      .sort((a, b) => {
+        const aRank = a.isActive ? 0 : a.pending ? 2 : 1;
+        const bRank = b.isActive ? 0 : b.pending ? 2 : 1;
+        if (aRank !== bRank) return aRank - bRank;
+        return a.name.localeCompare(b.name);
+      }),
   };
 }
 
 export async function switchTenant(userId: string, targetTenantId: string, binding?: { ip: string; userAgent: string }) {
-  // Verify the user has a membership in the target tenant
+  // Verify the user has a membership in the target tenant. PENDING memberships
+  // are accepted here as part of the explicit switch action.
   const membership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId: targetTenantId, userId } },
   });
@@ -299,7 +310,7 @@ export async function switchTenant(userId: string, targetTenantId: string, bindi
     }),
     prisma.tenantMember.update({
       where: { tenantId_userId: { tenantId: targetTenantId, userId } },
-      data: { isActive: true },
+      data: { status: 'ACCEPTED', isActive: true },
     }),
   ]);
 
@@ -334,7 +345,7 @@ async function tryLdapLogin(
       vaultSetupComplete: true,
       totpEnabled: true, smsMfaEnabled: true, webauthnEnabled: true,
       tenantMemberships: {
-        where: { isActive: true },
+        where: { isActive: true, status: 'ACCEPTED' },
         take: 1,
         include: { tenant: { select: { mfaRequired: true } } },
       },
@@ -358,7 +369,7 @@ async function tryLdapLogin(
         vaultSetupComplete: true,
         totpEnabled: true, smsMfaEnabled: true, webauthnEnabled: true,
         tenantMemberships: {
-          where: { isActive: true },
+          where: { isActive: true, status: 'ACCEPTED' },
           take: 1,
           include: { tenant: { select: { mfaRequired: true } } },
         },
@@ -387,6 +398,7 @@ async function tryLdapLogin(
           tenantId: config.ldap.defaultTenantId,
           userId: newUser.id,
           role: 'MEMBER',
+          status: 'ACCEPTED',
         },
       }).catch(() => { /* already a member */ });
     }
@@ -468,7 +480,7 @@ export async function login(email: string, password: string, ipAddress?: string 
     where: { email },
     include: {
       tenantMemberships: {
-        where: { isActive: true },
+        where: { isActive: true, status: 'ACCEPTED' },
         take: 1,
         include: { tenant: { select: { mfaRequired: true, accountLockoutThreshold: true, accountLockoutDurationMs: true } } },
       },
@@ -1095,4 +1107,3 @@ export async function cleanupAbsolutelyTimedOutFamilies() {
   }
   return result.count;
 }
-

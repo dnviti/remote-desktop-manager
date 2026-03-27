@@ -125,6 +125,17 @@ type DequeueResponse struct {
 	Found   bool   `json:"found"`
 }
 
+type SnapshotRequest struct{}
+type SnapshotEntry struct {
+	Key       string `json:"key"`
+	Value     []byte `json:"value"`
+	TtlMs     int64  `json:"ttl_ms"`
+	Timestamp uint64 `json:"timestamp"`
+}
+type SnapshotResponse struct {
+	Entries []SnapshotEntry `json:"entries"`
+}
+
 type ReplicateKVRequest struct {
 	Key       string `json:"key"`
 	Value     []byte `json:"value"`
@@ -168,6 +179,7 @@ type CacheServiceServer interface {
 	RenewLock(context.Context, *RenewLockRequest) (*RenewLockResponse, error)
 	Enqueue(context.Context, *EnqueueRequest) (*EnqueueResponse, error)
 	Dequeue(context.Context, *DequeueRequest) (*DequeueResponse, error)
+	GetSnapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error)
 	ReplicateKV(CacheService_ReplicateKVServer) error
 	ReplicatePubSub(CacheService_ReplicatePubSubServer) error
 	Heartbeat(context.Context, *HeartbeatRequest) (*HeartbeatResponse, error)
@@ -214,6 +226,9 @@ func (UnimplementedCacheServiceServer) Enqueue(context.Context, *EnqueueRequest)
 }
 func (UnimplementedCacheServiceServer) Dequeue(context.Context, *DequeueRequest) (*DequeueResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Dequeue not implemented")
+}
+func (UnimplementedCacheServiceServer) GetSnapshot(context.Context, *SnapshotRequest) (*SnapshotResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetSnapshot not implemented")
 }
 func (UnimplementedCacheServiceServer) ReplicateKV(CacheService_ReplicateKVServer) error {
 	return status.Error(codes.Unimplemented, "method ReplicateKV not implemented")
@@ -302,6 +317,7 @@ var _CacheService_serviceDesc = grpc.ServiceDesc{
 		{MethodName: "RenewLock", Handler: _CacheService_RenewLock_Handler},
 		{MethodName: "Enqueue", Handler: _CacheService_Enqueue_Handler},
 		{MethodName: "Dequeue", Handler: _CacheService_Dequeue_Handler},
+		{MethodName: "GetSnapshot", Handler: _CacheService_GetSnapshot_Handler},
 		{MethodName: "Heartbeat", Handler: _CacheService_Heartbeat_Handler},
 	},
 	Streams: []grpc.StreamDesc{
@@ -492,6 +508,20 @@ func _CacheService_Dequeue_Handler(srv interface{}, ctx context.Context, dec fun
 	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/cache.CacheService/Dequeue"}
 	return interceptor(ctx, in, info, func(ctx context.Context, req interface{}) (interface{}, error) {
 		return srv.(CacheServiceServer).Dequeue(ctx, req.(*DequeueRequest))
+	})
+}
+
+func _CacheService_GetSnapshot_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SnapshotRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CacheServiceServer).GetSnapshot(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{Server: srv, FullMethod: "/cache.CacheService/GetSnapshot"}
+	return interceptor(ctx, in, info, func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CacheServiceServer).GetSnapshot(ctx, req.(*SnapshotRequest))
 	})
 }
 

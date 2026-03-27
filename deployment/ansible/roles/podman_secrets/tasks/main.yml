@@ -30,14 +30,12 @@
     name: "{{ item.name }}"
     state: absent
   loop: "{{ podman_secrets }}"
-  when: item.value | length > 0
   no_log: true
 
 - name: Create Podman secrets
   containers.podman.podman_secret:
     name: "{{ item.name }}"
-    data: "{{ item.value }}"
+    data: "{{ item.value if (item.value | length > 0) else '\n' }}"
     state: present
   loop: "{{ podman_secrets }}"
-  when: item.value | length > 0
   no_log: true

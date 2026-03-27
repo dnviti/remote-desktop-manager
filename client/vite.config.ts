@@ -193,7 +193,7 @@ export default defineConfig({
         '../server/**',
         '../gateways/**',
         '../infrastructure/**',
-        '../.compose-project/**',
+        '../deployment/**',
         '../dev-certs/**',
         '../docs/**',
         '../tasks/**',

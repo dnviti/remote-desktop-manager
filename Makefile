@@ -11,7 +11,16 @@
 SHELL := /bin/bash
 ANSIBLE_DIR := deployment/ansible
 PLAYBOOK := cd $(ANSIBLE_DIR) && ansible-playbook
-VAULT_FLAG := --ask-vault-pass
+VAULT_FILE := $(ANSIBLE_DIR)/inventory/group_vars/all/vault.yml
+LOCAL_VAULT_PASS_FILE := $(ANSIBLE_DIR)/.vault-pass
+VAULT_FLAG ?= $(shell \
+	if [ -n "$$ANSIBLE_VAULT_PASSWORD_FILE" ]; then \
+		printf -- '--vault-password-file %s' "$$ANSIBLE_VAULT_PASSWORD_FILE"; \
+	elif [ -f "$(LOCAL_VAULT_PASS_FILE)" ]; then \
+		printf -- '--vault-password-file %s' "$(LOCAL_VAULT_PASS_FILE)"; \
+	elif [ -f "$(VAULT_FILE)" ] && head -1 "$(VAULT_FILE)" | grep -q '^\$$ANSIBLE_VAULT'; then \
+		printf '%s' '--ask-vault-pass'; \
+	fi)
 
 .DEFAULT_GOAL := help
 
@@ -51,12 +60,12 @@ setup: _check-ansible  ## First-time setup: install collections, generate vault 
 # ── Development ─────────────────────────────────────────────────────────────
 
 .PHONY: dev
-dev: _check-ansible  ## Start dev infrastructure (postgres + gocache) and generate .env
-	$(PLAYBOOK) playbooks/dev.yml $(VAULT_FLAG)
+dev: _check-ansible  ## Deploy full dev stack (all services, verbose logs)
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_env=development
 
 .PHONY: dev-down
-dev-down: _check-ansible  ## Stop dev infrastructure
-	$(PLAYBOOK) playbooks/dev.yml $(VAULT_FLAG) -e arsenale_dev_state=absent
+dev-down: _check-ansible  ## Stop dev stack
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_env=development -e arsenale_state=absent
 
 # ── Production ──────────────────────────────────────────────────────────────
 

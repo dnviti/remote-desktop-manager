@@ -130,7 +130,15 @@ export async function initTenantVault(
 
   // Find all tenant members with unlocked vaults (besides initiator)
   const tenantMembers = await prisma.tenantMember.findMany({
-    where: { tenantId, userId: { not: initiatorUserId } },
+    where: {
+      tenantId,
+      status: 'ACCEPTED',
+      userId: { not: initiatorUserId },
+      OR: [
+        { expiresAt: null },
+        { expiresAt: { gt: new Date() } },
+      ],
+    },
     select: { userId: true },
   });
   const tenantUsers = tenantMembers.map((m) => ({ id: m.userId }));
@@ -209,7 +217,7 @@ export async function distributeTenantKeyToUser(
   const targetMembership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId: targetUserId } },
   });
-  if (!targetMembership) {
+  if (!targetMembership || targetMembership.status !== 'ACCEPTED' || (targetMembership.expiresAt && targetMembership.expiresAt <= new Date())) {
     throw new AppError('User is not a member of this tenant', 400);
   }
 
@@ -379,9 +387,9 @@ export async function createSecret(
     const effectiveTenantId = input.tenantId || tenantId;
     const membership = effectiveTenantId ? await prisma.tenantMember.findUnique({
       where: { tenantId_userId: { tenantId: effectiveTenantId, userId } },
-      select: { role: true },
+      select: { role: true, status: true },
     }) : null;
-    if (membership?.role !== 'OWNER' && membership?.role !== 'ADMIN') {
+    if (membership?.status !== 'ACCEPTED' || (membership.role !== 'OWNER' && membership.role !== 'ADMIN')) {
       throw new AppError('Only admins and owners can create tenant-scoped secrets', 403);
     }
   }

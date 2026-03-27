@@ -54,8 +54,14 @@ done
 # ── Container runtime (only needed for default and docker modes) ──────────
 CONTAINER_RT=""
 if [[ "$MODE" != "quick" ]]; then
-  CONTAINER_RT="$("$SCRIPT_DIR/container-runtime.sh")"
-  echo -e "${CYAN}Container runtime:${NC} $CONTAINER_RT"
+  if command -v podman &>/dev/null; then
+    CONTAINER_RT="podman"
+  elif command -v docker &>/dev/null; then
+    CONTAINER_RT="docker"
+  else
+    echo -e "${YELLOW}No container runtime found (podman/docker) — skipping container scans${NC}"
+  fi
+  [[ -n "$CONTAINER_RT" ]] && echo -e "${CYAN}Container runtime:${NC} $CONTAINER_RT"
 fi
 
 # ── Tracking ────────────────────────────────────────────────────────────────

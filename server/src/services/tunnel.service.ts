@@ -567,7 +567,7 @@ export async function revokeTunnelToken(
  *   X-Gateway-Id:  <uuid>
  *   X-Agent-Version: <version string>   (optional)
  *
- * When clientCertPem is provided, it is verified against the gateway's stored CA
+ * When clientCertPem is provided, it is verified against the tenant's stored CA
  * certificate using cryptographic chain validation (not just CN matching).
  */
 export async function authenticateTunnelRequest(
@@ -588,8 +588,11 @@ export async function authenticateTunnelRequest(
       tunnelTokenIV: true,
       tunnelTokenTag: true,
       tunnelTokenHash: true,
-      tunnelCaCert: true,
-      tunnelClientCert: true,
+      tenant: {
+        select: {
+          tunnelCaCert: true,
+        },
+      },
     },
   });
 
@@ -636,9 +639,9 @@ export async function authenticateTunnelRequest(
     return null;
   }
 
-  // Verify the client cert chains to the gateway's stored CA (cryptographic validation)
-  if (clientCertPem && gateway.tunnelCaCert && gateway.tunnelClientCert) {
-    if (!verifyCertChain(clientCertPem, gateway.tunnelCaCert)) {
+  // Verify the client cert chains to the tenant CA (cryptographic validation)
+  if (clientCertPem && gateway.tenant.tunnelCaCert) {
+    if (!verifyCertChain(clientCertPem, gateway.tenant.tunnelCaCert)) {
       log.warn(`[tunnel] Auth failed: client cert for gateway ${gatewayId} does not chain to stored CA`);
       auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'ca_chain_validation_failed', tenantId: gateway.tenantId } });
       return null;
@@ -660,6 +663,8 @@ export function validateClientCertCn(clientCertCn: string, gatewayId: string): b
 // TCP proxy — create a local TCP server that proxies to a gateway via tunnel
 // ---------------------------------------------------------------------------
 
+const TCP_PROXY_IDLE_TIMEOUT_MS = 60_000;
+
 /**
  * Create a local TCP server that forwards every connection through the
  * zero-trust tunnel to `targetHost:targetPort` on the gateway side.
@@ -673,10 +678,19 @@ export function createTcpProxy(
   targetPort: number,
 ): Promise<{ server: net.Server; localPort: number }> {
   return new Promise((resolve, reject) => {
-    const server = net.createServer(async (socket) => {
+    let server: net.Server | null = null;
+    const idleTimer = setTimeout(() => {
+      log.warn(
+        `[tunnel] TCP proxy for gateway ${gatewayId} expired before the first local connection`,
+      );
+      server?.close();
+    }, TCP_PROXY_IDLE_TIMEOUT_MS).unref();
+
+    server = net.createServer(async (socket) => {
+      clearTimeout(idleTimer);
       // Only accept a single connection, then close the server to avoid leaks.
       // Each session call creates its own proxy, so one connection is all we need.
-      server.close();
+      server?.close();
 
       try {
         const remote = await openStream(gatewayId, targetHost, targetPort);
@@ -697,6 +711,8 @@ export function createTcpProxy(
       }
     });
 
+    server.once('close', () => clearTimeout(idleTimer));
+
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
@@ -708,6 +724,18 @@ export function createTcpProxy(
     });
 
     server.on('error', reject);
+  });
+}
+
+export async function closeTcpProxy(server: net.Server | null | undefined): Promise<void> {
+  if (!server || !server.listening) return;
+
+  await new Promise<void>((resolve) => {
+    try {
+      server.close(() => resolve());
+    } catch {
+      resolve();
+    }
   });
 }
 
@@ -745,7 +773,7 @@ export function sendCertRenew(gatewayId: string, newClientCert: string, newClien
 /**
  * Check all tunneled gateways for certificate expiry.
  * When a cert expires within CERT_ROTATION_THRESHOLD_DAYS, generate a new one
- * signed by the gateway's CA and send it via CERT_RENEW through the active tunnel.
+ * signed by the tenant CA and send it via CERT_RENEW through the active tunnel.
  * For managed gateways, trigger a rolling restart via the orchestrator.
  */
 export async function processCertRotations(): Promise<void> {
@@ -761,11 +789,15 @@ export async function processCertRotations(): Promise<void> {
       name: true,
       tenantId: true,
       isManaged: true,
-      tunnelCaCert: true,
-      tunnelCaKey: true,
-      tunnelCaKeyIV: true,
-      tunnelCaKeyTag: true,
       tunnelClientCertExp: true,
+      tenant: {
+        select: {
+          tunnelCaCert: true,
+          tunnelCaKey: true,
+          tunnelCaKeyIV: true,
+          tunnelCaKeyTag: true,
+        },
+      },
     },
   });
 
@@ -775,31 +807,27 @@ export async function processCertRotations(): Promise<void> {
 
   for (const gw of candidates) {
     try {
-      // Only rotate if the CA key is available for signing
-      if (!gw.tunnelCaKey || !gw.tunnelCaKeyIV || !gw.tunnelCaKeyTag || !gw.tunnelCaCert) {
-        log.warn(`[tunnel] cert-rotation: gateway ${gw.id} (${gw.name}) missing CA key — skipping`);
+      const tenantCa = gw.tenant;
+      if (!tenantCa.tunnelCaKey || !tenantCa.tunnelCaKeyIV || !tenantCa.tunnelCaKeyTag || !tenantCa.tunnelCaCert) {
+        log.warn(`[tunnel] cert-rotation: gateway ${gw.id} (${gw.name}) missing tenant CA — skipping`);
         continue;
       }
 
-      // Decrypt the CA private key
       let caKeyPem: string;
       try {
         caKeyPem = decryptWithServerKey({
-          ciphertext: gw.tunnelCaKey,
-          iv: gw.tunnelCaKeyIV,
-          tag: gw.tunnelCaKeyTag,
+          ciphertext: tenantCa.tunnelCaKey,
+          iv: tenantCa.tunnelCaKeyIV,
+          tag: tenantCa.tunnelCaKeyTag,
         });
       } catch (decryptErr) {
-        log.error(`[tunnel] cert-rotation: failed to decrypt CA key for gateway ${gw.id}: ${(decryptErr as Error).message}`);
+        log.error(`[tunnel] cert-rotation: failed to decrypt tenant CA key for gateway ${gw.id}: ${(decryptErr as Error).message}`);
         continue;
       }
 
-      // Generate a new client cert + key pair signed by the CA (90-day validity)
       const validityDays = 90;
-      const clientResult = generateClientCertificate(gw.tunnelCaCert, caKeyPem, gw.id, validityDays);
+      const clientResult = generateClientCertificate(tenantCa.tunnelCaCert, caKeyPem, gw.id, validityDays);
 
-      // Encrypt and persist the new certificate and key
-      const encCaKey = encryptWithServerKey(caKeyPem);
       const encClientKey = encryptWithServerKey(clientResult.keyPem);
 
       await prisma.gateway.update({
@@ -810,10 +838,6 @@ export async function processCertRotations(): Promise<void> {
           tunnelClientKey: encClientKey.ciphertext,
           tunnelClientKeyIV: encClientKey.iv,
           tunnelClientKeyTag: encClientKey.tag,
-          // Re-persist CA key with fresh encryption (nonce rotation)
-          tunnelCaKey: encCaKey.ciphertext,
-          tunnelCaKeyIV: encCaKey.iv,
-          tunnelCaKeyTag: encCaKey.tag,
         },
       });
 
@@ -836,12 +860,12 @@ export async function processCertRotations(): Promise<void> {
       const delivered = sendCertRenew(gw.id, clientResult.certPem, clientResult.keyPem);
       log.info(`[tunnel] cert-rotation: CERT_RENEW for gateway ${gw.id} delivered=${delivered}`);
 
-      // For managed gateways the mTLS handshake cert cannot be hot-swapped —
-      // trigger a rolling restart so instances pick up the new cert from env.
+      // For managed gateways the mTLS handshake material cannot be hot-swapped —
+      // trigger a rolling restart so instances pick up the new cert and key.
       if (gw.isManaged) {
         try {
           const { rollingRestartForCertRotation } = await import('./managedGateway.service');
-          await rollingRestartForCertRotation(gw.id, clientResult.certPem);
+          await rollingRestartForCertRotation(gw.id, clientResult.certPem, clientResult.keyPem);
           log.info(`[tunnel] cert-rotation: rolling restart triggered for managed gateway ${gw.id}`);
         } catch (restartErr) {
           log.warn(`[tunnel] cert-rotation: rolling restart failed for gateway ${gw.id}: ${(restartErr as Error).message}`);
