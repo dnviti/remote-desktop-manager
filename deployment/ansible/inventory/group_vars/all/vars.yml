@@ -35,6 +35,12 @@ arsenale_firewall_enabled: true
 arsenale_allowed_ssh_sources: ["0.0.0.0/0"]
 arsenale_allowed_web_sources: ["0.0.0.0/0"]
 
+# Scalability
+arsenale_server_replicas: 1
+arsenale_gocache_replicas: 1
+arsenale_gocache_peer_discovery: manual
+arsenale_gocache_peers: ""
+
 # Backup
 arsenale_backup_dir: "{{ arsenale_home }}/backups"
 arsenale_backup_retention_days: 30

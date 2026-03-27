@@ -1,15 +1,28 @@
 ---
-- name: Install Podman and dependencies
+- name: Install Podman (Fedora/RHEL)
   become: true
   become_user: root
-  package:
-    name:
-      - podman
-      - podman-compose
-      - python3-podman
-      - openssl
-      - git
+  dnf:
+    name: [podman, podman-compose, python3-podman, openssl, git]
     state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Install Podman (Debian/Ubuntu)
+  become: true
+  become_user: root
+  apt:
+    name: [podman, podman-compose, python3-podman, openssl, git]
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Install Podman (Arch)
+  become: true
+  become_user: root
+  pacman:
+    name: [podman, podman-compose, python-podman, openssl, git]
+    state: present
+  when: ansible_os_family == 'Archlinux'
 
 - name: Enable Podman socket for user
   become: true

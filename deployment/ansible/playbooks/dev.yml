@@ -1,0 +1,29 @@
+---
+- name: Set up Arsenale development environment
+  hosts: localhost
+  connection: local
+  gather_facts: true
+
+  vars:
+    arsenale_env: development
+    arsenale_home: "{{ playbook_dir }}/../../.."  # repo root
+    arsenale_cert_dir: "{{ arsenale_home }}/dev-certs"
+    arsenale_dev_state: "{{ arsenale_dev_state | default('present') }}"
+    # Dev defaults
+    arsenale_db_user: "{{ vault_dev_db_user | default('arsenale') }}"
+    arsenale_db_name: "{{ vault_dev_db_name | default('arsenale') }}"
+    arsenale_db_password: "{{ vault_dev_db_password | default(vault_postgres_password) }}"
+
+  pre_tasks:
+    - name: Check for Podman or Docker
+      command: podman --version
+      register: podman_check
+      changed_when: false
+      failed_when: false
+
+    - name: Set container runtime
+      set_fact:
+        container_runtime: "{{ 'podman' if podman_check.rc == 0 else 'docker' }}"
+
+  roles:
+    - role: dev

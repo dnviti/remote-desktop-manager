@@ -131,14 +131,23 @@ services:
 {% else %}
     image: {{ arsenale_registry }}/gocache:{{ arsenale_image_tag }}
 {% endif %}
+{% if arsenale_gocache_replicas <= 1 %}
     container_name: arsenale-gocache
+{% endif %}
+{% if arsenale_gocache_replicas > 1 %}
+    deploy:
+      replicas: {{ arsenale_gocache_replicas }}
+{% endif %}
     read_only: true
     tmpfs:
       - /tmp
     environment:
       CACHE_LISTEN: "tcp://0.0.0.0:6380"
       CACHE_HEALTH_ADDR: "0.0.0.0:6381"
-      CACHE_DISCOVERY: "manual"
+      CACHE_DISCOVERY: "{{ arsenale_gocache_peer_discovery }}"
+{% if arsenale_gocache_peers %}
+      CACHE_PEERS: "{{ arsenale_gocache_peers }}"
+{% endif %}
       CACHE_TLS_CA: /certs/ca.pem
       CACHE_TLS_CERT: /certs/server-cert.pem
       CACHE_TLS_KEY: /certs/server-key.pem
@@ -170,7 +179,13 @@ services:
 {% else %}
     image: {{ arsenale_registry }}/server:{{ arsenale_image_tag }}
 {% endif %}
+{% if arsenale_server_replicas <= 1 %}
     container_name: arsenale-server
+{% endif %}
+{% if arsenale_server_replicas > 1 %}
+    deploy:
+      replicas: {{ arsenale_server_replicas }}
+{% endif %}
     read_only: true
     tmpfs:
       - /tmp
