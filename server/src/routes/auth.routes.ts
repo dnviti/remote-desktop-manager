@@ -13,6 +13,7 @@ import {
   mfaSetupTokenSchema, mfaSetupVerifySchema, switchTenantSchema,
   forgotPasswordSchema, resetTokenSchema, completeResetSchema,
 } from '../schemas/auth.schemas';
+import { getSelfSignupEnabled } from '../services/appConfig.service';
 
 const registrationRateLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
@@ -24,8 +25,18 @@ const registrationRateLimiter = rateLimit({
 
 const router = Router();
 
+/** Reject registration early when self-signup is disabled (before body validation). */
+const enforceSelfSignup = asyncHandler(async (_req, res, next) => {
+  const enabled = await getSelfSignupEnabled();
+  if (!enabled) {
+    res.status(403).json({ error: 'Registration is currently disabled. Contact your administrator.' });
+    return;
+  }
+  next();
+});
+
 router.get('/config', asyncHandler(authController.publicAuthConfig));
-router.post('/register', registrationRateLimiter, validate(registerSchema), asyncHandler(authController.register));
+router.post('/register', registrationRateLimiter, enforceSelfSignup, validate(registerSchema), asyncHandler(authController.register));
 router.get('/verify-email', asyncHandler(authController.verifyEmail));
 router.post('/resend-verification', validate(resendVerificationSchema, 'body', 'Invalid email format'), asyncHandler(authController.resendVerification));
 router.post('/login', loginRateLimiter, validate(loginSchema), asyncHandler(authController.login));
