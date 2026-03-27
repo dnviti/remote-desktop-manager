@@ -1,11 +1,9 @@
 import './env';
+import { readRequiredSecret } from '../utils/secrets';
 import { PrismaClient } from '../generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
-const connectionString = process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error('DATABASE_URL environment variable is required');
-}
+const connectionString = readRequiredSecret('database_url', 'DATABASE_URL', 'PostgreSQL connection string (DATABASE_URL)');
 
 const adapter = new PrismaPg({
   connectionString,

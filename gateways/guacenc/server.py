@@ -39,6 +39,20 @@ CLEANUP_DEFAULT_MAX_AGE_DAYS = 90
 START_TIME = time.monotonic()
 
 
+def read_secret(secret_name, env_fallback, default=''):
+    """Read from Podman secret file, fall back to env var."""
+    secret_dir = os.environ.get('SECRETS_DIR', '/run/secrets')
+    secret_path = os.path.join(secret_dir, secret_name)
+    try:
+        with open(secret_path) as f:
+            value = f.read().strip()
+            if value:
+                return value
+    except FileNotFoundError:
+        pass
+    return os.environ.get(env_fallback, default)
+
+
 # ── Job Store ────────────────────────────────────────────────────────
 
 class JobStore:
@@ -286,7 +300,7 @@ class GuacencHandler(BaseHTTPRequestHandler):
 
     def _check_auth(self):
         """Validate bearer token if GUACENC_AUTH_TOKEN is set."""
-        expected = os.environ.get('GUACENC_AUTH_TOKEN', '')
+        expected = read_secret('guacenc_auth_token', 'GUACENC_AUTH_TOKEN')
         if not expected:
             return True
         auth_header = self.headers.get('Authorization', '')
@@ -534,7 +548,7 @@ if __name__ == "__main__":
     else:
         print("[guacenc] WARNING: Running without TLS")
 
-    auth_token = os.environ.get('GUACENC_AUTH_TOKEN', '')
+    auth_token = read_secret('guacenc_auth_token', 'GUACENC_AUTH_TOKEN')
     print(f"[guacenc] Bearer auth: {'enabled' if auth_token else 'disabled'}")
     print(f"[guacenc] Listening on port {PORT}")
     print(f"[guacenc] Max concurrent jobs: {MAX_CONCURRENT_JOBS}")

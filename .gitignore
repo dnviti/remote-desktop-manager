@@ -400,3 +400,6 @@ __marimo__/
 *.sql
 
 recordings/
+
+# Podman/Docker compose file-based secrets
+secrets/
