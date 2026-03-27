@@ -1,11 +1,11 @@
 services:
   postgres:
-    image: docker.io/library/postgres:18
+    image: postgres:18
     container_name: postgres
     environment:
-      POSTGRES_USER: arsenale
-      POSTGRES_PASSWORD: arsenale_password
-      POSTGRES_DB: arsenale
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata_dev:/var/lib/postgresql
       - ./dev-certs/postgres/server-cert.pem:/certs/server-cert.pem:ro
@@ -31,15 +31,15 @@ services:
       - net-db
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U arsenale -d arsenale"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
 
   guacd:
-    image: docker.io/guacamole/guacd:1.6.0
+    image: guacamole/guacd:1.6.0
     container_name: guacd
-    command: ["-C", "/certs/server-cert.pem", "-K", "/certs/server-key.pem"]
+    command: ["-C", "${GUACD_SSL_CERT}", "-K", "${GUACD_SSL_KEY}"]
     volumes:
       - ${RECORDING_PATH:-./data/recordings}:/recordings
       - ./dev-certs/guacd:/certs:ro
@@ -47,7 +47,7 @@ services:
       - net-guacd
     restart: always
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
+      test: ["CMD-SHELL", "netstat -tln | grep -q ':${GUACD_PORT} ' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -60,17 +60,21 @@ services:
     container_name: guacenc
     restart: always
     environment:
-      - RECORDING_PATH=/recordings
-      - GUACENC_TLS_CERT=/certs/server-cert.pem
-      - GUACENC_TLS_KEY=/certs/server-key.pem
-      - GUACENC_AUTH_TOKEN=${GUACENC_AUTH_TOKEN:-}
+      RECORDING_PATH: ${GUACENC_RECORDING_PATH}
+      GUACENC_TLS_CERT: ${GUACENC_TLS_CERT}
+      GUACENC_TLS_KEY: ${GUACENC_TLS_KEY}
+      GUACENC_AUTH_TOKEN: ${GUACENC_AUTH_TOKEN:-}
     volumes:
       - ${RECORDING_PATH:-./data/recordings}:/recordings
       - ./dev-certs/guacenc:/certs:ro
     networks:
       - net-guacenc
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request,ssl; urllib.request.urlopen('https://localhost:3003/health',context=ssl._create_unverified_context())\" || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          'python3 -c "import urllib.request,ssl; urllib.request.urlopen(''https://localhost:3003/health'',context=ssl._create_unverified_context())" || exit 1',
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -82,16 +86,14 @@ services:
       dockerfile: Dockerfile
     container_name: gocache
     environment:
-      CACHE_LISTEN: "tcp://0.0.0.0:6380"
-      CACHE_HEALTH_ADDR: "0.0.0.0:6381"
-      CACHE_DISCOVERY: "manual"
-      # mTLS — cert paths inside the container (mounted from host below)
-      CACHE_TLS_CA: "${CACHE_TLS_CA:-}"
-      CACHE_TLS_CERT: "${CACHE_TLS_CERT:-}"
-      CACHE_TLS_KEY: "${CACHE_TLS_KEY:-}"
+      CACHE_LISTEN: ${CACHE_LISTEN}
+      CACHE_HEALTH_ADDR: ${CACHE_HEALTH_ADDR}
+      CACHE_DISCOVERY: ${CACHE_DISCOVERY}
+      CACHE_TLS_CA: ${CACHE_TLS_CA:-}
+      CACHE_TLS_CERT: ${CACHE_TLS_CERT:-}
+      CACHE_TLS_KEY: ${CACHE_TLS_KEY:-}
     volumes:
       - gocache_data_dev:/data
-      # Mount gocache mTLS certificates (read-only) — shared CA at /certs/ca.pem
       - ./dev-certs/ca.pem:/certs/ca.pem:ro
       - ./dev-certs/gocache/server-cert.pem:/certs/server-cert.pem:ro
       - ./dev-certs/gocache/server-key.pem:/certs/server-key.pem:ro
@@ -99,7 +101,11 @@ services:
       - net-cache
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://localhost:6381/health || wget -qO- http://localhost:6381/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-check-certificate -qO- https://localhost:6381/health || wget -qO- http://localhost:6381/health || exit 1",
+        ]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -108,7 +114,8 @@ services:
   server:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: server/Dockerfile
+      target: dev
     container_name: arsenale-server
     working_dir: /app
     userns_mode: keep-id
@@ -125,36 +132,36 @@ services:
       - .env
     environment:
       # Override host-oriented values for Docker networking
-      DATABASE_URL: postgresql://arsenale:arsenale_password@postgres:5432/arsenale?sslmode=require
-      GUACD_HOST: guacd
-      GUACD_PORT: "4822"
-      GUACD_SSL: "true"
-      GUACD_CA_CERT: /app/dev-certs/ca.pem
-      DOCKER_NETWORK: arsenale-net-gateway
-      DOCKER_SOCKET_PATH: /var/run/docker.sock
-      NODE_ENV: development
-      NODE_EXTRA_CA_CERTS: /app/dev-certs/ca.pem
+      DATABASE_URL: ${DATABASE_URL_DOCKER}
+      GUACD_HOST: ${GUACD_HOST_DOCKER}
+      GUACD_PORT: ${GUACD_PORT}
+      GUACD_SSL: ${GUACD_SSL}
+      GUACD_CA_CERT: ${GUACD_CA_CERT_DOCKER}
+      DOCKER_NETWORK: ${DOCKER_NETWORK}
+      DOCKER_SOCKET_PATH: ${DOCKER_SOCKET_PATH}
+      NODE_ENV: ${NODE_ENV}
+      NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS_DOCKER}
       # Server TLS (Express HTTPS + Guacamole WSS)
-      SERVER_TLS_CERT: /app/dev-certs/server/server-cert.pem
-      SERVER_TLS_KEY: /app/dev-certs/server/server-key.pem
+      SERVER_TLS_CERT: ${SERVER_TLS_CERT_DOCKER}
+      SERVER_TLS_KEY: ${SERVER_TLS_KEY_DOCKER}
       # Tunnel mTLS server
-      TUNNEL_SERVER_CERT: /app/dev-certs/tunnel/server-cert.pem
-      TUNNEL_SERVER_KEY: /app/dev-certs/tunnel/server-key.pem
-      TUNNEL_SERVER_CA: /app/dev-certs/ca.pem
+      TUNNEL_SERVER_CERT: ${TUNNEL_SERVER_CERT_DOCKER}
+      TUNNEL_SERVER_KEY: ${TUNNEL_SERVER_KEY_DOCKER}
+      TUNNEL_SERVER_CA: ${TUNNEL_SERVER_CA_DOCKER}
       # gocache mTLS client certs (server -> gocache)
-      CACHE_SIDECAR_URL: gocache:6380
-      CACHE_SIDECAR_TLS_CA: /app/dev-certs/ca.pem
-      CACHE_SIDECAR_TLS_CERT: /app/dev-certs/gocache/client-cert.pem
-      CACHE_SIDECAR_TLS_KEY: /app/dev-certs/gocache/client-key.pem
+      CACHE_SIDECAR_URL: ${CACHE_SIDECAR_URL_DOCKER}
+      CACHE_SIDECAR_TLS_CA: ${CACHE_SIDECAR_TLS_CA_DOCKER}
+      CACHE_SIDECAR_TLS_CERT: ${CACHE_SIDECAR_TLS_CERT_DOCKER}
+      CACHE_SIDECAR_TLS_KEY: ${CACHE_SIDECAR_TLS_KEY_DOCKER}
       # guacenc sidecar
-      GUACENC_SERVICE_URL: https://guacenc:3003
-      GUACENC_USE_TLS: "true"
+      GUACENC_SERVICE_URL: ${GUACENC_SERVICE_URL_DOCKER}
+      GUACENC_USE_TLS: ${GUACENC_USE_TLS}
       # Gateway gRPC mTLS client certs (server -> ssh-gateway key mgmt)
-      GATEWAY_GRPC_TLS_CA: /app/dev-certs/ca.pem
-      GATEWAY_GRPC_TLS_CERT: /app/dev-certs/ssh-gateway/client-cert.pem
-      GATEWAY_GRPC_TLS_KEY: /app/dev-certs/ssh-gateway/client-key.pem
+      GATEWAY_GRPC_TLS_CA: ${GATEWAY_GRPC_TLS_CA_DOCKER}
+      GATEWAY_GRPC_TLS_CERT: ${GATEWAY_GRPC_TLS_CERT_DOCKER}
+      GATEWAY_GRPC_TLS_KEY: ${GATEWAY_GRPC_TLS_KEY_DOCKER}
       # Client URL
-      CLIENT_URL: https://localhost:3000
+      CLIENT_URL: ${CLIENT_URL}
     networks:
       - net-db
       - net-guacd
@@ -170,7 +177,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://localhost:3001/api/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-check-certificate -qO- https://localhost:${PORT}/api/health || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -179,7 +190,8 @@ services:
   client:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: client/Dockerfile
+      target: dev
     container_name: arsenale-client
     working_dir: /app/client
     userns_mode: keep-id
@@ -191,11 +203,11 @@ services:
     ports:
       - "3000:3000"
     environment:
-      VITE_API_TARGET: https://server:3001
-      VITE_GUAC_TARGET: https://server:3002
-      VITE_TLS_CERT: /app/dev-certs/server/server-cert.pem
-      VITE_TLS_KEY: /app/dev-certs/server/server-key.pem
-      NODE_EXTRA_CA_CERTS: /app/dev-certs/ca.pem
+      VITE_API_TARGET: ${VITE_API_TARGET_DOCKER}
+      VITE_GUAC_TARGET: ${VITE_GUAC_TARGET_DOCKER}
+      VITE_TLS_CERT: ${VITE_TLS_CERT_DOCKER}
+      VITE_TLS_KEY: ${VITE_TLS_KEY_DOCKER}
+      NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS_DOCKER}
     networks:
       - net-gateway
     depends_on:
@@ -203,7 +215,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://localhost:3000 || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-check-certificate -qO- https://localhost:3000 || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -214,16 +230,14 @@ services:
       context: .
       dockerfile: gateways/ssh-gateway/Dockerfile
     container_name: arsenale-ssh-gateway
-    ports:
-      - "2222:2222"
     environment:
-      SSH_PORT: "2222"
+      SSH_PORT: ${SSH_PORT}
       # gRPC key management mTLS (replaces old HTTPS + bearer token API)
-      GATEWAY_GRPC_PORT: "9022"
-      GATEWAY_GRPC_TLS_CA: /certs/ca.pem
-      GATEWAY_GRPC_TLS_CERT: /certs/server-cert.pem
-      GATEWAY_GRPC_TLS_KEY: /certs/server-key.pem
-      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      GATEWAY_GRPC_PORT: ${GATEWAY_GRPC_PORT}
+      GATEWAY_GRPC_TLS_CA: ${GATEWAY_GRPC_TLS_CA_GW}
+      GATEWAY_GRPC_TLS_CERT: ${GATEWAY_GRPC_TLS_CERT_GW}
+      GATEWAY_GRPC_TLS_KEY: ${GATEWAY_GRPC_TLS_KEY_GW}
+      NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS_GW}
     volumes:
       - ./dev-certs/ssh-gateway:/certs:ro
       - ./dev-certs/ca.pem:/certs/ca.pem:ro
@@ -234,7 +248,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
+      test: ["CMD-SHELL", "nc -z localhost ${SSH_PORT} || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -255,11 +269,11 @@ services:
         fi
         exec node dist/index.js
     environment:
-      TUNNEL_SERVER_URL: "wss://server:3011"
-      TUNNEL_TOKEN: "${TUNNEL_TOKEN:-}"
-      TUNNEL_GATEWAY_ID: "${TUNNEL_GATEWAY_ID:-}"
-      TUNNEL_CA_CERT: /certs/ca.pem
-      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      TUNNEL_SERVER_URL: ${TUNNEL_SERVER_URL_DOCKER}
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+      TUNNEL_GATEWAY_ID: ${TUNNEL_GATEWAY_ID:-}
+      TUNNEL_CA_CERT: ${TUNNEL_CA_CERT_GW}
+      NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS_GW}
     volumes:
       - ./dev-certs/ca.pem:/certs/ca.pem:ro
       - ./dev-certs/tunnel:/certs/tunnel:ro
@@ -270,7 +284,7 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"process.exit(0)\" || exit 1"]
+      test: ["CMD-SHELL", 'node -e "process.exit(0)" || exit 1']
       interval: 10s
       timeout: 5s
       retries: 3
@@ -282,11 +296,11 @@ services:
       dockerfile: gateways/db-proxy/Dockerfile
     container_name: arsenale-db-proxy
     environment:
-      DB_LISTEN_PORT: "5433"
-      TUNNEL_SERVER_URL: "${DB_PROXY_TUNNEL_SERVER_URL:-}"
-      TUNNEL_TOKEN: "${DB_PROXY_TUNNEL_TOKEN:-}"
-      TUNNEL_GATEWAY_ID: "${DB_PROXY_TUNNEL_GATEWAY_ID:-}"
-      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      DB_LISTEN_PORT: ${DB_LISTEN_PORT}
+      TUNNEL_SERVER_URL: ${DB_PROXY_TUNNEL_SERVER_URL:-}
+      TUNNEL_TOKEN: ${DB_PROXY_TUNNEL_TOKEN:-}
+      TUNNEL_GATEWAY_ID: ${DB_PROXY_TUNNEL_GATEWAY_ID:-}
+      NODE_EXTRA_CA_CERTS: ${NODE_EXTRA_CA_CERTS_GW}
     volumes:
       - ./dev-certs/ca.pem:/certs/ca.pem:ro
     networks:
@@ -308,12 +322,12 @@ services:
       dockerfile: Dockerfile
     container_name: arsenale-rdgw
     environment:
-      RDGW_LISTEN_ADDR: ":3443"
-      RDGW_TLS_CERT: /certs/server-cert.pem
-      RDGW_TLS_KEY: /certs/server-key.pem
-      RDGW_ARSENALE_API_URL: "https://server:3001"
-      RDGW_API_TOKEN: "${RDGW_API_TOKEN:-}"
-      RDGW_LOG_LEVEL: "debug"
+      RDGW_LISTEN_ADDR: ${RDGW_LISTEN_ADDR}
+      RDGW_TLS_CERT: ${RDGW_TLS_CERT_GW}
+      RDGW_TLS_KEY: ${RDGW_TLS_KEY_GW}
+      RDGW_ARSENALE_API_URL: ${RDGW_ARSENALE_API_URL_DOCKER}
+      RDGW_API_TOKEN: ${RDGW_API_TOKEN:-}
+      RDGW_LOG_LEVEL: ${RDGW_LOG_LEVEL}
     volumes:
       - ./dev-certs/rdgw:/certs:ro
       - ./dev-certs/ca.pem:/certs/ca.pem:ro
@@ -324,7 +338,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wget --no-check-certificate -qO- https://localhost:3443/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget --no-check-certificate -qO- https://localhost:3443/health || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 3

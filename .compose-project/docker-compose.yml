@@ -118,8 +118,8 @@ services:
       - ${GUACD_CERT_DIR:-./arsenale/dev-certs/guacd}:/certs:ro
     restart: always
     healthcheck:
-      # Verify guacd is listening on its native protocol port.
-      test: ["CMD-SHELL", "nc -z localhost 4822 || exit 1"]
+      # Verify guacd is listening — use netstat instead of nc to avoid SSL accept errors
+      test: ["CMD-SHELL", "netstat -tln | grep -q ':4822 ' || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3

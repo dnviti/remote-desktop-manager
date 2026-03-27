@@ -1,41 +1,109 @@
-FROM node:22-alpine
+# ---------------------------------------------------------------------------
+# Stage 1: Install ALL dependencies (dev + prod) with native build tools
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS deps
 
-RUN apk update && apk upgrade --no-cache
+RUN apk add --no-cache python3 make g++
 
 WORKDIR /app
 
 COPY .npmrc* ./
-COPY server/package.json ./
-COPY package-lock.json ./
-RUN npm install --production=false
+COPY package.json package-lock.json ./
+COPY server/package.json server/
+COPY client/package.json client/
 
-# Copy everything prisma needs BEFORE generate
-COPY server/prisma ./prisma
-COPY server/prisma.config.ts ./
-COPY server/tsconfig.json ./
-RUN npx prisma generate
+RUN npm ci
 
-# Copy source and compile
-COPY server/src ./src
+# ---------------------------------------------------------------------------
+# Stage: Dev target (deps only — source bind-mounted at runtime)
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS dev
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
+COPY server/prisma server/prisma
+COPY server/prisma.config.ts server/
+COPY server/tsconfig.json server/
+
+USER node
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build (Prisma generate + TypeScript compile)
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS build
+
+WORKDIR /app
+
+COPY --from=deps /app/node_modules ./node_modules
+COPY package.json ./
+COPY server/ ./server/
+COPY infrastructure/gocache/proto/cache.proto ./infrastructure/gocache/proto/cache.proto
+
+# Generate Prisma client
+RUN npx prisma generate --schema=server/prisma/schema.prisma
+
+# Compile TypeScript
+WORKDIR /app/server
 RUN npx tsc
 
-# Copy cache proto for gRPC client (resolves to dist/utils/cache.proto at runtime)
-COPY infrastructure/gocache/proto/cache.proto ./dist/utils/cache.proto
+# ---------------------------------------------------------------------------
+# Stage 3: Production dependencies only (no dev deps, no build tools)
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS prod-deps
 
-RUN npm prune --production
+RUN apk add --no-cache python3 make g++
 
-RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/arsenale && chmod +x /usr/local/bin/arsenale
+WORKDIR /app
 
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup \
-    && chown -R appuser:appgroup /app
+COPY .npmrc* ./
+COPY package.json package-lock.json ./
+COPY server/package.json server/
+COPY client/package.json client/
 
-RUN mkdir -p /guacd-drive /recordings && chmod 1777 /guacd-drive /recordings
+RUN npm ci --omit=dev && \
+    npx prisma generate --schema=server/prisma/schema.prisma 2>/dev/null || true
+
+# Remove build tools from this layer (native modules already compiled)
+# The final stage copies only node_modules, not the apk packages
+
+# ---------------------------------------------------------------------------
+# Stage 4: Runtime (minimal — no build tools, no dev deps, no source)
+# ---------------------------------------------------------------------------
+FROM node:22-alpine
+
+RUN apk upgrade --no-cache
+
+WORKDIR /app
+
+# Production node_modules (with Prisma client generated)
+COPY --from=prod-deps /app/node_modules ./node_modules
+
+# Compiled JavaScript output
+COPY --from=build /app/server/dist ./dist
+
+# Prisma schema + migrations (needed for prisma migrate deploy at runtime)
+COPY --from=build /app/server/prisma ./prisma
+COPY --from=build /app/server/prisma.config.ts ./prisma.config.ts
+
+# Cache proto for gRPC client
+COPY --from=build /app/infrastructure/gocache/proto/cache.proto ./dist/utils/cache.proto
+
+# CLI wrapper
+RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/arsenale && \
+    chmod +x /usr/local/bin/arsenale
+
+# Rootless: create user + writable directories before switching
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /guacd-drive /recordings && \
+    chown appuser:appgroup /guacd-drive /recordings /app
 
 USER appuser
 
 EXPOSE 3001 3002
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=5 --start-period=30s \
-    CMD wget -qO- http://localhost:3001/api/health || exit 1
+    CMD wget --no-check-certificate -qO- https://localhost:3001/api/health || exit 1
 
 CMD ["node", "dist/index.js"]
