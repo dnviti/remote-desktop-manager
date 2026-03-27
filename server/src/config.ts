@@ -36,10 +36,10 @@ export const config = {
   guacamoleWsPort: parseInt(process.env.GUACAMOLE_WS_PORT || '3002', 10),
   jwtSecret: (() => {
     const secret = process.env.JWT_SECRET;
-    if (!secret && process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
-      throw new Error('JWT_SECRET is required (set NODE_ENV=development to use a default)');
+    if (!secret) {
+      throw new Error('JWT_SECRET is required. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(64).toString(\'hex\'))"');
     }
-    return secret || 'dev-secret-change-me';
+    return secret;
   })(),
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
@@ -49,10 +49,10 @@ export const config = {
   guacdCaCert: process.env.GUACD_CA_CERT || '',
   guacamoleSecret: (() => {
     const secret = process.env.GUACAMOLE_SECRET;
-    if (!secret && process.env.NODE_ENV === 'production') {
-      throw new Error('GUACAMOLE_SECRET is required in production');
+    if (!secret) {
+      throw new Error('GUACAMOLE_SECRET is required. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
     }
-    return secret || 'dev-guac-secret';
+    return secret;
   })(),
   serverEncryptionKey: resolveServerEncryptionKey(),
   // Gateway key management gRPC (mTLS — replaces old HTTP API + bearer token)
@@ -198,6 +198,8 @@ export const config = {
   dbPoolMaxConnections: parseInt(process.env.DB_POOL_MAX_CONNECTIONS || '3', 10),
   dbPoolIdleTimeoutMs: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '60000', 10),
   // Container orchestrator
+  // TODO: Podman/Docker socket mount was removed from compose for security (C4).
+  // If orchestrator features are needed, implement a socket-less API or sidecar pattern.
   orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'podman' | 'kubernetes' | 'none',
   dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',
   podmanSocketPath: process.env.PODMAN_SOCKET_PATH || (
@@ -216,7 +218,17 @@ export const config = {
   recordingVolume: process.env.RECORDING_VOLUME || '',
   recordingRetentionDays: parseInt(process.env.RECORDING_RETENTION_DAYS || '90', 10),
   // Guacenc video conversion sidecar
-  guacencAuthToken: process.env.GUACENC_AUTH_TOKEN || '',
+  guacencAuthToken: (() => {
+    const token = process.env.GUACENC_AUTH_TOKEN || '';
+    if (!token && process.env.NODE_ENV === 'production') {
+      throw new Error('GUACENC_AUTH_TOKEN is required in production. Generate one with: node -e "console.log(require(\'crypto\').randomBytes(32).toString(\'hex\'))"');
+    }
+    if (!token) {
+      // eslint-disable-next-line no-console
+      console.warn('[config] GUACENC_AUTH_TOKEN not set — guacenc sidecar requests will be unauthenticated');
+    }
+    return token;
+  })(),
   guacencUseTls: process.env.GUACENC_USE_TLS === 'true',
   guacencTlsCa: process.env.GUACENC_TLS_CA || '',
   guacencServiceUrl: process.env.GUACENC_SERVICE_URL || 'http://guacenc:3003',
@@ -271,6 +283,10 @@ export const config = {
     autoProvision: process.env.LDAP_AUTO_PROVISION !== 'false',
     defaultTenantId: process.env.LDAP_DEFAULT_TENANT_ID || '',
   },
+  // HIBP breach check behavior when API is unreachable (default: fail closed)
+  hibpFailOpen: process.env.HIBP_FAIL_OPEN === 'true',
+  // Host header validation (default: enabled)
+  hostValidationEnabled: process.env.HOST_VALIDATION_ENABLED !== 'false',
   // Allow connections to private/local network addresses
   allowLocalNetwork: process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() !== 'false',
   // Allow connections to loopback addresses (localhost, 127.x, ::1) — opt-in, secure by default

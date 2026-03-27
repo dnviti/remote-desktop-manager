@@ -225,7 +225,7 @@ export async function issueTokens(user: {
     ? activeTenantSettings.jwtRefreshExpiresInSeconds * 1000
     : parseExpiry(config.jwtRefreshExpiresIn);
 
-  const accessToken = jwt.sign(payload, config.jwtSecret, {
+  const accessToken = jwt.sign({ ...payload, type: 'access' }, config.jwtSecret, {
     expiresIn: effectiveAccessExpiresIn,
   } as jwt.SignOptions);
 

@@ -1,4 +1,6 @@
 import crypto from 'crypto';
+import { AppError } from '../middleware/error.middleware';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 const log = logger.child('pwnedPassword');
@@ -38,8 +40,11 @@ export async function checkPwnedPassword(password: string): Promise<number> {
     });
 
     if (!response.ok) {
-      log.warn(`HIBP API returned status ${response.status}`);
-      return 0; // fail open — do not block the user
+      if (config.hibpFailOpen) {
+        log.warn(`HIBP API returned status ${response.status}, proceeding (HIBP_FAIL_OPEN=true)`);
+        return 0;
+      }
+      throw new AppError('Password strength could not be verified. Please try again later.', 503);
     }
 
     const text = await response.text();
@@ -55,8 +60,12 @@ export async function checkPwnedPassword(password: string): Promise<number> {
 
     return 0;
   } catch (err) {
-    log.warn('Failed to check HIBP API', err);
-    return 0; // fail open — do not block the user
+    if (err instanceof AppError) throw err;
+    if (config.hibpFailOpen) {
+      log.warn('Failed to check HIBP API, proceeding (HIBP_FAIL_OPEN=true)');
+      return 0;
+    }
+    throw new AppError('Password strength could not be verified. Please try again later.', 503);
   }
 }
 

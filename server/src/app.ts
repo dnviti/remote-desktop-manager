@@ -87,6 +87,19 @@ app.use((_req, res, next) => {
   next();
 });
 if (config.trustProxy !== false) app.set('trust proxy', config.trustProxy);
+
+// Host header validation — prevent DNS rebinding / cache poisoning
+if (config.hostValidationEnabled) {
+  const allowedHostname = (() => {
+    try { return new URL(config.clientUrl).hostname; } catch { return ''; }
+  })();
+  const localHosts = new Set(['localhost', '127.0.0.1', '::1']);
+  app.use((req, res, next) => {
+    const host = (req.hostname || req.get('host') || '').replace(/:\d+$/, '');
+    if (!host || host === allowedHostname || localHosts.has(host)) return next();
+    res.status(400).json({ error: 'Invalid Host header' });
+  });
+}
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin || origin === config.clientUrl) {

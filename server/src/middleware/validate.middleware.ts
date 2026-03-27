@@ -1,8 +1,17 @@
 import { Request, Response, NextFunction, RequestHandler } from 'express';
-import { ZodSchema } from 'zod';
+import { ZodSchema, ZodIssueCode } from 'zod';
 import { AppError } from './error.middleware';
 
 type ValidateSource = 'body' | 'query' | 'params';
+
+/** Sanitize Zod issue messages to avoid leaking internal type names. */
+function sanitizeZodMessage(issue: { code: string; path: PropertyKey[]; message: string }): string {
+  if (issue.code === ZodIssueCode.invalid_union || issue.code === ZodIssueCode.invalid_value) {
+    const field = issue.path.length > 0 ? issue.path.join('.') : 'field';
+    return `Invalid value for ${field}`;
+  }
+  return issue.message;
+}
 
 interface ValidateSchemaMap {
   body?: ZodSchema;
@@ -29,7 +38,7 @@ export function validate(
         if (!schema) continue;
         const result = schema.safeParse(req[src]);
         if (!result.success) {
-          return next(new AppError(result.error.issues[0].message, 400));
+          return next(new AppError(sanitizeZodMessage(result.error.issues[0]), 400));
         }
         if (src === 'body') {
           req.body = result.data;
@@ -44,7 +53,7 @@ export function validate(
   return (req: Request, _res: Response, next: NextFunction) => {
     const result = schemaOrMap.safeParse(req[source]);
     if (!result.success) {
-      const message = errorMessage ?? result.error.issues[0].message;
+      const message = errorMessage ?? sanitizeZodMessage(result.error.issues[0]);
       return next(new AppError(message, 400));
     }
     if (source === 'body') {
