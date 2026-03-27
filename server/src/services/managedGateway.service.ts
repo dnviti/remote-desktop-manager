@@ -11,6 +11,7 @@ import * as auditService from './audit.service';
 import { logger } from '../utils/logger';
 import { findFreePort } from '../utils/freePort';
 import { decryptWithServerKey } from './crypto.service';
+import { pushKey as grpcPushKey, closeGatewayKeyClient } from '../utils/gatewayKeyClient';
 import {
   emitInstancesForGateway,
   emitScalingForGateway,
@@ -684,6 +685,34 @@ export async function healthCheck(): Promise<void> {
             errorMessage: null,
           },
         });
+
+        // Instance recovered from failure — push SSH keys via gRPC
+        if (instance.consecutiveFailures > 0) {
+          try {
+            const gw = await prisma.gateway.findUnique({
+              where: { id: instance.gatewayId },
+              select: { type: true, tenantId: true },
+            });
+            if (gw?.type === 'MANAGED_SSH') {
+              const keyPair = await prisma.sshKeyPair.findUnique({
+                where: { tenantId: gw.tenantId },
+                select: { publicKey: true },
+              });
+              if (keyPair) {
+                const grpcPort = config.gatewayGrpcPort;
+                const res = await grpcPushKey(instance.host, grpcPort, keyPair.publicKey);
+                if (res.ok) {
+                  log.info(`Auto-pushed SSH key to recovered instance ${instance.id} (${instance.host}:${grpcPort})`);
+                } else {
+                  log.warn(`SSH key push to recovered instance ${instance.id} failed: ${res.message}`);
+                }
+              }
+            }
+          } catch (pushErr) {
+            log.warn(`Failed to auto-push SSH key to recovered instance ${instance.id}: ${pushErr instanceof Error ? pushErr.message : 'Unknown error'}`);
+            closeGatewayKeyClient(instance.host, config.gatewayGrpcPort);
+          }
+        }
       } else {
         unhealthy++;
         const newFailures = instance.consecutiveFailures + 1;
