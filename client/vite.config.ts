@@ -161,6 +161,19 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    fs: {
+      // Restrict file serving to the project workspace only — prevents /@fs path traversal
+      strict: true,
+      // Block sensitive files from being served even within the allowed root
+      deny: [
+        '.env',
+        '.env.*',
+        '.git/**',
+        'node_modules/.vite/deps/_metadata.json',
+        '**/*.pem',
+        '**/*.key',
+      ],
+    },
     https: (() => {
       // Use provided certs or fall back to auto-generated dev certs from the server
       const certPath = process.env.VITE_TLS_CERT || '../dev-certs/server/server-cert.pem';
