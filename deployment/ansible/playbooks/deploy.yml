@@ -1,8 +1,37 @@
 ---
-- name: Deploy Arsenale on Podman
-  hosts: arsenale-server
-  become: true
-  become_user: "{{ arsenale_user }}"
+# =============================================================================
+# Arsenale Deployment — unified playbook for production AND development
+# =============================================================================
+# Usage:
+#   Production:   ansible-playbook playbooks/deploy.yml --ask-vault-pass
+#   Development:  ansible-playbook playbooks/deploy.yml -e arsenale_env=development
+#   Dev teardown: ansible-playbook playbooks/deploy.yml -e arsenale_env=development -e arsenale_state=absent
+#
+# The arsenale_env variable controls the environment. All roles are shared;
+# templates use conditionals for environment-specific behavior.
+# =============================================================================
+
+- name: "Deploy Arsenale ({{ arsenale_env | default('production') }})"
+  hosts: "{{ 'localhost' if (arsenale_env | default('production')) == 'development' else 'arsenale-server' }}"
+  connection: "{{ 'local' if (arsenale_env | default('production')) == 'development' else 'ssh' }}"
+  become: "{{ (arsenale_env | default('production')) != 'development' }}"
+  become_user: "{{ arsenale_user | default('arsenale') }}"
+  gather_facts: true
+
+  vars:
+    _is_dev: "{{ (arsenale_env | default('production')) == 'development' }}"
+    # Environment-specific overrides
+    arsenale_node_env: "{{ 'development' if _is_dev | bool else 'production' }}"
+    arsenale_log_level: "{{ 'debug' if _is_dev | bool else 'info' }}"
+    arsenale_log_http_requests: "{{ 'true' if _is_dev | bool else 'false' }}"
+    arsenale_log_guacamole: "{{ 'true' if _is_dev | bool else 'false' }}"
+    arsenale_firewall_enabled: "{{ false if _is_dev | bool else true }}"
+    arsenale_build_images: "{{ true if _is_dev | bool else arsenale_build_images | default(true) }}"
+    # Dev uses repo root, prod uses arsenale_home
+    arsenale_home: "{{ (playbook_dir + '/../../..') if _is_dev | bool else arsenale_home | default('/opt/arsenale') }}"
+    arsenale_cert_dir: "{{ (arsenale_home + '/dev-certs') if _is_dev | bool else (arsenale_home + '/certs') }}"
+    # State control (for teardown: -e arsenale_state=absent)
+    arsenale_state: "{{ arsenale_state | default('present') }}"
 
   pre_tasks:
     - name: Validate required vault secrets
@@ -13,12 +42,57 @@
           - vault_server_encryption_key != 'CHANGE_ME'
           - vault_postgres_password != 'CHANGE_ME'
           - vault_guacenc_auth_token != 'CHANGE_ME'
-        fail_msg: "Run 'ansible-playbook playbooks/setup-vault.yml' first to generate secrets"
+        fail_msg: "Run 'make setup' or './scripts/generate-vault.sh' first to generate secrets"
+      when: arsenale_state == 'present'
+
+    - name: Detect container runtime (dev)
+      command: podman --version
+      register: podman_check
+      changed_when: false
+      failed_when: false
+      when: _is_dev | bool
+
+    - name: Set container runtime
+      set_fact:
+        container_runtime: "{{ 'podman' if (podman_check.rc | default(1)) == 0 else 'docker' }}"
+      when: _is_dev | bool
+
+    - name: "Environment: {{ arsenale_env | default('production') }}"
+      debug:
+        msg: |
+          Mode:       {{ arsenale_env | default('production') }}
+          Node env:   {{ arsenale_node_env }}
+          Log level:  {{ arsenale_log_level }}
+          Build:      {{ arsenale_build_images }}
+          Firewall:   {{ arsenale_firewall_enabled }}
+          Certs:      {{ arsenale_cert_dir }}
+          State:      {{ arsenale_state }}
 
   roles:
-    - prerequisites
-    - certificates
-    - podman_secrets
+    - role: prerequisites
+      when: not (_is_dev | bool)
+    - role: certificates
+      when: arsenale_state == 'present'
+    - role: podman_secrets
+      when: arsenale_state == 'present'
     - deploy
-    - firewall
-    - healthcheck
+    - role: firewall
+      when: arsenale_firewall_enabled | bool
+    - role: healthcheck
+      when: arsenale_state == 'present'
+
+  post_tasks:
+    - name: Generate Prisma client (dev)
+      command: npm run db:generate
+      args:
+        chdir: "{{ arsenale_home }}"
+      when: _is_dev | bool and arsenale_state == 'present'
+      changed_when: true
+
+    - name: Development ready
+      debug:
+        msg: |
+          Arsenale dev stack running (all services, verbose logging).
+          Run on host for hot-reload: npm run dev
+          Stop: ansible-playbook playbooks/deploy.yml -e arsenale_env=development -e arsenale_state=absent
+      when: _is_dev | bool and arsenale_state == 'present'

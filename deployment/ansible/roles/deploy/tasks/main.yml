@@ -1,34 +1,64 @@
 ---
+# Unified deploy role — handles both production (podman) and development
+
 - name: Template compose file
   template:
     src: compose.yml.j2
     dest: "{{ arsenale_home }}/docker-compose.yml"
     mode: "0640"
+  when: arsenale_state == 'present'
 
 - name: Template environment file (non-secret config only)
   template:
     src: env.j2
     dest: "{{ arsenale_home }}/.env"
     mode: "0640"
+  when: arsenale_state == 'present'
+
+# --- Build / Pull ---
+
+- name: Set compose command
+  set_fact:
+    _compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ arsenale_home }}/docker-compose.yml"
 
 - name: Build images from source
   command: >
-    podman compose -f {{ arsenale_home }}/docker-compose.yml
-    build --no-cache
-  when: arsenale_build_images | bool
+    {{ _compose_cmd }} build --no-cache
+  when: arsenale_state == 'present' and arsenale_build_images | bool
   changed_when: true
 
 - name: Pull pre-built images
   command: >
-    podman compose -f {{ arsenale_home }}/docker-compose.yml
-    pull
-  when: not (arsenale_build_images | bool)
+    {{ _compose_cmd }} pull
+  when: arsenale_state == 'present' and not (arsenale_build_images | bool)
   changed_when: false
+
+# --- Deploy / Teardown ---
 
 - name: Deploy Arsenale stack
   command: >
-    podman compose -f {{ arsenale_home }}/docker-compose.yml
-    up -d --remove-orphans
+    {{ _compose_cmd }} up -d --remove-orphans
+  when: arsenale_state == 'present'
   changed_when: true
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ arsenale_uid }}"
+  environment: "{{ _compose_env }}"
+  vars:
+    _compose_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}
+
+- name: Tear down Arsenale stack
+  command: >
+    {{ _compose_cmd }} down --remove-orphans
+  when: arsenale_state == 'absent'
+  changed_when: true
+  environment: "{{ _compose_env }}"
+  vars:
+    _compose_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}

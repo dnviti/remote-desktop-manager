@@ -1,16 +1,25 @@
 ---
+- name: Set compose command for health checks
+  set_fact:
+    _hc_compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ arsenale_home }}/docker-compose.yml"
+
 - name: Wait for all containers to be healthy
   command: >
-    podman compose -f {{ arsenale_home }}/docker-compose.yml
-    ps --format json
+    {{ _hc_compose_cmd }} ps --format json
   register: compose_status
   retries: 24
   delay: 5
   until: >
     (compose_status.stdout | from_json | selectattr('Health', 'equalto', 'healthy') | list | length) >= 5
   changed_when: false
-  environment:
-    XDG_RUNTIME_DIR: "/run/user/{{ arsenale_uid }}"
+  environment: "{{ _hc_env }}"
+  vars:
+    _hc_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}
 
 - name: Verify API health endpoint
   uri:
@@ -21,10 +30,11 @@
   delay: 5
   register: health_check
   until: health_check.status == 200
+  when: not (_is_dev | default(false) | bool)
 
 - name: Verify secrets are NOT in container environment
   command: >
-    podman inspect arsenale-server --format
+    {{ container_runtime | default('podman') }} inspect arsenale-server --format
     '{% raw %}{{ range .Config.Env }}{{ println . }}{{ end }}{% endraw %}'
   register: server_env
   changed_when: false
@@ -34,13 +44,13 @@
     'SERVER_ENCRYPTION_KEY=' in server_env.stdout
 
 - name: Verify Podman secrets are mounted in server
-  command: podman exec arsenale-server ls /run/secrets/
+  command: "{{ container_runtime | default('podman') }} exec arsenale-server ls /run/secrets/"
   register: server_secrets
   changed_when: false
   failed_when: "'jwt_secret' not in server_secrets.stdout"
 
 - name: Verify postgres only has its own secret
-  command: podman exec arsenale-postgres ls /run/secrets/
+  command: "{{ container_runtime | default('podman') }} exec arsenale-postgres ls /run/secrets/"
   register: postgres_secrets
   changed_when: false
   failed_when: >
