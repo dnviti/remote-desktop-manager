@@ -161,11 +161,13 @@ services:
       - /tmp
     environment:
       CACHE_ROLE: "cache"
+      SPIFFE_TRUST_DOMAIN: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
       CACHE_LISTEN: "tcp://0.0.0.0:6380"
       CACHE_HEALTH_ADDR: "0.0.0.0:6381"
       CACHE_DISCOVERY: "{{ arsenale_gocache_cache_peer_discovery | default('dns') }}"
       CACHE_DNS_NAME: "gocache-cache"
-      CACHE_PEER_CN_PREFIX: "arsenale-gocache-cache"
+      CACHE_PEER_SPIFFE_ID: "spiffe://{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}/service/gocache-cache"
+      CACHE_CLIENT_SPIFFE_ID: "spiffe://{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}/service/server"
 {% if arsenale_gocache_cache_peers %}
       CACHE_PEERS: "{{ arsenale_gocache_cache_peers }}"
 {% endif %}
@@ -215,11 +217,13 @@ services:
       - /tmp
     environment:
       CACHE_ROLE: "pubsub"
+      SPIFFE_TRUST_DOMAIN: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
       CACHE_LISTEN: "tcp://0.0.0.0:6380"
       CACHE_HEALTH_ADDR: "0.0.0.0:6381"
       CACHE_DISCOVERY: "{{ arsenale_gocache_pubsub_peer_discovery | default('dns') }}"
       CACHE_DNS_NAME: "gocache-pubsub"
-      CACHE_PEER_CN_PREFIX: "arsenale-gocache-pubsub"
+      CACHE_PEER_SPIFFE_ID: "spiffe://{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}/service/gocache-pubsub"
+      CACHE_CLIENT_SPIFFE_ID: "spiffe://{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}/service/server"
 {% if arsenale_gocache_pubsub_peers %}
       CACHE_PEERS: "{{ arsenale_gocache_pubsub_peers }}"
 {% endif %}
@@ -293,7 +297,10 @@ services:
       - ai_api_key
     environment:
       NODE_ENV: "{{ arsenale_node_env }}"
+      SPIFFE_TRUST_DOMAIN: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
       NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      CLI_ENABLED: "{{ 'true' if (_is_dev | default(false) | bool) else 'false' }}"
+      DEV_TUNNEL_CERT_DIR: "{{ '/certs' if (_is_dev | default(false) | bool) else '' }}"
       LOG_LEVEL: "{{ arsenale_log_level | default('info') }}"
       LOG_HTTP_REQUESTS: "{{ arsenale_log_http_requests | default('false') }}"
       LOG_GUACAMOLE: "{{ arsenale_log_guacamole | default('false') }}"
@@ -324,6 +331,7 @@ services:
       TUNNEL_SERVER_CERT: /certs/server/server-cert.pem
       TUNNEL_SERVER_KEY: /certs/server/server-key.pem
       TUNNEL_SERVER_CA: /certs/ca.pem
+      TUNNEL_STRICT_MTLS: "{{ 'true' if (_is_dev | default(false) | bool) else 'false' }}"
       RECORDING_ENABLED: "{{ arsenale_recording_enabled | string | lower }}"
       RECORDING_PATH: /recordings
       ALLOW_LOCAL_NETWORK: "{{ arsenale_allow_local_network | string | lower }}"
@@ -336,6 +344,12 @@ services:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
       - {{ arsenale_cert_dir }}/ca.pem:/certs/ca.pem:ro
+{% if _is_dev | default(false) | bool %}
+      - {{ arsenale_cert_dir }}/ca-key.pem:/certs/ca-key.pem:ro
+      - {{ arsenale_cert_dir }}/tunnel-managed-ssh:/certs/tunnel-managed-ssh:ro
+      - {{ arsenale_cert_dir }}/tunnel-guacd:/certs/tunnel-guacd:ro
+      - {{ arsenale_cert_dir }}/tunnel-db-proxy:/certs/tunnel-db-proxy:ro
+{% endif %}
       - {{ arsenale_cert_dir }}/server:/certs/server:ro
       - {{ arsenale_cert_dir }}/gocache-cache:/certs/gocache-cache:ro
       - {{ arsenale_cert_dir }}/gocache-pubsub:/certs/gocache-pubsub:ro
@@ -443,13 +457,14 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
+      SPIFFE_TRUST_DOMAIN: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
       GATEWAY_API_TLS_CERT: /certs/server-cert.pem
       GATEWAY_API_TLS_KEY: /certs/server-key.pem
       GATEWAY_GRPC_TLS_CA: /certs/ca.pem
       GATEWAY_GRPC_CLIENT_CA: /certs/client-ca.pem
       GATEWAY_GRPC_TLS_CERT: /certs/server-cert.pem
       GATEWAY_GRPC_TLS_KEY: /certs/server-key.pem
-      GATEWAY_GRPC_EXPECTED_CN: "arsenale-server"
+      GATEWAY_GRPC_EXPECTED_SPIFFE_ID: "spiffe://{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}/service/server"
 {% if not (_is_dev | default(false) | bool) %}
     ports:
       - "{{ arsenale_ssh_port }}:2222"
@@ -465,6 +480,149 @@ services:
     restart: always
     networks:
       - net-gateway
+
+{% if _is_dev | default(false) | bool %}
+
+  # ---------------------------------------------------------------------------
+  # Development tunnel gateways — end-to-end tunnel registration fixtures
+  # ---------------------------------------------------------------------------
+  dev-tunnel-ssh-gateway:
+{% if _build | bool %}
+    build:
+      context: {{ _home }}
+      dockerfile: gateways/ssh-gateway/Dockerfile
+{% else %}
+    image: {{ arsenale_registry }}/ssh-gateway:{{ arsenale_image_tag }}
+{% endif %}
+    container_name: arsenale-dev-tunnel-ssh-gateway
+    read_only: true
+    cpus: "{{ arsenale_resource_limits.ssh_gateway.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.ssh_gateway.memory }}"
+    pids_limit: {{ arsenale_resource_limits.ssh_gateway.pids }}
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      SPIFFE_TRUST_DOMAIN: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
+      TUNNEL_SERVER_URL: "wss://server:3011/api/tunnel/connect"
+      TUNNEL_TOKEN: "${DEV_TUNNEL_MANAGED_SSH_TOKEN}"
+      TUNNEL_GATEWAY_ID: "${DEV_TUNNEL_MANAGED_SSH_GATEWAY_ID}"
+      TUNNEL_LOCAL_HOST: "127.0.0.1"
+      TUNNEL_LOCAL_PORT: "2222"
+      TUNNEL_CA_CERT_FILE: /tunnel-certs/ca.pem
+      TUNNEL_CLIENT_CERT_FILE: /tunnel-certs/client-cert.pem
+      TUNNEL_CLIENT_KEY_FILE: /tunnel-certs/client-key.pem
+      GATEWAY_GRPC_TLS_CA: /certs/ca.pem
+      GATEWAY_GRPC_CLIENT_CA: /certs/client-ca.pem
+      GATEWAY_GRPC_TLS_CERT: /certs/server-cert.pem
+      GATEWAY_GRPC_TLS_KEY: /certs/server-key.pem
+      GATEWAY_GRPC_EXPECTED_SPIFFE_ID: "spiffe://{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}/service/server"
+    volumes:
+      - {{ _home }}/config/ssh-gateway/authorized_keys:/config/authorized_keys:ro
+      - {{ arsenale_cert_dir }}/ssh-gateway:/certs:ro
+      - {{ arsenale_cert_dir }}/tunnel-managed-ssh:/tunnel-certs:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+    networks:
+      - net-gateway
+
+  dev-tunnel-guacd:
+{% if _build | bool %}
+    build:
+      context: {{ _home }}
+      dockerfile: gateways/guacd/Dockerfile
+{% else %}
+    image: {{ arsenale_registry }}/guacd:{{ arsenale_image_tag }}
+{% endif %}
+    container_name: arsenale-dev-tunnel-guacd
+    read_only: true
+    cpus: "{{ arsenale_resource_limits.guacd.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.guacd.memory }}"
+    pids_limit: {{ arsenale_resource_limits.guacd.pids }}
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      TUNNEL_SERVER_URL: "wss://server:3011/api/tunnel/connect"
+      TUNNEL_TOKEN: "${DEV_TUNNEL_GUACD_TOKEN}"
+      TUNNEL_GATEWAY_ID: "${DEV_TUNNEL_GUACD_GATEWAY_ID}"
+      TUNNEL_LOCAL_HOST: "127.0.0.1"
+      TUNNEL_LOCAL_PORT: "4822"
+      TUNNEL_CA_CERT_FILE: /tunnel-certs/ca.pem
+      TUNNEL_CLIENT_CERT_FILE: /tunnel-certs/client-cert.pem
+      TUNNEL_CLIENT_KEY_FILE: /tunnel-certs/client-key.pem
+    volumes:
+      - {{ arsenale_cert_dir }}/tunnel-guacd:/tunnel-certs:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const net=require('net');const socket=net.connect({host:'127.0.0.1',port:4822});socket.on('connect',()=>{socket.end();process.exit(0);});socket.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000);\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: always
+    networks:
+      - net-gateway
+
+  dev-tunnel-db-proxy:
+{% if _build | bool %}
+    build:
+      context: {{ _home }}
+      dockerfile: gateways/db-proxy/Dockerfile
+{% else %}
+    image: {{ arsenale_registry }}/db-proxy:{{ arsenale_image_tag }}
+{% endif %}
+    container_name: arsenale-dev-tunnel-db-proxy
+    read_only: true
+    cpus: "{{ arsenale_resource_limits.db_proxy.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.db_proxy.memory }}"
+    pids_limit: {{ arsenale_resource_limits.db_proxy.pids }}
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      DB_LISTEN_PORT: "5432"
+      TUNNEL_SERVER_URL: "wss://server:3011/api/tunnel/connect"
+      TUNNEL_TOKEN: "${DEV_TUNNEL_DB_PROXY_TOKEN}"
+      TUNNEL_GATEWAY_ID: "${DEV_TUNNEL_DB_PROXY_GATEWAY_ID}"
+      TUNNEL_LOCAL_HOST: "127.0.0.1"
+      TUNNEL_LOCAL_PORT: "5432"
+      TUNNEL_CA_CERT_FILE: /tunnel-certs/ca.pem
+      TUNNEL_CLIENT_CERT_FILE: /tunnel-certs/client-cert.pem
+      TUNNEL_CLIENT_KEY_FILE: /tunnel-certs/client-key.pem
+    volumes:
+      - {{ arsenale_cert_dir }}/tunnel-db-proxy:/tunnel-certs:ro
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "node -e \"const net=require('net');const socket=net.connect({host:'127.0.0.1',port:5432});socket.on('connect',()=>{socket.end();process.exit(0);});socket.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000);\""]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: always
+    networks:
+      - net-gateway
+
+{% endif %}
 
 # =============================================================================
 # Secrets — Podman external secrets (created by Ansible podman_secrets role)

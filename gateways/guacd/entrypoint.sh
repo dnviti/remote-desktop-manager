@@ -8,4 +8,4 @@ if [ -f /opt/tunnel-agent/dist/index.js ]; then
 fi
 
 echo "Starting guacd..."
-exec /usr/local/sbin/guacd -b 0.0.0.0 -l 4822 -f
+exec /opt/guacamole/sbin/guacd -b 0.0.0.0 -l 4822 -f

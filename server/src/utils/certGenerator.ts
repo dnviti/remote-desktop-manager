@@ -45,6 +45,12 @@ function derWrap(tag: number, content: Buffer): Buffer {
   return Buffer.concat([Buffer.from([tag]), derLength(content.length), content]);
 }
 
+function encodePemBlock(type: string, derBytes: Buffer): string {
+  const b64 = derBytes.toString('base64');
+  const lines = b64.match(/.{1,64}/g) ?? [b64];
+  return `-----BEGIN ${type}-----\n${lines.join('\n')}\n-----END ${type}-----\n`;
+}
+
 /** Encode a non-negative integer in DER (minimal, unsigned). */
 function derInteger(value: Buffer | number): Buffer {
   let buf: Buffer;
@@ -135,6 +141,7 @@ const OID_AUTHORITY_KEY_IDENTIFIER = '2.5.29.35';
 const OID_EXTENDED_KEY_USAGE = '2.5.29.37';
 const OID_SUBJECT_ALT_NAME = '2.5.29.17';
 const OID_SERVER_AUTH = '1.3.6.1.5.5.7.3.1';
+const OID_CLIENT_AUTH = '1.3.6.1.5.5.7.3.2';
 
 // ED25519 AlgorithmIdentifier (no parameters — per RFC 8410)
 const ED25519_ALGORITHM_ID = derWrap(DER.SEQUENCE, derOid(OID_ED25519));
@@ -163,6 +170,30 @@ function buildSpki(rawPublicKey: Buffer): Buffer {
   // BIT STRING: 0 unused bits prefix + raw key bytes
   const bitString = derWrap(DER.BIT_STRING, Buffer.concat([Buffer.from([0x00]), rawPublicKey]));
   return derWrap(DER.SEQUENCE, Buffer.concat([ED25519_ALGORITHM_ID, bitString]));
+}
+
+function buildSubjectAltNameExtension(
+  sans: { dns?: string[]; ips?: string[]; uris?: string[] },
+): Buffer | null {
+  const sanEntries: Buffer[] = [];
+  for (const dns of sans.dns ?? []) {
+    sanEntries.push(derWrap(0x82, Buffer.from(dns, 'ascii')));
+  }
+  for (const ip of sans.ips ?? []) {
+    const ipBuf = ip.includes(':')
+      ? Buffer.from(ip === '::1' ? '00000000000000000000000000000001' : ip.replace(/:/g, ''), 'hex')
+      : Buffer.from(ip.split('.').map(Number));
+    sanEntries.push(derWrap(0x87, ipBuf));
+  }
+  for (const uri of sans.uris ?? []) {
+    sanEntries.push(derWrap(0x86, Buffer.from(uri, 'ascii')));
+  }
+  if (sanEntries.length === 0) return null;
+  const sanValue = derWrap(DER.SEQUENCE, Buffer.concat(sanEntries));
+  return derWrap(DER.SEQUENCE, Buffer.concat([
+    derOid(OID_SUBJECT_ALT_NAME),
+    derWrap(DER.OCTET_STRING, sanValue),
+  ]));
 }
 
 /** Build extensions for a CA certificate. */
@@ -196,7 +227,7 @@ function buildCaExtensions(publicKeyRaw: Buffer): Buffer {
 }
 
 /** Build extensions for a client (end-entity) certificate. */
-function buildClientExtensions(clientKeyRaw: Buffer, caKeyRaw: Buffer): Buffer {
+function buildClientExtensions(clientKeyRaw: Buffer, caKeyRaw: Buffer, spiffeId: string): Buffer {
   // Basic Constraints: CA=FALSE (not critical, default)
   const bcValue = derWrap(DER.SEQUENCE, Buffer.alloc(0));
   const bcExt = derWrap(DER.SEQUENCE, Buffer.concat([
@@ -212,6 +243,18 @@ function buildClientExtensions(clientKeyRaw: Buffer, caKeyRaw: Buffer): Buffer {
     derWrap(DER.BOOLEAN, Buffer.from([0xff])), // critical
     derWrap(DER.OCTET_STRING, kuBits),
   ]));
+
+  // Extended Key Usage: clientAuth
+  const ekuValue = derWrap(DER.SEQUENCE, derOid(OID_CLIENT_AUTH));
+  const ekuExt = derWrap(DER.SEQUENCE, Buffer.concat([
+    derOid(OID_EXTENDED_KEY_USAGE),
+    derWrap(DER.OCTET_STRING, ekuValue),
+  ]));
+
+  const sanExt = buildSubjectAltNameExtension({ uris: [spiffeId] });
+  if (!sanExt) {
+    throw new Error('client certificates require a SPIFFE URI SAN');
+  }
 
   // Subject Key Identifier
   const subjectKeyHash = crypto.createHash('sha1').update(clientKeyRaw).digest();
@@ -230,14 +273,17 @@ function buildClientExtensions(clientKeyRaw: Buffer, caKeyRaw: Buffer): Buffer {
     derWrap(DER.OCTET_STRING, akiValue),
   ]));
 
-  return derWrap(DER.CONTEXT_3, derWrap(DER.SEQUENCE, Buffer.concat([bcExt, kuExt, skiExt, akiExt])));
+  return derWrap(
+    DER.CONTEXT_3,
+    derWrap(DER.SEQUENCE, Buffer.concat([bcExt, kuExt, ekuExt, sanExt, skiExt, akiExt])),
+  );
 }
 
 /** Build extensions for a server (end-entity) certificate with SANs. */
 function buildServerExtensions(
   serverKeyRaw: Buffer,
   caKeyRaw: Buffer,
-  sans: { dns: string[]; ips: string[] },
+  sans: { dns: string[]; ips: string[]; uris?: string[] },
 ): Buffer {
   // Basic Constraints: CA=FALSE
   const bcValue = derWrap(DER.SEQUENCE, Buffer.alloc(0));
@@ -262,24 +308,10 @@ function buildServerExtensions(
     derWrap(DER.OCTET_STRING, ekuValue),
   ]));
 
-  // Subject Alternative Name
-  const sanEntries: Buffer[] = [];
-  for (const dns of sans.dns) {
-    // context tag [2] = dNSName
-    sanEntries.push(derWrap(0x82, Buffer.from(dns, 'ascii')));
+  const sanExt = buildSubjectAltNameExtension(sans);
+  if (!sanExt) {
+    throw new Error('server certificates require at least one SAN');
   }
-  for (const ip of sans.ips) {
-    // context tag [7] = iPAddress
-    const ipBuf = ip.includes(':')
-      ? Buffer.from(ip === '::1' ? '00000000000000000000000000000001' : ip.replace(/:/g, ''), 'hex')
-      : Buffer.from(ip.split('.').map(Number));
-    sanEntries.push(derWrap(0x87, ipBuf));
-  }
-  const sanValue = derWrap(DER.SEQUENCE, Buffer.concat(sanEntries));
-  const sanExt = derWrap(DER.SEQUENCE, Buffer.concat([
-    derOid(OID_SUBJECT_ALT_NAME),
-    derWrap(DER.OCTET_STRING, sanValue),
-  ]));
 
   // Subject Key Identifier
   const subjectKeyHash = crypto.createHash('sha1').update(serverKeyRaw).digest();
@@ -376,7 +408,7 @@ export function generateCaCert(cn: string, validityDays = 3650): CertKeyPair {
     signatureBits,
   ]));
 
-  const certPem = `-----BEGIN CERTIFICATE-----\n${cert.toString('base64').match(/.{1,64}/g)!.join('\n')}\n-----END CERTIFICATE-----\n`;
+  const certPem = encodePemBlock('CERTIFICATE', cert);
 
   return { certPem, keyPem, publicKeyRaw, expiry };
 }
@@ -387,12 +419,14 @@ export function generateCaCert(cn: string, validityDays = 3650): CertKeyPair {
  * @param caCertPem - PEM-encoded CA certificate (used for issuer name extraction and AKI)
  * @param caKeyPem - PEM-encoded CA private key (PKCS#8)
  * @param cn - Common Name for the client cert (e.g. the gatewayId)
+ * @param spiffeId - SPIFFE URI SAN embedded in the certificate identity
  * @param validityDays - Certificate validity in days (default: 90)
  */
 export function generateClientCertificate(
   caCertPem: string,
   caKeyPem: string,
   cn: string,
+  spiffeId: string,
   validityDays = 90,
 ): CertKeyPair {
   const caPrivateKey = crypto.createPrivateKey(caKeyPem);
@@ -422,7 +456,7 @@ export function generateClientCertificate(
   const serial = derInteger(randomSerial());
   const validity = buildValidity(now, expiry);
   const spki = buildSpki(clientPublicKeyRaw);
-  const extensions = buildClientExtensions(clientPublicKeyRaw, caPublicKeyRaw);
+  const extensions = buildClientExtensions(clientPublicKeyRaw, caPublicKeyRaw, spiffeId);
 
   // TBSCertificate
   const tbsCert = derWrap(DER.SEQUENCE, Buffer.concat([
@@ -447,7 +481,7 @@ export function generateClientCertificate(
     signatureBits,
   ]));
 
-  const certPem = `-----BEGIN CERTIFICATE-----\n${cert.toString('base64').match(/.{1,64}/g)!.join('\n')}\n-----END CERTIFICATE-----\n`;
+  const certPem = encodePemBlock('CERTIFICATE', cert);
 
   return { certPem, keyPem: clientKeyPem, publicKeyRaw: clientPublicKeyRaw, expiry };
 }
@@ -491,7 +525,7 @@ export function generateServerCertificate(
   caCertPem: string,
   caKeyPem: string,
   cn: string,
-  sans: { dns: string[]; ips: string[] },
+  sans: { dns: string[]; ips: string[]; uris?: string[] },
   validityDays = 365,
 ): CertKeyPair {
   const caPrivateKey = crypto.createPrivateKey(caKeyPem);
@@ -539,7 +573,7 @@ export function generateServerCertificate(
     signatureBits,
   ]));
 
-  const certPem = `-----BEGIN CERTIFICATE-----\n${cert.toString('base64').match(/.{1,64}/g)!.join('\n')}\n-----END CERTIFICATE-----\n`;
+  const certPem = encodePemBlock('CERTIFICATE', cert);
 
   return { certPem, keyPem: serverKeyPem, publicKeyRaw: serverPublicKeyRaw, expiry };
 }
@@ -561,7 +595,11 @@ export function verifyCertChain(clientCertPem: string, caCertPem: string): boole
   try {
     const clientCert = new crypto.X509Certificate(clientCertPem);
     const caCert = new crypto.X509Certificate(caCertPem);
-    return clientCert.checkIssued(caCert);
+    const now = Date.now();
+    return clientCert.checkIssued(caCert) &&
+      clientCert.verify(caCert.publicKey) &&
+      Date.parse(clientCert.validFrom) <= now &&
+      Date.parse(clientCert.validTo) >= now;
   } catch {
     return false;
   }

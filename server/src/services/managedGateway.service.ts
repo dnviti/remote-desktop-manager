@@ -97,6 +97,7 @@ function buildContainerConfig(
         TUNNEL_SERVER_URL:  tunnelEnv.serverUrl,
         TUNNEL_TOKEN:       tunnelEnv.token,
         TUNNEL_GATEWAY_ID:  tunnelEnv.gatewayId,
+        TUNNEL_LOCAL_HOST:  '127.0.0.1',
         TUNNEL_LOCAL_PORT:  gateway.type === 'MANAGED_SSH' ? '2222' : gateway.type === 'DB_PROXY' ? '5432' : '4822',
         ...(tunnelEnv.caCert      ? { TUNNEL_CA_CERT:     tunnelEnv.caCert }      : {}),
         ...(tunnelEnv.clientCert  ? { TUNNEL_CLIENT_CERT: tunnelEnv.clientCert }  : {}),

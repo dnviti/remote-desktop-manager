@@ -27,6 +27,11 @@ import {
 import * as auditService from '../services/audit.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
+import {
+  buildGatewaySpiffeId,
+  extractSpiffeIdFromCertPem,
+  spiffeIdEquals,
+} from '../utils/spiffe';
 
 const log = logger.child('tunnel-handler');
 
@@ -58,45 +63,38 @@ export function setupTunnelHandler(server: http.Server | https.Server): WebSocke
     // -----------------------------------------------------------------------
     // mTLS enforcement — verify client certificate identity
     // -----------------------------------------------------------------------
-    let clientCertCn: string | undefined;
     let clientCertPem: string | undefined;
+    const expectedSpiffeId = buildGatewaySpiffeId(config.spiffeTrustDomain, gatewayId);
 
     const tlsSocket = req.socket as tls.TLSSocket;
     if (typeof tlsSocket.getPeerCertificate === 'function') {
       const peerCert = tlsSocket.getPeerCertificate(false);
-      if (peerCert && peerCert.subject && peerCert.subject.CN) {
+      if (peerCert && peerCert.raw) {
         // TLS-terminated connection with client cert
-        const cnRaw = peerCert.subject.CN;
-        const cn = Array.isArray(cnRaw) ? cnRaw[0] : cnRaw;
-        if (!cn || !timingSafeStringEqual(cn, gatewayId)) {
-          log.warn(`[tunnel] Upgrade rejected: client cert CN does not match X-Gateway-Id "${gatewayId}"`);
-          auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'cn_mismatch' }, ipAddress: req.socket.remoteAddress });
-          socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nClient certificate CN mismatch');
+        const b64 = peerCert.raw.toString('base64');
+        const pemLines = b64.match(/.{1,64}/g) ?? [b64];
+        clientCertPem = `-----BEGIN CERTIFICATE-----\n${pemLines.join('\n')}\n-----END CERTIFICATE-----`;
+        const actualSpiffeId = extractSpiffeIdFromCertPem(clientCertPem);
+        if (!spiffeIdEquals(actualSpiffeId, expectedSpiffeId)) {
+          log.warn(`[tunnel] Upgrade rejected: client SPIFFE ID "${actualSpiffeId ?? 'missing'}" does not match gateway ${gatewayId}`);
+          auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'spiffe_id_mismatch', expectedSpiffeId, actualSpiffeId }, ipAddress: req.socket.remoteAddress });
+          socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nClient certificate SPIFFE ID mismatch');
           socket.destroy();
           return;
         }
-        // Check cert expiry
-        if (peerCert.valid_to) {
-          const expiryDate = new Date(peerCert.valid_to);
-          if (expiryDate.getTime() < Date.now()) {
-            log.warn(`[tunnel] Upgrade rejected: client cert for gateway ${gatewayId} has expired`);
-            auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'cert_expired', expiry: peerCert.valid_to }, ipAddress: req.socket.remoteAddress });
-            socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nClient certificate expired');
-            socket.destroy();
-            return;
-          }
-        }
-        clientCertCn = cn;
-        // Convert raw DER to PEM for CA chain validation downstream
-        if (peerCert.raw) {
-          const b64 = peerCert.raw.toString('base64');
-          clientCertPem = `-----BEGIN CERTIFICATE-----\n${b64.match(/.{1,64}/g)!.join('\n')}\n-----END CERTIFICATE-----`;
+        const cert = new crypto.X509Certificate(clientCertPem);
+        if (Date.parse(cert.validTo) < Date.now()) {
+          log.warn(`[tunnel] Upgrade rejected: client cert for gateway ${gatewayId} has expired`);
+          auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'cert_expired', expiry: cert.validTo }, ipAddress: req.socket.remoteAddress });
+          socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nClient certificate expired');
+          socket.destroy();
+          return;
         }
       }
     }
 
     // If no TLS cert, check proxy-forwarded client cert headers (only when proxy is trusted)
-    if (!clientCertCn && config.trustProxy) {
+    if (!clientCertPem && config.trustProxy && !config.tunnelStrictMtls) {
       // Verify the request originates from a trusted proxy IP
       const sourceIp = req.socket.remoteAddress ?? '';
       const trustedIps = config.tunnelTrustedProxyIps;
@@ -108,8 +106,6 @@ export function setupTunnelHandler(server: http.Server | https.Server): WebSocke
         return;
       }
 
-      const proxyCnRaw = req.headers['x-client-cert-cn'];
-      const proxyCn = Array.isArray(proxyCnRaw) ? proxyCnRaw[0] : proxyCnRaw;
       const proxyVerifiedRaw = req.headers['x-client-cert-verified'];
       const proxyVerified = Array.isArray(proxyVerifiedRaw) ? proxyVerifiedRaw[0] : proxyVerifiedRaw;
 
@@ -117,19 +113,19 @@ export function setupTunnelHandler(server: http.Server | https.Server): WebSocke
       const proxyClientCertRaw = req.headers['x-client-cert'];
       const proxyClientCert = Array.isArray(proxyClientCertRaw) ? proxyClientCertRaw[0] : proxyClientCertRaw;
 
-      if (proxyCn && proxyVerified === 'SUCCESS') {
-        if (!timingSafeStringEqual(proxyCn, gatewayId)) {
-          log.warn(`[tunnel] Upgrade rejected: proxy cert CN does not match X-Gateway-Id "${gatewayId}"`);
-          auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'proxy_cn_mismatch' }, ipAddress: sourceIp });
-          socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nClient certificate CN mismatch');
-          socket.destroy();
-          return;
-        }
-        clientCertCn = proxyCn;
+      if (proxyVerified === 'SUCCESS') {
         // Decode URL-encoded PEM from the proxy header
         if (proxyClientCert) {
           try {
             clientCertPem = decodeURIComponent(proxyClientCert);
+            const actualSpiffeId = extractSpiffeIdFromCertPem(clientCertPem);
+            if (!spiffeIdEquals(actualSpiffeId, expectedSpiffeId)) {
+              log.warn(`[tunnel] Upgrade rejected: proxy-forwarded SPIFFE ID "${actualSpiffeId ?? 'missing'}" does not match gateway ${gatewayId}`);
+              auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'proxy_spiffe_id_mismatch', expectedSpiffeId, actualSpiffeId }, ipAddress: sourceIp });
+              socket.write('HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\nClient certificate SPIFFE ID mismatch');
+              socket.destroy();
+              return;
+            }
           } catch {
             log.warn(`[tunnel] Upgrade rejected: malformed x-client-cert header for gateway ${gatewayId}`);
             auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'malformed_proxy_cert' }, ipAddress: sourceIp });
@@ -137,12 +133,18 @@ export function setupTunnelHandler(server: http.Server | https.Server): WebSocke
             socket.destroy();
             return;
           }
+        } else {
+          log.warn(`[tunnel] Upgrade rejected: trusted proxy omitted x-client-cert for gateway ${gatewayId}`);
+          auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'missing_proxy_cert' }, ipAddress: sourceIp });
+          socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\nClient certificate required');
+          socket.destroy();
+          return;
         }
       }
     }
 
     // No client certificate at all — reject
-    if (!clientCertCn) {
+    if (!clientCertPem) {
       log.warn(`[tunnel] Upgrade rejected: no client certificate for gateway ${gatewayId}`);
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\nClient certificate required');
       socket.destroy();
@@ -150,7 +152,7 @@ export function setupTunnelHandler(server: http.Server | https.Server): WebSocke
     }
 
     // Authenticate asynchronously before completing the upgrade
-    authenticateTunnelRequest(gatewayId, bearerToken, clientCertCn, clientCertPem)
+    authenticateTunnelRequest(gatewayId, bearerToken, clientCertPem)
       .then((result) => {
         if (!result) {
           log.warn(`[tunnel] Upgrade rejected: invalid credentials for gateway ${gatewayId}`);
@@ -193,12 +195,4 @@ function extractRemoteIp(req: http.IncomingMessage): string | undefined {
     }
   }
   return socketAddr;
-}
-
-/** Constant-time string comparison to prevent timing side-channels on CN values. */
-function timingSafeStringEqual(a: string, b: string): boolean {
-  const aBuf = Buffer.from(a, 'utf8');
-  const bBuf = Buffer.from(b, 'utf8');
-  if (aBuf.length !== bBuf.length) return false;
-  return crypto.timingSafeEqual(aBuf, bBuf);
 }

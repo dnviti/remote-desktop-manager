@@ -2,7 +2,7 @@
 //
 // Features:
 //   - mTLS for peer-to-peer connections (when CACHE_TLS_* are configured)
-//   - Peer certificate CN verification (prevents non-cache services from injecting data)
+//   - Peer certificate SPIFFE ID verification (prevents non-cache services from injecting data)
 //   - Full-state sync on peer connect/reconnect (snapshot transfer)
 //   - ACK-based flow control in sync mode (wait for at least one peer ACK per write)
 //   - Buffering with configurable entry-count limit during disconnections
@@ -17,10 +17,11 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	spiffeid "github.com/dnviti/arsenale/infrastructure/gocache/spiffe"
 )
 
 const (
@@ -36,7 +37,7 @@ const (
 type ReplicationOp int
 
 const (
-	OpKVSet    ReplicationOp = iota + 1
+	OpKVSet ReplicationOp = iota + 1
 	OpKVDelete
 	OpPubSub
 	OpSyncReq  // Request full-state sync. Timestamp = requester's logical clock.
@@ -80,9 +81,8 @@ type Engine struct {
 	tlsEnabled bool
 	peerCert   tls.Certificate
 	peerCAPool *x509.CertPool
-	// PeerCNPrefix is the required CN prefix for peer certificates (e.g., "gocache").
-	// Peers whose certificate CN does not start with this prefix are rejected.
-	PeerCNPrefix string
+	// PeerSPIFFEID is the required SPIFFE ID for peer certificates.
+	PeerSPIFFEID string
 
 	// SyncMode: when true, broadcast blocks until at least one peer ACKs.
 	SyncMode bool
@@ -456,17 +456,21 @@ func (e *Engine) dialPeer(addr string) (net.Conn, error) {
 		return nil, fmt.Errorf("tls dial %s: %w", addr, err)
 	}
 
-	// Verify peer certificate CN prefix after TLS handshake.
-	if e.PeerCNPrefix != "" {
+	// Verify peer certificate SPIFFE ID after TLS handshake.
+	if e.PeerSPIFFEID != "" {
 		state := conn.ConnectionState()
 		if len(state.PeerCertificates) == 0 {
 			conn.Close()
 			return nil, fmt.Errorf("peer %s: no certificate presented", addr)
 		}
-		cn := state.PeerCertificates[0].Subject.CommonName
-		if !strings.HasPrefix(cn, e.PeerCNPrefix) {
+		actualSPIFFEID, err := spiffeid.ExtractID(state.PeerCertificates[0])
+		if err != nil {
 			conn.Close()
-			return nil, fmt.Errorf("peer %s: CN %q does not match required prefix %q", addr, cn, e.PeerCNPrefix)
+			return nil, fmt.Errorf("peer %s: %w", addr, err)
+		}
+		if !spiffeid.Equal(actualSPIFFEID, e.PeerSPIFFEID) {
+			conn.Close()
+			return nil, fmt.Errorf("peer %s: SPIFFE ID %q does not match required %q", addr, actualSPIFFEID, e.PeerSPIFFEID)
 		}
 	}
 
@@ -611,8 +615,8 @@ func (e *Engine) startAckReader(pc *peerConn, conn net.Conn, reader *bufio.Reade
 
 // peerDialTLSConfig builds a TLS config for outbound peer connections.
 // InsecureSkipVerify is true because hostname/IP may not match cert SANs in dynamic
-// environments. Chain verification is done manually in VerifyPeerCertificate; CN
-// verification is done after the handshake in dialPeer.
+// environments. Chain verification is done manually in VerifyPeerCertificate; SPIFFE
+// ID verification is done after the handshake in dialPeer.
 func (e *Engine) peerDialTLSConfig() *tls.Config {
 	caPool := e.peerCAPool
 	return &tls.Config{
@@ -650,7 +654,7 @@ func (e *Engine) peerDialTLSConfig() *tls.Config {
 
 // peerListenTLSConfig builds a TLS config for the inbound replication listener.
 // Standard TLS library verifies the client cert chain against ClientCAs.
-// VerifyPeerCertificate adds CN prefix enforcement.
+// VerifyPeerCertificate adds SPIFFE ID enforcement.
 func (e *Engine) peerListenTLSConfig() *tls.Config {
 	cfg := &tls.Config{
 		Certificates: []tls.Certificate{e.peerCert},
@@ -658,15 +662,18 @@ func (e *Engine) peerListenTLSConfig() *tls.Config {
 		ClientCAs:    e.peerCAPool,
 		MinVersion:   tls.VersionTLS12,
 	}
-	if e.PeerCNPrefix != "" {
-		prefix := e.PeerCNPrefix
+	if e.PeerSPIFFEID != "" {
+		expectedSPIFFEID := e.PeerSPIFFEID
 		cfg.VerifyPeerCertificate = func(_ [][]byte, verifiedChains [][]*x509.Certificate) error {
 			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
 				return fmt.Errorf("no verified peer certificate chain")
 			}
-			cn := verifiedChains[0][0].Subject.CommonName
-			if !strings.HasPrefix(cn, prefix) {
-				return fmt.Errorf("peer CN %q does not match required prefix %q", cn, prefix)
+			actualSPIFFEID, err := spiffeid.ExtractID(verifiedChains[0][0])
+			if err != nil {
+				return err
+			}
+			if !spiffeid.Equal(actualSPIFFEID, expectedSPIFFEID) {
+				return fmt.Errorf("peer SPIFFE ID %q does not match required %q", actualSPIFFEID, expectedSPIFFEID)
 			}
 			return nil
 		}
@@ -687,7 +694,7 @@ func ListenForReplication(addr string, engine *Engine) (net.Listener, error) {
 		if err != nil {
 			return nil, fmt.Errorf("replication tls listen: %w", err)
 		}
-		log.Printf("[replication] listener using mTLS (CN prefix=%q)", engine.PeerCNPrefix)
+		log.Printf("[replication] listener using mTLS (SPIFFE ID=%q)", engine.PeerSPIFFEID)
 	} else {
 		ln, err = net.Listen("tcp", addr)
 		if err != nil {
@@ -709,8 +716,8 @@ func ListenForReplication(addr string, engine *Engine) (net.Listener, error) {
 				}
 			}
 
-			// Explicit TLS handshake + CN check for inbound connections.
-			if engine.tlsEnabled && engine.PeerCNPrefix != "" {
+			// Explicit TLS handshake + SPIFFE ID check for inbound connections.
+			if engine.tlsEnabled && engine.PeerSPIFFEID != "" {
 				if tlsConn, ok := conn.(*tls.Conn); ok {
 					if hsErr := tlsConn.Handshake(); hsErr != nil {
 						log.Printf("[replication] TLS handshake from %s failed: %v", conn.RemoteAddr(), hsErr)
@@ -719,10 +726,10 @@ func ListenForReplication(addr string, engine *Engine) (net.Listener, error) {
 					}
 					state := tlsConn.ConnectionState()
 					if len(state.PeerCertificates) > 0 {
-						cn := state.PeerCertificates[0].Subject.CommonName
-						if !strings.HasPrefix(cn, engine.PeerCNPrefix) {
-							log.Printf("[replication] rejected peer CN=%q from %s (required prefix=%q)",
-								cn, conn.RemoteAddr(), engine.PeerCNPrefix)
+						actualSPIFFEID, err := spiffeid.ExtractID(state.PeerCertificates[0])
+						if err != nil || !spiffeid.Equal(actualSPIFFEID, engine.PeerSPIFFEID) {
+							log.Printf("[replication] rejected peer SPIFFE ID=%q from %s (required=%q)",
+								actualSPIFFEID, conn.RemoteAddr(), engine.PeerSPIFFEID)
 							conn.Close()
 							continue
 						}

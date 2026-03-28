@@ -44,6 +44,7 @@ export const config = {
   guacdCaCert: process.env.GUACD_CA_CERT || '',
   guacamoleSecret: readSecret('guacamole_secret', 'GUACAMOLE_SECRET') || '',
   serverEncryptionKey: resolveServerEncryptionKey(),
+  spiffeTrustDomain: process.env.SPIFFE_TRUST_DOMAIN || 'arsenale.local',
   // Gateway key management gRPC (mTLS — replaces old HTTP API + bearer token)
   gatewayGrpcPort: parseInt(process.env.GATEWAY_GRPC_PORT || '9022', 10),
   gatewayGrpcTlsCa: process.env.GATEWAY_GRPC_TLS_CA || '',
@@ -297,6 +298,7 @@ export const config = {
   tunnelServerCert: process.env.TUNNEL_SERVER_CERT || '',
   tunnelServerKey: process.env.TUNNEL_SERVER_KEY || '',
   tunnelServerCa: process.env.TUNNEL_SERVER_CA || '',
+  tunnelStrictMtls: process.env.TUNNEL_STRICT_MTLS === 'true',
   // Comma-separated list of trusted proxy IPs allowed to forward mTLS headers.
   // Empty = trust all proxies when trustProxy is enabled.
   tunnelTrustedProxyIps: (process.env.TUNNEL_TRUSTED_PROXY_IPS || '')

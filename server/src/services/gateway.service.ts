@@ -5,6 +5,7 @@ import { AppError } from '../middleware/error.middleware';
 import { encrypt, decrypt, requireMasterKey, encryptWithServerKey, decryptWithServerKey } from './crypto.service';
 import { config } from '../config';
 import { tcpProbe } from '../utils/tcpProbe';
+import { buildGatewaySpiffeId } from '../utils/spiffe';
 import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
 import { generateTunnelToken, revokeTunnelToken, isTunnelConnected, deregisterTunnel, getTunnelInfo } from './tunnel.service';
@@ -696,7 +697,13 @@ async function ensureMtlsCerts(
       log.info(`[tunnel] Generated tenant CA for tenant ${tenantId} during gateway ${gatewayId} enrollment`);
     }
 
-    const client = generateClientCertificate(caCertPem, caKeyPem, gatewayId, 90);
+    const client = generateClientCertificate(
+      caCertPem,
+      caKeyPem,
+      gatewayId,
+      buildGatewaySpiffeId(config.spiffeTrustDomain, gatewayId),
+      90,
+    );
     const encClientKey = encryptWithServerKey(client.keyPem);
 
     await tx.gateway.update({
@@ -740,10 +747,13 @@ function decryptTenantCaKey(tenant: {
   tunnelCaKeyIV: string | null;
   tunnelCaKeyTag: string | null;
 }): string {
+  if (!tenant.tunnelCaKey || !tenant.tunnelCaKeyIV || !tenant.tunnelCaKeyTag) {
+    throw new Error('Tenant CA key material is incomplete');
+  }
   return decryptWithServerKey({
-    ciphertext: tenant.tunnelCaKey!,
-    iv: tenant.tunnelCaKeyIV!,
-    tag: tenant.tunnelCaKeyTag!,
+    ciphertext: tenant.tunnelCaKey,
+    iv: tenant.tunnelCaKeyIV,
+    tag: tenant.tunnelCaKeyTag,
   });
 }
 

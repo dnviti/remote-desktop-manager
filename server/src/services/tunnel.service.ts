@@ -19,10 +19,16 @@ import net from 'net';
 import { Duplex } from 'stream';
 import type WebSocket from 'ws';
 import prisma from '../lib/prisma';
+import { config } from '../config';
 import { encryptWithServerKey, decryptWithServerKey, hashToken } from './crypto.service';
 import { logger } from '../utils/logger';
 import * as auditService from './audit.service';
 import { generateClientCertificate, verifyCertChain } from '../utils/certGenerator';
+import {
+  buildGatewaySpiffeId,
+  extractSpiffeIdFromCertPem,
+  spiffeIdEquals,
+} from '../utils/spiffe';
 
 const log = logger.child('tunnel');
 
@@ -335,7 +341,7 @@ function attachFrameHandler(conn: TunnelConnection): void {
         handleClose(conn, streamId);
         break;
       case MsgType.PING:
-        handlePing(conn, streamId);
+        handlePing(conn, streamId, payload);
         break;
       case MsgType.PONG:
         handlePong(conn);
@@ -394,7 +400,8 @@ function handleClose(conn: TunnelConnection, streamId: number): void {
   conn.streams.delete(streamId);
 }
 
-function handlePing(conn: TunnelConnection, streamId: number): void {
+function handlePing(conn: TunnelConnection, streamId: number, payload: Buffer): void {
+  recordHeartbeat(conn, payload);
   // Respond with PONG — do NOT set lastPingSentAt here; that field tracks
   // outbound PINGs we initiate, not inbound PINGs from the agent.
   const frame = buildFrame(MsgType.PONG, streamId);
@@ -419,6 +426,10 @@ function handlePong(conn: TunnelConnection): void {
 }
 
 function handleHeartbeat(conn: TunnelConnection, payload: Buffer): void {
+  recordHeartbeat(conn, payload);
+}
+
+function recordHeartbeat(conn: TunnelConnection, payload: Buffer): void {
   const now = new Date();
   conn.lastHeartbeat = now;
 
@@ -568,12 +579,11 @@ export async function revokeTunnelToken(
  *   X-Agent-Version: <version string>   (optional)
  *
  * When clientCertPem is provided, it is verified against the tenant's stored CA
- * certificate using cryptographic chain validation (not just CN matching).
+ * certificate using cryptographic chain validation and SPIFFE ID matching.
  */
 export async function authenticateTunnelRequest(
   gatewayId: string,
   bearerToken: string,
-  clientCertCn?: string,
   clientCertPem?: string,
 ): Promise<{ id: string; tenantId: string } | null> {
   if (!gatewayId || !bearerToken) return null;
@@ -632,10 +642,12 @@ export async function authenticateTunnelRequest(
     }
   }
 
-  // Validate the client cert CN matches the gatewayId (already checked in handler, defence in depth)
-  if (clientCertCn && clientCertCn !== gatewayId) {
-    log.warn(`[tunnel] Auth failed: client cert CN "${clientCertCn}" != gatewayId "${gatewayId}"`);
-    auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'cn_mismatch', tenantId: gateway.tenantId } });
+  // Validate the client cert SPIFFE ID matches the gateway identity (already checked in handler, defence in depth)
+  const expectedSpiffeId = buildGatewaySpiffeId(config.spiffeTrustDomain, gatewayId);
+  const clientSpiffeId = clientCertPem ? extractSpiffeIdFromCertPem(clientCertPem) : null;
+  if (!spiffeIdEquals(clientSpiffeId, expectedSpiffeId)) {
+    log.warn(`[tunnel] Auth failed: client SPIFFE ID "${clientSpiffeId ?? 'missing'}" != expected "${expectedSpiffeId}"`);
+    auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'spiffe_id_mismatch', tenantId: gateway.tenantId, expectedSpiffeId, actualSpiffeId: clientSpiffeId } });
     return null;
   }
 
@@ -652,11 +664,11 @@ export async function authenticateTunnelRequest(
 }
 
 /**
- * Validate that a client certificate CN matches the expected gateway ID.
+ * Validate that a client certificate SPIFFE ID matches the expected gateway ID.
  * Exported for use by the tunnel handler.
  */
-export function validateClientCertCn(clientCertCn: string, gatewayId: string): boolean {
-  return clientCertCn === gatewayId;
+export function validateClientCertificateSpiffeId(clientSpiffeId: string, gatewayId: string): boolean {
+  return spiffeIdEquals(clientSpiffeId, buildGatewaySpiffeId(config.spiffeTrustDomain, gatewayId));
 }
 
 // ---------------------------------------------------------------------------
@@ -826,7 +838,13 @@ export async function processCertRotations(): Promise<void> {
       }
 
       const validityDays = 90;
-      const clientResult = generateClientCertificate(tenantCa.tunnelCaCert, caKeyPem, gw.id, validityDays);
+      const clientResult = generateClientCertificate(
+        tenantCa.tunnelCaCert,
+        caKeyPem,
+        gw.id,
+        buildGatewaySpiffeId(config.spiffeTrustDomain, gw.id),
+        validityDays,
+      );
 
       const encClientKey = encryptWithServerKey(clientResult.keyPem);
 

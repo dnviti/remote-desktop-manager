@@ -23,6 +23,7 @@ import (
 	"github.com/dnviti/arsenale/infrastructure/gocache/peer"
 	"github.com/dnviti/arsenale/infrastructure/gocache/pubsub"
 	"github.com/dnviti/arsenale/infrastructure/gocache/queue"
+	spiffeid "github.com/dnviti/arsenale/infrastructure/gocache/spiffe"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
@@ -32,35 +33,41 @@ import (
 
 // config holds all runtime configuration parsed from env vars.
 type config struct {
-	role           string // "all" | "cache" | "pubsub"
-	listenAddr     string // tcp://host:port or unix:///path
-	healthPort     int
-	maxMemory      int64
-	discoveryMode  string // docker | kubernetes | manual
-	peers          string
-	dnsName        string
-	k8sService     string
-	k8sNamespace   string
-	peerBufferSize int    // max buffered replication entries per peer
-	peerSyncMode   string // "sync" (ACK-based) or "async" (fire-and-forget)
-	peerCNPrefix   string // required CN prefix for peer certificates
-	peerTLSEnabled bool   // mTLS for peer replication
+	role              string // "all" | "cache" | "pubsub"
+	listenAddr        string // tcp://host:port or unix:///path
+	healthPort        int
+	maxMemory         int64
+	discoveryMode     string // docker | kubernetes | manual
+	peers             string
+	dnsName           string
+	k8sService        string
+	k8sNamespace      string
+	peerBufferSize    int    // max buffered replication entries per peer
+	peerSyncMode      string // "sync" (ACK-based) or "async" (fire-and-forget)
+	spiffeTrustDomain string
+	peerSPIFFEID      string // required SPIFFE ID for peer certificates
+	clientSPIFFEID    string // required SPIFFE ID for gRPC clients
+	peerTLSEnabled    bool   // mTLS for peer replication
 }
 
 func parseConfig() config {
+	trustDomain := envOrDefault("SPIFFE_TRUST_DOMAIN", "arsenale.local")
+	role := envOrDefault("CACHE_ROLE", "all")
 	cfg := config{
-		role:           envOrDefault("CACHE_ROLE", "all"),
-		listenAddr:     envOrDefault("CACHE_LISTEN", "tcp://localhost:6380"),
-		healthPort:     envIntOrDefault("CACHE_HEALTH_PORT", 6381),
-		maxMemory:      parseBytes(envOrDefault("CACHE_MAX_MEMORY", "256mb")),
-		discoveryMode:  envOrDefault("CACHE_DISCOVERY", "manual"),
-		peers:          os.Getenv("CACHE_PEERS"),
-		dnsName:        envOrDefault("CACHE_DNS_NAME", ""),
-		k8sService:     envOrDefault("CACHE_K8S_SERVICE", "gocache"),
-		k8sNamespace:   os.Getenv("CACHE_K8S_NAMESPACE"),
-		peerBufferSize: envIntOrDefault("CACHE_PEER_BUFFER_SIZE", 10000),
-		peerSyncMode:   envOrDefault("CACHE_PEER_SYNC_MODE", "sync"),
-		peerCNPrefix:   envOrDefault("CACHE_PEER_CN_PREFIX", "gocache"),
+		role:              role,
+		listenAddr:        envOrDefault("CACHE_LISTEN", "tcp://localhost:6380"),
+		healthPort:        envIntOrDefault("CACHE_HEALTH_PORT", 6381),
+		maxMemory:         parseBytes(envOrDefault("CACHE_MAX_MEMORY", "256mb")),
+		discoveryMode:     envOrDefault("CACHE_DISCOVERY", "manual"),
+		peers:             os.Getenv("CACHE_PEERS"),
+		dnsName:           envOrDefault("CACHE_DNS_NAME", ""),
+		k8sService:        envOrDefault("CACHE_K8S_SERVICE", "gocache"),
+		k8sNamespace:      os.Getenv("CACHE_K8S_NAMESPACE"),
+		peerBufferSize:    envIntOrDefault("CACHE_PEER_BUFFER_SIZE", 10000),
+		peerSyncMode:      envOrDefault("CACHE_PEER_SYNC_MODE", "sync"),
+		spiffeTrustDomain: trustDomain,
+		peerSPIFFEID:      envOrDefault("CACHE_PEER_SPIFFE_ID", spiffeid.BuildServiceID(trustDomain, defaultServiceSPIFFEName(role))),
+		clientSPIFFEID:    envOrDefault("CACHE_CLIENT_SPIFFE_ID", spiffeid.BuildServiceID(trustDomain, "server")),
 	}
 	// Peer TLS defaults to enabled when all CACHE_TLS_* vars are set.
 	cfg.peerTLSEnabled = os.Getenv("CACHE_TLS_CA") != "" &&
@@ -70,6 +77,17 @@ func parseConfig() config {
 		cfg.peerTLSEnabled = false
 	}
 	return cfg
+}
+
+func defaultServiceSPIFFEName(role string) string {
+	switch role {
+	case "cache":
+		return "gocache-cache"
+	case "pubsub":
+		return "gocache-pubsub"
+	default:
+		return "gocache"
+	}
 }
 
 func main() {
@@ -139,10 +157,10 @@ func main() {
 	} else {
 		log.Println("[main] peer replication using INSECURE plaintext — set CACHE_TLS_CA/CERT/KEY to enable")
 	}
-	replicationEngine.PeerCNPrefix = cfg.peerCNPrefix
+	replicationEngine.PeerSPIFFEID = cfg.peerSPIFFEID
 	replicationEngine.SyncMode = cfg.peerSyncMode == "sync"
-	log.Printf("[main] peer replication: sync_mode=%s buffer_size=%d cn_prefix=%q",
-		cfg.peerSyncMode, cfg.peerBufferSize, cfg.peerCNPrefix)
+	log.Printf("[main] peer replication: sync_mode=%s buffer_size=%d spiffe_id=%q",
+		cfg.peerSyncMode, cfg.peerBufferSize, cfg.peerSPIFFEID)
 
 	// Wire snapshot provider for full-state sync on peer reconnect.
 	if store != nil {
@@ -216,9 +234,9 @@ func main() {
 	}
 
 	var grpcOpts []grpc.ServerOption
-	if tlsConfig := buildTLSConfig(); tlsConfig != nil {
+	if tlsConfig := buildTLSConfig(cfg.clientSPIFFEID); tlsConfig != nil {
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
-		log.Println("[main] gRPC server using mTLS (certificates configured)")
+		log.Printf("[main] gRPC server using mTLS (client SPIFFE ID=%q)", cfg.clientSPIFFEID)
 	} else {
 		log.Println("[main] gRPC server using INSECURE plaintext — set CACHE_TLS_CA/CERT/KEY to enable mTLS")
 	}
@@ -262,7 +280,7 @@ func main() {
 	certFile := os.Getenv("CACHE_TLS_CERT")
 	keyFile := os.Getenv("CACHE_TLS_KEY")
 	var healthServer *http.Server
-	if tlsConfig := buildTLSConfig(); tlsConfig != nil {
+	if tlsConfig := buildTLSConfig(cfg.clientSPIFFEID); tlsConfig != nil {
 		healthTLSConfig := tlsConfig.Clone()
 		// Health endpoint does not require client certs — it's a simple readiness probe
 		healthTLSConfig.ClientAuth = tls.NoClientCert
@@ -580,7 +598,7 @@ func (s *cacheServiceServer) requirePubSub() error {
 
 // buildTLSConfig returns a *tls.Config with mTLS enforcement when CACHE_TLS_CA,
 // CACHE_TLS_CERT, and CACHE_TLS_KEY are set. Returns nil for insecure fallback.
-func buildTLSConfig() *tls.Config {
+func buildTLSConfig(expectedClientSPIFFEID string) *tls.Config {
 	caPath := os.Getenv("CACHE_TLS_CA")
 	certPath := os.Getenv("CACHE_TLS_CERT")
 	keyPath := os.Getenv("CACHE_TLS_KEY")
@@ -608,7 +626,23 @@ func buildTLSConfig() *tls.Config {
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    caPool,
-		MinVersion:   tls.VersionTLS12,
+		VerifyPeerCertificate: func(_ [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if expectedClientSPIFFEID == "" {
+				return nil
+			}
+			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
+				return fmt.Errorf("no verified client certificate chain")
+			}
+			actualSPIFFEID, err := spiffeid.ExtractID(verifiedChains[0][0])
+			if err != nil {
+				return err
+			}
+			if !spiffeid.Equal(actualSPIFFEID, expectedClientSPIFFEID) {
+				return fmt.Errorf("client SPIFFE ID %q not allowed", actualSPIFFEID)
+			}
+			return nil
+		},
+		MinVersion: tls.VersionTLS12,
 	}
 }
 

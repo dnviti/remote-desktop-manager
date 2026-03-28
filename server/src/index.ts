@@ -186,18 +186,24 @@ async function main() {
   let tunnelServer: http.Server | https.Server;
   if (config.tunnelServerCert && config.tunnelServerKey) {
     try {
+      if (config.tunnelStrictMtls && !config.tunnelServerCa) {
+        throw new Error('TUNNEL_SERVER_CA is required when TUNNEL_STRICT_MTLS=true');
+      }
       const tunnelTlsOptions: https.ServerOptions = {
         cert: fs.readFileSync(config.tunnelServerCert),
         key: fs.readFileSync(config.tunnelServerKey),
         requestCert: true,
-        // We do tenant-specific CA validation in-app, not at the TLS layer
-        rejectUnauthorized: false,
+        rejectUnauthorized: config.tunnelStrictMtls,
       };
       if (config.tunnelServerCa) {
         tunnelTlsOptions.ca = fs.readFileSync(config.tunnelServerCa);
       }
       tunnelServer = https.createServer(tunnelTlsOptions, app);
-      logger.info('[tunnel] TLS enabled for tunnel endpoint — mTLS client certificates will be verified');
+      logger.info(
+        config.tunnelStrictMtls
+          ? '[tunnel] TLS enabled for tunnel endpoint — strict mTLS client certificate verification is active'
+          : '[tunnel] TLS enabled for tunnel endpoint — client certificates will be authorized in-app',
+      );
     } catch (err) {
       logger.error('[tunnel] Failed to load tunnel TLS certificates:', err instanceof Error ? err.message : 'Unknown error');
       logger.warn('[tunnel] Falling back to main HTTPS server for tunnel endpoint — mTLS enforcement disabled');
