@@ -1,0 +1,7 @@
+---
+- name: reload nftables
+  become: true
+  become_user: root
+  service:
+    name: nftables
+    state: restarted

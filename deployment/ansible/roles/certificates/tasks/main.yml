@@ -1,0 +1,393 @@
+---
+# Skip cert generation if CA already exists (e.g., dev-certs from generate.sh)
+- name: Check for existing CA certificate (ca.pem)
+  stat:
+    path: "{{ arsenale_cert_dir }}/ca.pem"
+  register: _ca_check_short
+
+- name: Check for existing CA certificate (ca-cert.pem)
+  stat:
+    path: "{{ arsenale_cert_dir }}/ca-cert.pem"
+  register: _ca_check_long
+
+- name: Set CA paths
+  set_fact:
+    _ca_cert_path: "{{ arsenale_cert_dir }}/{{ 'ca.pem' if _ca_check_short.stat.exists else 'ca-cert.pem' }}"
+    _ca_key_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    _certs_exist: "{{ _ca_check_short.stat.exists or _ca_check_long.stat.exists }}"
+
+- name: Set runtime private key mode
+  set_fact:
+    _runtime_key_mode: "{{ '0644' if (_is_dev | default(false) | bool) else '0600' }}"
+    _spiffe_trust_domain: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
+
+- name: Inspect ssh-gateway server certificate SANs in development
+  command: openssl x509 -in "{{ arsenale_cert_dir }}/ssh-gateway/server-cert.pem" -noout -ext subjectAltName
+  register: _dev_ssh_gateway_cert_sans
+  changed_when: false
+  failed_when: false
+  when: _is_dev | default(false) | bool
+
+- name: Remove stale dev ssh-gateway certificate missing tunnel SAN
+  file:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/{{ item }}"
+    state: absent
+  loop:
+    - server-cert.pem
+    - server-key.pem
+    - server.csr
+  when:
+    - _is_dev | default(false) | bool
+    - _dev_ssh_gateway_cert_sans.rc == 0
+    - "'DNS:dev-tunnel-ssh-gateway' not in _dev_ssh_gateway_cert_sans.stdout"
+
+- name: Generate CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ _ca_key_path }}"
+    type: ECC
+    curve: secp256r1
+    mode: "0600"
+  register: ca_key
+  when: not _certs_exist
+
+- name: Generate CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ _ca_cert_path }}"
+    privatekey_path: "{{ _ca_key_path }}"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ arsenale_ca_validity_days }}d"
+    mode: "0644"
+  when: not _certs_exist
+
+- name: Ensure CA private key permissions
+  file:
+    path: "{{ _ca_key_path }}"
+    mode: "0600"
+  failed_when: false
+
+- name: Define service certificates
+  set_fact:
+    cert_services:
+      - { name: client, cn: arsenale-client, san: "DNS:arsenale-client,DNS:localhost,IP:127.0.0.1,IP:::1", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/client", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: server, cn: arsenale-server, san: "DNS:arsenale-server,DNS:server,DNS:localhost,IP:127.0.0.1", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/server", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: postgres, cn: arsenale-postgres, san: "DNS:arsenale-postgres,DNS:postgres,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/postgres", eku: ["serverAuth"], key_mode: "0600" }
+      - { name: gocache-cache, cn: arsenale-gocache-cache, san: "DNS:arsenale-gocache-cache,DNS:gocache-cache,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/gocache-cache", eku: ["serverAuth", "clientAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: gocache-pubsub, cn: arsenale-gocache-pubsub, san: "DNS:arsenale-gocache-pubsub,DNS:gocache-pubsub,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/gocache-pubsub", eku: ["serverAuth", "clientAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: guacenc, cn: arsenale-guacenc, san: "DNS:arsenale-guacenc,DNS:guacenc,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/guacenc", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: guacd, cn: arsenale-guacd, san: "DNS:arsenale-guacd,DNS:guacd,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/guacd", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: ssh-gateway, cn: arsenale-ssh-gateway, san: "DNS:arsenale-ssh-gateway,DNS:ssh-gateway,DNS:dev-tunnel-ssh-gateway,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/ssh-gateway", eku: ["serverAuth", "clientAuth"], key_mode: "{{ _runtime_key_mode }}" }
+
+- name: Check which service certs already exist
+  stat:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-cert.pem"
+  loop: "{{ cert_services }}"
+  register: _svc_cert_check
+
+- name: Filter services needing certs
+  set_fact:
+    _services_need_certs: "{{ cert_services | zip(_svc_cert_check.results) | rejectattr('1.stat.exists') | map(attribute='0') | list }}"
+
+- name: Create service cert directories
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ _services_need_certs }}"
+  when: _services_need_certs | length > 0
+
+- name: Ensure existing cert directories are traversable (rootless Podman UID mapping)
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}"
+    mode: "0755"
+  loop: "{{ cert_services }}"
+  failed_when: false
+
+- name: Generate service private keys
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ item.key_mode }}"
+  loop: "{{ _services_need_certs }}"
+
+- name: Generate service CSRs
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-key.pem"
+    common_name: "{{ item.cn }}"
+    subject_alt_name: "{{ item.san.split(',') + ['URI:' ~ item.spiffe_id] }}"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage: "{{ item.eku }}"
+    extended_key_usage_critical: true
+  loop: "{{ _services_need_certs }}"
+
+- name: Sign service certificates with CA
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/{{ item.name }}/server.csr"
+    ownca_path: "{{ _ca_cert_path }}"
+    ownca_privatekey_path: "{{ _ca_key_path }}"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+  loop: "{{ _services_need_certs }}"
+
+- name: Copy CA cert to each service directory
+  copy:
+    src: "{{ _ca_cert_path }}"
+    dest: "{{ arsenale_cert_dir }}/{{ item.name }}/ca.pem"
+    remote_src: true
+    mode: "0644"
+  loop: "{{ cert_services }}"
+
+- name: Ensure service private key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/server-key.pem"
+    mode: "{{ item.key_mode }}"
+  loop: "{{ cert_services }}"
+  failed_when: false
+
+- name: Define development tunnel gateway certificates
+  set_fact:
+    dev_tunnel_gateway_certs:
+      - { name: tunnel-managed-ssh, cn: dev-tunnel-managed-ssh, gateway_id: "11111111-1111-4111-8111-111111111111" }
+      - { name: tunnel-guacd, cn: dev-tunnel-guacd, gateway_id: "22222222-2222-4222-8222-222222222222" }
+      - { name: tunnel-db-proxy, cn: dev-tunnel-db-proxy, gateway_id: "33333333-3333-4333-8333-333333333333" }
+  when: _is_dev | default(false) | bool
+
+- name: Check which development tunnel gateway certs already exist
+  stat:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/client-cert.pem"
+  loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
+  register: _dev_tunnel_cert_check
+  when: _is_dev | default(false) | bool
+
+- name: Filter development tunnel gateways needing certs
+  set_fact:
+    _dev_tunnel_gateways_need_certs: "{{ dev_tunnel_gateway_certs | zip(_dev_tunnel_cert_check.results) | rejectattr('1.stat.exists') | map(attribute='0') | list }}"
+  when: _is_dev | default(false) | bool
+
+- name: Create development tunnel gateway cert directories
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}"
+    state: directory
+    mode: "0755"
+  loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
+  when: _is_dev | default(false) | bool and (_dev_tunnel_gateways_need_certs | default([]) | length > 0)
+
+- name: Ensure development tunnel gateway cert directories are traversable
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}"
+    mode: "0755"
+  loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
+  failed_when: false
+  when: _is_dev | default(false) | bool
+
+- name: Generate development tunnel gateway private keys
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/client-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ _runtime_key_mode }}"
+  loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
+  when: _is_dev | default(false) | bool
+
+- name: Generate development tunnel gateway CSRs
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/{{ item.name }}/client-key.pem"
+    common_name: "{{ item.cn }}"
+    subject_alt_name:
+      - "URI:spiffe://{{ _spiffe_trust_domain }}/gateway/{{ item.gateway_id }}"
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
+  loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
+  when: _is_dev | default(false) | bool
+
+- name: Sign development tunnel gateway certificates
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/{{ item.name }}/client.csr"
+    ownca_path: "{{ _ca_cert_path }}"
+    ownca_privatekey_path: "{{ _ca_key_path }}"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+  loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
+  when: _is_dev | default(false) | bool
+
+- name: Copy CA cert to development tunnel gateway directories
+  copy:
+    src: "{{ _ca_cert_path }}"
+    dest: "{{ arsenale_cert_dir }}/{{ item.name }}/ca.pem"
+    remote_src: true
+    mode: "0644"
+  loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
+  when: _is_dev | default(false) | bool
+
+- name: Ensure development tunnel gateway private key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item.name }}/client-key.pem"
+    mode: "{{ _runtime_key_mode }}"
+  loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
+  failed_when: false
+  when: _is_dev | default(false) | bool
+
+- name: Generate gocache cache client certificates (for server mTLS)
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/gocache-cache/client-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ _runtime_key_mode }}"
+
+- name: Generate gocache cache client CSR
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/gocache-cache/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/gocache-cache/client-key.pem"
+    common_name: arsenale-server-cache-client
+    subject_alt_name:
+      - DNS:arsenale-server-cache-client
+      - URI:spiffe://{{ _spiffe_trust_domain }}/service/server
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
+
+- name: Sign gocache cache client certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/gocache-cache/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/gocache-cache/client.csr"
+    ownca_path: "{{ _ca_cert_path }}"
+    ownca_privatekey_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+
+- name: Generate gocache pubsub client certificates (for server mTLS)
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ _runtime_key_mode }}"
+
+- name: Generate gocache pubsub client CSR
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/gocache-pubsub/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-key.pem"
+    common_name: arsenale-server-pubsub-client
+    subject_alt_name:
+      - DNS:arsenale-server-pubsub-client
+      - URI:spiffe://{{ _spiffe_trust_domain }}/service/server
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
+
+- name: Sign gocache pubsub client certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/gocache-pubsub/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/gocache-pubsub/client.csr"
+    ownca_path: "{{ _ca_cert_path }}"
+    ownca_privatekey_path: "{{ arsenale_cert_dir }}/ca-key.pem"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+
+- name: Ensure gocache client key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/{{ item }}/client-key.pem"
+    mode: "{{ _runtime_key_mode }}"
+  loop:
+    - gocache-cache
+    - gocache-pubsub
+  failed_when: false
+
+- name: Generate SSH gateway client CA private key
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "0600"
+
+- name: Generate SSH gateway client CA certificate
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    common_name: arsenale-ssh-gateway-client-ca
+    organization_name: Arsenale
+    use_common_name_for_san: false
+    basic_constraints:
+      - CA:TRUE
+    basic_constraints_critical: true
+    key_usage:
+      - keyCertSign
+      - cRLSign
+    key_usage_critical: true
+
+- name: Self-sign SSH gateway client CA certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.pem"
+    csr_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    provider: selfsigned
+    selfsigned_not_after: "+{{ arsenale_ca_validity_days }}d"
+    mode: "0644"
+
+- name: Generate SSH gateway client certificate (for server key-management mTLS)
+  community.crypto.openssl_privatekey:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-key.pem"
+    type: ECC
+    curve: secp256r1
+    mode: "{{ _runtime_key_mode }}"
+
+- name: Generate SSH gateway client CSR
+  community.crypto.openssl_csr:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client.csr"
+    privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-key.pem"
+    common_name: arsenale-server
+    subject_alt_name:
+      - DNS:arsenale-server
+      - URI:spiffe://{{ _spiffe_trust_domain }}/service/server
+    key_usage:
+      - digitalSignature
+      - keyEncipherment
+    key_usage_critical: true
+    extended_key_usage:
+      - clientAuth
+    extended_key_usage_critical: true
+
+- name: Sign SSH gateway client certificate
+  community.crypto.x509_certificate:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-cert.pem"
+    csr_path: "{{ arsenale_cert_dir }}/ssh-gateway/client.csr"
+    ownca_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca.pem"
+    ownca_privatekey_path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    provider: ownca
+    ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
+    mode: "0644"
+
+- name: Ensure SSH gateway client key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-key.pem"
+    mode: "{{ _runtime_key_mode }}"
+  failed_when: false
+
+- name: Ensure SSH gateway client CA key permissions
+  file:
+    path: "{{ arsenale_cert_dir }}/ssh-gateway/client-ca-key.pem"
+    mode: "0600"
+  failed_when: false

@@ -1,18 +1,28 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import LoginPage from './pages/LoginPage';
-import RegisterPage from './pages/RegisterPage';
-import ForgotPasswordPage from './pages/ForgotPasswordPage';
-import ResetPasswordPage from './pages/ResetPasswordPage';
-import DashboardPage from './pages/DashboardPage';
-import ConnectionViewerPage from './pages/ConnectionViewerPage';
-import RecordingPlayerPage from './pages/RecordingPlayerPage';
-import OAuthCallbackPage from './pages/OAuthCallbackPage';
-import VaultSetupPage from './pages/VaultSetupPage';
-import PublicSharePage from './pages/PublicSharePage';
-import SetupWizardPage from './pages/SetupWizardPage';
+import { CircularProgress, Box } from '@mui/material';
 import VaultLockedOverlay from './components/Overlays/VaultLockedOverlay';
 import PwaUpdateNotification from './components/common/PwaUpdateNotification';
+
+const LoginPage = lazy(() => import('./pages/LoginPage'));
+const RegisterPage = lazy(() => import('./pages/RegisterPage'));
+const ForgotPasswordPage = lazy(() => import('./pages/ForgotPasswordPage'));
+const ResetPasswordPage = lazy(() => import('./pages/ResetPasswordPage'));
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const ConnectionViewerPage = lazy(() => import('./pages/ConnectionViewerPage'));
+const RecordingPlayerPage = lazy(() => import('./pages/RecordingPlayerPage'));
+const OAuthCallbackPage = lazy(() => import('./pages/OAuthCallbackPage'));
+const VaultSetupPage = lazy(() => import('./pages/VaultSetupPage'));
+const PublicSharePage = lazy(() => import('./pages/PublicSharePage'));
+const SetupWizardPage = lazy(() => import('./pages/SetupWizardPage'));
+
+function LazyFallback() {
+  return (
+    <Box sx={{ width: '100vw', height: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <CircularProgress />
+    </Box>
+  );
+}
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/authStore';
 import { useVaultStore } from './store/vaultStore';
@@ -79,7 +89,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 
 export default function App() {
   return (
-    <>
+    <Suspense fallback={<LazyFallback />}>
       <Routes>
         <Route path="/setup" element={<SetupWizardPage />} />
         <Route path="/login" element={<SetupGuard><LoginPage /></SetupGuard>} />
@@ -122,6 +132,6 @@ export default function App() {
         />
       </Routes>
       <PwaUpdateNotification />
-    </>
+    </Suspense>
   );
 }

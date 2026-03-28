@@ -20,7 +20,7 @@ export interface ImportResult {
   errors: Array<{ row?: number; filename: string; error: string }>;
 }
 
-export async function exportConnections(payload: ExportRequest): Promise<Blob> {
+async function exportConnections(payload: ExportRequest): Promise<Blob> {
   const { data } = await api.post('/connections/export', payload, {
     responseType: 'blob',
   });

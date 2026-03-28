@@ -3,12 +3,15 @@ import api from './client';
 type UserInfo = { id: string; email: string; username: string | null; avatarData: string | null };
 
 type MfaMethod = 'totp' | 'sms' | 'webauthn';
+export type TenantMembershipStatus = 'PENDING' | 'ACCEPTED';
 
 export interface TenantMembershipInfo {
   tenantId: string;
   name: string;
   slug: string;
   role: string;
+  status: TenantMembershipStatus;
+  pending: boolean;
   isActive: boolean;
 }
 

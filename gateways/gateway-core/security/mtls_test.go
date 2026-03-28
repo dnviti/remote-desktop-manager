@@ -8,6 +8,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/pem"
 	"math/big"
+	"net/url"
 	"testing"
 	"time"
 )
@@ -57,13 +58,18 @@ func generateTestCA(t *testing.T) (certPEM, keyPEM string, cert *x509.Certificat
 }
 
 // generateTestClientCert creates a client certificate signed by the given CA
-// with CN=gatewayID.
+// with a SPIFFE URI SAN for the gateway.
 func generateTestClientCert(t *testing.T, caCert *x509.Certificate, caKey ed25519.PrivateKey, gatewayID string, notAfter time.Time) (certPEM, keyPEM string) {
 	t.Helper()
 
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatalf("generate client key: %v", err)
+	}
+
+	spiffeID, err := url.Parse(BuildGatewaySPIFFEID("arsenale.local", gatewayID))
+	if err != nil {
+		t.Fatalf("parse SPIFFE ID: %v", err)
 	}
 
 	template := &x509.Certificate{
@@ -78,6 +84,7 @@ func generateTestClientCert(t *testing.T, caCert *x509.Certificate, caKey ed2551
 		ExtKeyUsage: []x509.ExtKeyUsage{
 			x509.ExtKeyUsageClientAuth,
 		},
+		URIs: []*url.URL{spiffeID},
 	}
 
 	derBytes, err := x509.CreateCertificate(rand.Reader, template, caCert, pub, caKey)
@@ -171,27 +178,27 @@ func TestVerifyCACertFingerprint_Mismatch(t *testing.T) {
 	}
 }
 
-func TestVerifyGatewayIdentity_CorrectCN(t *testing.T) {
+func TestVerifyGatewayIdentity_CorrectSPIFFEID(t *testing.T) {
 	_, _, caCert, caKey := generateTestCA(t)
 	clientPEM, _ := generateTestClientCert(t, caCert, caKey, "gateway-001", time.Now().Add(24*time.Hour))
 
-	if err := VerifyGatewayIdentity(clientPEM, "gateway-001"); err != nil {
+	if err := VerifyGatewayIdentity(clientPEM, BuildGatewaySPIFFEID("arsenale.local", "gateway-001")); err != nil {
 		t.Fatalf("expected match, got: %v", err)
 	}
 }
 
-func TestVerifyGatewayIdentity_WrongCN(t *testing.T) {
+func TestVerifyGatewayIdentity_WrongSPIFFEID(t *testing.T) {
 	_, _, caCert, caKey := generateTestCA(t)
 	clientPEM, _ := generateTestClientCert(t, caCert, caKey, "gateway-001", time.Now().Add(24*time.Hour))
 
-	err := VerifyGatewayIdentity(clientPEM, "gateway-999")
+	err := VerifyGatewayIdentity(clientPEM, BuildGatewaySPIFFEID("arsenale.local", "gateway-999"))
 	if err == nil {
-		t.Fatal("expected error for wrong CN, got nil")
+		t.Fatal("expected error for wrong SPIFFE ID, got nil")
 	}
 }
 
 func TestValidateConnectionForCredentialPush_NilState(t *testing.T) {
-	err := ValidateConnectionForCredentialPush(nil, "gateway-001")
+	err := ValidateConnectionForCredentialPush(nil, BuildGatewaySPIFFEID("arsenale.local", "gateway-001"))
 	if err == nil {
 		t.Fatal("expected error for nil TLS state, got nil")
 	}
@@ -201,7 +208,7 @@ func TestValidateConnectionForCredentialPush_NoHandshake(t *testing.T) {
 	state := &tls.ConnectionState{
 		HandshakeComplete: false,
 	}
-	err := ValidateConnectionForCredentialPush(state, "gateway-001")
+	err := ValidateConnectionForCredentialPush(state, BuildGatewaySPIFFEID("arsenale.local", "gateway-001"))
 	if err == nil {
 		t.Fatal("expected error for incomplete handshake, got nil")
 	}
@@ -212,35 +219,43 @@ func TestValidateConnectionForCredentialPush_NoPeerCerts(t *testing.T) {
 		HandshakeComplete: true,
 		PeerCertificates:  []*x509.Certificate{},
 	}
-	err := ValidateConnectionForCredentialPush(state, "gateway-001")
+	err := ValidateConnectionForCredentialPush(state, BuildGatewaySPIFFEID("arsenale.local", "gateway-001"))
 	if err == nil {
 		t.Fatal("expected error for no peer certs, got nil")
 	}
 }
 
-func TestValidateConnectionForCredentialPush_WrongCN(t *testing.T) {
+func TestValidateConnectionForCredentialPush_WrongSPIFFEID(t *testing.T) {
+	spiffeID, err := url.Parse(BuildGatewaySPIFFEID("arsenale.local", "gateway-001"))
+	if err != nil {
+		t.Fatalf("parse SPIFFE ID: %v", err)
+	}
 	cert := &x509.Certificate{
-		Subject: pkix.Name{CommonName: "gateway-001"},
+		URIs: []*url.URL{spiffeID},
 	}
 	state := &tls.ConnectionState{
 		HandshakeComplete: true,
 		PeerCertificates:  []*x509.Certificate{cert},
 	}
-	err := ValidateConnectionForCredentialPush(state, "gateway-999")
+	err = ValidateConnectionForCredentialPush(state, BuildGatewaySPIFFEID("arsenale.local", "gateway-999"))
 	if err == nil {
-		t.Fatal("expected error for wrong CN, got nil")
+		t.Fatal("expected error for wrong SPIFFE ID, got nil")
 	}
 }
 
 func TestValidateConnectionForCredentialPush_Valid(t *testing.T) {
+	spiffeID, err := url.Parse(BuildGatewaySPIFFEID("arsenale.local", "gateway-001"))
+	if err != nil {
+		t.Fatalf("parse SPIFFE ID: %v", err)
+	}
 	cert := &x509.Certificate{
-		Subject: pkix.Name{CommonName: "gateway-001"},
+		URIs: []*url.URL{spiffeID},
 	}
 	state := &tls.ConnectionState{
 		HandshakeComplete: true,
 		PeerCertificates:  []*x509.Certificate{cert},
 	}
-	if err := ValidateConnectionForCredentialPush(state, "gateway-001"); err != nil {
+	if err := ValidateConnectionForCredentialPush(state, BuildGatewaySPIFFEID("arsenale.local", "gateway-001")); err != nil {
 		t.Fatalf("expected valid, got: %v", err)
 	}
 }
@@ -257,7 +272,7 @@ func TestMustValidateMTLS_FullPass(t *testing.T) {
 	err = MustValidateMTLS(MTLSConfig{
 		CACertPEM:           caPEM,
 		ClientCertPEM:       clientPEM,
-		ExpectedGatewayID:   "gateway-001",
+		ExpectedSPIFFEID:    BuildGatewaySPIFFEID("arsenale.local", "gateway-001"),
 		ExpectedFingerprint: fp,
 	})
 	if err != nil {
@@ -270,9 +285,9 @@ func TestMustValidateMTLS_SkipFingerprint(t *testing.T) {
 	clientPEM, _ := generateTestClientCert(t, caCert, caKey, "gateway-001", time.Now().Add(24*time.Hour))
 
 	err := MustValidateMTLS(MTLSConfig{
-		CACertPEM:         caPEM,
-		ClientCertPEM:     clientPEM,
-		ExpectedGatewayID: "gateway-001",
+		CACertPEM:        caPEM,
+		ClientCertPEM:    clientPEM,
+		ExpectedSPIFFEID: BuildGatewaySPIFFEID("arsenale.local", "gateway-001"),
 	})
 	if err != nil {
 		t.Fatalf("expected validation without fingerprint to pass, got: %v", err)
@@ -284,9 +299,9 @@ func TestMustValidateMTLS_ExpiredCert(t *testing.T) {
 	clientPEM, _ := generateTestClientCert(t, caCert, caKey, "gateway-001", time.Now().Add(-1*time.Hour))
 
 	err := MustValidateMTLS(MTLSConfig{
-		CACertPEM:         caPEM,
-		ClientCertPEM:     clientPEM,
-		ExpectedGatewayID: "gateway-001",
+		CACertPEM:        caPEM,
+		ClientCertPEM:    clientPEM,
+		ExpectedSPIFFEID: BuildGatewaySPIFFEID("arsenale.local", "gateway-001"),
 	})
 	if err == nil {
 		t.Fatal("expected error for expired cert in full validation, got nil")

@@ -23,38 +23,51 @@ import (
 	"github.com/dnviti/arsenale/infrastructure/gocache/peer"
 	"github.com/dnviti/arsenale/infrastructure/gocache/pubsub"
 	"github.com/dnviti/arsenale/infrastructure/gocache/queue"
+	spiffeid "github.com/dnviti/arsenale/infrastructure/gocache/spiffe"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/reflection"
+	"google.golang.org/grpc/status"
 )
 
 // config holds all runtime configuration parsed from env vars.
 type config struct {
-	listenAddr     string // tcp://host:port or unix:///path
-	healthPort     int
-	maxMemory      int64
-	discoveryMode  string // docker | kubernetes | manual
-	peers          string
-	k8sService     string
-	k8sNamespace   string
-	peerBufferSize int    // max buffered replication entries per peer
-	peerSyncMode   string // "sync" (ACK-based) or "async" (fire-and-forget)
-	peerCNPrefix   string // required CN prefix for peer certificates
-	peerTLSEnabled bool   // mTLS for peer replication
+	role              string // "all" | "cache" | "pubsub"
+	listenAddr        string // tcp://host:port or unix:///path
+	healthPort        int
+	maxMemory         int64
+	discoveryMode     string // docker | kubernetes | manual
+	peers             string
+	dnsName           string
+	k8sService        string
+	k8sNamespace      string
+	peerBufferSize    int    // max buffered replication entries per peer
+	peerSyncMode      string // "sync" (ACK-based) or "async" (fire-and-forget)
+	spiffeTrustDomain string
+	peerSPIFFEID      string // required SPIFFE ID for peer certificates
+	clientSPIFFEID    string // required SPIFFE ID for gRPC clients
+	peerTLSEnabled    bool   // mTLS for peer replication
 }
 
 func parseConfig() config {
+	trustDomain := envOrDefault("SPIFFE_TRUST_DOMAIN", "arsenale.local")
+	role := envOrDefault("CACHE_ROLE", "all")
 	cfg := config{
-		listenAddr:     envOrDefault("CACHE_LISTEN", "tcp://localhost:6380"),
-		healthPort:     envIntOrDefault("CACHE_HEALTH_PORT", 6381),
-		maxMemory:      parseBytes(envOrDefault("CACHE_MAX_MEMORY", "256mb")),
-		discoveryMode:  envOrDefault("CACHE_DISCOVERY", "manual"),
-		peers:          os.Getenv("CACHE_PEERS"),
-		k8sService:     envOrDefault("CACHE_K8S_SERVICE", "gocache"),
-		k8sNamespace:   os.Getenv("CACHE_K8S_NAMESPACE"),
-		peerBufferSize: envIntOrDefault("CACHE_PEER_BUFFER_SIZE", 10000),
-		peerSyncMode:   envOrDefault("CACHE_PEER_SYNC_MODE", "sync"),
-		peerCNPrefix:   envOrDefault("CACHE_PEER_CN_PREFIX", "gocache"),
+		role:              role,
+		listenAddr:        envOrDefault("CACHE_LISTEN", "tcp://localhost:6380"),
+		healthPort:        envIntOrDefault("CACHE_HEALTH_PORT", 6381),
+		maxMemory:         parseBytes(envOrDefault("CACHE_MAX_MEMORY", "256mb")),
+		discoveryMode:     envOrDefault("CACHE_DISCOVERY", "manual"),
+		peers:             os.Getenv("CACHE_PEERS"),
+		dnsName:           envOrDefault("CACHE_DNS_NAME", ""),
+		k8sService:        envOrDefault("CACHE_K8S_SERVICE", "gocache"),
+		k8sNamespace:      os.Getenv("CACHE_K8S_NAMESPACE"),
+		peerBufferSize:    envIntOrDefault("CACHE_PEER_BUFFER_SIZE", 10000),
+		peerSyncMode:      envOrDefault("CACHE_PEER_SYNC_MODE", "sync"),
+		spiffeTrustDomain: trustDomain,
+		peerSPIFFEID:      envOrDefault("CACHE_PEER_SPIFFE_ID", spiffeid.BuildServiceID(trustDomain, defaultServiceSPIFFEName(role))),
+		clientSPIFFEID:    envOrDefault("CACHE_CLIENT_SPIFFE_ID", spiffeid.BuildServiceID(trustDomain, "server")),
 	}
 	// Peer TLS defaults to enabled when all CACHE_TLS_* vars are set.
 	cfg.peerTLSEnabled = os.Getenv("CACHE_TLS_CA") != "" &&
@@ -66,35 +79,60 @@ func parseConfig() config {
 	return cfg
 }
 
+func defaultServiceSPIFFEName(role string) string {
+	switch role {
+	case "cache":
+		return "gocache-cache"
+	case "pubsub":
+		return "gocache-pubsub"
+	default:
+		return "gocache"
+	}
+}
+
 func main() {
 	cfg := parseConfig()
 
 	// Initialize subsystems.
-	store := kv.New(cfg.maxMemory)
-	defer store.Close()
+	var store *kv.Store
+	if cfg.role != "pubsub" {
+		store = kv.New(cfg.maxMemory)
+		defer store.Close()
+	}
 
-	broker := pubsub.New()
+	var broker *pubsub.Broker
+	if cfg.role != "cache" {
+		broker = pubsub.New()
+	}
 
-	lockMgr := lockpkg.New()
-	defer lockMgr.Close()
+	var lockMgr *lockpkg.Manager
+	var queueMgr *queue.Manager
+	if cfg.role != "pubsub" {
+		lockMgr = lockpkg.New()
+		defer lockMgr.Close()
 
-	queueMgr := queue.New()
+		queueMgr = queue.New()
+	}
 
 	// Peer discovery.
 	var discovery peer.Discovery
 	listenAddr := parseListenAddr(cfg.listenAddr)
-	grpcPort := extractPort(listenAddr)
+	replicationAddr := envOrDefault("CACHE_REPLICATION_ADDR", defaultReplicationAddr(listenAddr))
+	replicationPort := extractPort(replicationAddr)
+	selfPeerAddr := advertisedPeerAddr(replicationAddr, replicationPort)
 
 	switch cfg.discoveryMode {
 	case "docker":
-		discovery = peer.NewDockerDiscovery(grpcPort)
+		discovery = peer.NewDockerDiscovery(replicationPort)
+	case "dns":
+		discovery = peer.NewDNSDiscovery(cfg.dnsName, replicationPort)
 	case "kubernetes":
-		discovery = peer.NewKubernetesDiscovery(cfg.k8sService, cfg.k8sNamespace, grpcPort)
+		discovery = peer.NewKubernetesDiscovery(cfg.k8sService, cfg.k8sNamespace, replicationPort)
 	default:
 		discovery = peer.NewManualDiscovery(cfg.peers)
 	}
 
-	registry := peer.NewRegistry(discovery, listenAddr)
+	registry := peer.NewRegistry(discovery, selfPeerAddr)
 	replicationEngine := peer.NewEngine(registry, cfg.peerBufferSize)
 
 	// Configure peer replication mTLS.
@@ -119,44 +157,50 @@ func main() {
 	} else {
 		log.Println("[main] peer replication using INSECURE plaintext — set CACHE_TLS_CA/CERT/KEY to enable")
 	}
-	replicationEngine.PeerCNPrefix = cfg.peerCNPrefix
+	replicationEngine.PeerSPIFFEID = cfg.peerSPIFFEID
 	replicationEngine.SyncMode = cfg.peerSyncMode == "sync"
-	log.Printf("[main] peer replication: sync_mode=%s buffer_size=%d cn_prefix=%q",
-		cfg.peerSyncMode, cfg.peerBufferSize, cfg.peerCNPrefix)
+	log.Printf("[main] peer replication: sync_mode=%s buffer_size=%d spiffe_id=%q",
+		cfg.peerSyncMode, cfg.peerBufferSize, cfg.peerSPIFFEID)
 
 	// Wire snapshot provider for full-state sync on peer reconnect.
-	replicationEngine.SnapshotProvider = func() []peer.ReplicationEntry {
-		snapEntries := store.Snapshot()
-		result := make([]peer.ReplicationEntry, len(snapEntries))
-		for i, se := range snapEntries {
-			result[i] = peer.ReplicationEntry{
-				Op:        peer.OpKVSet,
-				Key:       se.Key,
-				Value:     se.Value,
-				TTLMs:     se.TTLMs,
-				Timestamp: se.Timestamp,
+	if store != nil {
+		replicationEngine.SnapshotProvider = func() []peer.ReplicationEntry {
+			snapEntries := store.Snapshot()
+			result := make([]peer.ReplicationEntry, len(snapEntries))
+			for i, se := range snapEntries {
+				result[i] = peer.ReplicationEntry{
+					Op:        peer.OpKVSet,
+					Key:       se.Key,
+					Value:     se.Value,
+					TTLMs:     se.TTLMs,
+					Timestamp: se.Timestamp,
+				}
 			}
+			return result
 		}
-		return result
 	}
 
 	// Wire replication callbacks with LWW (last-writer-wins) conflict resolution.
-	replicationEngine.OnKVSet = func(key string, value []byte, ttlMs int64, timestamp uint64) {
-		var ttl time.Duration
-		if ttlMs > 0 {
-			ttl = time.Duration(ttlMs) * time.Millisecond
+	if store != nil {
+		replicationEngine.OnKVSet = func(key string, value []byte, ttlMs int64, timestamp uint64) {
+			var ttl time.Duration
+			if ttlMs > 0 {
+				ttl = time.Duration(ttlMs) * time.Millisecond
+			}
+			if !store.SetIfNewer(key, value, ttl, timestamp) {
+				log.Printf("[replication] skipped stale SET for key %q (ts=%d)", key, timestamp)
+			}
 		}
-		if !store.SetIfNewer(key, value, ttl, timestamp) {
-			log.Printf("[replication] skipped stale SET for key %q (ts=%d)", key, timestamp)
+		replicationEngine.OnKVDelete = func(key string, timestamp uint64) {
+			if !store.DeleteIfNewer(key, timestamp) {
+				log.Printf("[replication] skipped stale DELETE for key %q (ts=%d)", key, timestamp)
+			}
 		}
 	}
-	replicationEngine.OnKVDelete = func(key string, timestamp uint64) {
-		if !store.DeleteIfNewer(key, timestamp) {
-			log.Printf("[replication] skipped stale DELETE for key %q (ts=%d)", key, timestamp)
+	if broker != nil {
+		replicationEngine.OnPubSub = func(channel string, message []byte) {
+			broker.DeliverLocal(channel, message)
 		}
-	}
-	replicationEngine.OnPubSub = func(channel string, message []byte) {
-		broker.DeliverLocal(channel, message)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -168,19 +212,6 @@ func main() {
 	defer replicationEngine.Stop()
 
 	// Start the replication listener so peers can connect inbound.
-	// Default to grpc port + 1000 to avoid conflicting with the main gRPC listener.
-	defaultReplAddr := func() string {
-		host, port, err := net.SplitHostPort(listenAddr)
-		if err != nil {
-			return "0.0.0.0:7380"
-		}
-		p, err := strconv.Atoi(port)
-		if err != nil {
-			return "0.0.0.0:7380"
-		}
-		return net.JoinHostPort(host, strconv.Itoa(p+1000))
-	}()
-	replicationAddr := envOrDefault("CACHE_REPLICATION_ADDR", defaultReplAddr)
 	go func() {
 		ln, err := peer.ListenForReplication(replicationAddr, replicationEngine)
 		if err != nil {
@@ -194,6 +225,7 @@ func main() {
 
 	// gRPC server.
 	svc := &cacheServiceServer{
+		role:        cfg.role,
 		store:       store,
 		broker:      broker,
 		lockMgr:     lockMgr,
@@ -202,9 +234,9 @@ func main() {
 	}
 
 	var grpcOpts []grpc.ServerOption
-	if tlsConfig := buildTLSConfig(); tlsConfig != nil {
+	if tlsConfig := buildTLSConfig(cfg.clientSPIFFEID); tlsConfig != nil {
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
-		log.Println("[main] gRPC server using mTLS (certificates configured)")
+		log.Printf("[main] gRPC server using mTLS (client SPIFFE ID=%q)", cfg.clientSPIFFEID)
 	} else {
 		log.Println("[main] gRPC server using INSECURE plaintext — set CACHE_TLS_CA/CERT/KEY to enable mTLS")
 	}
@@ -229,9 +261,14 @@ func main() {
 	// HTTP(S) health endpoint.
 	healthMux := http.NewServeMux()
 	healthMux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		var usedMemory int64
+		if store != nil {
+			usedMemory = store.UsedMemory()
+		}
 		status := map[string]interface{}{
 			"status":        "ok",
-			"memory_used":   store.UsedMemory(),
+			"role":          cfg.role,
+			"memory_used":   usedMemory,
 			"memory_max":    cfg.maxMemory,
 			"peers":         len(registry.GetAllPeers()),
 			"healthy_peers": len(registry.GetHealthyPeers()),
@@ -243,7 +280,7 @@ func main() {
 	certFile := os.Getenv("CACHE_TLS_CERT")
 	keyFile := os.Getenv("CACHE_TLS_KEY")
 	var healthServer *http.Server
-	if tlsConfig := buildTLSConfig(); tlsConfig != nil {
+	if tlsConfig := buildTLSConfig(cfg.clientSPIFFEID); tlsConfig != nil {
 		healthTLSConfig := tlsConfig.Clone()
 		// Health endpoint does not require client certs — it's a simple readiness probe
 		healthTLSConfig.ClientAuth = tls.NoClientCert
@@ -298,6 +335,7 @@ func main() {
 // cacheServiceServer implements the CacheService gRPC service.
 type cacheServiceServer struct {
 	UnimplementedCacheServiceServer
+	role        string
 	store       *kv.Store
 	broker      *pubsub.Broker
 	lockMgr     *lockpkg.Manager
@@ -306,12 +344,18 @@ type cacheServiceServer struct {
 }
 
 func (s *cacheServiceServer) Get(_ context.Context, req *GetRequest) (*GetResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	val, found := s.store.Get(req.Key)
 	log.Printf("[kv] GET key=%q found=%v size=%d", req.Key, found, len(val))
 	return &GetResponse{Value: val, Found: found}, nil
 }
 
 func (s *cacheServiceServer) Set(_ context.Context, req *SetRequest) (*SetResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	var ttl time.Duration
 	if req.TtlMs > 0 {
 		ttl = time.Duration(req.TtlMs) * time.Millisecond
@@ -323,6 +367,9 @@ func (s *cacheServiceServer) Set(_ context.Context, req *SetRequest) (*SetRespon
 }
 
 func (s *cacheServiceServer) Delete(_ context.Context, req *DeleteRequest) (*DeleteResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	deleted := s.store.Delete(req.Key)
 	if deleted {
 		s.replication.ReplicateKVDelete(req.Key)
@@ -332,12 +379,18 @@ func (s *cacheServiceServer) Delete(_ context.Context, req *DeleteRequest) (*Del
 }
 
 func (s *cacheServiceServer) Incr(_ context.Context, req *IncrRequest) (*IncrResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	val := s.store.Incr(req.Key, req.Delta)
 	log.Printf("[kv] INCR key=%q delta=%d result=%d", req.Key, req.Delta, val)
 	return &IncrResponse{Value: val}, nil
 }
 
 func (s *cacheServiceServer) GetDel(_ context.Context, req *GetDelRequest) (*GetDelResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	val, found := s.store.GetDel(req.Key)
 	if found {
 		s.replication.ReplicateKVDelete(req.Key)
@@ -347,6 +400,9 @@ func (s *cacheServiceServer) GetDel(_ context.Context, req *GetDelRequest) (*Get
 }
 
 func (s *cacheServiceServer) Expire(_ context.Context, req *ExpireRequest) (*ExpireResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	ttl := time.Duration(req.TtlMs) * time.Millisecond
 	ok := s.store.Expire(req.Key, ttl)
 	log.Printf("[kv] EXPIRE key=%q ttl=%v ok=%v", req.Key, ttl, ok)
@@ -354,6 +410,9 @@ func (s *cacheServiceServer) Expire(_ context.Context, req *ExpireRequest) (*Exp
 }
 
 func (s *cacheServiceServer) Publish(_ context.Context, req *PublishRequest) (*PublishResponse, error) {
+	if err := s.requirePubSub(); err != nil {
+		return nil, err
+	}
 	count, _ := s.broker.Publish(req.Channel, req.Message)
 	s.replication.ReplicatePubSub(req.Channel, req.Message)
 	log.Printf("[pubsub] PUBLISH channel=%q receivers=%d msgSize=%d", req.Channel, count, len(req.Message))
@@ -361,6 +420,9 @@ func (s *cacheServiceServer) Publish(_ context.Context, req *PublishRequest) (*P
 }
 
 func (s *cacheServiceServer) Subscribe(req *SubscribeRequest, stream CacheService_SubscribeServer) error {
+	if err := s.requirePubSub(); err != nil {
+		return err
+	}
 	log.Printf("[pubsub] SUBSCRIBE channel=%q pattern=%v", req.Channel, req.Pattern)
 	var sub *pubsub.Subscriber
 	if req.Pattern {
@@ -392,6 +454,9 @@ func (s *cacheServiceServer) Subscribe(req *SubscribeRequest, stream CacheServic
 }
 
 func (s *cacheServiceServer) AcquireLock(_ context.Context, req *AcquireLockRequest) (*AcquireLockResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	ttl := time.Duration(req.TtlMs) * time.Millisecond
 	acquired, token := s.lockMgr.AcquireLock(req.Name, ttl, req.HolderId)
 	log.Printf("[lock] ACQUIRE lock=%q ttl=%v acquired=%v token=%d", req.Name, ttl, acquired, token)
@@ -399,12 +464,18 @@ func (s *cacheServiceServer) AcquireLock(_ context.Context, req *AcquireLockRequ
 }
 
 func (s *cacheServiceServer) ReleaseLock(_ context.Context, req *ReleaseLockRequest) (*ReleaseLockResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	released := s.lockMgr.ReleaseLock(req.Name, req.HolderId)
 	log.Printf("[lock] RELEASE lock=%q released=%v", req.Name, released)
 	return &ReleaseLockResponse{Released: released}, nil
 }
 
 func (s *cacheServiceServer) RenewLock(_ context.Context, req *RenewLockRequest) (*RenewLockResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	ttl := time.Duration(req.TtlMs) * time.Millisecond
 	renewed := s.lockMgr.RenewLock(req.Name, ttl, req.HolderId)
 	log.Printf("[lock] RENEW lock=%q ttl=%v renewed=%v", req.Name, ttl, renewed)
@@ -412,12 +483,18 @@ func (s *cacheServiceServer) RenewLock(_ context.Context, req *RenewLockRequest)
 }
 
 func (s *cacheServiceServer) Enqueue(_ context.Context, req *EnqueueRequest) (*EnqueueResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	s.queueMgr.Enqueue(req.QueueName, req.Message)
 	log.Printf("[queue] ENQUEUE queue=%q msgSize=%d", req.QueueName, len(req.Message))
 	return &EnqueueResponse{Ok: true}, nil
 }
 
 func (s *cacheServiceServer) Dequeue(ctx context.Context, req *DequeueRequest) (*DequeueResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
 	if req.TimeoutMs <= 0 {
 		data, found := s.queueMgr.Dequeue(req.QueueName, 0)
 		log.Printf("[queue] DEQUEUE queue=%q found=%v msgSize=%d", req.QueueName, found, len(data))
@@ -431,7 +508,27 @@ func (s *cacheServiceServer) Dequeue(ctx context.Context, req *DequeueRequest) (
 	return &DequeueResponse{Message: data, Found: found}, nil
 }
 
+func (s *cacheServiceServer) GetSnapshot(_ context.Context, _ *SnapshotRequest) (*SnapshotResponse, error) {
+	if err := s.requireCache(); err != nil {
+		return nil, err
+	}
+	snapEntries := s.store.Snapshot()
+	entries := make([]SnapshotEntry, len(snapEntries))
+	for i, entry := range snapEntries {
+		entries[i] = SnapshotEntry{
+			Key:       entry.Key,
+			Value:     entry.Value,
+			TtlMs:     entry.TTLMs,
+			Timestamp: entry.Timestamp,
+		}
+	}
+	return &SnapshotResponse{Entries: entries}, nil
+}
+
 func (s *cacheServiceServer) ReplicateKV(stream CacheService_ReplicateKVServer) error {
+	if err := s.requireCache(); err != nil {
+		return err
+	}
 	log.Printf("[repl] ReplicateKV stream opened")
 	count := 0
 	for {
@@ -457,6 +554,9 @@ func (s *cacheServiceServer) ReplicateKV(stream CacheService_ReplicateKVServer) 
 }
 
 func (s *cacheServiceServer) ReplicatePubSub(stream CacheService_ReplicatePubSubServer) error {
+	if err := s.requirePubSub(); err != nil {
+		return err
+	}
 	log.Printf("[repl] ReplicatePubSub stream opened")
 	count := 0
 	for {
@@ -480,11 +580,25 @@ func (s *cacheServiceServer) Heartbeat(_ context.Context, req *HeartbeatRequest)
 	return &HeartbeatResponse{PeerId: req.PeerId, Ok: true}, nil
 }
 
+func (s *cacheServiceServer) requireCache() error {
+	if s.store == nil || s.lockMgr == nil || s.queueMgr == nil {
+		return status.Errorf(codes.FailedPrecondition, "cache role not enabled on %s", s.role)
+	}
+	return nil
+}
+
+func (s *cacheServiceServer) requirePubSub() error {
+	if s.broker == nil {
+		return status.Errorf(codes.FailedPrecondition, "pubsub role not enabled on %s", s.role)
+	}
+	return nil
+}
+
 // --- TLS ---
 
 // buildTLSConfig returns a *tls.Config with mTLS enforcement when CACHE_TLS_CA,
 // CACHE_TLS_CERT, and CACHE_TLS_KEY are set. Returns nil for insecure fallback.
-func buildTLSConfig() *tls.Config {
+func buildTLSConfig(expectedClientSPIFFEID string) *tls.Config {
 	caPath := os.Getenv("CACHE_TLS_CA")
 	certPath := os.Getenv("CACHE_TLS_CERT")
 	keyPath := os.Getenv("CACHE_TLS_KEY")
@@ -512,7 +626,23 @@ func buildTLSConfig() *tls.Config {
 		Certificates: []tls.Certificate{cert},
 		ClientAuth:   tls.RequireAndVerifyClientCert,
 		ClientCAs:    caPool,
-		MinVersion:   tls.VersionTLS12,
+		VerifyPeerCertificate: func(_ [][]byte, verifiedChains [][]*x509.Certificate) error {
+			if expectedClientSPIFFEID == "" {
+				return nil
+			}
+			if len(verifiedChains) == 0 || len(verifiedChains[0]) == 0 {
+				return fmt.Errorf("no verified client certificate chain")
+			}
+			actualSPIFFEID, err := spiffeid.ExtractID(verifiedChains[0][0])
+			if err != nil {
+				return err
+			}
+			if !spiffeid.Equal(actualSPIFFEID, expectedClientSPIFFEID) {
+				return fmt.Errorf("client SPIFFE ID %q not allowed", actualSPIFFEID)
+			}
+			return nil
+		},
+		MinVersion: tls.VersionTLS12,
 	}
 }
 
@@ -565,6 +695,33 @@ func parseListenAddr(listen string) string {
 	return listen
 }
 
+func defaultReplicationAddr(listenAddr string) string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err != nil {
+		return "0.0.0.0:7380"
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return "0.0.0.0:7380"
+	}
+	return net.JoinHostPort(host, strconv.Itoa(p+1000))
+}
+
+func advertisedPeerAddr(bindAddr, port string) string {
+	if advertised := os.Getenv("CACHE_ADVERTISE_ADDR"); advertised != "" {
+		return advertised
+	}
+	host, _, err := net.SplitHostPort(bindAddr)
+	if err == nil && host != "" && host != "0.0.0.0" && host != "::" {
+		return net.JoinHostPort(host, port)
+	}
+	hostname, err := os.Hostname()
+	if err == nil && hostname != "" {
+		return net.JoinHostPort(hostname, port)
+	}
+	return bindAddr
+}
+
 func parseNetworkAddr(listen string) (string, string) {
 	if strings.HasPrefix(listen, "unix://") {
 		return "unix", strings.TrimPrefix(listen, "unix://")
@@ -579,4 +736,3 @@ func extractPort(addr string) string {
 	}
 	return port
 }
-

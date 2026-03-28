@@ -1,733 +1,418 @@
 ---
 title: Architecture
-description: System architecture, component interactions, data flow, and key design patterns
-generated-by: ctdf-docs
-generated-at: 2026-03-24T23:40:00Z
+description: System architecture, component interactions, data flow, and design decisions for Arsenale
+generated-by: claw-docs
+generated-at: 2026-03-27T12:00:00Z
 source-files:
   - server/src/index.ts
   - server/src/app.ts
+  - server/src/config.ts
   - server/prisma/schema.prisma
-  - client/src/main.tsx
-  - client/src/App.tsx
-  - client/vite.config.ts
-  - gateways/tunnel-agent/src/index.ts
-  - gateways/tunnel-agent/src/tunnel.ts
-  - gateways/tunnel-agent/src/protocol.ts
-  - server/src/socket/ssh.handler.ts
-  - server/src/socket/tunnel.handler.ts
-  - server/src/socket/notification.handler.ts
-  - server/src/socket/gatewayMonitor.handler.ts
-  - server/src/config/passport.ts
+  - server/src/socket/index.ts
+  - server/src/middleware/auth.middleware.ts
+  - server/src/middleware/error.middleware.ts
+  - server/src/middleware/csrf.middleware.ts
+  - server/src/middleware/globalRateLimit.middleware.ts
+  - server/src/middleware/rateLimitFactory.ts
+  - server/src/middleware/tenant.middleware.ts
+  - server/src/middleware/team.middleware.ts
   - server/src/middleware/featureGate.middleware.ts
-  - server/src/services/keystrokeInspection.service.ts
-  - server/src/services/checkout.service.ts
-  - server/src/services/lateralMovement.service.ts
-  - server/src/services/sshProxy.service.ts
-  - server/src/services/rdGateway.service.ts
-  - server/src/services/dbProxy.service.ts
-  - server/src/services/dbTunnel.service.ts
-  - server/src/services/passwordRotation.service.ts
-  - server/src/services/deviceAuth.service.ts
-  - server/src/services/configReloader.service.ts
-  - tools/arsenale-cli/main.go
+  - server/src/utils/logger.ts
+  - client/src/api/client.ts
+  - client/vite.config.ts
+  - gateways/tunnel-agent/src/config.ts
+  - infrastructure/gocache/Dockerfile
 ---
 
-# Architecture
+## 🏗 Overview
 
-Arsenale is a web-based remote access management platform for SSH, RDP, and VNC connections. It provides encrypted credential storage, multi-tenant RBAC, session recording, gateway orchestration, and a zero-trust tunnel system.
+Arsenale is a secure remote access platform built as a monorepo with npm workspaces. It provides SSH, RDP, VNC, and database proxy access through a unified web interface with enterprise-grade security, multi-tenancy, and session recording.
 
-## System Overview
+**Why this architecture:** Arsenale consolidates fragmented remote access tools (PuTTY, RDP clients, VPN tunnels, database GUIs) into a single zero-trust platform where every connection is authenticated, encrypted, audited, and optionally recorded.
+
+## 🧩 High-Level Architecture
 
 ```mermaid
 flowchart TD
-    subgraph Client["Client (React 19 + Vite)"]
-        UI["Browser UI<br/>MUI v7 + Zustand"]
-        XTerm["XTerm.js<br/>SSH Terminal"]
-        Guac["guacamole-common-js<br/>RDP/VNC Viewer"]
-        PWA["PWA + Service Worker"]
+    subgraph External["External Clients"]
+        Browser["Browser (React SPA)"]
+        Extension["Chrome Extension"]
+        CLI["CLI Tool"]
     end
 
-    subgraph Server["Server (Express + TypeScript)"]
-        API["REST API<br/>Port 3001"]
-        SIO["Socket.IO<br/>SSH + Notifications"]
-        GuacWS["Guacamole WS<br/>Port 3002"]
-        TunnelBroker["Tunnel Broker<br/>WebSocket /api/tunnel/connect"]
+    subgraph Frontend["Frontend Layer"]
+        Nginx["Nginx Reverse Proxy\n(Port 8080)"]
+    end
+
+    subgraph Backend["Backend Layer"]
+        Express["Express API Server\n(Port 3001, HTTPS)"]
+        GuacWS["Guacamole-lite WS\n(Port 3002, WSS)"]
+        SocketIO["Socket.IO\n(SSH, Notifications, Gateway Monitor)"]
     end
 
     subgraph Data["Data Layer"]
-        DB[(PostgreSQL 16)]
-        Prisma["Prisma ORM"]
-        GoCache["gocache Sidecar<br/>gRPC :6380"]
+        Postgres["PostgreSQL 16\n(SSL/TLS)"]
+        GoCacheKV["GoCacheKV\n(gRPC + mTLS)"]
+        GoCachePubSub["GoCachePubSub\n(gRPC + mTLS)"]
     end
 
-    subgraph Gateways["Gateway Infrastructure"]
-        GuacD["guacd<br/>Port 4822"]
-        SSHGw["SSH Gateway<br/>Port 2222"]
-        GuacEnc["guacenc<br/>Recording Processor"]
-        TunnelAgent["Tunnel Agent"]
-        DBProxy["DB Proxy Gateway<br/>Oracle/MSSQL/DB2"]
-        RDGateway["RD Gateway<br/>MS-TSGU Protocol"]
+    subgraph Gateways["Gateway Layer"]
+        Guacd["guacd\n(RDP/VNC, Port 4822)"]
+        SSHGw["SSH Gateway\n(Port 2222)"]
+        DBProxy["DB Proxy\n(Port 5432)"]
+        Guacenc["guacenc\n(Video Converter, Port 3003)"]
     end
 
-    subgraph Tools["Tools"]
-        CLI["Arsenale Connect CLI<br/>Native Client Orchestration"]
+    subgraph Targets["Remote Targets"]
+        RDPServer["RDP Servers"]
+        SSHServer["SSH Servers"]
+        VNCServer["VNC Servers"]
+        DBServer["Databases"]
     end
 
-    subgraph External["External Integrations"]
-        OAuth["OAuth/SAML/LDAP"]
-        HCVault["HashiCorp Vault"]
-        NetBox["NetBox Sync"]
-        Email["Email (SMTP/SES/SendGrid)"]
-        SMS["SMS (Twilio/SNS/Vonage)"]
-    end
+    Browser --> Nginx
+    Extension --> Nginx
+    CLI --> Express
 
-    UI -->|HTTP/REST| API
-    XTerm -->|Socket.IO /ssh| SIO
-    Guac -->|WebSocket| GuacWS
-    API --> Prisma --> DB
-    Server -->|gRPC| GoCache
-    SIO -->|SSH2| SSHGw
-    GuacWS --> GuacD
-    GuacD -->|RDP/VNC Protocol| SSHGw
-    TunnelAgent -->|WSS Multiplexed| TunnelBroker
-    TunnelBroker -->|TCP Forwarding| SIO
-    API --> OAuth
-    API --> HCVault
-    API --> NetBox
-    API --> Email
-    API --> SMS
-    GuacEnc -->|Convert Recordings| GuacD
-    API --> DBProxy
-    API --> RDGateway
-    CLI -->|Device Auth + REST| API
+    Nginx -->|"/api -> HTTPS"| Express
+    Nginx -->|"/socket.io -> WSS"| SocketIO
+    Nginx -->|"/guacamole -> WSS"| GuacWS
+
+    Express --> Postgres
+    Express --> GoCacheKV
+    Express --> GoCachePubSub
+    SocketIO --> GoCachePubSub
+
+    Express --> Guacd
+    Express --> SSHGw
+    Express --> DBProxy
+    Express --> Guacenc
+
+    GuacWS --> Guacd
+
+    Guacd --> RDPServer
+    Guacd --> VNCServer
+    SSHGw --> SSHServer
+    DBProxy --> DBServer
 ```
 
-## Monorepo Structure
+## 📦 Workspace Structure
 
-The project uses npm workspaces with four packages:
+| Workspace | Path | Technology | Purpose |
+|-----------|------|-----------|---------|
+| Server | `server/` | Express 5 + TypeScript | API, auth, sessions, WebSocket |
+| Client | `client/` | React 19 + Vite + MUI v7 | Web UI (SPA) |
+| Tunnel Agent | `gateways/tunnel-agent/` | Node.js + TypeScript | Zero-trust tunnel client |
+| Browser Extension | `extra-clients/browser-extensions/` | Chrome MV3 + React | Autofill, keychain |
 
-| Workspace | Path | Purpose |
-|-----------|------|---------|
-| **server** | `server/` | Express API, Socket.IO, Guacamole WS, Tunnel Broker |
-| **client** | `client/` | React 19 SPA with MUI v7, XTerm.js, Guacamole client |
-| **tunnel-agent** | `gateways/tunnel-agent/` | Outbound tunnel agent for zero-trust gateway connections |
-| **browser-extensions** | `extra-clients/browser-extensions/` | Chrome extension for credential autofill and keychain access |
+## 🔀 Server Layered Architecture
 
-Additional gateway components (not npm workspaces):
-- `gateways/guacd/` — Custom guacd image with embedded tunnel agent
-- `gateways/guacenc/` — Recording processor (Guacamole → MP4, asciicast → GIF)
-- `gateways/ssh-gateway/` — SSH bastion with embedded tunnel agent
-
-Infrastructure components:
-- `infrastructure/gocache/` — Go-based in-memory cache sidecar (KV, pub/sub, locks, queues over gRPC)
-
-## Server Architecture
-
-### Layered Design
+The server follows a strict layered architecture: **Routes -> Controllers -> Services -> Prisma ORM**.
 
 ```mermaid
 flowchart LR
-    Routes["Routes<br/>*.routes.ts"] --> Controllers["Controllers<br/>*.controller.ts"] --> Services["Services<br/>*.service.ts"] --> Prisma["Prisma ORM"] --> DB[(PostgreSQL)]
+    Request["HTTP Request"] --> Middleware["Middleware Pipeline"]
+    Middleware --> Route["Route Handler"]
+    Route --> Controller["Controller"]
+    Controller --> Service["Service"]
+    Service --> Prisma["Prisma ORM"]
+    Prisma --> DB["PostgreSQL"]
+    Service --> External["External Services\n(guacd, SSH, gRPC)"]
 ```
 
-**Routes** define endpoints and apply middleware (auth, validation, rate limiting). **Controllers** parse requests and delegate to services. **Services** contain business logic and database operations.
+**Why layered:** Each layer has a single responsibility. Routes handle HTTP binding, controllers handle request/response transformation, services contain business logic, and Prisma handles data access. This separation enables unit testing at each layer and prevents cross-cutting concerns from bleeding through.
 
-### Entry Point (`server/src/index.ts`)
+## 🛡 Middleware Pipeline
 
-On startup, the server:
-
-1. Runs `prisma migrate deploy` (automatic database migrations)
-2. Runs startup migrations (email verification, vault setup)
-3. Applies system settings from the database
-4. Recovers orphaned sessions from previous server instances
-5. Initializes GeoIP database
-6. Initializes Passport strategies (OAuth, SAML, OIDC discovery)
-7. Creates HTTP server with Express app
-8. Attaches Socket.IO server (SSH terminal + notifications)
-9. Attaches raw WebSocket server for zero-trust tunnel on `/api/tunnel/connect`
-10. Starts SSH protocol proxy server (if enabled)
-11. Initializes Guacamole-Lite on port 3002 (RDP/VNC)
-12. Starts background jobs (key rotation, LDAP sync, health monitors, cleanup tasks)
-13. Registers live-reload callbacks for runtime system settings (OAuth, LDAP, SSH proxy, email, SMS, rate limiting, AI, feature toggles)
-14. Registers graceful shutdown on SIGTERM/SIGINT
-
-### Express App (`server/src/app.ts`)
-
-Middleware stack (in order):
-
-1. **Helmet** — Security headers (CSP, HSTS, X-Frame-Options, Permissions-Policy)
-2. **CORS** — Origin restricted to `config.clientUrl`
-3. **Express JSON** — 500KB body limit
-4. **Cookie Parser** — For refresh token cookies
-5. **Passport** — OAuth/SAML initialization
-6. **Request Logger** — Optional HTTP logging
-7. **CSRF Validation** — Double-submit cookie pattern (exempts login, register, OAuth code exchange, extension clients)
-8. **Peek Auth** — Lightweight JWT extraction from `Authorization` header for rate-limit keying (does not enforce auth)
-9. **Global Rate Limit** — IP-based rate limiting with authenticated user keying (skips whitelisted CIDRs)
-
-### Route Mounting
-
-44 route files mounted under `/api` (feature-gated routes require their feature toggle to be enabled):
-
-| Path | Purpose |
-|------|---------|
-| `/api/setup` | First-time platform setup wizard (public, rate-limited) |
-| `/api/auth` | Authentication (password, OAuth, SAML, MFA, token refresh) |
-| `/api/vault` | Vault unlock/lock/status, MFA vault unlock |
-| `/api/connections` | Connection CRUD, sharing, import/export |
-| `/api/folders` | Folder hierarchy |
-| `/api/sessions` | RDP/VNC/SSH session lifecycle, monitoring |
-| `/api/secrets` | Vault secret CRUD, versioning, sharing, external links |
-| `/api/vault-folders` | Secret organization |
-| `/api/user` | Profile, settings, 2FA, WebAuthn, domain credentials |
-| `/api/tenants` | Multi-tenant CRUD, member management, IP allowlist |
-| `/api/teams` | Team CRUD, member roles |
-| `/api/gateways` | Gateway CRUD, deploy, scale, tunnel, SSH keys |
-| `/api/admin` | Admin settings, email config, app config |
-| `/api/audit` | Audit logs (user, tenant, connection) |
-| `/api/recordings` | Session recording playback and export |
-| `/api/notifications` | Notification management |
-| `/api/share` | Public link sharing (unauthenticated) |
-| `/api/files` | File upload/download (SFTP drive) |
-| `/api/ldap` | LDAP sync configuration |
-| `/api/sync-profiles` | NetBox connection sync |
-| `/api/vault-providers` | External vault (HashiCorp Vault) integration |
-| `/api/access-policies` | ABAC policy management |
-| `/api/health` | Readiness/liveness probes |
-| `/api/geoip` | IP geolocation lookup |
-| `/api/tabs` | Persisted open tabs |
-| `/api/checkouts` | Credential checkout/check-in (PAM) |
-| `/api/sessions/ssh-proxy` | SSH proxy token issuance for native clients |
-| `/api/rdgw` | RD Gateway (MS-TSGU) configuration and .rdp file generation |
-| `/api/cli` | CLI device authorization (RFC 8628) |
-| `/api/sessions/database` | Database proxy sessions and query execution |
-| `/api/sessions/db-tunnel` | SSH-tunneled database connections |
-| `/api/db-audit` | Database query audit logs, SQL firewall rules, masking policies |
-| `/api/secrets` (rotation) | Password rotation enable/disable/trigger/status |
-| `/api/keystroke-policies` | SSH keystroke inspection policy CRUD |
-| `/api/ai` | AI-assisted SQL query generation and optimization (feature-gated) |
-| `/api/admin/system-settings` | Runtime system settings management |
-
-### Middleware
-
-| Middleware | File | Purpose |
-|-----------|------|---------|
-| JWT Auth | `auth.middleware.ts` | Token verification, IP/User-Agent binding, hijack detection |
-| Error Handler | `error.middleware.ts` | Custom `AppError` class, 500 fallback |
-| CSRF | `csrf.middleware.ts` | Double-submit cookies, timing-safe comparison |
-| Peek Auth | `peekAuth.middleware.ts` | Lightweight JWT extraction for rate-limit keying (non-blocking) |
-| Global Rate Limit | `globalRateLimit.middleware.ts` | IP/user-based rate limiting with CIDR whitelist |
-| Async Handler | `asyncHandler.ts` | Promise rejection wrapper |
-| Tenant | `tenant.middleware.ts` | Tenant extraction and role enforcement |
-| Team | `team.middleware.ts` | Team context middleware |
-| Validation | `validate.middleware.ts` | Zod schema validation |
-| Rate Limiters | `*RateLimit*.middleware.ts` | Per-endpoint rate limiting (login, vault, SMS, session, registration, OAuth) |
-| Feature Gate | `featureGate.middleware.ts` | Runtime feature toggles (connections, database proxy, keychain) |
-| Request Logger | `requestLogger.middleware.ts` | HTTP request logging |
-
-### Socket.IO Handlers
-
-| Namespace | Handler | Purpose |
-|-----------|---------|---------|
-| `/ssh` | `ssh.handler.ts` | SSH terminal sessions via ssh2, SFTP file browser, session recording (asciicast), DLP enforcement |
-| `/notifications` | `notification.handler.ts` | Real-time events (share, secret, recording, impossible travel, checkout approval, lateral movement, keystroke violations) |
-| `/gateways` | `gatewayMonitor.handler.ts` | Gateway health, instance state, scaling updates |
-
-### WebSocket Tunnel
-
-`tunnel.handler.ts` attaches a raw `ws` WebSocket server on `/api/tunnel/connect`. Gateway agents authenticate with tunnel token and gateway ID, then multiplex TCP streams using a binary frame protocol.
-
-### Background Jobs
-
-| Job | Interval | Purpose |
-|-----|----------|---------|
-| Key Rotation | Cron-based | SSH key pair rotation |
-| LDAP Sync | Every 6 hours | LDAP user provisioning |
-| Gateway Health | 30 seconds | Connectivity checks |
-| Managed Gateway Reconciliation | 5 minutes | Container state sync |
-| Auto-Scaling Evaluation | 30 seconds | Scale based on session count |
-| Expired Share Cleanup | 1 hour | Remove expired shares |
-| Expired Token Cleanup | 1 hour | Remove expired refresh tokens |
-| Idle Session Marking | 1 minute | Flag idle sessions |
-| Inactive Session Closure | 1 minute | Close timed-out sessions |
-| Session Recording Cleanup | Daily | Remove old recordings |
-| Closed Session Cleanup | Daily | Clean up closed session records |
-| Expiring Secrets Check | 6 hours | Notify about expiring secrets |
-| Membership Expiry Check | Periodic | Check and enforce membership expiry |
-| Checkout Expiry | 5 minutes | Auto-expire approved checkouts past TTL |
-| Password Rotation | Cron-based | Rotate credentials on target systems |
-| Token Family Cleanup | 5 minutes | Remove token families past absolute session timeout |
-| RD Gateway Tunnel Cleanup | 1 minute | Close idle RD Gateway tunnels |
-| Device Auth Code Cleanup | 5 minutes | Remove expired device authorization codes |
-
-## Database Schema
-
-45+ Prisma models across 7 domains:
-
-```mermaid
-erDiagram
-    User ||--o{ Connection : owns
-    User ||--o{ RefreshToken : has
-    User ||--o{ OAuthAccount : links
-    User ||--o{ WebAuthnCredential : registers
-    User ||--o{ VaultSecret : stores
-    User ||--o{ AuditLog : generates
-
-    Tenant ||--o{ TenantMember : has
-    Tenant ||--o{ Team : contains
-    Tenant ||--o{ Gateway : manages
-    Tenant ||--o{ AccessPolicy : defines
-    Tenant ||--o| TenantAiConfig : configures
-
-    Team ||--o{ TeamMember : has
-    Team ||--o{ VaultSecret : "team secrets"
-
-    Connection ||--o{ SharedConnection : "shared with"
-    Connection ||--o{ ActiveSession : "open sessions"
-    Connection ||--o{ SessionRecording : "recorded"
-    Connection }o--o| Folder : "organized in"
-    Connection }o--o| Gateway : "routes through"
-
-    VaultSecret ||--o{ VaultSecretVersion : versions
-    VaultSecret ||--o{ SharedSecret : "shared with"
-    VaultSecret ||--o{ ExternalSecretShare : "public links"
-    VaultSecret }o--o| VaultFolder : "organized in"
-
-    Gateway ||--o{ ManagedGatewayInstance : deploys
-    Gateway }o--o| GatewayTemplate : "based on"
-```
-
-### Key Models
-
-| Model | Fields | Purpose |
-|-------|--------|---------|
-| **User** | 100+ fields | Core user with vault encryption, TOTP, domain creds, recovery keys |
-| **Tenant** | DLP, IP allowlist, tunnel config, session limits | Multi-tenant workspace |
-| **Connection** | SSH/RDP/VNC with encrypted credentials, DLP, gateway | Remote connection definition |
-| **VaultSecret** | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE | Encrypted secret storage with versioning |
-| **Gateway** | SSH/RDP/VNC gateway with health, auto-scaling, tunnel | Gateway infrastructure |
-| **ActiveSession** | Socket ID, last activity, protocol | Open session tracking |
-| **AuditLog** | 100+ action types, IP, GeoIP, flags | Comprehensive audit trail |
-| **AccessPolicy** | Time windows, trusted device, MFA step-up | ABAC policy enforcement |
-| **TenantAiConfig** | Provider, model, daily limits, encrypted API key | Per-tenant AI/LLM configuration |
-| **DbRateLimitPolicy** | Token bucket, query type scope, burst capacity | SQL query rate limiting |
-
-### Enums
-
-| Enum | Values |
-|------|--------|
-| TenantRole | OWNER, ADMIN, OPERATOR, MEMBER, CONSULTANT, AUDITOR, GUEST |
-| TeamRole | TEAM_ADMIN, TEAM_EDITOR, TEAM_VIEWER |
-| ConnectionType | RDP, SSH, VNC, DATABASE, DB_TUNNEL |
-| SecretType | LOGIN, SSH_KEY, CERTIFICATE, API_KEY, SECURE_NOTE |
-| SecretScope | PERSONAL, TEAM, TENANT |
-| GatewayType | GUACD, SSH_BASTION, MANAGED_SSH, DB_PROXY |
-| SessionProtocol | SSH, RDP, VNC, SSH_PROXY, DATABASE, DB_TUNNEL |
-| SessionStatus | ACTIVE, IDLE, CLOSED |
-| ManagedInstanceStatus | PROVISIONING, RUNNING, STOPPED, ERROR, REMOVING |
-| CheckoutStatus | PENDING, APPROVED, REJECTED, EXPIRED, CHECKED_IN |
-| KeystrokePolicyAction | BLOCK_AND_TERMINATE, ALERT_ONLY |
-| FirewallAction | BLOCK, ALERT, LOG |
-| MaskingStrategy | REDACT, HASH, PARTIAL |
-| RateLimitAction | REJECT, LOG_ONLY |
-
-## Client Architecture
-
-### Technology Stack
-
-- **React 19** with Vite build
-- **Material-UI v7** for components
-- **Zustand** for state management (15 stores)
-- **XTerm.js** for SSH terminal rendering
-- **guacamole-common-js** for RDP/VNC rendering
-- **Socket.IO** for real-time communication
-- **Axios** with automatic JWT refresh
-
-### Route Structure
+The Express middleware pipeline processes every request in strict order. Security-critical middleware runs first; route handlers run last.
 
 ```mermaid
 flowchart TD
-    Router["React Router"]
-    Router --> Setup["/setup → SetupWizardPage"]
-    Router --> Public["Public Routes (SetupGuard)"]
-    Router --> Auth["AuthRoute"]
-    Router --> Protected["ProtectedRoute"]
-
-    Public --> Login["/login"]
-    Public --> Register["/register"]
-    Public --> Forgot["/forgot-password"]
-    Public --> Reset["/reset-password"]
-    Public --> OAuthCB["/oauth/callback"]
-    Public --> Share["/share/:token"]
-
-    Auth --> VaultSetup["/oauth/vault-setup"]
-
-    Protected --> Dashboard["/* → DashboardPage"]
-    Protected --> Viewer["/connection/:id"]
-    Protected --> Recording["/recording/:id"]
-
-    Dashboard --> MainLayout["MainLayout"]
-    MainLayout --> Sidebar["ConnectionTree"]
-    MainLayout --> TabBar["TabBar + TabPanels"]
-    MainLayout --> Dialogs["Full-Screen Dialogs<br/>(Settings, Keychain, Audit, etc.)"]
+    A["Helmet\n(Security Headers)"] --> B["Trust Proxy"]
+    B --> C["Host Validation\n(DNS Rebinding Protection)"]
+    C --> D["CORS\n(Origin Matching)"]
+    D --> E["Body Parser\n(JSON 500KB Limit)"]
+    E --> F["Cookie Parser"]
+    F --> G["Passport\n(JWT Strategy)"]
+    G --> H["Request Logger\n(Optional)"]
+    H --> I["CSRF Validation\n(Double-Submit Cookie)"]
+    I --> J["Global Rate Limiter\n(200/min Auth, 60/min Anon)"]
+    J --> K["Feature Gates\n(Dynamic Toggles)"]
+    K --> L["Route-Specific Middleware\n(Auth, Tenant, Team, Rate Limits)"]
+    L --> M["Route Handler"]
+    M --> N["Error Handler"]
 ```
 
-### State Management (15 Zustand Stores)
+**Key design decisions:**
 
-| Store | Persistence | Purpose |
-|-------|-------------|---------|
-| `authStore` | localStorage (excludes accessToken) | Authentication state, user profile |
-| `connectionsStore` | None (fetch-driven) | Connections, folders |
-| `tabsStore` | Server-side (debounced sync) | Open tabs |
-| `vaultStore` | None (polling) | Vault lock status |
-| `secretStore` | None (fetch-driven) | Vault secrets, versions, sharing |
-| `themeStore` | localStorage | Theme name and dark/light mode |
-| `teamStore` | None | Teams and members |
-| `tenantStore` | None | Tenant context and settings |
-| `gatewayStore` | None (WebSocket updates) | Gateways, instances, scaling, tunnel |
-| `notificationStore` | None (transient) | Toast notifications |
-| `notificationListStore` | None | Notification history |
-| `accessPolicyStore` | None | ABAC policies |
-| `uiPreferencesStore` | localStorage (per-user) | 50+ layout preferences |
-| `rdpSettingsStore` | Server-side | RDP viewer defaults |
-| `terminalSettingsStore` | Server-side | Terminal appearance defaults |
+- **CSRF uses double-submit cookies**, not server-side tokens, enabling stateless JWT auth without session storage
+- **Rate limiting is three-tiered**: whitelisted IPs bypass entirely, authenticated users get 200 req/min keyed by userId, anonymous users get 60 req/min keyed by IP
+- **Feature gates evaluate dynamically** on each request, allowing runtime toggles without restarts via the Settings UI
+- **Host validation** prevents DNS rebinding attacks by checking the Host header against allowed values
 
-### Theme System
+## 🔐 Authentication Flow
 
-6 themes × 2 modes (dark/light):
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Express
+    participant Passport
+    participant DB
+    participant MFA
 
-| Theme | Accent | Inspiration |
-|-------|--------|-------------|
-| Editorial | Emerald | Serif headings, classic |
-| Primer | Blue | GitHub |
-| Tanuki | Purple/Orange | GitLab |
-| Monokai | Neon multi-color | Code editor |
-| Solarized | Cyan | Solarized palette |
-| OneDark | Blue | Atom One Dark |
+    Client->>Express: POST /api/auth/login {email, password}
+    Express->>DB: Find user, verify Argon2 hash
+    alt MFA Required
+        Express->>Client: 200 {requiresMFA, tempToken, methods[]}
+        Client->>Express: POST /api/auth/verify-totp {tempToken, code}
+        Express->>MFA: Validate TOTP
+        MFA-->>Express: Valid
+    end
+    Express->>DB: Create RefreshToken (family-based)
+    Express-->>Client: 200 {accessToken, csrfToken} + Set-Cookie: refresh token
+    Note over Client,Express: Access token: 15min, in-memory only<br/>Refresh token: 7d, HttpOnly cookie<br/>CSRF token: in header + cookie
 
-### Build Optimization
+    Client->>Express: GET /api/... (Authorization: Bearer token)
+    Express->>Passport: Verify JWT signature + expiry
+    Passport->>Express: Validate token binding (IP + UA hash)
+    Express->>DB: Normalize tenant membership
+    Express-->>Client: 200 Response
+```
 
-Vite splits code into manual chunks for optimal loading:
+**Security properties:**
+- Access tokens are short-lived (15 min) and held in-memory only (never in localStorage)
+- Refresh tokens use family-based rotation to detect token replay attacks
+- Token binding ties JWTs to the originating IP + User-Agent hash (configurable)
+- Account lockout after 10 failed attempts for 30 minutes
 
-| Chunk | Contents |
-|-------|----------|
-| `vendor-react` | React, React-DOM, React-Router |
-| `vendor-mui` | Material-UI, Emotion |
-| `vendor-mui-icons` | MUI Icons |
-| `vendor-terminal` | XTerm.js + addons |
-| `vendor-guacamole` | Guacamole client |
-| `vendor-network` | Axios, Socket.IO |
+## 🌐 Real-Time Connections
 
-PWA support with Workbox: offline-first navigation, stale-while-revalidate for assets, cache-first for fonts.
-
-## Real-Time Connection Architecture
-
-### SSH Terminal Flow
+### SSH Terminal
 
 ```mermaid
 sequenceDiagram
     participant Browser
     participant SocketIO as Socket.IO /ssh
     participant SSH2 as ssh2 Library
-    participant Target as SSH Target
+    participant Target as SSH Server
 
     Browser->>SocketIO: Connect (JWT auth)
     SocketIO->>SSH2: Create SSH session
     SSH2->>Target: TCP connection
     Target-->>SSH2: SSH handshake
-    SSH2-->>SocketIO: Shell stream
-    SocketIO-->>Browser: Terminal data
-    Browser->>SocketIO: Keystroke data
-    SocketIO->>SSH2: Write to stdin
-    Note over SocketIO: Session recording (asciicast)
-    Note over SocketIO: DLP policy enforcement
-    Note over SocketIO: SFTP file browser support
+    Browser->>SocketIO: Terminal input (keystrokes)
+    SocketIO->>SSH2: Forward to SSH stream
+    SSH2-->>SocketIO: Terminal output
+    SocketIO-->>Browser: Render in XTerm.js
 ```
 
-### RDP/VNC Flow
+### RDP/VNC via Guacamole
 
 ```mermaid
 sequenceDiagram
     participant Browser
-    participant API as REST API
-    participant GuacWS as Guacamole WS :3002
-    participant GuacD as guacd :4822
-    participant Target as RDP/VNC Target
+    participant Express
+    participant GuacLite as guacamole-lite (WSS :3002)
+    participant Guacd as guacd (TLS :4822)
+    participant Target as RDP/VNC Server
 
-    Browser->>API: POST /sessions/rdp
-    API-->>Browser: Encrypted token
-    Browser->>GuacWS: WebSocket connect + token
-    GuacWS->>GuacD: Guacamole protocol
-    GuacD->>Target: RDP/VNC protocol
-    Target-->>GuacD: Screen data
-    GuacD-->>GuacWS: Guacamole instructions
-    GuacWS-->>Browser: Render via guacamole-common-js
-    Note over GuacD: Session recording (Guacamole format)
+    Browser->>Express: POST /api/session/rdp {connectionId}
+    Express->>Express: Encrypt connection params (AES-256-GCM)
+    Express-->>Browser: {sessionId, guacToken}
+    Browser->>GuacLite: WebSocket connect with guacToken
+    GuacLite->>GuacLite: Decrypt params, validate token
+    GuacLite->>Guacd: Guacamole protocol (TLS)
+    Guacd->>Target: RDP/VNC protocol
+    Target-->>Guacd: Screen updates
+    Guacd-->>GuacLite: Guacamole instructions
+    GuacLite-->>Browser: Render via guacamole-common-js
 ```
 
-### Zero-Trust Tunnel
+## 🗄 Database Schema
+
+The Prisma schema defines 32+ models across these domains:
 
 ```mermaid
-sequenceDiagram
-    participant Agent as Tunnel Agent
-    participant Broker as Tunnel Broker (Server)
-    participant SSH as SSH Handler
+erDiagram
+    Tenant ||--o{ TenantMember : "has members"
+    Tenant ||--o{ Team : "contains"
+    Tenant ||--o{ Gateway : "manages"
+    Tenant ||--o{ SshKeyPair : "owns"
 
-    Agent->>Broker: WSS /api/tunnel/connect<br/>Auth: Bearer tunnel-token<br/>X-Gateway-Id: uuid
-    Broker-->>Agent: Connection accepted
-    loop Heartbeat (15s)
-        Agent->>Broker: PING frame + health metadata
-        Broker-->>Agent: PONG frame
-    end
-    SSH->>Broker: Need connection to target:22
-    Broker->>Agent: OPEN frame (streamId, host:port)
-    Agent->>Agent: TCP connect to target:22
-    Agent-->>Broker: DATA frames
-    Broker-->>SSH: DATA frames
-    Note over Agent,Broker: Binary multiplexed protocol<br/>8-byte header + payload
+    TenantMember }o--|| User : "references"
+    Team ||--o{ TeamMember : "has members"
+    TeamMember }o--|| User : "references"
+
+    User ||--o{ Connection : "owns"
+    User ||--o{ VaultSecret : "owns"
+    User ||--o{ ActiveSession : "has"
+    User ||--o{ RefreshToken : "has"
+    User ||--o{ OAuthAccount : "links"
+    User ||--o{ WebAuthnCredential : "registers"
+    User ||--o{ AuditLog : "generates"
+
+    Connection ||--o{ SharedConnection : "shared via"
+    Connection ||--o{ ActiveSession : "used by"
+    Connection }o--o| Gateway : "routes through"
+    Connection }o--o| Folder : "organized in"
+
+    VaultSecret ||--o{ VaultSecretVersion : "versioned"
+    VaultSecret ||--o{ SharedSecret : "shared via"
+    VaultSecret }o--o| VaultFolder : "organized in"
+
+    ActiveSession ||--o{ SessionRecording : "recorded as"
+    Gateway ||--o{ ManagedGatewayInstance : "scales to"
 ```
 
-**Binary Frame Protocol:**
-- Frame type (1 byte): OPEN, DATA, CLOSE, PING, PONG
-- Stream ID (4 bytes): Multiplexed stream identifier
-- Payload length (3 bytes)
-- Payload (variable)
+**Key design decisions:**
 
-## Distributed State (Go Cache Sidecar)
+- **Multi-tenancy** is enforced at the data model level -- every resource belongs to a Tenant, and queries are scoped by tenantId
+- **Vault encryption** uses per-user keys derived from passwords via Argon2, with AES-256-GCM at rest
+- **Role hierarchy** provides 7 levels: GUEST < AUDITOR < CONSULTANT < MEMBER < OPERATOR < ADMIN < OWNER
+- **Team roles** are separate: TEAM_VIEWER < TEAM_EDITOR < TEAM_ADMIN
+- **Audit logging** captures 70+ distinct action types for compliance
 
-The `gocache` sidecar (`infrastructure/gocache/`) is a Go-based in-memory cache server that enables multi-instance Arsenale deployments by providing distributed KV storage, pub/sub, distributed locks, and named queues over gRPC.
+## 📡 Distributed Architecture
 
-### Integration Architecture
+When running multiple server instances, Arsenale uses the GoCacheAdapter for cross-instance coordination:
 
 ```mermaid
-flowchart TD
-    subgraph Instances["Server Instances"]
-        S1["Server 1"]
-        S2["Server 2"]
+flowchart LR
+    subgraph Instance1["Server Instance 1"]
+        S1["Express + Socket.IO"]
     end
 
-    subgraph Sidecar["gocache Sidecar (gRPC :6380)"]
-        KV["KV Store<br/>TTL + LWW replication"]
-        PS["Pub/Sub Broker<br/>Pattern subscriptions"]
-        LK["Lock Manager<br/>Fencing tokens"]
-        QU["Queue Manager<br/>Named queues"]
+    subgraph Instance2["Server Instance 2"]
+        S2["Express + Socket.IO"]
     end
 
-    S1 -->|gRPC| KV
-    S1 -->|gRPC| PS
-    S1 -->|gRPC| LK
-    S2 -->|gRPC| KV
-    S2 -->|gRPC| PS
-    S2 -->|gRPC| LK
+    subgraph Cache["Cache Layer (gRPC + mTLS)"]
+        KV["GoCacheKV\n(Session State, Rate Limits)"]
+        PubSub["GoCachePubSub\n(Socket.IO Events)"]
+    end
+
+    S1 --> KV
+    S2 --> KV
+    S1 --> PubSub
+    S2 --> PubSub
+    PubSub --> S1
+    PubSub --> S2
 ```
 
-### Subsystems Using the Sidecar
+**What the cache layer provides:**
+- **KV Store**: Distributed rate limit counters, session state, leader election
+- **PubSub**: Socket.IO event broadcasting across instances (notifications, SSH streams, gateway events)
+- **Leader Election**: Ensures singleton cron jobs (key rotation, LDAP sync, cleanup) run on exactly one instance
 
-| Subsystem | Primitive | Key Pattern | Fallback |
-|-----------|-----------|-------------|----------|
-| Socket.IO adapter | Pub/sub | `sio:<namespace>`, `sio:server:<namespace>` | In-memory adapter |
-| Auth codes | KV (GetDel) | `auth:code:<hex>` | Local Map |
-| Link codes | KV (GetDel) | `link:code:<hex>` | Local Map |
-| Relay state | KV (GetDel) | `relay:code:<hex>` | Local Map |
-| Leader election | Distributed locks | Lock name per job | Every instance runs |
-| Vault session index | KV | JSON index arrays | Local Map cleanup |
+## 🔄 Scheduled Jobs
 
-### Leader Election
+The server runs background jobs via `node-cron`:
 
-Background jobs use `runIfLeader()` or `startLeaderHeartbeat()` from `server/src/utils/leaderElection.ts` to ensure only one instance executes scheduled work. Locks use configurable TTLs with periodic renewal. If the leader crashes, the lock expires and another instance acquires it.
+| Job | Default Schedule | Purpose |
+|-----|-----------------|---------|
+| Key Rotation | `0 2 * * *` (2 AM daily) | Rotate JWT signing keys |
+| LDAP Sync | `0 */6 * * *` (every 6h) | Sync users/groups from LDAP |
+| Membership Expiry | Hourly | Auto-remove expired tenant/team members |
+| Secret Rotation | Configurable | Rotate passwords per policy |
+| Session Cleanup | Hourly | Close idle sessions, purge 30-day old closed sessions |
+| Recording Cleanup | Daily | Remove recordings past retention (default 90 days) |
+| Token Cleanup | Hourly | Purge expired refresh tokens |
+| Gateway Health | 30s interval | Health check managed gateways |
+| Auto-scaling | 30s interval | Evaluate gateway replica counts |
+| System Secret Rotation | Configurable | Roll over JWT + Guacamole keys |
+| Device Auth Cleanup | 5-min interval | Purge expired device auth codes |
 
-### Graceful Degradation
+## ⚙ Live Reload
 
-All sidecar operations return `null`/`false` on failure rather than throwing. Each store maintains a local in-memory fallback. Setting `CACHE_SIDECAR_ENABLED=false` disables all distributed features, making the sidecar fully optional for single-instance deployments.
+Configuration changes from the Settings UI take effect immediately via the live reload system:
 
-## Security Architecture
+```mermaid
+flowchart LR
+    Settings["Settings UI"] -->|"PUT /api/system-settings"| Express
+    Express -->|"registerReload()"| Callbacks["Reload Callbacks"]
+    Callbacks --> OAuth["OAuth Strategies"]
+    Callbacks --> LDAP["LDAP Config"]
+    Callbacks --> RateLimits["Rate Limiters"]
+    Callbacks --> Email["Email Provider"]
+    Callbacks --> SMS["SMS Provider"]
+    Callbacks --> Vault["Vault TTL"]
+    Callbacks --> AI["AI Config"]
+    Callbacks --> Features["Feature Flags"]
+    Callbacks --> Gateway["Gateway Routing"]
+```
+
+No server restart required for configuration changes.
+
+## 🔒 Security Architecture
 
 ### Encryption at Rest
 
-All sensitive data is encrypted using **AES-256-GCM**:
+- **Vault secrets**: AES-256-GCM with per-user master key (Argon2-derived from password)
+- **Connection credentials**: AES-256-GCM with server encryption key
+- **SSH key pairs**: AES-256-GCM with tenant-scoped key
+- **Refresh tokens**: SHA-256 hashed before DB storage
+
+### Network Security
+
+All service-to-service communication uses TLS or mTLS:
+
+| Connection | Protocol | Authentication |
+|-----------|----------|---------------|
+| Client -> Nginx | HTTPS | - |
+| Nginx -> Express | HTTPS | Server cert verify |
+| Express -> PostgreSQL | SSL | Certificate |
+| Express -> guacd | TLS | CA verify |
+| Express -> GoCacheKV | gRPC + mTLS | Client + server certs |
+| Express -> GoCachePubSub | gRPC + mTLS | Client + server certs |
+| Express -> guacenc | HTTPS + mTLS | Client + server certs |
+| SSH Gateway -> Express | gRPC + mTLS | Client + server certs |
+
+### Logging Security
+
+The logger (`server/src/utils/logger.ts`) provides defense-in-depth sanitization:
+
+1. **Sensitive key redaction**: Detects password, secret, token, apikey, etc. in log arguments
+2. **Value pattern matching**: Redacts JWT tokens (`eyJ...`), Bearer tokens, key-value patterns
+3. **Newline stripping**: Prevents log injection attacks
+4. **Error sanitization**: Scrubs stack traces before logging
+
+## 🧱 Client Architecture
 
 ```mermaid
 flowchart TD
-    Password["User Password"] -->|Argon2id| DerivedKey["Derived Key"]
-    DerivedKey -->|AES-256-GCM| MasterKey["Master Key<br/>(encrypted at rest)"]
-    MasterKey -->|AES-256-GCM| Credentials["Connection Credentials"]
-    MasterKey -->|AES-256-GCM| Secrets["Vault Secrets"]
-    MasterKey -->|AES-256-GCM| TOTP["TOTP Seeds"]
+    subgraph UI["React 19 + MUI v7"]
+        Pages["Pages\n(Login, Dashboard, Setup)"]
+        Components["Components\n(Terminal, RDP, VNC, Sidebar, Tabs)"]
+    end
 
-    ServerKey["Server Encryption Key"] -->|AES-256-GCM| SSHKeys["SSH Key Pairs"]
-    ServerKey -->|AES-256-GCM| TunnelTokens["Tunnel Tokens"]
-    ServerKey -->|AES-256-GCM| GuacTokens["RDP/VNC Tokens"]
+    subgraph State["Zustand Stores (17)"]
+        Auth["authStore"]
+        Connections["connectionsStore"]
+        Tabs["tabsStore"]
+        Vault["vaultStore"]
+        Secrets["secretStore"]
+        Gateway["gatewayStore"]
+        Teams["teamStore"]
+        Tenant["tenantStore"]
+    end
 
-    TenantKey["Tenant Master Key"] -->|AES-256-GCM| TeamSecrets["Team/Tenant Secrets"]
-    MasterKey -->|AES-256-GCM| TenantKey
+    subgraph API["API Layer (29 modules)"]
+        Client["Axios Client\n(JWT interceptor, CSRF)"]
+    end
+
+    subgraph Realtime["Real-time"]
+        SIO["Socket.IO Client"]
+    end
+
+    Pages --> Components
+    Components --> State
+    State --> API
+    API --> Client
+    Components --> SIO
 ```
 
-### Authentication Flow
-
-```mermaid
-stateDiagram-v2
-    [*] --> Login: Email + Password
-    Login --> MFACheck: Credentials valid
-    Login --> Failed: Invalid credentials
-
-    MFACheck --> MFARequired: Has MFA enabled
-    MFACheck --> Authenticated: No MFA
-
-    MFARequired --> TOTP: TOTP configured
-    MFARequired --> SMS: SMS configured
-    MFARequired --> WebAuthn: WebAuthn configured
-    MFARequired --> MFASetup: First login, MFA required by tenant
-
-    TOTP --> Authenticated: Code valid
-    SMS --> Authenticated: Code valid
-    WebAuthn --> Authenticated: Credential valid
-    MFASetup --> Authenticated: Setup complete
-
-    Authenticated --> TokenIssued: JWT + Refresh token
-    TokenIssued --> [*]
-```
-
-**Token Security:**
-- Short-lived access tokens (15 min default)
-- Refresh tokens stored in DB with family tracking (rotation detection)
-- Token binding: IP + User-Agent hash prevents token theft
-- Automatic refresh via Axios interceptor on 401
-
-**OAuth Provider Configuration:**
-- Google: optional `hd` parameter restricts login to a specific hosted domain (e.g. corporate Google Workspace)
-- Microsoft: configurable `tenant` parameter (defaults to `common`, can be set to a specific Azure AD tenant ID)
-- GitHub: standard OAuth2 with `user:email` scope
-- Generic OIDC: discovery-based with PKCE (S256), supports any OpenID Connect provider
-- SAML: supports IdP metadata, attribute mapping, and session index tracking
-
-### Role-Based Access Control
-
-```mermaid
-flowchart TD
-    subgraph Tenant["Tenant Roles (7 levels)"]
-        OWNER --> ADMIN --> OPERATOR --> MEMBER --> CONSULTANT --> AUDITOR --> GUEST
-    end
-
-    subgraph Team["Team Roles"]
-        TEAM_ADMIN --> TEAM_EDITOR --> TEAM_VIEWER
-    end
-
-    subgraph ABAC["Attribute-Based Access Control"]
-        TimeWindow["Time Windows<br/>(09:00-18:00 UTC)"]
-        TrustedDevice["Require WebAuthn<br/>in current session"]
-        MFAStepUp["Require MFA<br/>step-up"]
-    end
-```
-
-### Audit & Anomaly Detection
-
-- 100+ tracked action types
-- GeoIP enrichment (country, city, coordinates)
-- Impossible travel detection (speed > 900 km/h between logins)
-- IP allowlist (flag or block mode per tenant)
-- DLP policies (disable copy/paste/upload/download per tenant or connection)
-
-### SSH Keystroke Inspection
-
-Real-time keystroke inspection monitors SSH sessions for policy-violating commands:
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant SSHHandler as SSH Handler
-    participant Buffer as KeystrokeBuffer
-    participant Inspector as Inspection Service
-    participant Target as SSH Target
-
-    User->>SSHHandler: Keystroke data
-    SSHHandler->>Buffer: feed(data)
-    alt No newline
-        SSHHandler->>Target: Forward immediately
-    else Newline detected
-        Buffer-->>SSHHandler: sawNewline() = true
-        SSHHandler->>Inspector: inspect(tenantId, inputLine)
-        alt No match
-            Inspector-->>SSHHandler: null
-            SSHHandler->>Target: Forward data
-        else BLOCK_AND_TERMINATE
-            Inspector-->>SSHHandler: PolicyMatch
-            SSHHandler->>User: Session terminated
-            Note over SSHHandler: Audit log + admin notification
-        else ALERT_ONLY
-            Inspector-->>SSHHandler: PolicyMatch
-            SSHHandler->>Target: Forward data
-            Note over SSHHandler: Audit log + admin notification
-        end
-    end
-```
-
-### Credential Checkout (PAM)
-
-Temporary credential check-out/check-in with approval workflow:
-- Request -> Approve/Reject -> Use -> Check-in/Expire
-- Atomic status transitions (TOCTOU-safe)
-- Batch resource name resolution (N+1 safe)
-- Configurable duration (1-1440 minutes)
-- Auto-expiry via scheduled job (every 5 min)
-- Notifications to approvers and requesters
-
-### Lateral Movement Detection
-
-MITRE T1021 detection: monitors concurrent session patterns across targets. If a user connects to more distinct targets than the threshold within a time window, the account is temporarily suspended and admins are alerted.
-
-## Browser Extension Architecture
-
-```mermaid
-flowchart TD
-    subgraph Extension["Chrome Extension (Manifest V3)"]
-        BG["Service Worker<br/>(background.ts)"]
-        Popup["Popup App<br/>(React)"]
-        Options["Options Page<br/>(React)"]
-        Content["Content Scripts<br/>(Autofill)"]
-    end
-
-    subgraph Storage["chrome.storage"]
-        Local["chrome.storage.local<br/>(encrypted accounts)"]
-        Session["chrome.storage.session<br/>(encryption key, ephemeral)"]
-    end
-
-    Popup -->|RPC| BG
-    Options -->|RPC| BG
-    Content -->|RPC| BG
-    BG -->|API calls| Server["Arsenale Server"]
-    BG --> Local
-    BG --> Session
-    Content -->|Form detection| WebPage["Web Page"]
-    Content -->|Autofill| WebPage
-```
-
-**Key Features:**
-- Multi-account support (multiple Arsenale servers)
-- Credential autofill on login forms
-- Keychain browsing and search
-- Token refresh via chrome.alarms (every 10 min)
-- AES-GCM encrypted token storage
-- Credential index for domain matching
-
-## Key Design Patterns
-
-### Full-Screen Dialog Pattern
-
-Features that overlay the workspace (settings, keychain, audit log) are implemented as full-screen MUI `Dialog` components, not page routes. This preserves active RDP/SSH sessions.
-
-### UI Preferences Persistence
-
-All layout state persists via `uiPreferencesStore` (Zustand + localStorage, per-user namespacing). 50+ keys for sidebar states, filter selections, panel positions.
-
-### Error Handling
-
-- **Server:** Custom `AppError(message, statusCode)`, async handler wrapper, global error middleware
-- **Client:** `extractApiError(err, fallback)` utility, `useAsyncAction` hook for dialog forms
-
-### Native Client Integration (CLI)
-
-Arsenale Connect CLI (`tools/arsenale-cli/`) enables native SSH/RDP clients (PuTTY, mstsc, etc.) to connect through Arsenale's vault and gateway infrastructure. Uses RFC 8628 device authorization for CLI-to-web authentication. The CLI orchestrates credential injection, SSH proxy tokens, and .rdp file generation.
-
-### Validation
-
-Zod schemas validate all request bodies on the server via `validate()` middleware. Client mirrors schemas for form validation.
+**Key patterns:**
+- **Access tokens in-memory only** -- never persisted to localStorage
+- **Axios interceptor** auto-refreshes tokens on 401 responses
+- **UI preferences** persisted via Zustand + localStorage (`uiPreferencesStore`)
+- **Full-screen dialogs** overlay the workspace without destroying active SSH/RDP sessions

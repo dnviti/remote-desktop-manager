@@ -19,10 +19,16 @@ import net from 'net';
 import { Duplex } from 'stream';
 import type WebSocket from 'ws';
 import prisma from '../lib/prisma';
+import { config } from '../config';
 import { encryptWithServerKey, decryptWithServerKey, hashToken } from './crypto.service';
 import { logger } from '../utils/logger';
 import * as auditService from './audit.service';
 import { generateClientCertificate, verifyCertChain } from '../utils/certGenerator';
+import {
+  buildGatewaySpiffeId,
+  extractSpiffeIdFromCertPem,
+  spiffeIdEquals,
+} from '../utils/spiffe';
 
 const log = logger.child('tunnel');
 
@@ -335,7 +341,7 @@ function attachFrameHandler(conn: TunnelConnection): void {
         handleClose(conn, streamId);
         break;
       case MsgType.PING:
-        handlePing(conn, streamId);
+        handlePing(conn, streamId, payload);
         break;
       case MsgType.PONG:
         handlePong(conn);
@@ -394,7 +400,8 @@ function handleClose(conn: TunnelConnection, streamId: number): void {
   conn.streams.delete(streamId);
 }
 
-function handlePing(conn: TunnelConnection, streamId: number): void {
+function handlePing(conn: TunnelConnection, streamId: number, payload: Buffer): void {
+  recordHeartbeat(conn, payload);
   // Respond with PONG — do NOT set lastPingSentAt here; that field tracks
   // outbound PINGs we initiate, not inbound PINGs from the agent.
   const frame = buildFrame(MsgType.PONG, streamId);
@@ -419,6 +426,10 @@ function handlePong(conn: TunnelConnection): void {
 }
 
 function handleHeartbeat(conn: TunnelConnection, payload: Buffer): void {
+  recordHeartbeat(conn, payload);
+}
+
+function recordHeartbeat(conn: TunnelConnection, payload: Buffer): void {
   const now = new Date();
   conn.lastHeartbeat = now;
 
@@ -567,13 +578,12 @@ export async function revokeTunnelToken(
  *   X-Gateway-Id:  <uuid>
  *   X-Agent-Version: <version string>   (optional)
  *
- * When clientCertPem is provided, it is verified against the gateway's stored CA
- * certificate using cryptographic chain validation (not just CN matching).
+ * When clientCertPem is provided, it is verified against the tenant's stored CA
+ * certificate using cryptographic chain validation and SPIFFE ID matching.
  */
 export async function authenticateTunnelRequest(
   gatewayId: string,
   bearerToken: string,
-  clientCertCn?: string,
   clientCertPem?: string,
 ): Promise<{ id: string; tenantId: string } | null> {
   if (!gatewayId || !bearerToken) return null;
@@ -588,8 +598,11 @@ export async function authenticateTunnelRequest(
       tunnelTokenIV: true,
       tunnelTokenTag: true,
       tunnelTokenHash: true,
-      tunnelCaCert: true,
-      tunnelClientCert: true,
+      tenant: {
+        select: {
+          tunnelCaCert: true,
+        },
+      },
     },
   });
 
@@ -629,16 +642,18 @@ export async function authenticateTunnelRequest(
     }
   }
 
-  // Validate the client cert CN matches the gatewayId (already checked in handler, defence in depth)
-  if (clientCertCn && clientCertCn !== gatewayId) {
-    log.warn(`[tunnel] Auth failed: client cert CN "${clientCertCn}" != gatewayId "${gatewayId}"`);
-    auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'cn_mismatch', tenantId: gateway.tenantId } });
+  // Validate the client cert SPIFFE ID matches the gateway identity (already checked in handler, defence in depth)
+  const expectedSpiffeId = buildGatewaySpiffeId(config.spiffeTrustDomain, gatewayId);
+  const clientSpiffeId = clientCertPem ? extractSpiffeIdFromCertPem(clientCertPem) : null;
+  if (!spiffeIdEquals(clientSpiffeId, expectedSpiffeId)) {
+    log.warn(`[tunnel] Auth failed: client SPIFFE ID "${clientSpiffeId ?? 'missing'}" != expected "${expectedSpiffeId}"`);
+    auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'spiffe_id_mismatch', tenantId: gateway.tenantId, expectedSpiffeId, actualSpiffeId: clientSpiffeId } });
     return null;
   }
 
-  // Verify the client cert chains to the gateway's stored CA (cryptographic validation)
-  if (clientCertPem && gateway.tunnelCaCert && gateway.tunnelClientCert) {
-    if (!verifyCertChain(clientCertPem, gateway.tunnelCaCert)) {
+  // Verify the client cert chains to the tenant CA (cryptographic validation)
+  if (clientCertPem && gateway.tenant.tunnelCaCert) {
+    if (!verifyCertChain(clientCertPem, gateway.tenant.tunnelCaCert)) {
       log.warn(`[tunnel] Auth failed: client cert for gateway ${gatewayId} does not chain to stored CA`);
       auditService.log({ action: 'TUNNEL_MTLS_REJECTED', targetType: 'Gateway', targetId: gatewayId, details: { reason: 'ca_chain_validation_failed', tenantId: gateway.tenantId } });
       return null;
@@ -649,16 +664,18 @@ export async function authenticateTunnelRequest(
 }
 
 /**
- * Validate that a client certificate CN matches the expected gateway ID.
+ * Validate that a client certificate SPIFFE ID matches the expected gateway ID.
  * Exported for use by the tunnel handler.
  */
-export function validateClientCertCn(clientCertCn: string, gatewayId: string): boolean {
-  return clientCertCn === gatewayId;
+export function validateClientCertificateSpiffeId(clientSpiffeId: string, gatewayId: string): boolean {
+  return spiffeIdEquals(clientSpiffeId, buildGatewaySpiffeId(config.spiffeTrustDomain, gatewayId));
 }
 
 // ---------------------------------------------------------------------------
 // TCP proxy — create a local TCP server that proxies to a gateway via tunnel
 // ---------------------------------------------------------------------------
+
+const TCP_PROXY_IDLE_TIMEOUT_MS = 60_000;
 
 /**
  * Create a local TCP server that forwards every connection through the
@@ -673,10 +690,19 @@ export function createTcpProxy(
   targetPort: number,
 ): Promise<{ server: net.Server; localPort: number }> {
   return new Promise((resolve, reject) => {
-    const server = net.createServer(async (socket) => {
+    let server: net.Server | null = null;
+    const idleTimer = setTimeout(() => {
+      log.warn(
+        `[tunnel] TCP proxy for gateway ${gatewayId} expired before the first local connection`,
+      );
+      server?.close();
+    }, TCP_PROXY_IDLE_TIMEOUT_MS).unref();
+
+    server = net.createServer(async (socket) => {
+      clearTimeout(idleTimer);
       // Only accept a single connection, then close the server to avoid leaks.
       // Each session call creates its own proxy, so one connection is all we need.
-      server.close();
+      server?.close();
 
       try {
         const remote = await openStream(gatewayId, targetHost, targetPort);
@@ -697,6 +723,8 @@ export function createTcpProxy(
       }
     });
 
+    server.once('close', () => clearTimeout(idleTimer));
+
     server.listen(0, '127.0.0.1', () => {
       const addr = server.address();
       if (!addr || typeof addr === 'string') {
@@ -708,6 +736,18 @@ export function createTcpProxy(
     });
 
     server.on('error', reject);
+  });
+}
+
+export async function closeTcpProxy(server: net.Server | null | undefined): Promise<void> {
+  if (!server || !server.listening) return;
+
+  await new Promise<void>((resolve) => {
+    try {
+      server.close(() => resolve());
+    } catch {
+      resolve();
+    }
   });
 }
 
@@ -745,7 +785,7 @@ export function sendCertRenew(gatewayId: string, newClientCert: string, newClien
 /**
  * Check all tunneled gateways for certificate expiry.
  * When a cert expires within CERT_ROTATION_THRESHOLD_DAYS, generate a new one
- * signed by the gateway's CA and send it via CERT_RENEW through the active tunnel.
+ * signed by the tenant CA and send it via CERT_RENEW through the active tunnel.
  * For managed gateways, trigger a rolling restart via the orchestrator.
  */
 export async function processCertRotations(): Promise<void> {
@@ -761,11 +801,15 @@ export async function processCertRotations(): Promise<void> {
       name: true,
       tenantId: true,
       isManaged: true,
-      tunnelCaCert: true,
-      tunnelCaKey: true,
-      tunnelCaKeyIV: true,
-      tunnelCaKeyTag: true,
       tunnelClientCertExp: true,
+      tenant: {
+        select: {
+          tunnelCaCert: true,
+          tunnelCaKey: true,
+          tunnelCaKeyIV: true,
+          tunnelCaKeyTag: true,
+        },
+      },
     },
   });
 
@@ -775,31 +819,33 @@ export async function processCertRotations(): Promise<void> {
 
   for (const gw of candidates) {
     try {
-      // Only rotate if the CA key is available for signing
-      if (!gw.tunnelCaKey || !gw.tunnelCaKeyIV || !gw.tunnelCaKeyTag || !gw.tunnelCaCert) {
-        log.warn(`[tunnel] cert-rotation: gateway ${gw.id} (${gw.name}) missing CA key — skipping`);
+      const tenantCa = gw.tenant;
+      if (!tenantCa.tunnelCaKey || !tenantCa.tunnelCaKeyIV || !tenantCa.tunnelCaKeyTag || !tenantCa.tunnelCaCert) {
+        log.warn(`[tunnel] cert-rotation: gateway ${gw.id} (${gw.name}) missing tenant CA — skipping`);
         continue;
       }
 
-      // Decrypt the CA private key
       let caKeyPem: string;
       try {
         caKeyPem = decryptWithServerKey({
-          ciphertext: gw.tunnelCaKey,
-          iv: gw.tunnelCaKeyIV,
-          tag: gw.tunnelCaKeyTag,
+          ciphertext: tenantCa.tunnelCaKey,
+          iv: tenantCa.tunnelCaKeyIV,
+          tag: tenantCa.tunnelCaKeyTag,
         });
       } catch (decryptErr) {
-        log.error(`[tunnel] cert-rotation: failed to decrypt CA key for gateway ${gw.id}: ${(decryptErr as Error).message}`);
+        log.error(`[tunnel] cert-rotation: failed to decrypt tenant CA key for gateway ${gw.id}: ${(decryptErr as Error).message}`);
         continue;
       }
 
-      // Generate a new client cert + key pair signed by the CA (90-day validity)
       const validityDays = 90;
-      const clientResult = generateClientCertificate(gw.tunnelCaCert, caKeyPem, gw.id, validityDays);
+      const clientResult = generateClientCertificate(
+        tenantCa.tunnelCaCert,
+        caKeyPem,
+        gw.id,
+        buildGatewaySpiffeId(config.spiffeTrustDomain, gw.id),
+        validityDays,
+      );
 
-      // Encrypt and persist the new certificate and key
-      const encCaKey = encryptWithServerKey(caKeyPem);
       const encClientKey = encryptWithServerKey(clientResult.keyPem);
 
       await prisma.gateway.update({
@@ -810,10 +856,6 @@ export async function processCertRotations(): Promise<void> {
           tunnelClientKey: encClientKey.ciphertext,
           tunnelClientKeyIV: encClientKey.iv,
           tunnelClientKeyTag: encClientKey.tag,
-          // Re-persist CA key with fresh encryption (nonce rotation)
-          tunnelCaKey: encCaKey.ciphertext,
-          tunnelCaKeyIV: encCaKey.iv,
-          tunnelCaKeyTag: encCaKey.tag,
         },
       });
 
@@ -836,12 +878,12 @@ export async function processCertRotations(): Promise<void> {
       const delivered = sendCertRenew(gw.id, clientResult.certPem, clientResult.keyPem);
       log.info(`[tunnel] cert-rotation: CERT_RENEW for gateway ${gw.id} delivered=${delivered}`);
 
-      // For managed gateways the mTLS handshake cert cannot be hot-swapped —
-      // trigger a rolling restart so instances pick up the new cert from env.
+      // For managed gateways the mTLS handshake material cannot be hot-swapped —
+      // trigger a rolling restart so instances pick up the new cert and key.
       if (gw.isManaged) {
         try {
           const { rollingRestartForCertRotation } = await import('./managedGateway.service');
-          await rollingRestartForCertRotation(gw.id, clientResult.certPem);
+          await rollingRestartForCertRotation(gw.id, clientResult.certPem, clientResult.keyPem);
           log.info(`[tunnel] cert-rotation: rolling restart triggered for managed gateway ${gw.id}`);
         } catch (restartErr) {
           log.warn(`[tunnel] cert-rotation: rolling restart failed for gateway ${gw.id}: ${(restartErr as Error).message}`);

@@ -1,0 +1,84 @@
+---
+- name: Install Podman (Fedora/RHEL)
+  become: true
+  become_user: root
+  dnf:
+    name: [podman, podman-compose, python3-podman, openssl, git]
+    state: present
+  when: ansible_os_family == 'RedHat'
+
+- name: Install Podman (Debian/Ubuntu)
+  become: true
+  become_user: root
+  apt:
+    name: [podman, podman-compose, python3-podman, openssl, git]
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Install Podman (Arch)
+  become: true
+  become_user: root
+  pacman:
+    name: [podman, podman-compose, python-podman, openssl, git]
+    state: present
+  when: ansible_os_family == 'Archlinux'
+
+- name: Enable Podman socket for user
+  become: true
+  become_user: root
+  systemd:
+    name: "podman.socket"
+    scope: user
+    enabled: true
+    state: started
+  environment:
+    XDG_RUNTIME_DIR: "/run/user/{{ arsenale_uid | default(1000) }}"
+
+- name: Create arsenale user
+  become: true
+  become_user: root
+  user:
+    name: "{{ arsenale_user }}"
+    system: false
+    create_home: true
+    home: "{{ arsenale_home }}"
+    shell: /bin/bash
+  register: arsenale_user_info
+
+- name: Store UID for later use
+  set_fact:
+    arsenale_uid: "{{ arsenale_user_info.uid }}"
+
+- name: Enable lingering for arsenale user (rootless Podman persists after logout)
+  become: true
+  become_user: root
+  command: loginctl enable-linger {{ arsenale_user }}
+  changed_when: false
+
+- name: Create deployment directories
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ arsenale_home }}"
+    - "{{ arsenale_home }}/config"
+    - "{{ arsenale_home }}/config/ssh-gateway"
+    - "{{ arsenale_cert_dir }}"
+    - "{{ arsenale_backup_dir }}"
+
+- name: Clone Arsenale repository
+  git:
+    repo: "{{ arsenale_repo }}"
+    dest: "{{ arsenale_home }}/arsenale"
+    version: "{{ arsenale_version }}"
+    force: false
+  when: _build | default(true) | bool
+
+- name: Create empty authorized_keys
+  file:
+    path: "{{ arsenale_home }}/config/ssh-gateway/authorized_keys"
+    state: touch
+    mode: "0644"
+  changed_when: false

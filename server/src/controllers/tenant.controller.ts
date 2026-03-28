@@ -195,7 +195,7 @@ export async function createUser(req: AuthRequest, res: Response) {
   if (data.sendWelcomeEmail) {
     import('../services/email').then(({ sendWelcomeEmail }) => {
       sendWelcomeEmail(data.email, data.password).catch((err: unknown) => {
-        logger.error('Failed to send welcome email:', err);
+        logger.error('Failed to send welcome email:', err instanceof Error ? err.message : 'Unknown error');
       });
     });
   }

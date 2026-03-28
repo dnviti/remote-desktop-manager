@@ -109,7 +109,7 @@ export async function startSession(params: StartSessionParams): Promise<string> 
     log.debug(`Started session ${session.id} (${params.protocol}) for user ${params.userId}, connection ${params.connectionId}`);
     return session.id;
   } catch (err) {
-    log.error('Failed to start session:', err);
+    log.error('Failed to start session:', err instanceof Error ? err.message : 'Unknown error');
     throw err;
   }
 }
@@ -159,7 +159,7 @@ export async function endSession(
       gatewayId: session.gatewayId,
     });
   } catch (err) {
-    log.error('Failed to end session:', err);
+    log.error('Failed to end session:', err instanceof Error ? err.message : 'Unknown error');
   }
 }
 
@@ -172,7 +172,7 @@ export async function endSessionBySocketId(socketId: string): Promise<void> {
       await endSession(session.id, 'socket_disconnect');
     }
   } catch (err) {
-    log.error('Failed to end session by socketId:', err);
+    log.error('Failed to end session by socketId:', err instanceof Error ? err.message : 'Unknown error');
   }
 }
 
@@ -185,7 +185,7 @@ export async function endSessionByGuacTokenHash(tokenHash: string): Promise<void
       await endSession(session.id, 'guac_close');
     }
   } catch (err) {
-    log.error('Failed to end session by guacTokenHash:', err);
+    log.error('Failed to end session by guacTokenHash:', err instanceof Error ? err.message : 'Unknown error');
   }
 }
 
@@ -232,7 +232,7 @@ export async function closeStaleSessionsForConnection(
 
     return staleSessions.length;
   } catch (err) {
-    log.error('Failed to close stale sessions for dedup:', err);
+    log.error('Failed to close stale sessions for dedup:', err instanceof Error ? err.message : 'Unknown error');
     return 0;
   }
 }
@@ -262,7 +262,7 @@ export async function getActiveSessions(
   if (filters?.userId) where.userId = filters.userId;
   if (filters?.protocol) where.protocol = filters.protocol;
   if (filters?.gatewayId) where.gatewayId = filters.gatewayId;
-  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId } } };
+  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId, status: 'ACCEPTED' } } };
 
   const sessions = await prisma.activeSession.findMany({
     where,
@@ -307,7 +307,7 @@ export async function getActiveSessionCount(
   if (filters?.userId) where.userId = filters.userId;
   if (filters?.protocol) where.protocol = filters.protocol;
   if (filters?.gatewayId) where.gatewayId = filters.gatewayId;
-  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId } } };
+  if (filters?.tenantId) where.user = { tenantMemberships: { some: { tenantId: filters.tenantId, status: 'ACCEPTED' } } };
 
   return prisma.activeSession.count({ where });
 }
@@ -315,31 +315,32 @@ export async function getActiveSessionCount(
 export async function getActiveSessionCountByGateway(
   tenantId: string,
 ): Promise<Array<{ gatewayId: string; gatewayName: string; count: number }>> {
-  const sessions = await prisma.activeSession.findMany({
+  const groups = await prisma.activeSession.groupBy({
+    by: ['gatewayId'],
     where: {
       status: { not: 'CLOSED' },
       gatewayId: { not: null },
       gateway: { tenantId },
     },
-    select: {
-      gatewayId: true,
-      gateway: { select: { name: true } },
-    },
+    _count: { gatewayId: true },
   });
 
-  const grouped = new Map<string, { name: string; count: number }>();
-  for (const s of sessions) {
-    if (!s.gatewayId) continue;
-    const existing = grouped.get(s.gatewayId);
-    if (existing) existing.count++;
-    else grouped.set(s.gatewayId, { name: s.gateway?.name ?? '', count: 1 });
-  }
+  if (groups.length === 0) return [];
 
-  return Array.from(grouped.entries()).map(([gatewayId, { name, count }]) => ({
-    gatewayId,
-    gatewayName: name,
-    count,
-  }));
+  const gatewayIds = groups.map(g => g.gatewayId).filter((id): id is string => id !== null);
+  const gateways = await prisma.gateway.findMany({
+    where: { id: { in: gatewayIds } },
+    select: { id: true, name: true },
+  });
+  const nameMap = new Map(gateways.map(g => [g.id, g.name]));
+
+  return groups
+    .filter((g): g is typeof g & { gatewayId: string } => g.gatewayId !== null)
+    .map(g => ({
+      gatewayId: g.gatewayId,
+      gatewayName: nameMap.get(g.gatewayId) ?? '',
+      count: g._count.gatewayId,
+    }));
 }
 
 // ---------- Maintenance Operations ----------

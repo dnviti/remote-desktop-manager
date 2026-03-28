@@ -88,18 +88,19 @@ export async function getGatewayKeyClient(
 
     const { gatewayGrpcTlsCa, gatewayGrpcTlsCert, gatewayGrpcTlsKey } = config;
 
-    let channelCredentials: ReturnType<typeof grpcModule.credentials.createInsecure>;
-
-    if (gatewayGrpcTlsCa && gatewayGrpcTlsCert && gatewayGrpcTlsKey) {
-      const rootCert = fs.readFileSync(gatewayGrpcTlsCa);
-      const privateKey = fs.readFileSync(gatewayGrpcTlsKey);
-      const certChain = fs.readFileSync(gatewayGrpcTlsCert);
-      channelCredentials = grpcModule.credentials.createSsl(rootCert, privateKey, certChain);
-      log.debug('Gateway key client using mTLS for %s', addr);
-    } else {
-      channelCredentials = grpcModule.credentials.createInsecure();
-      log.warn('Gateway key client using INSECURE plaintext for %s — set GATEWAY_GRPC_TLS_CA/CERT/KEY', addr);
+    if (!gatewayGrpcTlsCa || !gatewayGrpcTlsCert || !gatewayGrpcTlsKey) {
+      log.error(
+        'Gateway key client requires GATEWAY_GRPC_TLS_CA/CERT/KEY for %s; refusing insecure plaintext',
+        addr,
+      );
+      return null;
     }
+
+    const rootCert = fs.readFileSync(gatewayGrpcTlsCa);
+    const privateKey = fs.readFileSync(gatewayGrpcTlsKey);
+    const certChain = fs.readFileSync(gatewayGrpcTlsCert);
+    const channelCredentials = grpcModule.credentials.createSsl(rootCert, privateKey, certChain);
+    log.debug('Gateway key client using mTLS for %s', addr);
 
     const client = new KeyManagementService(addr, channelCredentials) as unknown as GatewayKeyClient;
     clientCache.set(addr, client);

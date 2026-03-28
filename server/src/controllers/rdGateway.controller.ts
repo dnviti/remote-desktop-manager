@@ -161,7 +161,7 @@ export async function getRdGatewayAppConfig(): Promise<RdGatewayAppConfig> {
       idleTimeoutSeconds: parsed.idleTimeoutSeconds ?? RDGW_CONFIG_DEFAULTS.idleTimeoutSeconds,
     };
   } catch (err) {
-    logger.error('Failed to read RD Gateway config:', err);
+    logger.error('Failed to read RD Gateway config:', err instanceof Error ? err.message : 'Unknown error');
     return { ...RDGW_CONFIG_DEFAULTS };
   }
 }

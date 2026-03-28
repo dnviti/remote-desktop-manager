@@ -53,11 +53,6 @@ export async function listCheckouts(filters?: ListCheckoutFilters): Promise<Pagi
   return data;
 }
 
-export async function getCheckout(id: string): Promise<CheckoutRequest> {
-  const { data } = await api.get(`/checkouts/${id}`);
-  return data;
-}
-
 export async function requestCheckout(input: CreateCheckoutInput): Promise<CheckoutRequest> {
   const { data } = await api.post('/checkouts', input);
   return data;

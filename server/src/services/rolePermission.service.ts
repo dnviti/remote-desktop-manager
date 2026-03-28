@@ -1,4 +1,3 @@
-import prisma from '../lib/prisma';
 import { Prisma } from '../generated/prisma/client';
 import type { TenantRole } from '../generated/prisma/client';
 import { AppError } from '../middleware/error.middleware';
@@ -104,6 +103,11 @@ const CACHE_TTL_MS = 30_000;
 const CACHE_MAX_SIZE = 10_000;
 const CACHE_EVICTION_INTERVAL_MS = 60_000;
 
+async function getPrismaClient() {
+  const { default: prisma } = await import('../lib/prisma');
+  return prisma;
+}
+
 // Periodic eviction of expired entries (non-blocking)
 setInterval(() => {
   const now = Date.now();
@@ -149,11 +153,22 @@ export async function hasPermission(
     return cached.permissions[flag];
   }
 
+  const prisma = await getPrismaClient();
   const member = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId } },
-    select: { role: true, permissionOverrides: true, isActive: true },
+    select: {
+      role: true,
+      permissionOverrides: true,
+      isActive: true,
+      status: true,
+      expiresAt: true,
+      user: { select: { enabled: true } },
+    },
   });
-  if (!member || !member.isActive) return false;
+  if (!member || !member.user.enabled || !member.isActive || member.status !== 'ACCEPTED') {
+    return false;
+  }
+  if (member.expiresAt && member.expiresAt <= new Date()) return false;
 
   const permissions = resolvePermissions(
     member.role,
@@ -175,6 +190,7 @@ export async function getUserPermissions(
   overrides: Record<string, boolean> | null;
   defaults: Record<PermissionFlag, boolean>;
 } | null> {
+  const prisma = await getPrismaClient();
   const member = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId } },
     select: { role: true, permissionOverrides: true, isActive: true },
@@ -195,6 +211,7 @@ export async function updatePermissionOverrides(
   tenantId: string,
   overrides: Record<string, boolean> | null,
 ): Promise<void> {
+  const prisma = await getPrismaClient();
   const member = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId: targetUserId } },
     select: { role: true },

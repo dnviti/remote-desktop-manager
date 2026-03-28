@@ -45,19 +45,19 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 FROM nginx:1.28-alpine
 
-RUN apk upgrade --no-cache
+RUN apk upgrade --no-cache && apk add --no-cache curl
 
 COPY --from=build /app/client/dist /usr/share/nginx/html
 COPY client/nginx.main.conf /etc/nginx/nginx.conf
 COPY client/nginx.conf /etc/nginx/conf.d/default.conf
 
-RUN chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx
+RUN mkdir -p /certs && chown -R nginx:nginx /var/cache/nginx /var/run /var/log/nginx /certs
 
 EXPOSE 8080
 
 USER nginx
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=5s \
-    CMD wget -qO- http://127.0.0.1:8080/health || exit 1
+    CMD curl --silent --show-error --fail http://127.0.0.1:8080/health >/dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

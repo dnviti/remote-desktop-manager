@@ -1,0 +1,49 @@
+---
+- name: Backup Arsenale database
+  hosts: arsenale-server
+  become: true
+  become_user: "{{ arsenale_user }}"
+
+  tasks:
+    - name: Create backup directory
+      file:
+        path: "{{ arsenale_backup_dir }}"
+        state: directory
+        mode: "0750"
+
+    - name: Dump database
+      command: >
+        podman exec arsenale-postgres pg_dump
+        -U {{ arsenale_db_user }}
+        -d {{ arsenale_db_name }}
+        --format=custom
+        --file=/tmp/backup.dump
+      changed_when: true
+
+    - name: Copy backup from container
+      command: >
+        podman cp arsenale-postgres:/tmp/backup.dump
+        {{ arsenale_backup_dir }}/arsenale-{{ ansible_date_time.iso8601_basic_short }}.dump
+      changed_when: true
+
+    - name: Set backup permissions
+      file:
+        path: "{{ arsenale_backup_dir }}/arsenale-{{ ansible_date_time.iso8601_basic_short }}.dump"
+        mode: "0600"
+
+    - name: Clean old backups
+      find:
+        paths: "{{ arsenale_backup_dir }}"
+        patterns: "arsenale-*.dump"
+        age: "{{ arsenale_backup_retention_days }}d"
+      register: old_backups
+
+    - name: Remove old backups
+      file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ old_backups.files }}"
+
+    - name: Backup summary
+      debug:
+        msg: "Backup saved: {{ arsenale_backup_dir }}/arsenale-{{ ansible_date_time.iso8601_basic_short }}.dump"

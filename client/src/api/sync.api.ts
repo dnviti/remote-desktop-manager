@@ -92,11 +92,6 @@ export async function listSyncProfiles(): Promise<SyncProfileData[]> {
   return data;
 }
 
-export async function getSyncProfile(id: string): Promise<SyncProfileData> {
-  const { data } = await api.get<SyncProfileData>(`/sync-profiles/${id}`);
-  return data;
-}
-
 export async function createSyncProfile(input: CreateSyncProfileInput): Promise<SyncProfileData> {
   const { data } = await api.post<SyncProfileData>('/sync-profiles', input);
   return data;

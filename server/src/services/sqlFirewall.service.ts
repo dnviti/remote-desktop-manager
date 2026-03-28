@@ -111,7 +111,7 @@ export async function evaluateQuery(
       }
     }
   } catch (err) {
-    log.error('Firewall evaluation error — allowing query as fallback:', err);
+    log.error('Firewall evaluation error — allowing query as fallback:', err instanceof Error ? err.message : 'Unknown error');
   }
 
   return { allowed: true, matchedRule: null, action: null };

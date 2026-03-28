@@ -130,7 +130,7 @@ export async function checkLateralMovement(
     };
   } catch (err) {
     // Never block a session due to detection failures — log and allow
-    log.error('Lateral movement check failed:', err);
+    log.error('Lateral movement check failed:', err instanceof Error ? err.message : 'Unknown error');
     return { allowed: true };
   }
 }
@@ -197,6 +197,6 @@ async function notifyTenantAdmins(
       });
     }
   } catch (err) {
-    log.error('Failed to notify tenant admins about lateral movement:', err);
+    log.error('Failed to notify tenant admins about lateral movement:', err instanceof Error ? err.message : 'Unknown error');
   }
 }

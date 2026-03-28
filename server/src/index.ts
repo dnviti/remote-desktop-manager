@@ -10,7 +10,7 @@ import { initializePassport } from './config/passport';
 import { setupSocketIO } from './socket';
 import { logger, toGuacamoleLogLevel } from './utils/logger';
 import prisma from './lib/prisma';
-import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startCheckoutExpiryJob, startPasswordRotationJob, stopAllJobs } from './services/scheduler.service';
+import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startCheckoutExpiryJob, startPasswordRotationJob, startSystemSecretRotationJob, stopAllJobs } from './services/scheduler.service';
 import { startAllSyncJobs, stopAllSyncJobs } from './services/syncScheduler.service';
 import { startAllMonitors, stopAllMonitors } from './services/gatewayMonitor.service';
 import { cleanupExpiredShares } from './services/externalShare.service';
@@ -105,7 +105,7 @@ function checkProductionSecurityConfig(): void {
     logger.warn('[security] Gateway gRPC key push lacks mTLS — set GATEWAY_GRPC_TLS_CA/CERT/KEY');
   }
   if (!config.guacencAuthToken) {
-    logger.warn('[security] Guacenc sidecar has no auth token — set GUACENC_AUTH_TOKEN');
+    logger.warn('[security] Guacenc auth token not initialized — system secrets may have failed to load');
   }
   if (config.ldap.enabled && !config.ldap.starttls && !config.ldap.serverUrl.startsWith('ldaps://')) {
     logger.warn('[security] LDAP enabled without TLS — enable LDAP_STARTTLS or use ldaps:// URL');
@@ -134,13 +134,19 @@ function checkProductionSecurityConfig(): void {
 }
 
 async function main() {
-  // Kill stale processes from previous runs (e.g. tsx watch restart, debugger)
-  freePort(config.port);
-  freePort(config.guacamoleWsPort);
+  // Only do dev-time port cleanup for local watch/debug workflows.
+  if (config.nodeEnv === 'development') {
+    freePort(config.port);
+    freePort(config.guacamoleWsPort);
+  }
 
   await runDatabaseMigrations();
   await runStartupMigrations();
   await applySystemSettings();
+
+  // Initialize auto-managed system secrets (JWT, Guacamole, guacenc)
+  const { ensureSystemSecrets } = await import('./services/systemSecrets.service');
+  await ensureSystemSecrets();
 
   // Check for insecure production configurations
   checkProductionSecurityConfig();
@@ -180,18 +186,24 @@ async function main() {
   let tunnelServer: http.Server | https.Server;
   if (config.tunnelServerCert && config.tunnelServerKey) {
     try {
+      if (config.tunnelStrictMtls && !config.tunnelServerCa) {
+        throw new Error('TUNNEL_SERVER_CA is required when TUNNEL_STRICT_MTLS=true');
+      }
       const tunnelTlsOptions: https.ServerOptions = {
         cert: fs.readFileSync(config.tunnelServerCert),
         key: fs.readFileSync(config.tunnelServerKey),
         requestCert: true,
-        // We do tenant-specific CA validation in-app, not at the TLS layer
-        rejectUnauthorized: false,
+        rejectUnauthorized: config.tunnelStrictMtls,
       };
       if (config.tunnelServerCa) {
         tunnelTlsOptions.ca = fs.readFileSync(config.tunnelServerCa);
       }
       tunnelServer = https.createServer(tunnelTlsOptions, app);
-      logger.info('[tunnel] TLS enabled for tunnel endpoint — mTLS client certificates will be verified');
+      logger.info(
+        config.tunnelStrictMtls
+          ? '[tunnel] TLS enabled for tunnel endpoint — strict mTLS client certificate verification is active'
+          : '[tunnel] TLS enabled for tunnel endpoint — client certificates will be authorized in-app',
+      );
     } catch (err) {
       logger.error('[tunnel] Failed to load tunnel TLS certificates:', err instanceof Error ? err.message : 'Unknown error');
       logger.warn('[tunnel] Falling back to main HTTPS server for tunnel endpoint — mTLS enforcement disabled');
@@ -220,8 +232,9 @@ async function main() {
   startMembershipExpiryJob();
   startCheckoutExpiryJob();
   startPasswordRotationJob();
+  startSystemSecretRotationJob();
   startAllSyncJobs().catch((err) => {
-    logger.error('Failed to start sync jobs:', err);
+    logger.error('Failed to start sync jobs:', err instanceof Error ? err.message : 'Unknown error');
   });
 
   // Register live-reload callbacks for system settings
@@ -528,13 +541,13 @@ async function main() {
               metadata.connectionId,
               protocol,
             ).catch((err: unknown) => {
-              logger.error('Failed to end session on guac close:', err);
+              logger.error('Failed to end session on guac close:', err instanceof Error ? err.message : 'Unknown error');
             });
 
             // Finalize recording if one was started
             if (metadata.recordingId) {
               completeGuacRecording(metadata.recordingId).catch((err: unknown) => {
-                logger.error('Failed to complete recording on guac close:', err);
+                logger.error('Failed to complete recording on guac close:', err instanceof Error ? err.message : 'Unknown error');
               });
             }
           }
@@ -610,7 +623,7 @@ async function main() {
         logger.info(`Closed ${closed} active session(s) on shutdown`);
       }
     } catch (err) {
-      logger.error('Failed to close sessions on shutdown:', err);
+      logger.error('Failed to close sessions on shutdown:', err instanceof Error ? err.message : 'Unknown error');
     }
 
     // Close all DB query executor pools

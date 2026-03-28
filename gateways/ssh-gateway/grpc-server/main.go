@@ -17,13 +17,12 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
 )
 
 const (
-	defaultPort         = "9022"
-	authorizedKeysPath  = "/home/tunnel/.ssh/authorized_keys"
-	configKeysPath      = "/config/authorized_keys"
+	defaultPort        = "9022"
+	authorizedKeysPath = "/tmp/.ssh/authorized_keys"
+	configKeysPath     = "/config/authorized_keys"
 )
 
 // keyManagementServer implements the KeyManagement gRPC service.
@@ -80,12 +79,16 @@ func (s *keyManagementServer) GetKeys(_ context.Context, _ *GetKeysRequest) (*Ge
 	return &GetKeysResponse{Keys: keys}, nil
 }
 
-func buildServerTLSConfig() *tls.Config {
+func buildServerTLSConfig(expectedSPIFFEID string) *tls.Config {
 	caPath := os.Getenv("GATEWAY_GRPC_TLS_CA")
+	clientCAPath := os.Getenv("GATEWAY_GRPC_CLIENT_CA")
+	if clientCAPath == "" {
+		clientCAPath = caPath
+	}
 	certPath := os.Getenv("GATEWAY_GRPC_TLS_CERT")
 	keyPath := os.Getenv("GATEWAY_GRPC_TLS_KEY")
 
-	if caPath == "" || certPath == "" || keyPath == "" {
+	if caPath == "" || clientCAPath == "" || certPath == "" || keyPath == "" {
 		return nil
 	}
 
@@ -94,48 +97,69 @@ func buildServerTLSConfig() *tls.Config {
 		log.Fatalf("[tls] failed to load cert/key (%s, %s): %v", certPath, keyPath, err)
 	}
 
-	caPEM, err := os.ReadFile(caPath)
+	clientCAPEM, err := os.ReadFile(clientCAPath)
 	if err != nil {
-		log.Fatalf("[tls] failed to read CA %s: %v", caPath, err)
+		log.Fatalf("[tls] failed to read client CA %s: %v", clientCAPath, err)
 	}
 
-	caPool := x509.NewCertPool()
-	if !caPool.AppendCertsFromPEM(caPEM) {
-		log.Fatalf("[tls] failed to parse CA from %s", caPath)
+	clientCAPool := x509.NewCertPool()
+	if !clientCAPool.AppendCertsFromPEM(clientCAPEM) {
+		log.Fatalf("[tls] failed to parse client CA from %s", clientCAPath)
 	}
 
-	return &tls.Config{
+	tlsConfig := &tls.Config{
 		Certificates: []tls.Certificate{cert},
-		ClientAuth:   tls.RequireAndVerifyClientCert,
-		ClientCAs:    caPool,
+		ClientAuth:   tls.RequireAnyClientCert,
+		ClientCAs:    clientCAPool,
 		MinVersion:   tls.VersionTLS12,
 	}
-}
 
-// cnVerifyInterceptor optionally verifies the client certificate CN.
-func cnVerifyInterceptor(expectedCN string) grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		if expectedCN == "" {
-			return handler(ctx, req)
+	tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, _ [][]*x509.Certificate) error {
+		if len(rawCerts) == 0 {
+			return fmt.Errorf("no client certificate presented")
 		}
-		p, ok := peer.FromContext(ctx)
-		if !ok {
-			return nil, fmt.Errorf("no peer info in context")
+
+		certs := make([]*x509.Certificate, 0, len(rawCerts))
+		for _, rawCert := range rawCerts {
+			parsed, parseErr := x509.ParseCertificate(rawCert)
+			if parseErr != nil {
+				return fmt.Errorf("failed to parse client certificate: %w", parseErr)
+			}
+			certs = append(certs, parsed)
 		}
-		tlsInfo, ok := p.AuthInfo.(credentials.TLSInfo)
-		if !ok {
-			return nil, fmt.Errorf("no TLS info in peer")
+
+		verifyOpts := x509.VerifyOptions{
+			Roots:     clientCAPool,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 		}
-		if len(tlsInfo.State.VerifiedChains) == 0 || len(tlsInfo.State.VerifiedChains[0]) == 0 {
-			return nil, fmt.Errorf("no verified client certificate")
+		if len(certs) > 1 {
+			verifyOpts.Intermediates = x509.NewCertPool()
+			for _, intermediate := range certs[1:] {
+				verifyOpts.Intermediates.AddCert(intermediate)
+			}
 		}
-		clientCN := tlsInfo.State.VerifiedChains[0][0].Subject.CommonName
-		if clientCN != expectedCN {
-			log.Printf("[tls] rejected client CN=%q (expected %q)", clientCN, expectedCN)
-			return nil, fmt.Errorf("client CN %q not allowed", clientCN)
+
+		if _, verifyErr := certs[0].Verify(verifyOpts); verifyErr != nil {
+			return fmt.Errorf("client certificate verification failed: %w", verifyErr)
 		}
-		return handler(ctx, req)
+
+		if expectedSPIFFEID == "" {
+			return nil
+		}
+
+		clientSPIFFEID, err := extractSPIFFEID(certs[0])
+		if err != nil {
+			return err
+		}
+		if !spiffeIDEqual(clientSPIFFEID, expectedSPIFFEID) {
+			log.Printf("[tls] rejected client SPIFFE ID=%q (expected %q)", clientSPIFFEID, expectedSPIFFEID)
+			return fmt.Errorf("client SPIFFE ID %q not allowed", clientSPIFFEID)
+		}
+
+		return nil
 	}
+
+	return tlsConfig
 }
 
 func main() {
@@ -145,18 +169,24 @@ func main() {
 	}
 
 	var grpcOpts []grpc.ServerOption
+	trustDomain := os.Getenv("SPIFFE_TRUST_DOMAIN")
+	if trustDomain == "" {
+		trustDomain = "arsenale.local"
+	}
+	expectedSPIFFEID := os.Getenv("GATEWAY_GRPC_EXPECTED_SPIFFE_ID")
+	if expectedSPIFFEID == "" {
+		expectedSPIFFEID = buildServiceSPIFFEID(trustDomain, "server")
+	}
 
-	if tlsConfig := buildServerTLSConfig(); tlsConfig != nil {
+	if tlsConfig := buildServerTLSConfig(expectedSPIFFEID); tlsConfig != nil {
 		grpcOpts = append(grpcOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
-		log.Printf("[main] gRPC server using mTLS (RequireAndVerifyClientCert)")
+		log.Printf("[main] gRPC server using mTLS (explicit client certificate verification)")
 	} else {
 		log.Println("[main] WARNING: gRPC server using INSECURE plaintext — set GATEWAY_GRPC_TLS_CA/CERT/KEY to enable mTLS")
 	}
 
-	// Optional CN verification
-	if expectedCN := os.Getenv("GATEWAY_GRPC_EXPECTED_CN"); expectedCN != "" {
-		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(cnVerifyInterceptor(expectedCN)))
-		log.Printf("[main] enforcing client CN=%q", expectedCN)
+	if expectedSPIFFEID != "" {
+		log.Printf("[main] enforcing client SPIFFE ID=%q", expectedSPIFFEID)
 	}
 
 	grpcServer := grpc.NewServer(grpcOpts...)

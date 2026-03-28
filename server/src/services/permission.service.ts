@@ -332,10 +332,11 @@ export async function canManageSecret(
   if (secret.scope === 'TENANT' && secret.tenantId) {
     const membership = await prisma.tenantMember.findUnique({
       where: { tenantId_userId: { tenantId: secret.tenantId, userId } },
-      select: { role: true },
+      select: { role: true, status: true },
     });
     if (
       membership &&
+      membership.status === 'ACCEPTED' &&
       (membership.role === 'OWNER' || membership.role === 'ADMIN')
     ) {
       return { allowed: true, secret, accessType: 'tenant' };

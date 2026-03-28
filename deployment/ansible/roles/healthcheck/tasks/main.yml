@@ -1,0 +1,89 @@
+---
+- name: Set compose command for health checks
+  set_fact:
+    _hc_compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ _home }}/docker-compose.yml"
+
+- name: Get expected compose service count
+  command: >
+    {{ _hc_compose_cmd }} config --services
+  register: compose_services
+  changed_when: false
+  environment: "{{ _hc_env }}"
+  vars:
+    _hc_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}
+
+- name: Wait for all containers to be healthy
+  command: >
+    {{ _hc_compose_cmd }} ps --format json
+  register: compose_status
+  retries: 24
+  delay: 5
+  until: >
+    (compose_status.stdout | from_json | list | length) >= (compose_services.stdout_lines | length)
+    and
+    (
+      compose_status.stdout
+      | from_json
+      | selectattr('Status', 'search', '\\(healthy\\)')
+      | list
+      | length
+    ) >= (compose_services.stdout_lines | length)
+  changed_when: false
+  environment: "{{ _hc_env }}"
+  vars:
+    _hc_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}
+
+- name: Verify API health endpoint
+  uri:
+    url: "https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api/health"
+    validate_certs: true
+    ca_path: "{{ arsenale_cert_dir }}/ca.pem"
+    status_code: 200
+  retries: 12
+  delay: 5
+  register: health_check
+  until: health_check.status == 200
+  when: not (_is_dev | default(false) | bool)
+
+- name: Verify secrets are NOT in container environment
+  command: >
+    {{ container_runtime | default('podman') }} inspect arsenale-server --format
+    '{% raw %}{{ range .Config.Env }}{{ println . }}{{ end }}{% endraw %}'
+  register: server_env
+  changed_when: false
+  failed_when: >
+    'JWT_SECRET=' in server_env.stdout or
+    'GUACAMOLE_SECRET=' in server_env.stdout or
+    'SERVER_ENCRYPTION_KEY=' in server_env.stdout
+
+- name: Verify Podman secrets are mounted in server
+  command: "{{ container_runtime | default('podman') }} exec arsenale-server ls /run/secrets/"
+  register: server_secrets
+  changed_when: false
+  failed_when: "'jwt_secret' not in server_secrets.stdout"
+
+- name: Verify postgres only has its own secret
+  command: "{{ container_runtime | default('podman') }} exec arsenale-postgres ls /run/secrets/"
+  register: postgres_secrets
+  changed_when: false
+  failed_when: >
+    'postgres_password' not in postgres_secrets.stdout or
+    'jwt_secret' in postgres_secrets.stdout
+
+- name: Display deployment status
+  debug:
+    msg: |
+      Arsenale deployed successfully!
+      Web UI: https://{{ arsenale_domain }}:{{ arsenale_client_port }}
+      SSH Gateway: ssh -p {{ arsenale_ssh_port }} tunnel@{{ arsenale_domain }}
+      Secrets: Managed via Podman secrets (not in container env)

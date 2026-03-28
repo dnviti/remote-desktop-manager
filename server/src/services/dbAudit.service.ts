@@ -208,7 +208,7 @@ export function logQuery(input: DbAuditLogInput): void {
       },
     })
     .catch((err) => {
-      log.error('Failed to write DB audit log:', err);
+      log.error('Failed to write DB audit log:', err instanceof Error ? err.message : 'Unknown error');
     });
 }
 

@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	refreshInterval    = 10 * time.Second
+	refreshInterval     = 10 * time.Second
 	healthCheckInterval = 5 * time.Second
 )
 
@@ -52,6 +52,32 @@ func NewManualDiscovery(peersCSV string) *ManualDiscovery {
 
 func (d *ManualDiscovery) Discover(_ context.Context) ([]string, error) {
 	return d.peers, nil
+}
+
+// DNSDiscovery resolves a DNS name to peer IPs.
+type DNSDiscovery struct {
+	name string
+	port string
+}
+
+// NewDNSDiscovery creates a DNS-based discovery strategy.
+func NewDNSDiscovery(name, port string) *DNSDiscovery {
+	return &DNSDiscovery{name: name, port: port}
+}
+
+func (d *DNSDiscovery) Discover(ctx context.Context) ([]string, error) {
+	if d.name == "" {
+		return nil, nil
+	}
+	ips, err := net.DefaultResolver.LookupHost(ctx, d.name)
+	if err != nil {
+		return nil, fmt.Errorf("dns discovery: %w", err)
+	}
+	peers := make([]string, 0, len(ips))
+	for _, ip := range ips {
+		peers = append(peers, net.JoinHostPort(ip, d.port))
+	}
+	return peers, nil
 }
 
 // DockerDiscovery queries the Docker API for containers with label arsenale.cache-sidecar=true.
@@ -171,6 +197,8 @@ type Registry struct {
 	peers     map[string]*Peer
 	discovery Discovery
 	selfAddr  string
+	selfPort  string
+	selfHosts map[string]struct{}
 	stopCh    chan struct{}
 	onUpdate  func(peers []*Peer) // callback when peer list changes
 }
@@ -178,10 +206,12 @@ type Registry struct {
 // NewRegistry creates a peer Registry with the given discovery mechanism.
 func NewRegistry(discovery Discovery, selfAddr string) *Registry {
 	return &Registry{
-		peers:    make(map[string]*Peer),
+		peers:     make(map[string]*Peer),
 		discovery: discovery,
-		selfAddr: selfAddr,
-		stopCh:   make(chan struct{}),
+		selfAddr:  selfAddr,
+		selfPort:  peerPort(selfAddr),
+		selfHosts: collectSelfHosts(selfAddr),
+		stopCh:    make(chan struct{}),
 	}
 }
 
@@ -315,7 +345,7 @@ func (r *Registry) refreshPeers(ctx context.Context) {
 	// Add new peers.
 	seen := make(map[string]bool)
 	for _, addr := range addrs {
-		if addr == r.selfAddr {
+		if r.isSelfAddress(addr) {
 			continue
 		}
 		seen[addr] = true
@@ -342,4 +372,61 @@ func (r *Registry) refreshPeers(ctx context.Context) {
 	if changed && r.onUpdate != nil {
 		r.onUpdate(r.GetAllPeers())
 	}
+}
+
+func peerPort(addr string) string {
+	_, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return ""
+	}
+	return port
+}
+
+func collectSelfHosts(selfAddr string) map[string]struct{} {
+	hosts := map[string]struct{}{
+		"localhost": {},
+	}
+	if hostname, err := os.Hostname(); err == nil && hostname != "" {
+		hosts[hostname] = struct{}{}
+	}
+	if host, _, err := net.SplitHostPort(selfAddr); err == nil && host != "" && host != "0.0.0.0" && host != "::" {
+		hosts[host] = struct{}{}
+	}
+	if addrs, err := net.InterfaceAddrs(); err == nil {
+		for _, addr := range addrs {
+			switch v := addr.(type) {
+			case *net.IPNet:
+				hosts[v.IP.String()] = struct{}{}
+			case *net.IPAddr:
+				hosts[v.IP.String()] = struct{}{}
+			}
+		}
+	}
+	return hosts
+}
+
+func (r *Registry) isSelfAddress(addr string) bool {
+	if addr == r.selfAddr {
+		return true
+	}
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return false
+	}
+	if r.selfPort != "" && port != r.selfPort {
+		return false
+	}
+	if _, ok := r.selfHosts[host]; ok {
+		return true
+	}
+	ips, err := net.DefaultResolver.LookupHost(context.Background(), host)
+	if err != nil {
+		return false
+	}
+	for _, ip := range ips {
+		if _, ok := r.selfHosts[ip]; ok {
+			return true
+		}
+	}
+	return false
 }

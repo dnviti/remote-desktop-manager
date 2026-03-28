@@ -1,3 +1,6 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { loadConfig } from './config';
 
@@ -12,8 +15,11 @@ describe('loadConfig', () => {
     delete process.env.TUNNEL_LOCAL_PORT;
     delete process.env.TUNNEL_LOCAL_HOST;
     delete process.env.TUNNEL_CA_CERT;
+    delete process.env.TUNNEL_CA_CERT_FILE;
     delete process.env.TUNNEL_CLIENT_CERT;
+    delete process.env.TUNNEL_CLIENT_CERT_FILE;
     delete process.env.TUNNEL_CLIENT_KEY;
+    delete process.env.TUNNEL_CLIENT_KEY_FILE;
     delete process.env.TUNNEL_PING_INTERVAL_MS;
     delete process.env.TUNNEL_RECONNECT_INITIAL_MS;
     delete process.env.TUNNEL_RECONNECT_MAX_MS;
@@ -24,7 +30,8 @@ describe('loadConfig', () => {
     // Restore env — delete any TUNNEL_ vars added during the test
     const tunnelKeys = [
       'TUNNEL_SERVER_URL', 'TUNNEL_TOKEN', 'TUNNEL_GATEWAY_ID', 'TUNNEL_LOCAL_PORT',
-      'TUNNEL_LOCAL_HOST', 'TUNNEL_CA_CERT', 'TUNNEL_CLIENT_CERT', 'TUNNEL_CLIENT_KEY',
+      'TUNNEL_LOCAL_HOST', 'TUNNEL_CA_CERT', 'TUNNEL_CA_CERT_FILE', 'TUNNEL_CLIENT_CERT',
+      'TUNNEL_CLIENT_CERT_FILE', 'TUNNEL_CLIENT_KEY', 'TUNNEL_CLIENT_KEY_FILE',
       'TUNNEL_PING_INTERVAL_MS', 'TUNNEL_RECONNECT_INITIAL_MS', 'TUNNEL_RECONNECT_MAX_MS',
       'TUNNEL_AGENT_VERSION',
     ] as const;
@@ -52,7 +59,7 @@ describe('loadConfig', () => {
     expect(cfg!.token).toBe('abc123');
     expect(cfg!.gatewayId).toBe('gw-uuid-001');
     expect(cfg!.localServicePort).toBe(4822);
-    expect(cfg!.localServiceHost).toBe('localhost');
+    expect(cfg!.localServiceHost).toBe('127.0.0.1');
   });
 
   it('uses default values for optional settings', () => {
@@ -65,7 +72,7 @@ describe('loadConfig', () => {
     expect(cfg!.pingIntervalMs).toBe(15000);
     expect(cfg!.reconnectInitialMs).toBe(1000);
     expect(cfg!.reconnectMaxMs).toBe(60000);
-    expect(cfg!.localServiceHost).toBe('localhost');
+    expect(cfg!.localServiceHost).toBe('127.0.0.1');
     expect(cfg!.caCert).toBeUndefined();
     expect(cfg!.clientCert).toBeUndefined();
     expect(cfg!.clientKey).toBeUndefined();
@@ -84,5 +91,31 @@ describe('loadConfig', () => {
     expect(cfg!.caCert).toBeDefined();
     expect(cfg!.clientCert).toBeDefined();
     expect(cfg!.clientKey).toBeDefined();
+  });
+
+  it('reads optional TLS values from files when *_FILE vars are set', () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tunnel-agent-config-'));
+    const caPath = path.join(tempDir, 'ca.pem');
+    const certPath = path.join(tempDir, 'client.pem');
+    const keyPath = path.join(tempDir, 'client.key');
+
+    fs.writeFileSync(caPath, 'ca-pem\n');
+    fs.writeFileSync(certPath, 'client-pem\n');
+    fs.writeFileSync(keyPath, 'key-pem\n');
+
+    process.env.TUNNEL_SERVER_URL = 'wss://example.com/tunnel';
+    process.env.TUNNEL_TOKEN = 'tok';
+    process.env.TUNNEL_GATEWAY_ID = 'gw-1';
+    process.env.TUNNEL_LOCAL_PORT = '4822';
+    process.env.TUNNEL_CA_CERT_FILE = caPath;
+    process.env.TUNNEL_CLIENT_CERT_FILE = certPath;
+    process.env.TUNNEL_CLIENT_KEY_FILE = keyPath;
+
+    const cfg = loadConfig();
+    expect(cfg!.caCert).toBe('ca-pem');
+    expect(cfg!.clientCert).toBe('client-pem');
+    expect(cfg!.clientKey).toBe('key-pem');
+
+    fs.rmSync(tempDir, { recursive: true, force: true });
   });
 });

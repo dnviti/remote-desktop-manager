@@ -278,7 +278,7 @@ export function splitStatements(sql: string): string[] {
 // ---------------------------------------------------------------------------
 
 /** Execute a single statement against the appropriate driver. */
-async function runSingleQuery(
+function runSingleQuery(
   driver: ManagedPool['driver'],
   stmt: string,
   maxRows: number,
@@ -286,17 +286,17 @@ async function runSingleQuery(
 ): Promise<QueryResult> {
   switch (driver.type) {
     case 'postgresql':
-      return await postgres.runQuery(driver.pool, stmt, maxRows);
+      return postgres.runQuery(driver.pool, stmt, maxRows);
     case 'mysql':
-      return await mysql.runQuery(driver.pool, stmt, maxRows);
+      return mysql.runQuery(driver.pool, stmt, maxRows);
     case 'mongodb':
-      return await mongodb.runQuery(driver.client, driver.dbName, stmt, maxRows);
+      return mongodb.runQuery(driver.client, driver.dbName, stmt, maxRows);
     case 'mssql':
-      return await mssqlDriver.runQuery(driver.pool, stmt, maxRows);
+      return mssqlDriver.runQuery(driver.pool, stmt, maxRows);
     case 'oracle':
-      return await oracle.runQuery(driver.pool, stmt, maxRows, timeoutMs);
+      return oracle.runQuery(driver.pool, stmt, maxRows, timeoutMs);
     case 'db2':
-      return await db2.runQuery(driver.conn, stmt, maxRows);
+      return db2.runQuery(driver.conn, stmt, maxRows);
     default:
       throw new AppError('Unsupported protocol', 400);
   }

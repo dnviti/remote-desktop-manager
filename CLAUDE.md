@@ -73,7 +73,19 @@ Always respond and work in English, even if the user's prompt is in another lang
 ## Development Commands
 
 ```bash
-npm run predev && npm run dev   # Full dev setup (Docker + Prisma + server + client)
+# Infrastructure (Makefile → Ansible)
+make setup                      # First-time: install Ansible collections, generate vault
+make dev                        # Start dev infrastructure (postgres + gocache via Ansible)
+make dev-down                   # Stop dev infrastructure
+make deploy                     # Full production deployment via Ansible
+make status                     # Show service status
+make backup                     # Database backup
+make rotate                     # Rotate system secrets
+make vault                      # Generate/edit Ansible Vault
+make certs                      # Regenerate TLS certificates
+make help                       # Show all targets
+
+# Application development
 npm run dev                     # Server (:3001) + Client (:3000, proxies /api→:3001, /socket.io→:3002)
 npm run dev:server              # Express on :3001 (tsx watch)
 npm run dev:client              # Vite on :3000
@@ -86,13 +98,11 @@ npm run codeql                  # CodeQL security-extended
 npm run db:generate             # Prisma client types
 npm run db:push                 # Sync schema (no migration, manual)
 npm run db:migrate              # Run migrations (server auto-migrates on start)
-npm run docker:dev / docker:dev:down  # Start/stop guacd + PostgreSQL
-npm run docker:prod             # Full production stack
 
 # CodeClaw Configuration
 DEV_PORTS="3000 3001 3002"
 START_COMMAND="npm run dev"
-PREDEV_COMMAND="npm run predev"
+PREDEV_COMMAND="make dev"
 VERIFY_COMMAND="npm run verify"
 TEST_FRAMEWORK="vitest"
 TEST_COMMAND="npm run test"
@@ -109,7 +119,7 @@ GITHUB_REPO_URL="https://github.com/dnviti/arsenale"
 
 ## Environment Setup
 
-Copy `.env.example` to `.env` at **monorepo root** (not inside `server/`). `server/prisma.config.ts` resolves `.env` to `../.env`. Never add a separate `server/.env`. Docker required for PostgreSQL + `guacd`; `predev` starts both automatically.
+`make dev` auto-generates `.env` at the monorepo root via Ansible templates. `server/prisma.config.ts` resolves `.env` to `../.env`. Never add a separate `server/.env`. Ansible manages PostgreSQL + gocache containers; `make dev` starts both automatically. For first-time setup, run `make setup` first.
 
 ## Version Bumping
 

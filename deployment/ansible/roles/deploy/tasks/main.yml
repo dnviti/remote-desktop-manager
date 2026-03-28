@@ -1,0 +1,64 @@
+---
+# Unified deploy role — handles both production (podman) and development
+
+- name: Template compose file
+  template:
+    src: compose.yml.j2
+    dest: "{{ _home }}/docker-compose.yml"
+    mode: "0640"
+  when: _state == 'present'
+
+- name: Template environment file (non-secret config only)
+  template:
+    src: env.j2
+    dest: "{{ _home }}/.env"
+    mode: "0640"
+  when: _state == 'present'
+
+# --- Build / Pull ---
+
+- name: Set compose command
+  set_fact:
+    _compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ _home }}/docker-compose.yml"
+
+- name: Build images from source
+  command: >
+    {{ _compose_cmd }} build --no-cache
+  when: _state == 'present' and _build | bool
+  changed_when: true
+
+- name: Pull pre-built images
+  command: >
+    {{ _compose_cmd }} pull
+  when: _state == 'present' and not (_build | bool)
+  changed_when: false
+
+# --- Deploy / Teardown ---
+
+- name: Deploy Arsenale stack
+  command: >
+    {{ _compose_cmd }} up -d --remove-orphans
+  when: _state == 'present'
+  changed_when: true
+  environment: "{{ _compose_env }}"
+  vars:
+    _compose_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}
+
+- name: Tear down Arsenale stack
+  command: >
+    {{ _compose_cmd }} down --remove-orphans
+  when: _state == 'absent'
+  changed_when: true
+  environment: "{{ _compose_env }}"
+  vars:
+    _compose_env: >-
+      {{
+        {}
+        if (_is_dev | default(false) | bool)
+        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
+      }}

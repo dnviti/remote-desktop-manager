@@ -161,6 +161,51 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    headers: {
+      'X-Frame-Options': 'DENY',
+      'X-Content-Type-Options': 'nosniff',
+      'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+      // NOTE: Vite dev server requires unsafe-inline/unsafe-eval for HMR to function.
+      // This is acceptable in development only. Production builds use Helmet CSP
+      // configured in server/src/app.ts with strict default-src 'self' (no unsafe-*).
+      'Content-Security-Policy':
+        "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self' https://fonts.gstatic.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'",
+    },
+    fs: {
+      // Restrict file serving to the project workspace only — prevents /@fs path traversal
+      strict: true,
+      // Primary defense: only allow serving files from client/ and hoisted node_modules
+      allow: [
+        '.',                    // client/ directory only
+        '../node_modules',      // hoisted monorepo dependencies
+      ],
+      // Defense-in-depth: explicitly block sensitive files and non-client directories
+      deny: [
+        '.env',
+        '.env.*',
+        '.git/**',
+        'node_modules/.vite/deps/_metadata.json',
+        '**/*.pem',
+        '**/*.key',
+        // Block all non-client monorepo directories
+        '../server/**',
+        '../gateways/**',
+        '../infrastructure/**',
+        '../deployment/**',
+        '../dev-certs/**',
+        '../docs/**',
+        '../tasks/**',
+        '../.claude/**',
+        // Block infrastructure files
+        '../compose*.yml',
+        '../docker-compose*.yml',
+        '../Dockerfile*',
+        '../.env*',
+        '../*.sh',
+      ],
+    },
     https: (() => {
       // Use provided certs or fall back to auto-generated dev certs from the server
       const certPath = process.env.VITE_TLS_CERT || '../dev-certs/server/server-cert.pem';

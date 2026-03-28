@@ -12,5 +12,5 @@ misconfigurations:
 secrets:
   # .env.example contains placeholder values, not real secrets
   - path: .env.example
-  # compose.dev.yml contains development-only database password
-  - path: compose.dev.yml
+  # Ansible dev compose template contains Jinja2 placeholders, not real secrets
+  - path: deployment/ansible/roles/deploy/templates/compose.dev.yml.j2

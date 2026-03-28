@@ -176,7 +176,7 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
 
     return closedCount;
   } catch (err) {
-    logger.error('Session cleanup error:', err);
+    logger.error('Session cleanup error:', err instanceof Error ? err.message : 'Unknown error');
     return 0;
   }
 }

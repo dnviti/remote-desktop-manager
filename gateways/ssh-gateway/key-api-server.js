@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+/* eslint-disable @typescript-eslint/no-require-imports */
 // HTTPS key management API for the SSH Gateway sidecar.
 // Replaces BusyBox httpd + CGI with a Node.js HTTPS server so that bearer
 // tokens and SSH public keys are never sent in plaintext.
@@ -13,7 +14,6 @@
 'use strict';
 
 const fs = require('fs');
-const path = require('path');
 
 const AUTH_FILE = '/home/tunnel/.ssh/authorized_keys';
 const PORT = parseInt(process.env.GATEWAY_API_PORT || '8022', 10);

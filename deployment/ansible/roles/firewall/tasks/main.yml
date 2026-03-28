@@ -1,0 +1,37 @@
+---
+- name: Install nftables
+  become: true
+  become_user: root
+  package:
+    name: nftables
+    state: present
+  when: arsenale_firewall_enabled | bool
+
+- name: Ensure nftables include directory exists
+  become: true
+  become_user: root
+  file:
+    path: /etc/nftables.d
+    state: directory
+    mode: "0755"
+  when: arsenale_firewall_enabled | bool
+
+- name: Template nftables rules
+  become: true
+  become_user: root
+  template:
+    src: arsenale-nft.conf.j2
+    dest: /etc/nftables.d/arsenale.conf
+    mode: "0644"
+  when: arsenale_firewall_enabled | bool
+  notify: reload nftables
+
+- name: Ensure nftables includes our config
+  become: true
+  become_user: root
+  lineinfile:
+    path: /etc/nftables.conf
+    line: 'include "/etc/nftables.d/*.conf"'
+    state: present
+  when: arsenale_firewall_enabled | bool
+  notify: reload nftables

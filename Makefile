@@ -1,57 +1,122 @@
-# Makefile to replicate .vscode/launch.json and tasks.json configurations
+# ============================================================================
+# Arsenale — Deployment via Ansible
+# ============================================================================
+# Usage:
+#   make setup      — First-time setup: install Ansible collections, generate vault + certs
+#   make dev        — Start development infrastructure (postgres + gocache)
+#   make deploy     — Deploy full production stack
+#   make help       — Show all available targets
+# ============================================================================
 
-# Auto-detect container runtime: prefer docker, fallback to podman
-CONTAINER_RT := $(shell command -v docker >/dev/null 2>&1 && echo docker || echo podman)
+SHELL := /bin/bash
+ANSIBLE_DIR := deployment/ansible
+PLAYBOOK := cd $(ANSIBLE_DIR) && ansible-playbook
+VAULT_FILE := $(ANSIBLE_DIR)/inventory/group_vars/all/vault.yml
+LOCAL_VAULT_PASS_FILE := $(ANSIBLE_DIR)/.vault-pass
+VAULT_FLAG ?= $(shell \
+	if [ -n "$$ANSIBLE_VAULT_PASSWORD_FILE" ]; then \
+		printf -- '--vault-password-file %s' "$$ANSIBLE_VAULT_PASSWORD_FILE"; \
+	elif [ -f "$(LOCAL_VAULT_PASS_FILE)" ]; then \
+		printf -- '--vault-password-file %s' "$(LOCAL_VAULT_PASS_FILE)"; \
+	elif [ -f "$(VAULT_FILE)" ] && head -1 "$(VAULT_FILE)" | grep -q '^\$$ANSIBLE_VAULT'; then \
+		printf '%s' '--ask-vault-pass'; \
+	fi)
 
-.PHONY: help install generate-db server-dev server-debug client-dev migrate-dev prisma-studio full-stack dev-env dev-env-down dev-env-logs
+.DEFAULT_GOAL := help
 
-help:
-	@echo "Available targets (mapped from .vscode/launch.json):"
-	@echo "  make server-dev    - Server: Dev (with watch, generates DB first)"
-	@echo "  make server-debug  - Server: Debug (no watch)"
-	@echo "  make client-dev    - Client: Dev"
-	@echo "  make migrate-dev   - Prisma: Migrate Dev"
-	@echo "  make prisma-studio - Prisma: Studio"
-	@echo "  make full-stack    - Full Stack: Server + Client (installs and runs both)"
-	@echo "  make install       - Task: node:install (npm install)"
-	@echo "  make generate-db   - Task: db:generate (npm run db:generate)"
-	@echo "  make dev-env       - Start dev environment (postgres, guacenc, gocache)"
-	@echo "  make dev-env-down  - Stop dev environment"
-	@echo "  make dev-env-logs  - Follow dev environment logs"
+# ── Dependency check ────────────────────────────────────────────────────────
 
-# Tasks
-install:
-	npm install
+.PHONY: _check-ansible
+_check-ansible:
+	@command -v ansible-playbook >/dev/null 2>&1 || { \
+		printf "\033[1;31mERROR: Ansible is not installed.\033[0m\n\n"; \
+		printf "Install it with one of:\n"; \
+		printf "  pip install ansible          # Any platform (recommended)\n"; \
+		printf "  pipx install ansible          # Isolated install\n"; \
+		printf "  brew install ansible          # macOS (Homebrew)\n"; \
+		printf "  sudo dnf install ansible-core # Fedora / RHEL\n"; \
+		printf "  sudo apt install ansible      # Debian / Ubuntu\n"; \
+		printf "  sudo pacman -S ansible        # Arch Linux\n"; \
+		printf "\nThen run: make setup\n"; \
+		exit 1; \
+	}
 
-generate-db:
-	npm run db:generate
+# ── First-time setup ───────────────────────────────────────────────────────
 
-# Launch Configurations
-server-dev: generate-db
-	cd server && npx tsx watch src/index.ts
+.PHONY: setup
+setup: _check-ansible  ## First-time setup: install collections, generate vault + certs
+	cd $(ANSIBLE_DIR) && ansible-galaxy collection install -r requirements.yml 2>/dev/null || true
+	@if [ ! -f $(ANSIBLE_DIR)/inventory/group_vars/all/vault.yml ]; then \
+		echo "Generating Ansible Vault..."; \
+		cd $(ANSIBLE_DIR) && ./scripts/generate-vault.sh; \
+	else \
+		echo "Vault already exists. To regenerate: make vault"; \
+	fi
+	@echo ""
+	@echo "Setup complete. Next steps:"
+	@echo "  make dev       — Start development environment"
+	@echo "  make deploy    — Deploy production stack"
 
-server-debug:
-	cd server && npx tsx src/index.ts
+# ── Development ─────────────────────────────────────────────────────────────
 
-client-dev:
-	cd client && npx vite
+.PHONY: dev
+dev: _check-ansible  ## Deploy full dev stack (all services, verbose logs)
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_env=development
 
-migrate-dev:
-	cd server && npx prisma migrate dev
+.PHONY: dev-down
+dev-down: _check-ansible  ## Stop dev stack
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_env=development -e arsenale_state=absent
 
-prisma-studio:
-	cd server && npx prisma studio
+# ── Production ──────────────────────────────────────────────────────────────
 
-# Dev Environment (compose.dev.yml)
-dev-env:
-	$(CONTAINER_RT) compose -f compose.dev.yml up -d --build
+.PHONY: deploy
+deploy: _check-ansible  ## Deploy full production stack
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG)
 
-dev-env-down:
-	$(CONTAINER_RT) compose -f compose.dev.yml down
+# ── Operations ──────────────────────────────────────────────────────────────
 
-dev-env-logs:
-	$(CONTAINER_RT) compose -f compose.dev.yml logs -f
+.PHONY: status
+status: _check-ansible  ## Show service status
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) --tags status
 
-# Compound Configuration
-full-stack: install
-	npx concurrently -n server,client -c blue,green "$(MAKE) server-dev" "$(MAKE) client-dev"
+.PHONY: logs
+logs:  ## Follow service logs (pass SVC= for specific service)
+	podman compose -f $$(find /opt/arsenale -name docker-compose.yml 2>/dev/null || echo "docker-compose.yml") logs -f $(SVC)
+
+.PHONY: backup
+backup: _check-ansible  ## Create database backup
+	$(PLAYBOOK) playbooks/backup.yml $(VAULT_FLAG)
+
+.PHONY: rotate
+rotate: _check-ansible  ## Rotate system secrets
+	$(PLAYBOOK) playbooks/rotate-secrets.yml $(VAULT_FLAG)
+
+# ── Secrets & Certificates ──────────────────────────────────────────────────
+
+.PHONY: vault
+vault: _check-ansible  ## Generate or edit Ansible Vault
+	@if [ -f $(ANSIBLE_DIR)/inventory/group_vars/all/vault.yml ]; then \
+		ansible-vault edit $(ANSIBLE_DIR)/inventory/group_vars/all/vault.yml; \
+	else \
+		cd $(ANSIBLE_DIR) && ./scripts/generate-vault.sh; \
+	fi
+
+.PHONY: certs
+certs: _check-ansible  ## Regenerate TLS certificates
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) --tags certificates
+
+# ── Cleanup ─────────────────────────────────────────────────────────────────
+
+.PHONY: clean
+clean: _check-ansible  ## Stop and remove all containers and volumes
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_state=absent
+
+# ── Help ────────────────────────────────────────────────────────────────────
+
+.PHONY: help
+help:  ## Show available targets
+	@printf "\033[1mArsenale Deployment\033[0m\n\n"
+	@printf "Prerequisites: ansible (make setup will guide you)\n\n"
+	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | \
+		awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
+	@printf "\n"

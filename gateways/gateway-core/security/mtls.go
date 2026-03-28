@@ -19,7 +19,7 @@ import (
 type MTLSConfig struct {
 	CACertPEM           string
 	ClientCertPEM       string
-	ExpectedGatewayID   string
+	ExpectedSPIFFEID    string
 	ExpectedFingerprint string // empty = skip pinning
 }
 
@@ -95,16 +95,21 @@ func VerifyCACertFingerprint(caCertPEM, expectedFingerprint string) error {
 	return nil
 }
 
-// VerifyGatewayIdentity checks that the client certificate's Common Name
-// matches the expected gateway ID, preventing gateway impersonation.
-func VerifyGatewayIdentity(clientCertPEM, expectedGatewayID string) error {
+// VerifyGatewayIdentity checks that the client certificate contains the expected
+// SPIFFE URI SAN, preventing gateway impersonation.
+func VerifyGatewayIdentity(clientCertPEM, expectedSPIFFEID string) error {
 	cert, err := parsePEMCertificate(clientCertPEM)
 	if err != nil {
 		return fmt.Errorf("mTLS validation failed: parsing client cert for identity check: %w", err)
 	}
 
-	if subtle.ConstantTimeCompare([]byte(cert.Subject.CommonName), []byte(expectedGatewayID)) != 1 {
-		return fmt.Errorf("mTLS validation failed: gateway identity mismatch: cert CN=%q expected=%q", cert.Subject.CommonName, expectedGatewayID)
+	actualSPIFFEID, err := ExtractSPIFFEID(cert)
+	if err != nil {
+		return fmt.Errorf("mTLS validation failed: extracting SPIFFE ID: %w", err)
+	}
+
+	if !spiffeIDEqual(actualSPIFFEID, expectedSPIFFEID) {
+		return fmt.Errorf("mTLS validation failed: gateway identity mismatch: cert SPIFFE ID=%q expected=%q", actualSPIFFEID, expectedSPIFFEID)
 	}
 
 	return nil
@@ -113,7 +118,7 @@ func VerifyGatewayIdentity(clientCertPEM, expectedGatewayID string) error {
 // ValidateConnectionForCredentialPush verifies TLS connection state before
 // accepting CREDENTIAL_PUSH (type 12) frames. This MUST be called before
 // processing any credential push to prevent unauthorized access.
-func ValidateConnectionForCredentialPush(tlsState *tls.ConnectionState, expectedGatewayID string) error {
+func ValidateConnectionForCredentialPush(tlsState *tls.ConnectionState, expectedSPIFFEID string) error {
 	if tlsState == nil {
 		return fmt.Errorf("mTLS validation failed: connection is not TLS")
 	}
@@ -126,9 +131,12 @@ func ValidateConnectionForCredentialPush(tlsState *tls.ConnectionState, expected
 		return fmt.Errorf("mTLS validation failed: no peer certificates presented")
 	}
 
-	peerCN := tlsState.PeerCertificates[0].Subject.CommonName
-	if subtle.ConstantTimeCompare([]byte(peerCN), []byte(expectedGatewayID)) != 1 {
-		return fmt.Errorf("mTLS validation failed: peer identity mismatch: cert CN=%q expected=%q", peerCN, expectedGatewayID)
+	actualSPIFFEID, err := ExtractSPIFFEID(tlsState.PeerCertificates[0])
+	if err != nil {
+		return fmt.Errorf("mTLS validation failed: extracting peer SPIFFE ID: %w", err)
+	}
+	if !spiffeIDEqual(actualSPIFFEID, expectedSPIFFEID) {
+		return fmt.Errorf("mTLS validation failed: peer identity mismatch: cert SPIFFE ID=%q expected=%q", actualSPIFFEID, expectedSPIFFEID)
 	}
 
 	return nil
@@ -160,7 +168,7 @@ func MustValidateMTLS(cfg MTLSConfig) error {
 	}
 
 	// 4. Gateway identity binding.
-	if err := VerifyGatewayIdentity(cfg.ClientCertPEM, cfg.ExpectedGatewayID); err != nil {
+	if err := VerifyGatewayIdentity(cfg.ClientCertPEM, cfg.ExpectedSPIFFEID); err != nil {
 		return err
 	}
 

@@ -209,15 +209,6 @@ export async function unshareSecret(id: string, userId: string): Promise<{ delet
   return data;
 }
 
-export async function updateSharePermission(
-  id: string,
-  userId: string,
-  permission: 'READ_ONLY' | 'FULL_ACCESS',
-): Promise<SecretShare> {
-  const { data } = await api.put(`/secrets/${id}/share/${userId}`, { permission });
-  return data;
-}
-
 export async function listShares(id: string): Promise<SecretShare[]> {
   const { data } = await api.get(`/secrets/${id}/shares`);
   return data;
@@ -225,11 +216,6 @@ export async function listShares(id: string): Promise<SecretShare[]> {
 
 export async function initTenantVault(): Promise<{ initialized: true }> {
   const { data } = await api.post('/secrets/tenant-vault/init');
-  return data;
-}
-
-export async function distributeTenantKey(targetUserId: string): Promise<{ distributed: true }> {
-  const { data } = await api.post('/secrets/tenant-vault/distribute', { targetUserId });
   return data;
 }
 

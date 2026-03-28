@@ -39,10 +39,32 @@ export interface TunnelConfig {
   reconnectInitialMs: number;
   /** Maximum reconnect backoff in milliseconds (default: 60 000) */
   reconnectMaxMs: number;
-  /** Target host of the proxied local service (default: localhost) */
+  /** Target host of the proxied local service (default: 127.0.0.1) */
   localServiceHost: string;
   /** Target port of the proxied local service — mandatory */
   localServicePort: number;
+}
+
+function readOptionalPem(inlineValue: string | undefined, filePathValue: string | undefined, label: string): string | undefined {
+  const inline = inlineValue?.trim();
+  if (inline) {
+    return inline;
+  }
+
+  const filePath = filePathValue?.trim();
+  if (!filePath) {
+    return undefined;
+  }
+
+  try {
+    const contents = fs.readFileSync(filePath, 'utf8').trim();
+    return contents || undefined;
+  } catch (err) {
+    process.stderr.write(
+      `[tunnel-agent] Failed to read ${label} from ${filePath}: ${err instanceof Error ? err.message : 'Unknown error'}\n`,
+    );
+    process.exit(1);
+  }
 }
 
 /** Build config from environment. Returns null if tunnel env vars are absent (dormant mode). */
@@ -89,14 +111,14 @@ export function loadConfig(): TunnelConfig | null {
     serverUrl: resolvedServerUrl,
     token: resolvedToken,
     gatewayId: resolvedGatewayId,
-    caCert: process.env.TUNNEL_CA_CERT?.trim() || undefined,
-    clientCert: process.env.TUNNEL_CLIENT_CERT?.trim() || undefined,
-    clientKey: process.env.TUNNEL_CLIENT_KEY?.trim() || undefined,
+    caCert: readOptionalPem(process.env.TUNNEL_CA_CERT, process.env.TUNNEL_CA_CERT_FILE, 'TUNNEL_CA_CERT'),
+    clientCert: readOptionalPem(process.env.TUNNEL_CLIENT_CERT, process.env.TUNNEL_CLIENT_CERT_FILE, 'TUNNEL_CLIENT_CERT'),
+    clientKey: readOptionalPem(process.env.TUNNEL_CLIENT_KEY, process.env.TUNNEL_CLIENT_KEY_FILE, 'TUNNEL_CLIENT_KEY'),
     agentVersion: process.env.TUNNEL_AGENT_VERSION?.trim() || getPackageVersion(),
     pingIntervalMs: parseInt(process.env.TUNNEL_PING_INTERVAL_MS || '15000', 10),
     reconnectInitialMs: parseInt(process.env.TUNNEL_RECONNECT_INITIAL_MS || '1000', 10),
     reconnectMaxMs: parseInt(process.env.TUNNEL_RECONNECT_MAX_MS || '60000', 10),
-    localServiceHost: process.env.TUNNEL_LOCAL_HOST?.trim() || 'localhost',
+    localServiceHost: process.env.TUNNEL_LOCAL_HOST?.trim() || '127.0.0.1',
     localServicePort,
   };
 }

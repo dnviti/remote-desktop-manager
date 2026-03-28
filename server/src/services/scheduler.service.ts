@@ -11,6 +11,7 @@ let ldapSyncTask: ScheduledTask | null = null;
 let membershipExpiryTask: ScheduledTask | null = null;
 let checkoutExpiryTask: ScheduledTask | null = null;
 let passwordRotationTask: ScheduledTask | null = null;
+let systemSecretRotationTask: ScheduledTask | null = null;
 
 export function startKeyRotationJob(): void {
   const cronExpr = config.keyRotationCron;
@@ -27,7 +28,7 @@ export function startKeyRotationJob(): void {
     cronExpr,
     () => {
       processKeyRotations().catch((err) => {
-        logger.error('[scheduler] Unhandled error in processKeyRotations:', err);
+        logger.error('[scheduler] Unhandled error in processKeyRotations:', err instanceof Error ? err.message : 'Unknown error');
       });
     },
     { timezone: 'UTC' },
@@ -154,10 +155,10 @@ export function startLdapSyncJob(): void {
     () => {
       import('./ldap.service').then((ldap) =>
         ldap.syncUsers().catch((err) => {
-          logger.error('[scheduler] Unhandled error in LDAP syncUsers:', err);
+          logger.error('[scheduler] Unhandled error in LDAP syncUsers:', err instanceof Error ? err.message : 'Unknown error');
         }),
       ).catch((err) => {
-        logger.error('[scheduler] Failed to import ldap.service:', err);
+        logger.error('[scheduler] Failed to import ldap.service:', err instanceof Error ? err.message : 'Unknown error');
       });
     },
     { timezone: 'UTC' },
@@ -174,10 +175,10 @@ export function startCheckoutExpiryJob(): void {
     () => {
       import('./checkout.service').then((svc) =>
         svc.processExpiredCheckouts().catch((err) => {
-          logger.error('[scheduler] Unhandled error in processExpiredCheckouts:', err);
+          logger.error('[scheduler] Unhandled error in processExpiredCheckouts:', err instanceof Error ? err.message : 'Unknown error');
         }),
       ).catch((err) => {
-        logger.error('[scheduler] Failed to import checkout.service:', err);
+        logger.error('[scheduler] Failed to import checkout.service:', err instanceof Error ? err.message : 'Unknown error');
       });
     },
     { timezone: 'UTC' },
@@ -195,7 +196,7 @@ export function startMembershipExpiryJob(): void {
     MEMBERSHIP_EXPIRY_CRON,
     () => {
       processExpiredMemberships().catch((err) => {
-        logger.error('[scheduler] Unhandled error in processExpiredMemberships:', err);
+        logger.error('[scheduler] Unhandled error in processExpiredMemberships:', err instanceof Error ? err.message : 'Unknown error');
       });
     },
     { timezone: 'UTC' },
@@ -322,10 +323,10 @@ export function startPasswordRotationJob(): void {
     () => {
       import('./passwordRotation.service').then((svc) =>
         svc.processScheduledRotations().catch((err) => {
-          logger.error('[scheduler] Unhandled error in processScheduledRotations:', err);
+          logger.error('[scheduler] Unhandled error in processScheduledRotations:', err instanceof Error ? err.message : 'Unknown error');
         }),
       ).catch((err) => {
-        logger.error('[scheduler] Failed to import passwordRotation.service:', err);
+        logger.error('[scheduler] Failed to import passwordRotation.service:', err instanceof Error ? err.message : 'Unknown error');
       });
     },
     { timezone: 'UTC' },
@@ -333,6 +334,36 @@ export function startPasswordRotationJob(): void {
 
   logger.info(
     `[scheduler] Password rotation job scheduled: "${PASSWORD_ROTATION_CRON}" (UTC)`,
+  );
+}
+
+export function startSystemSecretRotationJob(): void {
+  const cronExpr = config.keyRotationCron;
+
+  if (!cron.validate(cronExpr)) {
+    logger.error(
+      `[scheduler] Invalid KEY_ROTATION_CRON expression: "${cronExpr}". ` +
+        'System secret rotation job will NOT run.',
+    );
+    return;
+  }
+
+  systemSecretRotationTask = cron.schedule(
+    cronExpr,
+    () => {
+      import('./systemSecrets.service').then((svc) =>
+        svc.processSecretRotations().catch((err) => {
+          logger.error('[scheduler] Unhandled error in processSecretRotations:', err instanceof Error ? err.message : 'Unknown error');
+        }),
+      ).catch((err) => {
+        logger.error('[scheduler] Failed to import systemSecrets.service:', err instanceof Error ? err.message : 'Unknown error');
+      });
+    },
+    { timezone: 'UTC' },
+  );
+
+  logger.info(
+    `[scheduler] System secret rotation job scheduled: "${cronExpr}" (UTC)`,
   );
 }
 
@@ -366,6 +397,10 @@ export function stopAllJobs(): void {
   if (passwordRotationTask) {
     passwordRotationTask.stop();
     passwordRotationTask = null;
+  }
+  if (systemSecretRotationTask) {
+    systemSecretRotationTask.stop();
+    systemSecretRotationTask = null;
   }
   logger.info('[scheduler] All scheduled jobs stopped.');
 }

@@ -42,6 +42,7 @@ export interface SetupCompleteResponse {
     slug: string;
   };
   tenantMemberships?: TenantMembershipInfo[];
+  systemSecrets?: Array<{ name: string; value: string; description: string }>;
 }
 
 export async function getSetupStatus(): Promise<SetupStatusResponse> {

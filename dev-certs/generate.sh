@@ -7,7 +7,8 @@
 # Structure:
 #   dev-certs/
 #     ca.pem / ca-key.pem         — shared CA (trusted by all services)
-#     gocache/                    — gocache gRPC mTLS (server + client)
+#     gocache-cache/              — cache service gRPC mTLS (server + client)
+#     gocache-pubsub/             — pubsub service gRPC mTLS (server + client)
 #     tunnel/                     — tunnel mTLS server
 #     postgres/                   — PostgreSQL SSL
 #     guacenc/                    — guacenc sidecar HTTPS
@@ -19,14 +20,30 @@
 set -euo pipefail
 CERT_DIR="$(cd "$(dirname "$0")" && pwd)"
 DAYS=3650
+RUNTIME_KEY_MODE=0644
+SPIFFE_TRUST_DOMAIN="${SPIFFE_TRUST_DOMAIN:-arsenale.local}"
 
 echo "=== Generating shared CA ==="
 openssl ecparam -genkey -name prime256v1 -out "$CERT_DIR/ca-key.pem" 2>/dev/null
 openssl req -new -x509 -sha256 -key "$CERT_DIR/ca-key.pem" -out "$CERT_DIR/ca.pem" \
-  -days "$DAYS" -subj "/CN=arsenale-dev-ca/O=Arsenale" -batch 2>/dev/null
+  -days "$DAYS" -subj "/CN=arsenale-dev-ca/O=Arsenale" \
+  -addext "basicConstraints = critical, CA:TRUE" \
+  -addext "keyUsage = critical, keyCertSign, cRLSign" \
+  -batch 2>/dev/null
+chmod 600 "$CERT_DIR/ca-key.pem"
+
+service_spiffe_id() {
+  local service_name="$1"
+  printf 'spiffe://%s/service/%s' "$SPIFFE_TRUST_DOMAIN" "$service_name"
+}
+
+gateway_spiffe_id() {
+  local gateway_id="$1"
+  printf 'spiffe://%s/gateway/%s' "$SPIFFE_TRUST_DOMAIN" "$gateway_id"
+}
 
 generate_server_cert() {
-  local dir="$1" cn="$2" sans="$3" extra_eku="${4:-}"
+  local dir="$1" cn="$2" sans="$3" spiffe_id="$4" extra_eku="${5:-}"
   mkdir -p "$dir"
   local eku="serverAuth"
   if [ -n "$extra_eku" ]; then
@@ -36,7 +53,7 @@ generate_server_cert() {
   openssl req -new -sha256 -key "$dir/server-key.pem" -out "$dir/server.csr" \
     -subj "/CN=$cn/O=Arsenale" -batch 2>/dev/null
   cat > "$dir/server-ext.cnf" <<EOF
-subjectAltName = $sans
+subjectAltName = $sans, URI:$spiffe_id
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = $eku
 EOF
@@ -48,71 +65,104 @@ EOF
 }
 
 generate_client_cert() {
-  local dir="$1" cn="$2"
+  local dir="$1" cn="$2" spiffe_id="$3" ca_cert="${4:-$CERT_DIR/ca.pem}" ca_key="${5:-$CERT_DIR/ca-key.pem}"
   openssl ecparam -genkey -name prime256v1 -out "$dir/client-key.pem" 2>/dev/null
   openssl req -new -sha256 -key "$dir/client-key.pem" -out "$dir/client.csr" \
     -subj "/CN=$cn/O=Arsenale" -batch 2>/dev/null
   cat > "$dir/client-ext.cnf" <<EOF
+subjectAltName = URI:$spiffe_id
 keyUsage = digitalSignature, keyEncipherment
 extendedKeyUsage = clientAuth
 EOF
   openssl x509 -req -sha256 -in "$dir/client.csr" \
-    -CA "$CERT_DIR/ca.pem" -CAkey "$CERT_DIR/ca-key.pem" \
+    -CA "$ca_cert" -CAkey "$ca_key" \
     -CAcreateserial -out "$dir/client-cert.pem" -days "$DAYS" \
     -extfile "$dir/client-ext.cnf" 2>/dev/null
   rm -f "$dir"/*.csr "$dir"/*.cnf
 }
 
-# 1. gocache (gRPC mTLS — server + client)
-echo "=== gocache mTLS ==="
-generate_server_cert "$CERT_DIR/gocache" "gocache" "DNS:gocache, DNS:localhost, IP:127.0.0.1, IP:::1" "clientAuth"
-generate_client_cert "$CERT_DIR/gocache" "arsenale-server"
-chmod 644 "$CERT_DIR/gocache"/*-key.pem  # Rootless container UID 10001
+# 1. gocache-cache (gRPC mTLS — server + client)
+echo "=== gocache-cache mTLS ==="
+generate_server_cert "$CERT_DIR/gocache-cache" "gocache-cache" "DNS:gocache-cache, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id gocache-cache)" "clientAuth"
+generate_client_cert "$CERT_DIR/gocache-cache" "arsenale-server-cache" "$(service_spiffe_id server)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/gocache-cache"/*-key.pem
 
-# 2. tunnel (mTLS server)
+# 2. gocache-pubsub (gRPC mTLS — server + client)
+echo "=== gocache-pubsub mTLS ==="
+generate_server_cert "$CERT_DIR/gocache-pubsub" "gocache-pubsub" "DNS:gocache-pubsub, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id gocache-pubsub)" "clientAuth"
+generate_client_cert "$CERT_DIR/gocache-pubsub" "arsenale-server-pubsub" "$(service_spiffe_id server)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/gocache-pubsub"/*-key.pem
+
+# 3. tunnel (mTLS server)
 echo "=== Tunnel mTLS ==="
-generate_server_cert "$CERT_DIR/tunnel" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1"
+generate_server_cert "$CERT_DIR/tunnel" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id tunnel)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/tunnel/server-key.pem"
 
-# 3. PostgreSQL
+# 4. PostgreSQL
 echo "=== PostgreSQL SSL ==="
-generate_server_cert "$CERT_DIR/postgres" "postgres" "DNS:postgres, DNS:localhost, IP:127.0.0.1"
+generate_server_cert "$CERT_DIR/postgres" "postgres" "DNS:postgres, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id postgres)"
 chmod 600 "$CERT_DIR/postgres/server-key.pem"  # PostgreSQL requires strict perms
 
-# 4. guacenc sidecar
+# 5. guacenc sidecar
 echo "=== Guacenc HTTPS ==="
-generate_server_cert "$CERT_DIR/guacenc" "guacenc" "DNS:guacenc, DNS:localhost, IP:127.0.0.1"
-chmod 644 "$CERT_DIR/guacenc/server-key.pem"  # Rootless container needs read access
+generate_server_cert "$CERT_DIR/guacenc" "guacenc" "DNS:guacenc, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id guacenc)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacenc/server-key.pem"
 
-# 5. guacd (Guacamole Daemon — TLS listener)
+# 6. guacd (Guacamole Daemon — TLS listener)
 echo "=== guacd TLS ==="
-generate_server_cert "$CERT_DIR/guacd" "guacd" "DNS:guacd, DNS:localhost, IP:127.0.0.1"
-chmod 644 "$CERT_DIR/guacd/server-key.pem"  # guacd container runs as non-root (guacd user)
+generate_server_cert "$CERT_DIR/guacd" "guacd" "DNS:guacd, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id guacd)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacd/server-key.pem"
 
-# 6. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
+# 7. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
 echo "=== SSH Gateway gRPC mTLS ==="
-generate_server_cert "$CERT_DIR/ssh-gateway" "ssh-gateway" "DNS:ssh-gateway, DNS:arsenale-ssh-gateway, DNS:localhost, IP:127.0.0.1" "clientAuth"
-generate_client_cert "$CERT_DIR/ssh-gateway" "arsenale-server"
-chmod 644 "$CERT_DIR/ssh-gateway/server-key.pem"  # Rootless container needs read access
+generate_server_cert "$CERT_DIR/ssh-gateway" "ssh-gateway" "DNS:ssh-gateway, DNS:arsenale-ssh-gateway, DNS:dev-tunnel-ssh-gateway, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id ssh-gateway)" "clientAuth"
+openssl ecparam -genkey -name prime256v1 -out "$CERT_DIR/ssh-gateway/client-ca-key.pem" 2>/dev/null
+openssl req -new -x509 -sha256 -key "$CERT_DIR/ssh-gateway/client-ca-key.pem" -out "$CERT_DIR/ssh-gateway/client-ca.pem" \
+  -days "$DAYS" -subj "/CN=arsenale-ssh-gateway-client-ca/O=Arsenale" \
+  -addext "basicConstraints = critical, CA:TRUE" \
+  -addext "keyUsage = critical, keyCertSign, cRLSign" \
+  -batch 2>/dev/null
+generate_client_cert "$CERT_DIR/ssh-gateway" "arsenale-server" "$(service_spiffe_id server)" "$CERT_DIR/ssh-gateway/client-ca.pem" "$CERT_DIR/ssh-gateway/client-ca-key.pem"
+chmod 600 "$CERT_DIR/ssh-gateway/client-ca-key.pem"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/ssh-gateway"/*-key.pem
 
-# 7. RD Gateway (MS-TSGU proxy)
+# 8. RD Gateway (MS-TSGU proxy)
 echo "=== RD Gateway HTTPS ==="
-generate_server_cert "$CERT_DIR/rdgw" "rdgw" "DNS:rdgw, DNS:arsenale-rdgw, DNS:localhost, IP:127.0.0.1"
-chmod 644 "$CERT_DIR/rdgw/server-key.pem"  # Rootless container needs read access
+generate_server_cert "$CERT_DIR/rdgw" "rdgw" "DNS:rdgw, DNS:arsenale-rdgw, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id rdgw)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/rdgw/server-key.pem"
 
-# 8. Express + guacamole-lite
+# 9. Development tunnel gateway client certificates
+echo "=== Development tunnel gateway mTLS ==="
+generate_client_cert "$CERT_DIR/tunnel-managed-ssh" "dev-tunnel-managed-ssh" "$(gateway_spiffe_id 11111111-1111-4111-8111-111111111111)"
+generate_client_cert "$CERT_DIR/tunnel-guacd" "dev-tunnel-guacd" "$(gateway_spiffe_id 22222222-2222-4222-8222-222222222222)"
+generate_client_cert "$CERT_DIR/tunnel-db-proxy" "dev-tunnel-db-proxy" "$(gateway_spiffe_id 33333333-3333-4333-8333-333333333333)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/tunnel-managed-ssh/client-key.pem" "$CERT_DIR/tunnel-guacd/client-key.pem" "$CERT_DIR/tunnel-db-proxy/client-key.pem"
+
+# 10. Frontend HTTPS
+echo "=== Frontend HTTPS ==="
+generate_server_cert "$CERT_DIR/client" "localhost" "DNS:arsenale-client, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id client)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/client/server-key.pem"
+
+# 11. Express + guacamole-lite
 echo "=== Dev Server HTTPS ==="
-generate_server_cert "$CERT_DIR/server" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1"
+generate_server_cert "$CERT_DIR/server" "arsenale-server" "DNS:arsenale-server, DNS:server, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id server)"
+chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/server/server-key.pem"
 
 # Cleanup CA serial file
 rm -f "$CERT_DIR"/*.srl
 
 echo ""
 echo "=== All certificates generated (shared CA: $CERT_DIR/ca.pem) ==="
-echo "  gocache:     $CERT_DIR/gocache/"
+echo "  gocache-cache:   $CERT_DIR/gocache-cache/"
+echo "  gocache-pubsub: $CERT_DIR/gocache-pubsub/"
 echo "  tunnel:      $CERT_DIR/tunnel/"
 echo "  PostgreSQL:  $CERT_DIR/postgres/"
 echo "  guacenc:     $CERT_DIR/guacenc/"
 echo "  guacd:       $CERT_DIR/guacd/"
 echo "  ssh-gateway: $CERT_DIR/ssh-gateway/"
 echo "  rdgw:        $CERT_DIR/rdgw/"
+echo "  tunnel-managed-ssh: $CERT_DIR/tunnel-managed-ssh/"
+echo "  tunnel-guacd:       $CERT_DIR/tunnel-guacd/"
+echo "  tunnel-db-proxy:    $CERT_DIR/tunnel-db-proxy/"
+echo "  client:      $CERT_DIR/client/"
 echo "  server:      $CERT_DIR/server/"

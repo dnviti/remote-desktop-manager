@@ -91,7 +91,7 @@ export function emitNotification(userId: string, notification: NotificationEntry
       notificationNamespace?.to(userId).emit('notification:new', notification);
     })
     .catch((err) => {
-      logger.error('Quiet hours check failed, emitting notification anyway:', err);
+      logger.error('Quiet hours check failed, emitting notification anyway:', err instanceof Error ? err.message : 'Unknown error');
       notificationNamespace?.to(userId).emit('notification:new', notification);
     });
 }

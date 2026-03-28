@@ -231,6 +231,6 @@ export async function logAbacDenial(ctx: AbacContext, denial: AbacDenial): Promi
       },
     });
   } catch (err) {
-    logger.error('Failed to write ABAC denial audit log:', err);
+    logger.error('Failed to write ABAC denial audit log:', err instanceof Error ? err.message : 'Unknown error');
   }
 }

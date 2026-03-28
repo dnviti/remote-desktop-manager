@@ -1,0 +1,63 @@
+# Arsenale Configuration (non-secret values only)
+arsenale_domain: localhost
+arsenale_client_port: 3000
+arsenale_client_bind_host: 0.0.0.0
+arsenale_ssh_port: 2222
+arsenale_node_env: production
+
+# Database
+arsenale_db_user: arsenale
+arsenale_db_name: arsenale
+
+# Networking
+arsenale_trust_proxy: false
+arsenale_allow_local_network: false
+arsenale_cookie_secure: true
+
+# Features
+arsenale_self_signup_enabled: false
+arsenale_email_verify_required: false
+arsenale_recording_enabled: false
+arsenale_email_provider: smtp
+
+# Container images (override to use pre-built registry images)
+arsenale_build_images: true  # false = pull from registry
+arsenale_registry: ghcr.io/dnviti/arsenale
+arsenale_image_tag: latest
+arsenale_guacd_image: "guacamole/guacd:1.6.0"
+
+# TLS
+arsenale_generate_certs: true
+arsenale_cert_dir: "{{ arsenale_home }}/certs"
+arsenale_cert_validity_days: 365
+arsenale_ca_validity_days: 3650
+
+# Firewall
+arsenale_firewall_enabled: true
+arsenale_allowed_ssh_sources: ["0.0.0.0/0"]
+arsenale_allowed_web_sources: ["0.0.0.0/0"]
+
+# Scalability
+arsenale_server_replicas: 1
+arsenale_gocache_cache_replicas: 1
+arsenale_gocache_pubsub_replicas: 1
+arsenale_gocache_cache_peer_discovery: dns
+arsenale_gocache_pubsub_peer_discovery: dns
+arsenale_gocache_cache_peers: ""
+arsenale_gocache_pubsub_peers: ""
+
+# Container resource limits
+arsenale_resource_limits:
+  postgres: { cpus: "1.0", memory: "1g", pids: 256 }
+  guacd: { cpus: "1.0", memory: "512m", pids: 256 }
+  guacenc: { cpus: "1.0", memory: "768m", pids: 256 }
+  gocache_cache: { cpus: "1.0", memory: "512m", pids: 256 }
+  gocache_pubsub: { cpus: "1.0", memory: "512m", pids: 256 }
+  server: { cpus: "2.0", memory: "1536m", pids: 512 }
+  client: { cpus: "0.75", memory: "256m", pids: 256 }
+  ssh_gateway: { cpus: "0.5", memory: "256m", pids: 128 }
+  db_proxy: { cpus: "0.5", memory: "256m", pids: 128 }
+
+# Backup
+arsenale_backup_dir: "{{ arsenale_home }}/backups"
+arsenale_backup_retention_days: 30

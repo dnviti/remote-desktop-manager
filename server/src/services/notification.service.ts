@@ -223,7 +223,7 @@ async function dispatchEmail(input: CreateNotificationInput): Promise<void> {
     const { subject, html, text } = buildNotificationEmail(input.type, input.message);
     await sendEmail({ to: user.email, subject, html, text });
   } catch (err) {
-    logger.error('Failed to dispatch notification email:', err);
+    logger.error('Failed to dispatch notification email:', err instanceof Error ? err.message : 'Unknown error');
   }
 }
 
@@ -238,7 +238,7 @@ export async function createNotification(
   if (!inAppEnabled) {
     // Still dispatch email even if in-app is disabled — unless quiet hours active
     if (!suppressed) {
-      dispatchEmail(input).catch((err) => logger.error('Email dispatch error:', err));
+      dispatchEmail(input).catch((err) => logger.error('Email dispatch error:', err instanceof Error ? err.message : 'Unknown error'));
     }
     // Return a synthetic object so callers don't break
     return {
@@ -272,7 +272,7 @@ export async function createNotification(
 
   // Fire-and-forget email dispatch — suppressed during quiet hours
   if (!suppressed) {
-    dispatchEmail(input).catch((err) => logger.error('Email dispatch error:', err));
+    dispatchEmail(input).catch((err) => logger.error('Email dispatch error:', err instanceof Error ? err.message : 'Unknown error'));
   }
 
   return { ...notification, suppressedByQuietHours: suppressed };
@@ -283,7 +283,7 @@ export async function createNotification(
  */
 export function createNotificationAsync(input: CreateNotificationInput): void {
   createNotification(input).catch((err) => {
-    logger.error('Failed to create notification:', err);
+    logger.error('Failed to create notification:', err instanceof Error ? err.message : 'Unknown error');
   });
 }
 

@@ -27,7 +27,7 @@ export async function getSelfSignupEnabled(): Promise<boolean> {
     cache = { selfSignupEnabled: value, expiresAt: now + CACHE_TTL_MS };
     return value;
   } catch (err) {
-    logger.error('Failed to read AppConfig selfSignupEnabled:', err);
+    logger.error('Failed to read AppConfig selfSignupEnabled:', err instanceof Error ? err.message : 'Unknown error');
     return config.selfSignupEnabled;
   }
 }
@@ -88,7 +88,7 @@ export async function isSetupCompleted(): Promise<boolean> {
     setupCache = { completed: value, expiresAt: now + CACHE_TTL_MS };
     return value;
   } catch (err) {
-    logger.error('Failed to read AppConfig setupCompleted:', err);
+    logger.error('Failed to read AppConfig setupCompleted:', err instanceof Error ? err.message : 'Unknown error');
     return false;
   }
 }

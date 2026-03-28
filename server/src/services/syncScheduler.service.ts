@@ -19,7 +19,7 @@ export function registerSyncJob(profileId: string, cronExpression: string): void
     cronExpression,
     () => {
       runScheduledSync(profileId).catch((err) => {
-        log.error(`Scheduled sync failed for profile ${profileId}:`, err);
+        log.error(`Scheduled sync failed for profile ${profileId}:`, err instanceof Error ? err.message : 'Unknown error');
       });
     },
     { timezone: 'UTC' },

@@ -2,11 +2,12 @@ import crypto from 'crypto';
 import dotenv from 'dotenv';
 import path from 'path';
 import { parseExpiry } from './utils/format';
+import { readSecret } from './utils/secrets';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 function resolveServerEncryptionKey(): Buffer {
-  const envKey = process.env.SERVER_ENCRYPTION_KEY?.trim();
+  const envKey = readSecret('server_encryption_key', 'SERVER_ENCRYPTION_KEY')?.trim();
   if (envKey && envKey.length > 0) {
     if (!/^[0-9a-fA-F]{64}$/.test(envKey)) {
       throw new Error(
@@ -34,27 +35,16 @@ function resolveServerEncryptionKey(): Buffer {
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),
   guacamoleWsPort: parseInt(process.env.GUACAMOLE_WS_PORT || '3002', 10),
-  jwtSecret: (() => {
-    const secret = process.env.JWT_SECRET;
-    if (!secret && process.env.NODE_ENV !== 'development' && process.env.NODE_ENV !== 'test') {
-      throw new Error('JWT_SECRET is required (set NODE_ENV=development to use a default)');
-    }
-    return secret || 'dev-secret-change-me';
-  })(),
+  jwtSecret: readSecret('jwt_secret', 'JWT_SECRET') || '',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
   jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   guacdHost: process.env.GUACD_HOST || 'localhost',
   guacdPort: parseInt(process.env.GUACD_PORT || '4822', 10),
   guacdSsl: process.env.GUACD_SSL === 'true',
   guacdCaCert: process.env.GUACD_CA_CERT || '',
-  guacamoleSecret: (() => {
-    const secret = process.env.GUACAMOLE_SECRET;
-    if (!secret && process.env.NODE_ENV === 'production') {
-      throw new Error('GUACAMOLE_SECRET is required in production');
-    }
-    return secret || 'dev-guac-secret';
-  })(),
+  guacamoleSecret: readSecret('guacamole_secret', 'GUACAMOLE_SECRET') || '',
   serverEncryptionKey: resolveServerEncryptionKey(),
+  spiffeTrustDomain: process.env.SPIFFE_TRUST_DOMAIN || 'arsenale.local',
   // Gateway key management gRPC (mTLS — replaces old HTTP API + bearer token)
   gatewayGrpcPort: parseInt(process.env.GATEWAY_GRPC_PORT || '9022', 10),
   gatewayGrpcTlsCa: process.env.GATEWAY_GRPC_TLS_CA || '',
@@ -82,25 +72,25 @@ export const config = {
   smtpHost: process.env.SMTP_HOST || '',
   smtpPort: parseInt(process.env.SMTP_PORT || '587', 10),
   smtpUser: process.env.SMTP_USER || '',
-  smtpPass: process.env.SMTP_PASS || '',
+  smtpPass: readSecret('smtp_pass', 'SMTP_PASS') || '',
   smtpFrom: process.env.SMTP_FROM || 'noreply@localhost',
-  sendgridApiKey: process.env.SENDGRID_API_KEY || '',
+  sendgridApiKey: readSecret('sendgrid_api_key', 'SENDGRID_API_KEY') || '',
   sesRegion: process.env.AWS_SES_REGION || 'us-east-1',
   sesAccessKeyId: process.env.AWS_SES_ACCESS_KEY_ID || '',
-  sesSecretAccessKey: process.env.AWS_SES_SECRET_ACCESS_KEY || '',
-  resendApiKey: process.env.RESEND_API_KEY || '',
-  mailgunApiKey: process.env.MAILGUN_API_KEY || '',
+  sesSecretAccessKey: readSecret('ses_secret_access_key', 'AWS_SES_SECRET_ACCESS_KEY') || '',
+  resendApiKey: readSecret('resend_api_key', 'RESEND_API_KEY') || '',
+  mailgunApiKey: readSecret('mailgun_api_key', 'MAILGUN_API_KEY') || '',
   mailgunDomain: process.env.MAILGUN_DOMAIN || '',
   mailgunRegion: (process.env.MAILGUN_REGION || 'us') as 'us' | 'eu',
   smsProvider: (process.env.SMS_PROVIDER || '') as '' | 'twilio' | 'sns' | 'vonage',
   twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
-  twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
+  twilioAuthToken: readSecret('twilio_auth_token', 'TWILIO_AUTH_TOKEN') || '',
   twilioFromNumber: process.env.TWILIO_FROM_NUMBER || '',
   snsRegion: process.env.AWS_SNS_REGION || 'us-east-1',
   snsAccessKeyId: process.env.AWS_SNS_ACCESS_KEY_ID || '',
-  snsSecretAccessKey: process.env.AWS_SNS_SECRET_ACCESS_KEY || '',
+  snsSecretAccessKey: readSecret('sns_secret_access_key', 'AWS_SNS_SECRET_ACCESS_KEY') || '',
   vonageApiKey: process.env.VONAGE_API_KEY || '',
-  vonageApiSecret: process.env.VONAGE_API_SECRET || '',
+  vonageApiSecret: readSecret('vonage_api_secret', 'VONAGE_API_SECRET') || '',
   vonageFromNumber: process.env.VONAGE_FROM_NUMBER || '',
   emailVerifyRequired: process.env.EMAIL_VERIFY_REQUIRED === 'true',
   selfSignupEnabled: process.env.SELF_SIGNUP_ENABLED === 'true',
@@ -112,21 +102,21 @@ export const config = {
     google: {
       enabled: !!process.env.GOOGLE_CLIENT_ID,
       clientId: process.env.GOOGLE_CLIENT_ID || '',
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+      clientSecret: readSecret('google_client_secret', 'GOOGLE_CLIENT_SECRET') || '',
       callbackUrl: process.env.GOOGLE_CALLBACK_URL || 'https://localhost:3001/api/auth/oauth/google/callback',
       hd: process.env.GOOGLE_HD || '',
     },
     microsoft: {
       enabled: !!process.env.MICROSOFT_CLIENT_ID,
       clientId: process.env.MICROSOFT_CLIENT_ID || '',
-      clientSecret: process.env.MICROSOFT_CLIENT_SECRET || '',
+      clientSecret: readSecret('microsoft_client_secret', 'MICROSOFT_CLIENT_SECRET') || '',
       callbackUrl: process.env.MICROSOFT_CALLBACK_URL || 'https://localhost:3001/api/auth/oauth/microsoft/callback',
       tenantId: process.env.MICROSOFT_TENANT_ID || 'common',
     },
     github: {
       enabled: !!process.env.GITHUB_CLIENT_ID,
       clientId: process.env.GITHUB_CLIENT_ID || '',
-      clientSecret: process.env.GITHUB_CLIENT_SECRET || '',
+      clientSecret: readSecret('github_client_secret', 'GITHUB_CLIENT_SECRET') || '',
       callbackUrl: process.env.GITHUB_CALLBACK_URL || 'https://localhost:3001/api/auth/oauth/github/callback',
     },
     oidc: {
@@ -134,7 +124,7 @@ export const config = {
       providerName: process.env.OIDC_PROVIDER_NAME || 'SSO',
       issuerUrl: process.env.OIDC_ISSUER_URL || '',
       clientId: process.env.OIDC_CLIENT_ID || '',
-      clientSecret: process.env.OIDC_CLIENT_SECRET || '',
+      clientSecret: readSecret('oidc_client_secret', 'OIDC_CLIENT_SECRET') || '',
       callbackUrl: process.env.OIDC_CALLBACK_URL || 'https://localhost:3001/api/auth/oauth/oidc/callback',
       scopes: process.env.OIDC_SCOPES || 'openid profile email',
     },
@@ -153,7 +143,12 @@ export const config = {
     refreshTokenName: 'arsenale-rt',
     csrfTokenName: 'arsenale-csrf',
     path: '/api/auth',
-    secure: process.env.NODE_ENV === 'production',
+    secure: (() => {
+      const explicit = process.env.COOKIE_SECURE;
+      if (explicit === 'true') return true;
+      if (explicit === 'false') return false;
+      return process.env.NODE_ENV === 'production';
+    })(),
     sameSite: 'strict' as const,
     httpOnly: true,
   },
@@ -174,13 +169,14 @@ export const config = {
   oauthAccountRateLimitMaxAttempts: parseInt(process.env.OAUTH_ACCOUNT_RATE_LIMIT_MAX_ATTEMPTS || '15', 10),
   oauthLinkRateLimitWindowMs: parseInt(process.env.OAUTH_LINK_RATE_LIMIT_WINDOW_MS || String(15 * 60 * 1000), 10),
   oauthLinkRateLimitMaxAttempts: parseInt(process.env.OAUTH_LINK_RATE_LIMIT_MAX_ATTEMPTS || '10', 10),
-  // IP-based whitelist for global rate limiter bypass (loopback + RFC 1918 by default)
+  // IP-based whitelist for global rate limiter bypass.
+  // Default is empty: rate limiting applies to all clients unless explicitly whitelisted.
   rateLimitWhitelistCidrs: (() => {
     const val = process.env.RATE_LIMIT_WHITELIST_CIDRS;
     if (val !== undefined) {
       return val.trim() === '' ? [] : val.split(',').map(s => s.trim()).filter(Boolean);
     }
-    return ['127.0.0.1/8', '::1/128', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16'];
+    return [];
   })(),
   sessionHeartbeatIntervalMs: parseInt(process.env.SESSION_HEARTBEAT_INTERVAL_MS || String(30 * 1000), 10),
   sessionIdleThresholdMinutes: parseInt(process.env.SESSION_IDLE_THRESHOLD_MINUTES || '5', 10),
@@ -198,6 +194,8 @@ export const config = {
   dbPoolMaxConnections: parseInt(process.env.DB_POOL_MAX_CONNECTIONS || '3', 10),
   dbPoolIdleTimeoutMs: parseInt(process.env.DB_POOL_IDLE_TIMEOUT_MS || '60000', 10),
   // Container orchestrator
+  // TODO: Podman/Docker socket mount was removed from compose for security (C4).
+  // If orchestrator features are needed, implement a socket-less API or sidecar pattern.
   orchestratorType: (process.env.ORCHESTRATOR_TYPE || '') as '' | 'docker' | 'podman' | 'kubernetes' | 'none',
   dockerSocketPath: process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock',
   podmanSocketPath: process.env.PODMAN_SOCKET_PATH || (
@@ -216,7 +214,7 @@ export const config = {
   recordingVolume: process.env.RECORDING_VOLUME || '',
   recordingRetentionDays: parseInt(process.env.RECORDING_RETENTION_DAYS || '90', 10),
   // Guacenc video conversion sidecar
-  guacencAuthToken: process.env.GUACENC_AUTH_TOKEN || '',
+  guacencAuthToken: readSecret('guacenc_auth_token', 'GUACENC_AUTH_TOKEN') || '',
   guacencUseTls: process.env.GUACENC_USE_TLS === 'true',
   guacencTlsCa: process.env.GUACENC_TLS_CA || '',
   guacencServiceUrl: process.env.GUACENC_SERVICE_URL || 'http://guacenc:3003',
@@ -253,7 +251,7 @@ export const config = {
     serverUrl: process.env.LDAP_SERVER_URL || '',
     baseDn: process.env.LDAP_BASE_DN || '',
     bindDn: process.env.LDAP_BIND_DN || '',
-    bindPassword: process.env.LDAP_BIND_PASSWORD || '',
+    bindPassword: readSecret('ldap_bind_password', 'LDAP_BIND_PASSWORD') || '',
     userSearchFilter: process.env.LDAP_USER_SEARCH_FILTER || '(uid={{username}})',
     userSearchBase: process.env.LDAP_USER_SEARCH_BASE || '',
     displayNameAttr: process.env.LDAP_DISPLAY_NAME_ATTR || 'displayName',
@@ -271,6 +269,10 @@ export const config = {
     autoProvision: process.env.LDAP_AUTO_PROVISION !== 'false',
     defaultTenantId: process.env.LDAP_DEFAULT_TENANT_ID || '',
   },
+  // HIBP breach check behavior when API is unreachable (default: fail closed)
+  hibpFailOpen: process.env.HIBP_FAIL_OPEN === 'true',
+  // Host header validation (default: enabled)
+  hostValidationEnabled: process.env.HOST_VALIDATION_ENABLED !== 'false',
   // Allow connections to private/local network addresses
   allowLocalNetwork: process.env.ALLOW_LOCAL_NETWORK?.toLowerCase() !== 'false',
   // Allow connections to loopback addresses (localhost, 127.x, ::1) — opt-in, secure by default
@@ -296,6 +298,7 @@ export const config = {
   tunnelServerCert: process.env.TUNNEL_SERVER_CERT || '',
   tunnelServerKey: process.env.TUNNEL_SERVER_KEY || '',
   tunnelServerCa: process.env.TUNNEL_SERVER_CA || '',
+  tunnelStrictMtls: process.env.TUNNEL_STRICT_MTLS === 'true',
   // Comma-separated list of trusted proxy IPs allowed to forward mTLS headers.
   // Empty = trust all proxies when trustProxy is enabled.
   tunnelTrustedProxyIps: (process.env.TUNNEL_TRUSTED_PROXY_IPS || '')
@@ -327,7 +330,7 @@ export const config = {
   // AI / LLM Integration
   ai: {
     provider: (process.env.AI_PROVIDER || '') as '' | 'anthropic' | 'openai' | 'ollama' | 'openai-compatible',
-    apiKey: process.env.AI_API_KEY || '',
+    apiKey: readSecret('ai_api_key', 'AI_API_KEY') || '',
     model: process.env.AI_MODEL || '',
     baseUrl: process.env.AI_BASE_URL || '',
     maxTokens: parseInt(process.env.AI_MAX_TOKENS || '4096', 10),
@@ -338,11 +341,21 @@ export const config = {
     maxRequestsPerDay: parseInt(process.env.AI_MAX_REQUESTS_PER_DAY || '100', 10),
   },
   // Cache sidecar (gocache)
-  cacheSidecarUrl: process.env.CACHE_SIDECAR_URL || 'gocache:6380',
   cacheSidecarEnabled: process.env.CACHE_SIDECAR_ENABLED !== 'false',
   cacheProtoPath: process.env.CACHE_PROTO_PATH || '',
-  // Cache sidecar mTLS — paths to PEM files for gRPC channel encryption
-  cacheSidecarTlsCa: process.env.CACHE_SIDECAR_TLS_CA || '',
-  cacheSidecarTlsCert: process.env.CACHE_SIDECAR_TLS_CERT || '',
-  cacheSidecarTlsKey: process.env.CACHE_SIDECAR_TLS_KEY || '',
+  cacheKvUrl: process.env.CACHE_KV_URL || process.env.CACHE_SIDECAR_URL || 'localhost:6380',
+  cachePubSubUrl: process.env.CACHE_PUBSUB_URL || process.env.CACHE_SIDECAR_URL || 'localhost:6480',
+  // Cache service mTLS — paths to PEM files for gRPC channel encryption
+  cacheKvTlsCa: process.env.CACHE_KV_TLS_CA || process.env.CACHE_SIDECAR_TLS_CA || '',
+  cacheKvTlsCert: process.env.CACHE_KV_TLS_CERT || process.env.CACHE_SIDECAR_TLS_CERT || '',
+  cacheKvTlsKey: process.env.CACHE_KV_TLS_KEY || process.env.CACHE_SIDECAR_TLS_KEY || '',
+  // PubSub service mTLS — paths to PEM files for gRPC channel encryption
+  cachePubSubTlsCa: process.env.CACHE_PUBSUB_TLS_CA || process.env.CACHE_SIDECAR_TLS_CA || '',
+  cachePubSubTlsCert: process.env.CACHE_PUBSUB_TLS_CERT || process.env.CACHE_SIDECAR_TLS_CERT || '',
+  cachePubSubTlsKey: process.env.CACHE_PUBSUB_TLS_KEY || process.env.CACHE_SIDECAR_TLS_KEY || '',
 };
+
+// Runtime setter for auto-managed system secrets (populated from DB after startup)
+export function setSystemSecret(key: 'jwtSecret' | 'guacamoleSecret' | 'guacencAuthToken', value: string): void {
+  (config as Record<string, unknown>)[key] = value;
+}

@@ -71,6 +71,7 @@ export default function SetupWizardPage() {
 
   // Step 4: Result
   const [recoveryKey, setRecoveryKey] = useState('');
+  const [systemSecrets, setSystemSecrets] = useState<Array<{ name: string; value: string; description: string }>>([]);
   const [copied, setCopied] = useState(false);
 
   const handleCopyRecoveryKey = () => {
@@ -140,6 +141,7 @@ export default function SetupWizardPage() {
         const result = await completeSetup(body);
 
         setRecoveryKey(result.recoveryKey);
+        setSystemSecrets(result.systemSecrets || []);
 
         // Auto-login
         setAuth(result.accessToken, result.csrfToken ?? '', {
@@ -472,17 +474,74 @@ export default function SetupWizardPage() {
               {recoveryKey}
               <Box sx={{ position: 'absolute', top: 4, right: 4, display: 'flex', gap: 0.5 }}>
                 <Tooltip title={copied ? 'Copied!' : 'Copy'}>
-                  <IconButton size="small" onClick={handleCopyRecoveryKey}>
+                  <IconButton size="small" onClick={handleCopyRecoveryKey} aria-label="Copy recovery key to clipboard">
                     <CopyIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
                 <Tooltip title="Download as file">
-                  <IconButton size="small" onClick={handleDownloadRecoveryKey}>
+                  <IconButton size="small" onClick={handleDownloadRecoveryKey} aria-label="Download recovery key as file">
                     <DownloadIcon fontSize="small" />
                   </IconButton>
                 </Tooltip>
               </Box>
             </Paper>
+
+            {systemSecrets.length > 0 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="h6" gutterBottom>
+                  System Secrets
+                </Typography>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  These secrets are auto-generated and stored encrypted in your database.
+                  They are managed automatically with periodic rotation.
+                  Save a backup copy now — they will not be shown again.
+                </Alert>
+                {systemSecrets.map((secret) => (
+                  <Box key={secret.name} sx={{ mb: 2 }}>
+                    <Typography variant="subtitle2" color="text.secondary">
+                      {secret.name}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ mb: 0.5 }}>
+                      {secret.description}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        value={secret.value}
+                        slotProps={{ input: { readOnly: true, sx: { fontFamily: 'monospace', fontSize: '0.75rem' } } }}
+                      />
+                      <Tooltip title="Copy to clipboard">
+                        <IconButton
+                          size="small"
+                          onClick={() => navigator.clipboard.writeText(secret.value)}
+                          aria-label={`Copy ${secret.name} to clipboard`}
+                        >
+                          <CopyIcon fontSize="small" />
+                        </IconButton>
+                      </Tooltip>
+                    </Box>
+                  </Box>
+                ))}
+                <Button
+                  variant="outlined"
+                  size="small"
+                  startIcon={<DownloadIcon />}
+                  onClick={() => {
+                    const content = systemSecrets.map(s => `${s.name}=${s.value}`).join('\n');
+                    const blob = new Blob([content], { type: 'text/plain' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'arsenale-system-secrets.env';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                  }}
+                >
+                  Download Secrets
+                </Button>
+              </Box>
+            )}
           </Box>
         )}
 

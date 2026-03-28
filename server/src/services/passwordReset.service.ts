@@ -64,7 +64,7 @@ export async function requestPasswordReset(
 
   // Send email (fire-and-forget to not leak timing)
   sendPasswordResetEmail(email, token).catch((err) => {
-    log.error('Failed to send password reset email:', err);
+    log.error('Failed to send password reset email:', err instanceof Error ? err.message : 'Unknown error');
   });
 
   auditService.log({

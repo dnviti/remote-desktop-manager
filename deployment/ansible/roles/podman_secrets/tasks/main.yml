@@ -1,0 +1,41 @@
+---
+- name: Define secret mappings
+  set_fact:
+    podman_secrets:
+      # Required secrets
+      - { name: jwt_secret, value: "{{ vault_jwt_secret }}" }
+      - { name: guacamole_secret, value: "{{ vault_guacamole_secret }}" }
+      - { name: server_encryption_key, value: "{{ vault_server_encryption_key }}" }
+      - { name: database_url, value: "{{ vault_database_url }}" }
+      - { name: postgres_password, value: "{{ vault_postgres_password }}" }
+      - { name: guacenc_auth_token, value: "{{ vault_guacenc_auth_token }}" }
+      # Optional secrets (only create if non-empty)
+      - { name: smtp_pass, value: "{{ vault_smtp_pass }}" }
+      - { name: sendgrid_api_key, value: "{{ vault_sendgrid_api_key }}" }
+      - { name: ses_secret_access_key, value: "{{ vault_ses_secret_access_key }}" }
+      - { name: resend_api_key, value: "{{ vault_resend_api_key }}" }
+      - { name: mailgun_api_key, value: "{{ vault_mailgun_api_key }}" }
+      - { name: twilio_auth_token, value: "{{ vault_twilio_auth_token }}" }
+      - { name: sns_secret_access_key, value: "{{ vault_sns_secret_access_key }}" }
+      - { name: vonage_api_secret, value: "{{ vault_vonage_api_secret }}" }
+      - { name: google_client_secret, value: "{{ vault_google_client_secret }}" }
+      - { name: microsoft_client_secret, value: "{{ vault_microsoft_client_secret }}" }
+      - { name: github_client_secret, value: "{{ vault_github_client_secret }}" }
+      - { name: oidc_client_secret, value: "{{ vault_oidc_client_secret }}" }
+      - { name: ldap_bind_password, value: "{{ vault_ldap_bind_password }}" }
+      - { name: ai_api_key, value: "{{ vault_ai_api_key }}" }
+
+- name: Remove existing Podman secrets (idempotent recreation)
+  containers.podman.podman_secret:
+    name: "{{ item.name }}"
+    state: absent
+  loop: "{{ podman_secrets }}"
+  no_log: true
+
+- name: Create Podman secrets
+  containers.podman.podman_secret:
+    name: "{{ item.name }}"
+    data: "{{ item.value if (item.value | length > 0) else '\n' }}"
+    state: present
+  loop: "{{ podman_secrets }}"
+  no_log: true

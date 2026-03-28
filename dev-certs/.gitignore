@@ -1,3 +1,9 @@
 # Generated certificates — never commit private keys or certs
 *.pem
+*.key
 *.srl
+
+# Only track scripts and documentation
+!generate.sh
+!.gitignore
+!README*

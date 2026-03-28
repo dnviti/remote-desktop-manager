@@ -1,213 +1,226 @@
 ---
 title: Getting Started
-description: Installation, prerequisites, environment setup, and first run instructions
-generated-by: ctdf-docs
-generated-at: 2026-03-24T23:40:00Z
+description: Installation, prerequisites, and first-run instructions for Arsenale
+generated-by: claw-docs
+generated-at: 2026-03-27T12:00:00Z
 source-files:
+  - README.md
   - package.json
+  - Makefile
   - server/package.json
   - client/package.json
-  - gateways/tunnel-agent/package.json
-  - extra-clients/browser-extensions/package.json
+  - dev-certs/generate.sh
   - .env.example
-  - compose.dev.yml
-  - Makefile
-  - README.md
+  - server/src/config.ts
+  - deployment/ansible/inventory/group_vars/all/vars.yml
 ---
 
-# Getting Started
+## 🎯 Overview
 
-## Prerequisites
+Arsenale is a secure remote access platform that provides SSH, RDP, VNC, and database proxy access through a unified web interface. This guide covers setting up a local development environment.
+
+## 📋 Prerequisites
 
 | Requirement | Minimum Version | Purpose |
 |-------------|----------------|---------|
-| **Node.js** | 22.x | Runtime for server and client |
-| **npm** | 10.x | Package manager (workspaces) |
-| **Docker** or **Podman** | Docker 24+ / Podman 4+ | PostgreSQL, guacd, guacenc containers |
-| **Git** | 2.x | Source control |
+| Node.js | 22.x | Server and client runtime |
+| npm | 10.x | Package management (workspaces) |
+| Podman or Docker | Latest | PostgreSQL, guacd, gocache containers |
+| Podman Compose or Docker Compose | Latest | Container orchestration |
+| Python 3 | 3.9+ | Ansible automation scripts |
+| Ansible | Latest | Infrastructure provisioning |
+| OpenSSL | 3.x | TLS certificate generation |
+| Git | 2.x | Version control |
 
-Optional:
-- **GeoLite2-City.mmdb** -- MaxMind GeoIP database for impossible travel detection
-- **Twilio/AWS SNS/Vonage** account -- SMS MFA
-- **SMTP server** or SendGrid/SES/Resend/Mailgun -- Only needed if you enable email verification (`EMAIL_VERIFY_REQUIRED=true`)
+**Operating system support:** Linux, macOS, Windows (with PowerShell Core).
 
-## Quick Start
+## 🚀 Quick Start
+
+### 1. Clone and Install
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/dnviti/arsenale.git
 cd arsenale
 npm install
-
-# 2. Configure environment
-cp .env.example .env
-# Edit .env with your database credentials and secrets
-
-# 3. Start development (Docker containers + server + client)
-npm run predev && npm run dev
 ```
 
-This starts:
-- **PostgreSQL** on port 5432 (via Docker)
-- **guacenc** recording processor on port 3003 (via Docker)
-- **Server** on port 3001 (Express API + Socket.IO)
-- **Client** on port 3000 (Vite dev server, proxies to server)
-
-Database migrations run automatically on server start.
-
-## Step-by-Step Setup
-
-### 1. Install Dependencies
+### 2. First-Time Setup
 
 ```bash
-npm install
+make setup
 ```
 
-This installs dependencies for all workspaces (server, client, tunnel-agent, browser-extensions) via npm workspaces.
+This command:
+- Installs Ansible collections
+- Generates `vault.yml` with auto-generated secrets (JWT, Guacamole, encryption keys, DB password)
+- Creates TLS certificates in `dev-certs/` (CA + per-service certs)
 
-### 2. Configure Environment
-
-Copy the example environment file:
-
-```bash
-cp .env.example .env
-```
-
-**Critical variables to set:**
-
-| Variable | Default | Notes |
-|----------|---------|-------|
-| `DATABASE_URL` | `postgresql://arsenale:arsenale_password@127.0.0.1:5432/arsenale` | PostgreSQL connection string |
-| `JWT_SECRET` | (generated in dev) | **Must be set in production** |
-| `GUACAMOLE_SECRET` | (generated in dev) | Shared secret for RDP/VNC tokens |
-| `CLIENT_URL` | `http://localhost:3000` | Client URL for CORS and verification links |
-
-**OAuth providers** (optional -- leave `CLIENT_ID` empty to disable any provider):
-
-| Variable | Default | Notes |
-|----------|---------|-------|
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | (empty) | Google OAuth 2.0 |
-| `GOOGLE_HD` | (empty) | Restrict Google login to a hosted domain (e.g. `example.com`) |
-| `MICROSOFT_CLIENT_ID` / `MICROSOFT_CLIENT_SECRET` | (empty) | Microsoft OAuth 2.0 |
-| `MICROSOFT_TENANT_ID` | `common` | Azure AD tenant (`common`, `organizations`, or a specific tenant ID) |
-| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | (empty) | GitHub OAuth |
-| `OIDC_CLIENT_ID` / `OIDC_CLIENT_SECRET` | (empty) | Generic OIDC (Authentik, Keycloak, Authelia, etc.) |
-
-**AI / LLM integration** (optional -- leave `AI_PROVIDER` empty to disable):
-
-| Variable | Default | Notes |
-|----------|---------|-------|
-| `AI_PROVIDER` | (empty) | `anthropic`, `openai`, `ollama`, or `openai-compatible` |
-| `AI_API_KEY` | (empty) | API key for the selected provider (not needed for Ollama) |
-| `AI_MODEL` | (provider default) | Model name override |
-| `AI_BASE_URL` | (empty) | Required for Ollama and openai-compatible providers |
-| `AI_QUERY_GENERATION_ENABLED` | `false` | Enable natural-language-to-SQL query generation |
-
-See [Configuration](configuration.md) for the full list of OAuth, SAML, LDAP, and AI variables.
-
-The `.env` file **must** live at the monorepo root, not inside `server/`. The Prisma CLI resolves its env path to `../.env` via `server/prisma.config.ts`.
-
-### 3. Start Docker Containers
-
-```bash
-npm run docker:dev
-```
-
-This starts:
-- **PostgreSQL 16** -- Database on `127.0.0.1:5432`
-- **guacenc** -- Recording processor on port 3003
-
-Alternatively, the `predev` script handles this automatically:
-
-```bash
-npm run predev
-```
-
-### 4. Generate Prisma Client
-
-If not already done by `predev`:
-
-```bash
-npm run db:generate
-```
-
-### 5. Start Development Server
+### 3. Start Development Environment
 
 ```bash
 npm run dev
 ```
 
-Or run server and client separately:
+This single command:
+1. Runs `make dev` -- starts PostgreSQL, guacd, and gocache containers via Ansible
+2. Generates Prisma client types
+3. Runs database migrations
+4. Starts the Express API server on `https://localhost:3001`
+5. Starts the Vite dev server on `https://localhost:3000` (proxies API calls to :3001)
 
-```bash
-# Terminal 1
-npm run dev:server    # Express on :3001
+### 4. Access the Application
 
-# Terminal 2
-npm run dev:client    # Vite on :3000
+| URL | Purpose |
+|-----|---------|
+| `https://localhost:3000` | Web UI (React SPA) |
+| `https://localhost:3001/api` | API server |
+| `https://localhost:3001/api/health` | Health check |
+
+On first access, the **Setup Wizard** will guide you through creating an admin account.
+
+## 📁 Project Structure
+
+```
+arsenale/
+├── server/                  # Express API + TypeScript
+│   ├── src/                 # Source code
+│   ├── prisma/              # Database schema + migrations
+│   └── package.json
+├── client/                  # React 19 + Vite + MUI v7
+│   ├── src/                 # Source code
+│   └── package.json
+├── gateways/                # Gateway containers
+│   ├── tunnel-agent/        # Zero-trust tunnel client
+│   ├── ssh-gateway/         # SSH bastion
+│   ├── guacd/               # Guacamole daemon
+│   ├── guacenc/             # Recording video converter
+│   └── db-proxy/            # Database protocol proxy
+├── extra-clients/
+│   └── browser-extensions/  # Chrome extension (MV3)
+├── infrastructure/
+│   └── gocache/             # In-memory cache sidecar
+├── deployment/
+│   └── ansible/             # Ansible playbooks + roles
+├── dev-certs/               # Development TLS certificates
+├── docs/                    # Documentation
+├── Makefile                 # Infrastructure management
+├── compose.demo.yml         # Demo deployment
+├── .env.example             # Environment template
+└── package.json             # Root workspace config
 ```
 
-### 6. Access the Application
+## 🔧 Development Commands
 
-Open `http://localhost:3000` in your browser.
-
-The default settings are optimized for a simplified first-run experience:
-
-- **No email provider needed** -- email verification is disabled by default (`EMAIL_VERIFY_REQUIRED=false`)
-- **LAN connections work out of the box** -- private network access is allowed by default (`ALLOW_LOCAL_NETWORK=true`)
-- **Admin creates accounts** -- self-signup is disabled by default (`SELF_SIGNUP_ENABLED=false`); the first user created via the startup wizard becomes the admin and can then create additional accounts from the admin panel
-
-To get started:
-
-- Complete the startup configuration wizard (creates the admin account)
-- Set up your vault password (encrypts all credentials)
-- Create your first SSH, RDP, or VNC connection to a LAN or remote host
-
-## Development Ports
-
-| Port | Service | Notes |
-|------|---------|-------|
-| 3000 | Client (Vite) | Proxies `/api` -> 3001, `/guacamole` -> 3002 |
-| 3001 | Server (Express) | REST API + Socket.IO |
-| 3002 | Guacamole WebSocket | RDP/VNC tunnel |
-| 3003 | guacenc | Recording processor (dev only) |
-| 4822 | guacd | RDP/VNC protocol handler (internal) |
-| 5432 | PostgreSQL | Database (bound to 127.0.0.1) |
-
-## Using the Makefile
-
-Alternative commands via Make:
+### Application
 
 ```bash
-make install          # npm install
-make full-stack       # Install + run server + client
-make server-dev       # Server with watch (generates DB first)
-make client-dev       # Client dev server
-make prisma-studio    # Open Prisma Studio GUI
-make migrate-dev      # Create interactive migration
+npm run dev              # Server + Client concurrently
+npm run dev:server       # Express only (tsx watch, hot-reload)
+npm run dev:client       # Vite only (HMR, port 3000)
+npm run build            # Production build (both workspaces)
+npm run verify           # Full quality gate: typecheck -> lint -> audit -> test -> build
+npm run typecheck        # TypeScript check (all workspaces)
+npm run lint             # ESLint (all workspaces)
+npm run lint:fix         # Auto-fix lint issues
+npm run test             # Run all tests (vitest)
+npm run test:watch       # Watch mode
 ```
 
-## DevContainer Support
-
-The project includes a `.devcontainer/` configuration for VS Code Dev Containers:
-
-1. Open the project in VS Code
-2. Select "Reopen in Container" when prompted
-3. The container includes Node.js 22, Docker socket access, and PostgreSQL
-
-## Verification
-
-Run the full verification pipeline before committing:
+### Database
 
 ```bash
-npm run verify
+npm run db:generate      # Regenerate Prisma client types
+npm run db:push          # Sync schema to DB (no migration, for prototyping)
+npm run db:migrate       # Create and apply migrations
 ```
 
-This runs: typecheck -> lint -> audit -> test -> build. All checks must pass.
+### Infrastructure (Makefile)
 
-## Next Steps
+```bash
+make setup               # First-time: Ansible, vault, certs
+make dev                 # Start dev containers (postgres, gocache)
+make dev-down            # Stop dev containers
+make status              # Show container status
+make logs                # Tail all container logs (SVC=server for specific)
+make backup              # Database backup
+make rotate              # Rotate system secrets
+make vault               # Edit Ansible Vault
+make certs               # Regenerate TLS certificates
+make deploy              # Full production deployment
+make clean               # Stop and remove everything
+make help                # Show all targets
+```
 
-- [Configuration](configuration.md) -- Environment variables and feature flags
-- [Architecture](architecture.md) -- System design and component interactions
-- [API Reference](api-reference.md) -- Complete endpoint documentation
-- [Development](development.md) -- Contributing guidelines and branch strategy
+## 🌐 Environment Configuration
+
+The `.env` file is auto-generated at the monorepo root by `make dev` via Ansible templates. Key variables to customize:
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `DATABASE_URL` | Auto-generated | PostgreSQL connection string |
+| `JWT_SECRET` | Auto-generated | JWT signing key (64 hex chars) |
+| `GUACAMOLE_SECRET` | Auto-generated | RDP/VNC encryption key |
+| `PORT` | `3001` | API server port |
+| `CLIENT_URL` | `https://localhost:3000` | Frontend URL (CORS, OAuth) |
+| `NODE_ENV` | `development` | Environment mode |
+| `LOG_LEVEL` | `info` | Log verbosity: error, warn, info, verbose, debug |
+| `NODE_EXTRA_CA_CERTS` | `dev-certs/ca.pem` | Trust the dev CA certificate |
+
+See [Configuration](configuration.md) for the full list of 120+ environment variables.
+
+## 🧪 Testing
+
+```bash
+# Run all tests
+npm run test
+
+# Run tests for a specific workspace
+npm run test -w server
+npm run test -w client
+
+# Watch mode (re-runs on file change)
+npm run test:watch
+```
+
+**Test frameworks:**
+- **Server**: Vitest with Node environment, fork pool for isolation
+- **Client**: Vitest with jsdom environment for DOM simulation
+- **Tunnel Agent**: Vitest with Node environment
+
+## 🔑 TLS Certificates (Development)
+
+Development certificates are generated by `make setup` (or `./dev-certs/generate.sh` directly):
+
+```
+dev-certs/
+├── ca.pem, ca-key.pem          # Shared CA (10-year validity)
+├── server/                     # Express HTTPS + guacamole-lite
+├── client/                     # Nginx TLS
+├── postgres/                   # PostgreSQL SSL
+├── gocache-cache/              # Cache KV gRPC mTLS
+├── gocache-pubsub/             # Cache PubSub gRPC mTLS
+├── guacd/                      # Guacamole daemon TLS
+├── guacenc/                    # Video converter HTTPS
+├── ssh-gateway/                # SSH gateway API
+└── tunnel/                     # Tunnel mTLS
+```
+
+All certificates use ECC (secp256r1) and are valid for 10 years. The shared CA is automatically trusted via `NODE_EXTRA_CA_CERTS`.
+
+## 🐛 Common Issues
+
+| Issue | Solution |
+|-------|----------|
+| `ECONNREFUSED :5432` | Run `make dev` to start PostgreSQL |
+| `SSL certificate problem` | Run `make certs` to regenerate dev certificates |
+| `Port already in use` | The dev server auto-detects and cleans stale processes |
+| `Prisma client not generated` | Run `npm run db:generate` |
+| `Permission denied` on certs | Certificate files should be readable; run `chmod 644 dev-certs/**/*.pem` |
+| First access shows setup wizard | Expected on fresh install -- create your admin account |
+
+## ➡ Next Steps
+
+- [Architecture](architecture.md) -- Understand the system design
+- [Configuration](configuration.md) -- Full environment variable reference
+- [API Reference](api-reference.md) -- Explore the 200+ API endpoints
+- [Development](development.md) -- Contributing, branch strategy, testing details

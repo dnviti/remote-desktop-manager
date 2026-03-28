@@ -274,7 +274,7 @@ export async function createChannel(
         });
         tunnel.sessionId = sessionId;
       } catch (err) {
-        log.error('Failed to start RDGW session tracking:', err);
+        log.error('Failed to start RDGW session tracking:', err instanceof Error ? err.message : 'Unknown error');
       }
     }
 
@@ -345,7 +345,7 @@ export async function closeChannel(channelId: string): Promise<void> {
     try {
       await sessionService.endSession(tunnel.sessionId, 'rdgw_channel_close');
     } catch (err) {
-      log.error('Failed to end RDGW session:', err);
+      log.error('Failed to end RDGW session:', err instanceof Error ? err.message : 'Unknown error');
     }
     tunnel.sessionId = null;
   }

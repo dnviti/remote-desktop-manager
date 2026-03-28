@@ -137,8 +137,8 @@ arsenale/
 │   ├── tunnel-agent/             # Zero-trust tunnel agent (workspace)
 │   ├── guacd/                    # Custom guacd with embedded tunnel agent
 │   └── guacenc/                  # Recording-to-video conversion sidecar
-├── compose.yml                    # Production Docker Compose stack
-├── compose.dev.yml                # Dev containers (PostgreSQL + guacenc)
+├── Makefile                       # Ansible deployment UX (make dev/deploy/etc.)
+├── deployment/ansible/            # Ansible playbooks, roles, and templates
 └── .env.example                   # Environment template (121 variables)
 ```
 
@@ -160,32 +160,35 @@ npm run db:generate         # Generate Prisma client types
 npm run db:push             # Sync schema to DB (no migration)
 npm run db:migrate          # Run Prisma migrations
 
-# Docker
-npm run docker:dev          # Start guacd + PostgreSQL containers
-npm run docker:dev:down     # Stop dev containers
-npm run docker:prod         # Full production stack (requires .env.production)
+# Infrastructure (via Makefile + Ansible)
+make setup                  # First-time setup (Ansible collections, vault)
+make dev                    # Start dev infrastructure (postgres + gocache)
+make dev-down               # Stop dev infrastructure
+make deploy                 # Full production deployment
 ```
 
 ## Production Deployment
 
-Deploy the full stack with Docker Compose:
+Deploy the full stack with Ansible (via Makefile):
 
 ```bash
-# 1. Create production secrets
-cp .env.production.example .env.production
-# Edit .env.production — set strong values for POSTGRES_PASSWORD, JWT_SECRET, GUACAMOLE_SECRET
+# 1. First-time setup (install Ansible collections, generate vault)
+make setup
 
-# 2. Launch the stack
-npm run docker:prod
+# 2. Deploy production stack
+make deploy
 ```
 
-This starts the full container stack:
+This deploys the full container stack via Ansible:
 - **PostgreSQL 16** — Production database
 - **guacd** — Apache Guacamole daemon for RDP/VNC
 - **guacenc** — Recording-to-video conversion sidecar
 - **Server** — Express API + Guacamole WebSocket (runs migrations on startup)
 - **Client** — Nginx serving the React app with reverse proxy to the API
+- **gocache** — In-memory cache sidecar
 - **ssh-gateway** — Optional SSH gateway container (port 2222)
+
+See [deployment/ansible/README.md](deployment/ansible/README.md) for detailed configuration.
 
 ## Architecture
 

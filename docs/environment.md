@@ -115,7 +115,7 @@ In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 
 | Variable | Type | Default | Required | Env | Description |
 |----------|------|---------|----------|-----|-------------|
-| `SELF_SIGNUP_ENABLED` | boolean | `true` | No | Both | Allow new user registration. When `false`, env-level lock that cannot be re-enabled via admin panel. |
+| `SELF_SIGNUP_ENABLED` | boolean | `false` | No | Both | Allow new user registration. When `false`, env-level lock that cannot be re-enabled via admin panel. |
 
 ### OAuth Providers
 

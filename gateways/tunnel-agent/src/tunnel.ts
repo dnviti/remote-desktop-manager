@@ -208,8 +208,29 @@ export class TunnelAgent {
         break;
 
       case MsgType.CERT_RENEW:
-        // TODO: Implement client certificate hot-reload when the server pushes a renewed cert
-        warn('Certificate renewal via tunnel not yet implemented');
+        try {
+          const renew = JSON.parse(payload.toString('utf8')) as {
+            clientCert?: string;
+            clientKey?: string;
+          };
+          const clientCert = renew.clientCert?.trim();
+          const clientKey = renew.clientKey?.trim();
+
+          if (!clientCert || !clientKey) {
+            warn('Certificate renewal ignored: payload missing client cert or key');
+            break;
+          }
+
+          this.cfg.clientCert = clientCert;
+          this.cfg.clientKey = clientKey;
+          log('Tunnel client certificate renewed — reconnecting');
+
+          if (ws.readyState === WebSocket.OPEN) {
+            ws.close(1012, 'client certificate renewed');
+          }
+        } catch (renewErr) {
+          warn(`Certificate renewal ignored: ${(renewErr as Error).message}`);
+        }
         break;
 
       default:

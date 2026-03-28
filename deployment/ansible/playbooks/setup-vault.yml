@@ -1,0 +1,65 @@
+---
+- name: Generate Ansible Vault secrets for Arsenale
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    vault_file: "{{ playbook_dir }}/../inventory/group_vars/all/vault.yml"
+
+  tasks:
+    - name: Generate random secrets
+      set_fact:
+        generated_jwt_secret: "{{ lookup('community.general.random_string', length=128, override_special='', override_all='0123456789abcdef') }}"
+        generated_guacamole_secret: "{{ lookup('community.general.random_string', length=64, override_special='', override_all='0123456789abcdef') }}"
+        generated_encryption_key: "{{ lookup('community.general.random_string', length=64, override_special='', override_all='0123456789abcdef') }}"
+        generated_postgres_password: "{{ lookup('community.general.random_string', length=32, override_special='', override_all='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') }}"
+        generated_guacenc_token: "{{ lookup('community.general.random_string', length=64, override_special='', override_all='0123456789abcdef') }}"
+
+    - name: Write vault.yml with generated secrets
+      copy:
+        dest: "{{ vault_file }}"
+        mode: "0600"
+        content: |
+          # Ansible Vault — Arsenale Secrets
+          # Generated: {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -Iseconds')) }}
+          # Encrypt with: ansible-vault encrypt inventory/group_vars/all/vault.yml
+
+          # Required secrets
+          vault_jwt_secret: "{{ generated_jwt_secret }}"
+          vault_guacamole_secret: "{{ generated_guacamole_secret }}"
+          vault_server_encryption_key: "{{ generated_encryption_key }}"
+          vault_postgres_password: "{{ generated_postgres_password }}"
+          vault_guacenc_auth_token: "{{ generated_guacenc_token }}"
+
+          # Constructed from components
+          vault_database_url: "postgresql://{% raw %}{{ arsenale_db_user }}{% endraw %}:{{ generated_postgres_password }}@postgres:5432/{% raw %}{{ arsenale_db_name }}{% endraw %}?sslmode=verify-full"
+
+          # Optional secrets (fill in as needed)
+          vault_smtp_pass: ""
+          vault_sendgrid_api_key: ""
+          vault_ses_secret_access_key: ""
+          vault_resend_api_key: ""
+          vault_mailgun_api_key: ""
+          vault_twilio_auth_token: ""
+          vault_sns_secret_access_key: ""
+          vault_vonage_api_secret: ""
+          vault_google_client_secret: ""
+          vault_microsoft_client_secret: ""
+          vault_github_client_secret: ""
+          vault_oidc_client_secret: ""
+          vault_ldap_bind_password: ""
+          vault_ai_api_key: ""
+
+    - name: Encrypt vault file
+      command: ansible-vault encrypt "{{ vault_file }}"
+      register: vault_encrypt
+      changed_when: vault_encrypt.rc == 0
+
+    - name: Display instructions
+      debug:
+        msg: |
+          Vault file created and encrypted at: {{ vault_file }}
+          Remember your vault password — it's required for all deployments.
+          To view: ansible-vault view {{ vault_file }}
+          To edit: ansible-vault edit {{ vault_file }}

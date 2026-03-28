@@ -40,7 +40,7 @@ ENV NODE_ENV=production
 # TUNNEL_LOCAL_PORT   4822  (guacd) or 2222 (sshd)
 #
 # Optional:
-# TUNNEL_LOCAL_HOST   localhost
+# TUNNEL_LOCAL_HOST   127.0.0.1
 # TUNNEL_CA_CERT      <PEM>
 # TUNNEL_CLIENT_CERT  <PEM>
 # TUNNEL_CLIENT_KEY   <PEM>

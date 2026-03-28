@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { AppError } from '../middleware/error.middleware';
+import { config } from '../config';
 import { logger } from '../utils/logger';
 
 const log = logger.child('password');
@@ -46,6 +47,10 @@ export async function assertPasswordNotBreached(password: string): Promise<void>
     }
   } catch (err) {
     if (err instanceof AppError) throw err;
-    log.warn('HIBP breach check unavailable, proceeding without check', (err as Error).message);
+    if (config.hibpFailOpen) {
+      log.warn('HIBP breach check unavailable, proceeding without check (HIBP_FAIL_OPEN=true)');
+    } else {
+      throw new AppError('Password strength could not be verified. Please try again later.', 503);
+    }
   }
 }

@@ -66,7 +66,7 @@ function notifyTenantAdmins(tenantId: string, message: string, connectionId?: st
           logger.warn(`Notification delivery failed (attempt ${retryCount + 1}/3), retrying in ${delayMs}ms:`, err);
           setTimeout(() => attempt(retryCount + 1), delayMs);
         } else {
-          logger.error('Failed to notify tenant admins about policy violation after 3 attempts:', err);
+          logger.error('Failed to notify tenant admins about policy violation after 3 attempts:', err instanceof Error ? err.message : 'Unknown error');
         }
       });
   };
@@ -431,10 +431,10 @@ export function setupSshHandler(io: Server) {
             prisma.sessionRecording.update({
               where: { id: recordingId },
               data: { sessionId },
-            }).catch((err) => { logger.error('Failed to link recording to session:', err); });
+            }).catch((err) => { logger.error('Failed to link recording to session:', err instanceof Error ? err.message : 'Unknown error'); });
           }
         }).catch((err) => {
-          logger.error('Failed to persist SSH session record:', err);
+          logger.error('Failed to persist SSH session record:', err instanceof Error ? err.message : 'Unknown error');
         });
 
         session.stream.on('data', (data: Buffer) => {
@@ -535,7 +535,7 @@ export function setupSshHandler(io: Server) {
                 writeAndRecord();
               })
               .catch((err) => {
-                logger.error('Keystroke inspection error:', err);
+                logger.error('Keystroke inspection error:', err instanceof Error ? err.message : 'Unknown error');
                 // On inspection failure, still forward data to avoid freezing the session
                 writeAndRecord();
               });
@@ -892,10 +892,10 @@ export function setupSshHandler(io: Server) {
         try {
           const { fileSize, duration } = recordingWriter.close();
           completeRecording(recordingId, fileSize, duration).catch((err) => {
-            logger.error('Failed to complete recording:', err);
+            logger.error('Failed to complete recording:', err instanceof Error ? err.message : 'Unknown error');
           });
         } catch (recErr) {
-          logger.error('Failed to close recording writer:', recErr);
+          logger.error('Failed to close recording writer:', recErr instanceof Error ? recErr.message : 'Unknown error');
           failRecording(recordingId).catch(() => {});
         }
         recordingWriter = null;
@@ -904,7 +904,7 @@ export function setupSshHandler(io: Server) {
 
       // End persistent session record
       sessionService.endSessionBySocketId(socket.id).catch((err) => {
-        logger.error('Failed to end persistent session:', err);
+        logger.error('Failed to end persistent session:', err instanceof Error ? err.message : 'Unknown error');
       });
 
       // Clean up all active transfers
