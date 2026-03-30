@@ -264,7 +264,7 @@ export async function processSecretRotations(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
-// Distribution (publish secrets to sidecar services via gocache)
+// Distribution (publish secrets to distributed services via Redis pub/sub)
 // ---------------------------------------------------------------------------
 
 export async function publishDistributedSecrets(): Promise<void> {

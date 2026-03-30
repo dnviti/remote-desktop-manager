@@ -12,6 +12,7 @@ import type {
 import prisma from '../lib/prisma';
 import { config } from '../config';
 import { AppError } from '../middleware/error.middleware';
+import * as cacheClient from '../utils/cacheClient';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -28,27 +29,33 @@ export interface WebAuthnCredentialInfo {
 
 interface StoredChallenge {
   challenge: string;
-  expiresAt: number;
 }
 
 // ---------------------------------------------------------------------------
-// In-memory challenge store (keyed by userId, TTL 60 s)
+// Shared challenge store (Redis-first, in-memory fallback)
 // ---------------------------------------------------------------------------
 const CHALLENGE_TTL_MS = 60_000;
-const challengeStore = new Map<string, StoredChallenge>();
+const challengeStore = new Map<string, { challenge: string; expiresAt: number }>();
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, val] of challengeStore) {
-    if (val.expiresAt < now) challengeStore.delete(key);
-  }
-}, 30_000);
-
-export function storeChallenge(userId: string, challenge: string): void {
-  challengeStore.set(userId, { challenge, expiresAt: Date.now() + CHALLENGE_TTL_MS });
+function challengeKey(userId: string): string {
+  return `webauthn:challenge:user:${userId}`;
 }
 
-export function getAndDeleteChallenge(userId: string): string | null {
+export async function storeChallenge(userId: string, challenge: string): Promise<void> {
+  const payload = JSON.stringify({ challenge } satisfies StoredChallenge);
+  const stored = await cacheClient.set(challengeKey(userId), payload, { ttl: CHALLENGE_TTL_MS });
+  if (!stored) {
+    challengeStore.set(userId, { challenge, expiresAt: Date.now() + CHALLENGE_TTL_MS });
+  }
+}
+
+export async function getAndDeleteChallenge(userId: string): Promise<string | null> {
+  const cached = await cacheClient.getdel(challengeKey(userId));
+  if (cached) {
+    const parsed = JSON.parse(cached.toString('utf8')) as StoredChallenge;
+    return parsed.challenge || null;
+  }
+
   const entry = challengeStore.get(userId);
   if (!entry) return null;
   challengeStore.delete(userId);
@@ -109,7 +116,7 @@ export async function generateRegistrationOpts(userId: string) {
     attestationType: 'none',
   });
 
-  storeChallenge(userId, options.challenge);
+  await storeChallenge(userId, options.challenge);
   return options;
 }
 
@@ -117,9 +124,10 @@ export async function verifyRegistration(
   userId: string,
   credential: RegistrationResponseJSON,
   friendlyName?: string,
+  fallbackChallenge?: string,
 ) {
   const { rpId, rpOrigin } = config.webauthn;
-  const expectedChallenge = getAndDeleteChallenge(userId);
+  const expectedChallenge = await getAndDeleteChallenge(userId) || fallbackChallenge || null;
   if (!expectedChallenge) throw new AppError('Challenge expired or not found. Please try again.', 400);
 
   const verification = await verifyRegistrationResponse({
@@ -177,16 +185,17 @@ export async function generateAuthenticationOpts(userId: string) {
     userVerification: 'preferred',
   });
 
-  storeChallenge(userId, options.challenge);
+  await storeChallenge(userId, options.challenge);
   return options;
 }
 
 export async function verifyAuthentication(
   userId: string,
   credential: AuthenticationResponseJSON,
+  fallbackChallenge?: string,
 ) {
   const { rpId, rpOrigin } = config.webauthn;
-  const expectedChallenge = getAndDeleteChallenge(userId);
+  const expectedChallenge = await getAndDeleteChallenge(userId) || fallbackChallenge || null;
   if (!expectedChallenge) throw new AppError('Challenge expired or not found. Please try again.', 400);
 
   const stored = await prisma.webAuthnCredential.findFirst({

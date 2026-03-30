@@ -734,7 +734,7 @@ export async function requestWebAuthnOptions(tempToken: string) {
   return generateAuthenticationOpts(user.id);
 }
 
-export async function verifyWebAuthn(tempToken: string, credential: Record<string, unknown>, binding?: { ip: string; userAgent: string }) {
+export async function verifyWebAuthn(tempToken: string, credential: Record<string, unknown>, binding?: { ip: string; userAgent: string }, fallbackChallenge?: string) {
   let decoded: { userId: string; purpose: string };
   try {
     decoded = verifyJwt<{ userId: string; purpose: string }>(tempToken);
@@ -753,7 +753,7 @@ export async function verifyWebAuthn(tempToken: string, credential: Record<strin
 
   const { verifyAuthentication } = await import('./webauthn.service');
   // credential is AuthenticationResponseJSON from the browser — validated by simplewebauthn
-  await verifyAuthentication(user.id, credential as unknown as Parameters<typeof verifyAuthentication>[1]);
+  await verifyAuthentication(user.id, credential as unknown as Parameters<typeof verifyAuthentication>[1], fallbackChallenge);
 
   return issueTokens(user, undefined, binding, 'webauthn');
 }

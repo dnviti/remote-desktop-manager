@@ -22,6 +22,7 @@ export function buildWsOptions(cfg: TunnelConfig): ClientOptions {
     Authorization: `Bearer ${cfg.token}`,
     'X-Gateway-Id': cfg.gatewayId,
     'X-Agent-Version': cfg.agentVersion,
+    ...(cfg.clientCert ? { 'X-Client-Cert': encodeURIComponent(cfg.clientCert) } : {}),
   };
 
   return {

@@ -8,7 +8,15 @@ import { tcpProbe } from '../utils/tcpProbe';
 import { buildGatewaySpiffeId } from '../utils/spiffe';
 import { startMonitor, startInstanceMonitor, stopMonitor, restartMonitor } from './gatewayMonitor.service';
 import { logger } from '../utils/logger';
-import { generateTunnelToken, revokeTunnelToken, isTunnelConnected, deregisterTunnel, getTunnelInfo } from './tunnel.service';
+import {
+  generateTunnelToken,
+  revokeTunnelToken,
+  isTunnelConnected,
+  deregisterTunnel,
+  getTunnelInfo,
+  ensureTunnelConnected,
+  refreshTunnelRegistrySnapshot,
+} from './tunnel.service';
 import { generateCaCert, generateClientCertificate, certFingerprint } from '../utils/certGenerator';
 import * as auditService from './audit.service';
 import { pushKey as grpcPushKey, closeGatewayKeyClient } from '../utils/gatewayKeyClient';
@@ -97,6 +105,7 @@ export async function getDefaultGateway(tenantId: string, type: GatewayType) {
 }
 
 export async function listGateways(tenantId: string) {
+  await refreshTunnelRegistrySnapshot();
   const gateways = await prisma.gateway.findMany({
     where: { tenantId },
     select: {
@@ -772,6 +781,7 @@ export async function revokeGatewayTunnelToken(
 }
 
 export async function getTunnelOverview(tenantId: string) {
+  await refreshTunnelRegistrySnapshot();
   const gateways = await prisma.gateway.findMany({
     where: { tenantId, tunnelEnabled: true },
     select: { id: true },
@@ -813,7 +823,7 @@ export async function forceDisconnectTunnel(
   });
   if (!existing) throw new AppError('Gateway not found', 404);
 
-  if (!isTunnelConnected(gatewayId)) {
+  if (!await ensureTunnelConnected(gatewayId)) {
     throw new AppError('Tunnel is not connected', 400);
   }
 
@@ -874,5 +884,6 @@ export async function getTunnelMetrics(
   });
   if (!existing) throw new AppError('Gateway not found', 404);
 
+  await refreshTunnelRegistrySnapshot();
   return getTunnelInfo(gatewayId);
 }

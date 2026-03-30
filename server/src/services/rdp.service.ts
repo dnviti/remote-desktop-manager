@@ -89,12 +89,7 @@ function boolStr(val: boolean | undefined, fallback: boolean): string {
   return (val ?? fallback) ? 'true' : 'false';
 }
 
-/**
- * Generate an encrypted token for guacamole-lite.
- * Format: base64(JSON({ iv: base64, value: base64 }))
- * This matches guacamole-lite's decryptToken() expectations.
- */
-export function generateGuacamoleToken(params: RdpConnectionParams): string {
+export function buildRdpGuacamoleSettings(params: RdpConnectionParams): Record<string, string> {
   const rdp = params.rdpSettings ?? {};
 
   const settings: Record<string, string> = {
@@ -155,6 +150,17 @@ export function generateGuacamoleToken(params: RdpConnectionParams): string {
   if (params.dlpPolicy?.disablePaste) settings['disable-paste'] = 'true';
   if (params.dlpPolicy?.disableDownload) settings['disable-download'] = 'true';
   if (params.dlpPolicy?.disableUpload) settings['disable-upload'] = 'true';
+
+  return settings;
+}
+
+/**
+ * Generate an encrypted token for guacamole-lite.
+ * Format: base64(JSON({ iv: base64, value: base64 }))
+ * This matches guacamole-lite's decryptToken() expectations.
+ */
+export function generateGuacamoleToken(params: RdpConnectionParams): string {
+  const settings = buildRdpGuacamoleSettings(params);
 
   const connectionConfig = {
     connection: {

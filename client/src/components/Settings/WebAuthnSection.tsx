@@ -24,6 +24,7 @@ export default function WebAuthnSection() {
   const [friendlyName, setFriendlyName] = useState('');
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
   const [pendingCredential, setPendingCredential] = useState<unknown>(null);
+  const [pendingChallenge, setPendingChallenge] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
@@ -57,6 +58,7 @@ export default function WebAuthnSection() {
       const options = await getWebAuthnRegistrationOptions();
       const credential = await startRegistration({ optionsJSON: options });
       setPendingCredential(credential);
+      setPendingChallenge(options.challenge);
       setFriendlyName('');
       setNameDialogOpen(true);
     } catch (err: unknown) {
@@ -74,14 +76,16 @@ export default function WebAuthnSection() {
     if (!pendingCredential) return;
     setLoading(true);
     try {
-      await registerWebAuthnCredential(pendingCredential, friendlyName || undefined);
+      await registerWebAuthnCredential(pendingCredential, friendlyName || undefined, pendingChallenge || undefined);
       notify('Security key registered successfully.', 'success');
       setNameDialogOpen(false);
       setPendingCredential(null);
+      setPendingChallenge(null);
       await loadData();
     } catch (err: unknown) {
       setError(extractApiError(err, 'Registration verification failed.'));
       setNameDialogOpen(false);
+      setPendingChallenge(null);
     } finally {
       setLoading(false);
     }
@@ -210,7 +214,7 @@ export default function WebAuthnSection() {
         )}
 
         {/* Friendly name dialog */}
-        <Dialog open={nameDialogOpen} onClose={() => { setNameDialogOpen(false); setPendingCredential(null); }}>
+        <Dialog open={nameDialogOpen} onClose={() => { setNameDialogOpen(false); setPendingCredential(null); setPendingChallenge(null); }}>
           <DialogTitle>Name Your Security Key</DialogTitle>
           <DialogContent>
             <Typography variant="body2" sx={{ mb: 2 }}>

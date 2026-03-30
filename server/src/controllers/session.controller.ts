@@ -6,15 +6,15 @@ import { AuthRequest, RdpSettings, assertAuthenticated, assertTenantAuthenticate
 import type { DlpPolicy, VncSettings } from '../types';
 import { getConnection, getConnectionCredentials } from '../services/connection.service';
 import { resolveDomainCredentials } from '../services/domain.service';
-import { generateGuacamoleToken, mergeRdpSettings } from '../services/rdp.service';
-import { generateVncGuacamoleToken, mergeVncSettings } from '../services/vnc.service';
+import { buildRdpGuacamoleSettings, mergeRdpSettings } from '../services/rdp.service';
+import { buildVncGuacamoleSettings, mergeVncSettings } from '../services/vnc.service';
 import { resolveDlpPolicy } from '../utils/dlp';
 import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
 import { selectInstance } from '../services/loadBalancer.service';
 import { getDefaultGateway } from '../services/gateway.service';
-import { isTunnelConnected, createTcpProxy, closeTcpProxy } from '../services/tunnel.service';
+import { ensureTunnelConnected, createTcpProxy, closeTcpProxy } from '../services/tunnel.service';
 import { AppError } from '../middleware/error.middleware';
 import { forceDisconnectSession } from '../services/sessionCleanup.service';
 import { config } from '../config';
@@ -24,6 +24,7 @@ import { logger } from '../utils/logger';
 import { getClientIp } from '../utils/ip';
 import type { SessionInput } from '../schemas/session.schemas';
 import { startSshSession } from '../services/goTerminalBroker.service';
+import { endDesktopSession, heartbeatDesktopSession, issueDesktopSessionGrant } from '../services/goDesktopSession.service';
 
 const DEFAULT_RDP_WIDTH = 1024;
 const DEFAULT_RDP_HEIGHT = 768;
@@ -118,7 +119,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     // Tunnel routing: when the gateway has a zero-trust tunnel connected,
     // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
     if (gateway.tunnelEnabled) {
-      if (!isTunnelConnected(gateway.id)) {
+      if (!await ensureTunnelConnected(gateway.id)) {
         throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
       const { server, localPort } = await createTcpProxy(gateway.id, '127.0.0.1', guacdPort);
@@ -226,7 +227,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       }
     }
 
-    const token = generateGuacamoleToken({
+    const tokenSettings = buildRdpGuacamoleSettings({
       host: conn.host,
       port: conn.port,
       username,
@@ -236,35 +237,39 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
       drivePath,
       rdpSettings: mergedRdp,
       dlpPolicy,
-      guacdHost,
-      guacdPort,
       recording: rdpRecording,
-      metadata: {
-        userId: req.user.userId,
-        connectionId,
-        ipAddress: getClientIp(req) ?? undefined,
-        recordingId: rdpRecordingId,
-      },
     });
 
-    // Close any stale sessions for this user+connection to prevent duplicates
-    // (e.g. React StrictMode double-mount or page refresh without clean unmount)
-    await sessionService.closeStaleSessionsForConnection(req.user.userId, connectionId, 'RDP');
-
-    // Create persistent session record
-    const sessionId = await sessionService.startSession({
+    const desktopGrant = await issueDesktopSessionGrant({
       userId: req.user.userId,
       connectionId,
       gatewayId: gatewayId ?? undefined,
       instanceId: selectedInstanceId,
       protocol: 'RDP',
-      guacToken: token,
       ipAddress: getClientIp(req) ?? undefined,
-      metadata: { host: conn.host, port: conn.port, credentialSource },
-      routingDecision,
+      sessionMetadata: { host: conn.host, port: conn.port, credentialSource },
+      ...(routingDecision ? { routingDecision } : {}),
+      ...(rdpRecordingId ? { recordingId: rdpRecordingId } : {}),
+      token: {
+        guacdHost,
+        guacdPort,
+        settings: tokenSettings,
+        metadata: {
+          userId: req.user.userId,
+          connectionId,
+          ipAddress: getClientIp(req) ?? undefined,
+          recordingId: rdpRecordingId,
+        },
+      },
     });
 
-    res.json({ token, enableDrive, sessionId, recordingId: rdpRecordingId, dlpPolicy });
+    res.json({
+      token: desktopGrant.token,
+      enableDrive,
+      sessionId: desktopGrant.sessionId,
+      recordingId: desktopGrant.recordingId ?? rdpRecordingId,
+      dlpPolicy,
+    });
   } catch (err) {
     await closeTcpProxy(tunnelProxyServer);
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -376,7 +381,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
     // Tunnel routing: when the gateway has a zero-trust tunnel connected,
     // spin up a local TCP proxy and point guacd at 127.0.0.1:<port>.
     if (gateway.tunnelEnabled) {
-      if (!isTunnelConnected(gateway.id)) {
+      if (!await ensureTunnelConnected(gateway.id)) {
         throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
       const { server, localPort } = await createTcpProxy(gateway.id, '127.0.0.1', guacdPort);
@@ -447,38 +452,44 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
       }
     }
 
-    const token = generateVncGuacamoleToken({
+    const tokenSettings = buildVncGuacamoleSettings({
       host: conn.host,
       port: conn.port,
       password,
       vncSettings: mergedVnc,
       dlpPolicy: vncDlpPolicy,
-      guacdHost,
-      guacdPort,
       recording: vncRecording,
-      metadata: {
-        userId: req.user.userId,
-        connectionId,
-        ipAddress: getClientIp(req) ?? undefined,
-        recordingId: vncRecordingId,
-      },
     });
 
-    await sessionService.closeStaleSessionsForConnection(req.user.userId, connectionId, 'VNC');
-
-    const sessionId = await sessionService.startSession({
+    const desktopGrant = await issueDesktopSessionGrant({
       userId: req.user.userId,
       connectionId,
       gatewayId: gatewayId ?? undefined,
       instanceId: selectedInstanceId,
       protocol: 'VNC',
-      guacToken: token,
       ipAddress: getClientIp(req) ?? undefined,
-      metadata: { host: conn.host, port: conn.port },
-      routingDecision,
+      sessionMetadata: { host: conn.host, port: conn.port },
+      ...(routingDecision ? { routingDecision } : {}),
+      ...(vncRecordingId ? { recordingId: vncRecordingId } : {}),
+      token: {
+        guacdHost,
+        guacdPort,
+        settings: tokenSettings,
+        metadata: {
+          userId: req.user.userId,
+          connectionId,
+          ipAddress: getClientIp(req) ?? undefined,
+          recordingId: vncRecordingId,
+        },
+      },
     });
 
-    res.json({ token, sessionId, recordingId: vncRecordingId, dlpPolicy: vncDlpPolicy });
+    res.json({
+      token: desktopGrant.token,
+      sessionId: desktopGrant.sessionId,
+      recordingId: desktopGrant.recordingId ?? vncRecordingId,
+      dlpPolicy: vncDlpPolicy,
+    });
   } catch (err) {
     await closeTcpProxy(tunnelProxyServer);
     const errorMessage = err instanceof Error ? err.message : 'Unknown error';
@@ -578,16 +589,7 @@ export async function sshEnd(req: AuthRequest, res: Response) {
 export async function rdpHeartbeat(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
   const sessionId = req.params.sessionId as string;
-  const session = await prisma.activeSession.findUnique({
-    where: { id: sessionId },
-  });
-  if (!session || session.userId !== req.user.userId) {
-    throw new AppError('Session not found', 404);
-  }
-  if (session.status === 'CLOSED') {
-    throw new AppError('Session already closed', 410);
-  }
-  await sessionService.heartbeat(sessionId);
+  await heartbeatDesktopSession(sessionId, req.user.userId);
   res.json({ ok: true });
 }
 
@@ -596,13 +598,7 @@ export async function rdpHeartbeat(req: AuthRequest, res: Response) {
 export async function rdpEnd(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
   const sessionId = req.params.sessionId as string;
-  const session = await prisma.activeSession.findUnique({
-    where: { id: sessionId },
-  });
-  if (!session || session.userId !== req.user.userId) {
-    throw new AppError('Session not found', 404);
-  }
-  await sessionService.endSession(sessionId, 'client_disconnect');
+  await endDesktopSession(sessionId, req.user.userId, 'client_disconnect');
   res.json({ ok: true });
 }
 

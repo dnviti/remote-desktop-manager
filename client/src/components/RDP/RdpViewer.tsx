@@ -1,9 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { Box, CircularProgress, Typography, Alert } from '@mui/material';
 import * as Guacamole from '@glokon/guacamole-common-js';
-import { io } from 'socket.io-client';
 import api from '../../api/client';
-import { useAuthStore } from '../../store/authStore';
 import type { CredentialOverride } from '../../store/tabsStore';
 import type { ResolvedDlpPolicy } from '../../api/connections.api';
 import FileBrowser from './FileBrowser';
@@ -356,34 +354,6 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
     fileBrowserOpen,
     onToggleDrive: () => setFileBrowserOpen((prev) => !prev),
   });
-
-  // Listen for admin-initiated session termination via the /notifications namespace.
-  useEffect(() => {
-    const accessToken = useAuthStore.getState().accessToken;
-    if (!accessToken) return;
-
-    const socket = io('/notifications', {
-      auth: { token: accessToken },
-      transports: ['websocket'],
-    });
-
-    const handler = (data: { sessionId: string }) => {
-      if (data.sessionId && data.sessionId === sessionIdRef.current) {
-        permanentErrorRef.current = true;
-        cancelReconnect();
-        setStatus('error');
-        setError('Session terminated by administrator');
-        clientRef.current?.disconnect();
-      }
-    };
-
-    socket.on('session:terminated', handler);
-
-    return () => {
-      socket.off('session:terminated', handler);
-      socket.disconnect();
-    };
-  }, [connectionId, cancelReconnect]);
 
   // Initial connection
   useEffect(() => {

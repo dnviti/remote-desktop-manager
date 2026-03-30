@@ -21,6 +21,13 @@ import type WebSocket from 'ws';
 import prisma from '../lib/prisma';
 import { config } from '../config';
 import { encryptWithServerKey, decryptWithServerKey, hashToken } from './crypto.service';
+import {
+  createTunnelProxy as createGoTunnelProxy,
+  disconnectTunnelConnection,
+  getTunnelConnection,
+  listTunnelConnections,
+  type TunnelBrokerStatus,
+} from './goTunnelBroker.service';
 import { logger } from '../utils/logger';
 import * as auditService from './audit.service';
 import { generateClientCertificate, verifyCertChain } from '../utils/certGenerator';
@@ -50,6 +57,7 @@ export type MsgTypeValue = typeof MsgType[keyof typeof MsgType];
 
 const HEADER_SIZE = 4;
 const MAX_STREAM_ID = 0xffff;
+const PROXIED_TUNNEL_REFRESH_MS = 5_000;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -95,18 +103,103 @@ export interface TunnelConnection {
   heartbeatMetadata?: HeartbeatMetadata;
 }
 
+interface ProxiedTunnelState {
+  gatewayId: string;
+  connectedAt: Date;
+  clientVersion?: string;
+  clientIp?: string;
+  lastHeartbeat?: Date;
+  pingPongLatency?: number;
+  bytesTransferred: number;
+  heartbeatMetadata?: HeartbeatMetadata;
+}
+
 // ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
 /** Global registry: gatewayId → TunnelConnection */
 const registry = new Map<string, TunnelConnection>();
+const proxiedRegistry = new Map<string, ProxiedTunnelState>();
+let lastProxiedRegistrySyncAt = 0;
+let proxiedRegistryRefresh: Promise<void> | null = null;
+
+function applyTunnelBrokerStatus(status: TunnelBrokerStatus): void {
+  if (!status.connected) {
+    proxiedRegistry.delete(status.gatewayId);
+    return;
+  }
+
+  proxiedRegistry.set(status.gatewayId, {
+    gatewayId: status.gatewayId,
+    connectedAt: status.connectedAt ? new Date(status.connectedAt) : new Date(),
+    lastHeartbeat: status.lastHeartbeatAt ? new Date(status.lastHeartbeatAt) : undefined,
+    clientVersion: status.clientVersion,
+    clientIp: status.clientIp,
+    pingPongLatency: status.pingPongLatencyMs,
+    bytesTransferred: status.bytesTransferred ?? 0,
+    heartbeatMetadata: status.heartbeat
+      ? {
+          healthy: status.heartbeat.healthy,
+          latencyMs: status.heartbeat.latencyMs,
+          activeStreams: status.heartbeat.activeStreams,
+        }
+      : undefined,
+  });
+}
+
+async function refreshProxiedRegistry(force = false): Promise<void> {
+  if (!config.goTunnelBrokerEnabled) return;
+  if (!force && Date.now() - lastProxiedRegistrySyncAt < PROXIED_TUNNEL_REFRESH_MS) {
+    return;
+  }
+  if (proxiedRegistryRefresh) {
+    return proxiedRegistryRefresh;
+  }
+
+  proxiedRegistryRefresh = (async () => {
+    try {
+      const statuses = await listTunnelConnections();
+      proxiedRegistry.clear();
+      for (const status of statuses) {
+        applyTunnelBrokerStatus(status);
+      }
+      lastProxiedRegistrySyncAt = Date.now();
+    } catch (err) {
+      log.warn(`[tunnel] Failed to refresh broker tunnel registry: ${(err as Error).message}`);
+    } finally {
+      proxiedRegistryRefresh = null;
+    }
+  })();
+
+  return proxiedRegistryRefresh;
+}
+
+export async function refreshTunnelRegistrySnapshot(force = false): Promise<void> {
+  if (!config.goTunnelBrokerEnabled) return;
+  await refreshProxiedRegistry(force);
+}
+
+function scheduleProxiedRegistryRefresh(): void {
+  if (!config.goTunnelBrokerEnabled) return;
+  if (Date.now() - lastProxiedRegistrySyncAt >= PROXIED_TUNNEL_REFRESH_MS && !proxiedRegistryRefresh) {
+    void refreshProxiedRegistry();
+  }
+}
 
 export function getRegisteredTunnels(): string[] {
+  if (config.goTunnelBrokerEnabled) {
+    scheduleProxiedRegistryRefresh();
+    return Array.from(proxiedRegistry.keys());
+  }
   return Array.from(registry.keys());
 }
 
 export function isTunnelConnected(gatewayId: string): boolean {
+  if (config.goTunnelBrokerEnabled) {
+    scheduleProxiedRegistryRefresh();
+    return proxiedRegistry.has(gatewayId);
+  }
   const conn = registry.get(gatewayId);
   if (!conn) return false;
   // Check that the underlying WS is still open
@@ -116,6 +209,29 @@ export function isTunnelConnected(gatewayId: string): boolean {
 /** Returns true if a live tunnel exists for the given gateway. Alias for isTunnelConnected. */
 export function hasTunnel(gatewayId: string): boolean {
   return isTunnelConnected(gatewayId);
+}
+
+export async function ensureTunnelConnected(gatewayId: string): Promise<boolean> {
+  if (!config.goTunnelBrokerEnabled) {
+    return isTunnelConnected(gatewayId);
+  }
+  if (proxiedRegistry.has(gatewayId)) {
+    return true;
+  }
+
+  try {
+    const status = await getTunnelConnection(gatewayId);
+    if (status) {
+      applyTunnelBrokerStatus(status);
+      lastProxiedRegistrySyncAt = Date.now();
+    } else {
+      proxiedRegistry.delete(gatewayId);
+    }
+  } catch (err) {
+    log.warn(`[tunnel] Failed to fetch broker tunnel status for gateway ${gatewayId}: ${(err as Error).message}`);
+  }
+
+  return proxiedRegistry.has(gatewayId);
 }
 
 /** Returns a snapshot of tunnel connection metadata (without the raw WebSocket). */
@@ -129,6 +245,21 @@ export function getTunnelInfo(gatewayId: string): {
   clientVersion: string | undefined;
   clientIp: string | undefined;
 } | null {
+  if (config.goTunnelBrokerEnabled) {
+    scheduleProxiedRegistryRefresh();
+    const conn = proxiedRegistry.get(gatewayId);
+    if (!conn) return null;
+    return {
+      connectedAt: conn.connectedAt,
+      lastHeartbeat: conn.lastHeartbeat,
+      pingPongLatency: conn.pingPongLatency,
+      activeStreams: conn.heartbeatMetadata?.activeStreams ?? 0,
+      bytesTransferred: conn.bytesTransferred,
+      heartbeatMetadata: conn.heartbeatMetadata,
+      clientVersion: conn.clientVersion,
+      clientIp: conn.clientIp,
+    };
+  }
   const conn = registry.get(gatewayId);
   if (!conn || conn.ws.readyState !== 1 /* OPEN */) return null;
   return {
@@ -206,6 +337,13 @@ export function registerTunnel(
 }
 
 export function deregisterTunnel(gatewayId: string): void {
+  if (config.goTunnelBrokerEnabled) {
+    proxiedRegistry.delete(gatewayId);
+    void disconnectTunnelConnection(gatewayId).catch((err) => {
+      log.warn(`[tunnel] Failed to disconnect proxied tunnel for gateway ${gatewayId}: ${(err as Error).message}`);
+    });
+    return;
+  }
   const conn = registry.get(gatewayId);
   if (!conn) return;
 
@@ -241,6 +379,63 @@ function evictConnection(conn: TunnelConnection): void {
   conn.pendingOpens.clear();
 }
 
+export function noteProxiedTunnelConnected(
+  gatewayId: string,
+  clientVersion?: string,
+  clientIp?: string,
+): void {
+  if (!config.goTunnelBrokerEnabled) return;
+  proxiedRegistry.set(gatewayId, {
+    gatewayId,
+    connectedAt: new Date(),
+    lastHeartbeat: new Date(),
+    clientVersion,
+    clientIp,
+    bytesTransferred: 0,
+  });
+  lastProxiedRegistrySyncAt = Date.now();
+}
+
+export function noteProxiedTunnelDisconnected(gatewayId: string): void {
+  if (!config.goTunnelBrokerEnabled) return;
+  proxiedRegistry.delete(gatewayId);
+  lastProxiedRegistrySyncAt = Date.now();
+}
+
+export function noteProxiedTunnelActivity(
+  gatewayId: string,
+  payload?: Buffer,
+  bytesTransferred = 0,
+): void {
+  if (!config.goTunnelBrokerEnabled) return;
+  const current = proxiedRegistry.get(gatewayId);
+  if (!current) return;
+
+  current.lastHeartbeat = new Date();
+  current.bytesTransferred += bytesTransferred;
+
+  if (payload && payload.length > 0) {
+    try {
+      const meta = JSON.parse(payload.toString('utf8')) as Partial<HeartbeatMetadata>;
+      current.heartbeatMetadata = {
+        healthy: meta.healthy ?? true,
+        latencyMs: meta.latencyMs,
+        activeStreams: meta.activeStreams,
+      };
+    } catch {
+      current.heartbeatMetadata = current.heartbeatMetadata ?? { healthy: true };
+    }
+  }
+}
+
+if (config.goTunnelBrokerEnabled) {
+  void refreshProxiedRegistry(true);
+  const timer = setInterval(() => {
+    void refreshProxiedRegistry(true);
+  }, PROXIED_TUNNEL_REFRESH_MS);
+  timer.unref();
+}
+
 // ---------------------------------------------------------------------------
 // openStream — public API for SSH2 / guacamole-lite
 // ---------------------------------------------------------------------------
@@ -260,6 +455,23 @@ export function openStream(
   port: number,
   timeoutMs = 10_000,
 ): Promise<Duplex> {
+  if (config.goTunnelBrokerEnabled) {
+    return createGoTunnelProxy(gatewayId, host, port).then((proxy) => new Promise<Duplex>((resolve, reject) => {
+      const socket = net.createConnection({ host: proxy.host, port: proxy.port });
+      const timer = setTimeout(() => {
+        socket.destroy(new Error(`openStream timeout for gateway ${gatewayId} → ${host}:${port}`));
+      }, timeoutMs);
+      socket.once('connect', () => {
+        clearTimeout(timer);
+        resolve(socket);
+      });
+      socket.once('error', (err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+    }));
+  }
+
   const conn = registry.get(gatewayId);
   if (!conn || conn.ws.readyState !== 1 /* OPEN */) {
     return Promise.reject(new Error(`No active tunnel for gateway ${gatewayId}`));
@@ -689,6 +901,60 @@ export function createTcpProxy(
   targetHost: string,
   targetPort: number,
 ): Promise<{ server: net.Server; localPort: number }> {
+  if (config.goTunnelBrokerEnabled) {
+    return new Promise(async (resolve, reject) => {
+      let upstream: Awaited<ReturnType<typeof createGoTunnelProxy>>;
+      try {
+        upstream = await createGoTunnelProxy(gatewayId, targetHost, targetPort);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+
+      let server: net.Server | null = null;
+      const idleTimer = setTimeout(() => {
+        log.warn(
+          `[tunnel] TCP proxy for gateway ${gatewayId} expired before the first local connection`,
+        );
+        server?.close();
+      }, TCP_PROXY_IDLE_TIMEOUT_MS).unref();
+
+      server = net.createServer((socket) => {
+        clearTimeout(idleTimer);
+        server?.close();
+
+        const remote = net.createConnection({
+          host: upstream.host,
+          port: upstream.port,
+        });
+
+        const cleanup = () => {
+          socket.destroy();
+          remote.destroy();
+        };
+
+        socket.pipe(remote);
+        remote.pipe(socket);
+        socket.once('close', cleanup);
+        remote.once('close', cleanup);
+        socket.once('error', cleanup);
+        remote.once('error', cleanup);
+      });
+
+      server.once('close', () => clearTimeout(idleTimer));
+      server.on('error', reject);
+      server.listen(0, config.tunnelTcpProxyBindHost, () => {
+        const addr = server?.address();
+        if (!addr || typeof addr === 'string') {
+          server?.close();
+          reject(new Error('Failed to determine TCP proxy port'));
+          return;
+        }
+        resolve({ server: server!, localPort: addr.port });
+      });
+    });
+  }
+
   return new Promise((resolve, reject) => {
     let server: net.Server | null = null;
     const idleTimer = setTimeout(() => {

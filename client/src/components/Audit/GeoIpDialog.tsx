@@ -97,7 +97,16 @@ export default function GeoIpDialog({ open, onClose, ipAddress }: GeoIpDialogPro
     let cancelled = false;
 
     api.get(`/geoip/${encodeURIComponent(ipAddress)}`)
-      .then((res) => { if (!cancelled) setData(res.data); })
+      .then((res) => {
+        if (cancelled) return;
+        const payload = res.data as IpApiData;
+        if (payload?.status === 'fail') {
+          setError(payload.message || 'Failed to look up IP');
+          setData(null);
+          return;
+        }
+        setData(payload);
+      })
       .catch((err: unknown) => {
         if (!cancelled) {
           setError(extractApiError(err, 'Failed to look up IP'));

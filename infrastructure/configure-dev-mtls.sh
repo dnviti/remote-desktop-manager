@@ -20,17 +20,8 @@ TUNNEL_SERVER_CERT=$REPO_ROOT/dev-certs/tunnel/server-cert.pem
 TUNNEL_SERVER_KEY=$REPO_ROOT/dev-certs/tunnel/server-key.pem
 TUNNEL_SERVER_CA=$REPO_ROOT/dev-certs/ca.pem
 
-# Dedicated cache backend mTLS (client certs for Node.js → Go gRPC)
-CACHE_KV_URL=localhost:6380
-CACHE_KV_TLS_CA=$REPO_ROOT/dev-certs/ca.pem
-CACHE_KV_TLS_CERT=$REPO_ROOT/dev-certs/gocache-cache/client-cert.pem
-CACHE_KV_TLS_KEY=$REPO_ROOT/dev-certs/gocache-cache/client-key.pem
-
-# Dedicated pubsub backend mTLS (client certs for Node.js / sidecars → Go gRPC)
-CACHE_PUBSUB_URL=localhost:6480
-CACHE_PUBSUB_TLS_CA=$REPO_ROOT/dev-certs/ca.pem
-CACHE_PUBSUB_TLS_CERT=$REPO_ROOT/dev-certs/gocache-pubsub/client-cert.pem
-CACHE_PUBSUB_TLS_KEY=$REPO_ROOT/dev-certs/gocache-pubsub/client-key.pem
+# Distributed coordination backend
+REDIS_URL=redis://localhost:6379/0
 
 # PostgreSQL SSL
 DATABASE_URL=postgresql://arsenale:arsenale_password@localhost:5432/arsenale?sslmode=require

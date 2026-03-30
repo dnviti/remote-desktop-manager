@@ -1,4 +1,3 @@
-import { Server } from 'socket.io';
 import prisma from '../lib/prisma';
 import * as auditService from './audit.service';
 import * as dbTunnelService from './dbTunnel.service';
@@ -7,47 +6,33 @@ import { logger } from '../utils/logger';
 import { config } from '../config';
 import { emitSessionTerminated } from '../socket/notification.handler';
 
-let ioInstance: Server | null = null;
-
-export function initSessionCleanup(io: Server): void {
-  ioInstance = io;
+export function initSessionCleanup(): void {
+  // Real-time session cleanup signaling is handled by the Go brokers.
 }
 
 /**
  * Force-disconnect the live transport for a terminated session.
- * - SSH: emit session:terminated then disconnect the Socket.IO socket
- * - RDP: emit session:terminated to the user's browser via /notifications
+ * Browser SSH and desktop transports now observe closed session state via the
+ * Go brokers, so only DB tunnel teardown still requires an explicit action here.
  */
 export function forceDisconnectSession(session: {
   id: string;
   protocol: string;
   socketId: string | null;
   userId: string;
+  connectionId?: string | null;
 }): void {
-  if (!ioInstance) return;
-
-  if (session.protocol === 'SSH' && session.socketId) {
-    const socket = ioInstance.of('/ssh').sockets.get(session.socketId);
-    if (socket) {
-      socket.emit('session:terminated', { sessionId: session.id, reason: 'admin_terminated' });
-      socket.disconnect(true);
-    }
-  }
-
-  if (session.protocol === 'RDP' || session.protocol === 'VNC') {
-    emitSessionTerminated(session.userId, session.id, 'admin_terminated');
-  }
-
   if (session.protocol === 'DB_TUNNEL') {
     // Close any associated DB tunnel by looking up tunnels for this user/connection
     const tunnels = dbTunnelService.getUserTunnels(session.userId);
     for (const tunnel of tunnels) {
-      if (tunnel.connectionId === (session as { connectionId?: string }).connectionId) {
+      if (tunnel.connectionId === session.connectionId) {
         dbTunnelService.closeTunnel(tunnel.id);
       }
     }
-    emitSessionTerminated(session.userId, session.id, 'admin_terminated');
   }
+
+  emitSessionTerminated(session.userId, session.id, 'admin_terminated');
 }
 
 export async function checkAndCloseInactiveSessions(): Promise<number> {
@@ -94,13 +79,6 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
           gatewayId: session.gatewayId,
         });
 
-        if (session.protocol === 'SSH' && session.socketId && ioInstance) {
-          const socket = ioInstance.of('/ssh').sockets.get(session.socketId);
-          if (socket) {
-            socket.emit('session:timeout', { reason: 'absolute_timeout' });
-            socket.disconnect(true);
-          }
-        }
         if (session.protocol === 'RDP' || session.protocol === 'VNC') {
           emitSessionTerminated(session.userId, session.id, 'absolute_timeout');
         }
@@ -152,15 +130,6 @@ export async function checkAndCloseInactiveSessions(): Promise<number> {
         ipAddress: session.ipAddress ?? undefined,
         gatewayId: session.gatewayId,
       });
-
-      // For SSH sessions: force-disconnect the socket to trigger cleanup chain
-      if (session.protocol === 'SSH' && session.socketId && ioInstance) {
-        const socket = ioInstance.of('/ssh').sockets.get(session.socketId);
-        if (socket) {
-          socket.emit('session:timeout');
-          socket.disconnect(true);
-        }
-      }
 
       // For DB_TUNNEL sessions: close the tunnel on inactivity timeout
       if (session.protocol === 'DB_TUNNEL') {

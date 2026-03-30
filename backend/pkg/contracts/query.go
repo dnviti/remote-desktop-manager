@@ -3,13 +3,22 @@ package contracts
 import "encoding/json"
 
 type DatabaseTarget struct {
-	Protocol string `json:"protocol,omitempty"`
-	Host     string `json:"host,omitempty"`
-	Port     int    `json:"port,omitempty"`
-	Database string `json:"database,omitempty"`
-	SSLMode  string `json:"sslMode,omitempty"`
-	Username string `json:"username,omitempty"`
-	Password string `json:"password,omitempty"`
+	Protocol      string                 `json:"protocol,omitempty"`
+	Host          string                 `json:"host,omitempty"`
+	Port          int                    `json:"port,omitempty"`
+	Database      string                 `json:"database,omitempty"`
+	SSLMode       string                 `json:"sslMode,omitempty"`
+	Username      string                 `json:"username,omitempty"`
+	Password      string                 `json:"password,omitempty"`
+	SessionConfig *DatabaseSessionConfig `json:"sessionConfig,omitempty"`
+}
+
+type DatabaseSessionConfig struct {
+	ActiveDatabase string   `json:"activeDatabase,omitempty"`
+	Timezone       string   `json:"timezone,omitempty"`
+	SearchPath     string   `json:"searchPath,omitempty"`
+	Encoding       string   `json:"encoding,omitempty"`
+	InitCommands   []string `json:"initCommands,omitempty"`
 }
 
 type QueryExecutionRequest struct {

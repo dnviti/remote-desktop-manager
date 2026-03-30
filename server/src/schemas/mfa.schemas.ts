@@ -13,6 +13,7 @@ export type SetupPhoneInput = z.infer<typeof setupPhoneSchema>;
 export const webauthnRegisterSchema = z.object({
   credential: z.record(z.string(), z.unknown()),
   friendlyName: z.string().min(1).max(64).optional(),
+  expectedChallenge: z.string().optional(),
 });
 export type WebauthnRegisterInput = z.infer<typeof webauthnRegisterSchema>;
 

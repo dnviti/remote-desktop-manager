@@ -3,6 +3,7 @@ package desktopbroker
 import (
 	"crypto/aes"
 	"crypto/cipher"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -49,6 +50,52 @@ func LoadSecret(envKey, fileEnvKey string) (string, error) {
 	}
 
 	return string(payload), nil
+}
+
+func EncryptToken(secret string, token ConnectionToken) (string, error) {
+	if secret == "" {
+		return "", errors.New("guacamole secret is required")
+	}
+
+	payload, err := json.Marshal(token)
+	if err != nil {
+		return "", fmt.Errorf("marshal connection token: %w", err)
+	}
+
+	key, err := scrypt.Key([]byte(secret), []byte(guacamoleSalt), 16384, 8, 1, 32)
+	if err != nil {
+		return "", fmt.Errorf("derive guacamole key: %w", err)
+	}
+
+	block, err := aes.NewCipher(key)
+	if err != nil {
+		return "", fmt.Errorf("create cipher: %w", err)
+	}
+
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return "", fmt.Errorf("create gcm: %w", err)
+	}
+
+	iv := make([]byte, gcm.NonceSize())
+	if _, err := rand.Read(iv); err != nil {
+		return "", fmt.Errorf("generate token iv: %w", err)
+	}
+
+	ciphertext := gcm.Seal(nil, iv, payload, nil)
+	tagSize := gcm.Overhead()
+	envelope := TokenEnvelope{
+		IV:    base64.StdEncoding.EncodeToString(iv),
+		Value: base64.StdEncoding.EncodeToString(ciphertext[:len(ciphertext)-tagSize]),
+		Tag:   base64.StdEncoding.EncodeToString(ciphertext[len(ciphertext)-tagSize:]),
+	}
+
+	rawEnvelope, err := json.Marshal(envelope)
+	if err != nil {
+		return "", fmt.Errorf("marshal token envelope: %w", err)
+	}
+
+	return base64.StdEncoding.EncodeToString(rawEnvelope), nil
 }
 
 func DecryptToken(secret, encryptedToken string) (ConnectionToken, error) {

@@ -43,7 +43,7 @@ describe('getSocketUserAgent', () => {
   const makeSocket = (ua: string | string[] | undefined) =>
     ({
       handshake: { headers: { 'user-agent': ua } },
-    }) as unknown as import('socket.io').Socket;
+    }) as { handshake: { headers: { 'user-agent': string | string[] | undefined } } };
 
   it('returns the UA string as-is when it is a string', () => {
     expect(getSocketUserAgent(makeSocket('TestAgent/1.0'))).toBe('TestAgent/1.0');

@@ -7,6 +7,7 @@ import { sendOtpToPhone, verifyOtp as verifySmsOtp } from './smsOtp.service';
 import * as webauthn from './webauthn.service';
 import { getDecryptedSecret, verifyCode as verifyTotpCode } from './totp.service';
 import type { AuthenticationResponseJSON } from '@simplewebauthn/server';
+import * as cache from '../utils/cacheClient';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -41,6 +42,7 @@ const SESSION_TTL_MS = 15 * 60 * 1000; // 15 minutes for initiation
 const CONSUME_WINDOW_MS = 5 * 60 * 1000; // 5 minutes to consume after confirmation
 const MAX_ATTEMPTS = 5;
 const OTP_LENGTH = 6;
+const SESSION_KEY_PREFIX = 'identity:verification:';
 
 const verificationStore = new Map<string, VerificationSession>();
 
@@ -72,6 +74,50 @@ function timingSafeEqual(a: string, b: string): boolean {
   const bufB = Buffer.from(b, 'hex');
   if (bufA.length !== bufB.length) return false;
   return crypto.timingSafeEqual(bufA, bufB);
+}
+
+function sessionKey(verificationId: string): string {
+  return `${SESSION_KEY_PREFIX}${verificationId}`;
+}
+
+async function loadSession(verificationId: string): Promise<VerificationSession | null> {
+  const cached = await cache.get(sessionKey(verificationId));
+  if (cached) {
+    try {
+      const session = JSON.parse(cached.toString()) as VerificationSession;
+      if (session.expiresAt < Date.now()) {
+        await cache.del(sessionKey(verificationId));
+        return null;
+      }
+      return session;
+    } catch {
+      await cache.del(sessionKey(verificationId));
+      return null;
+    }
+  }
+
+  const session = verificationStore.get(verificationId) ?? null;
+  if (!session) return null;
+  if (session.expiresAt < Date.now()) {
+    verificationStore.delete(verificationId);
+    return null;
+  }
+  return session;
+}
+
+async function saveSession(verificationId: string, session: VerificationSession): Promise<void> {
+  const ttlMs = Math.max(session.expiresAt - Date.now(), 1);
+  const stored = await cache.set(sessionKey(verificationId), JSON.stringify(session), { ttl: ttlMs });
+  if (stored) {
+    verificationStore.delete(verificationId);
+    return;
+  }
+  verificationStore.set(verificationId, session);
+}
+
+async function deleteSession(verificationId: string): Promise<void> {
+  await cache.del(sessionKey(verificationId));
+  verificationStore.delete(verificationId);
 }
 
 // ---------------------------------------------------------------------------
@@ -168,7 +214,7 @@ export async function initiateVerification(
       break;
   }
 
-  verificationStore.set(verificationId, session);
+  await saveSession(verificationId, session);
 
   return { verificationId, method, metadata };
 }
@@ -182,18 +228,18 @@ export async function confirmVerification(
     password?: string;
   },
 ): Promise<boolean> {
-  const session = verificationStore.get(verificationId);
+  const session = await loadSession(verificationId);
   if (!session) throw new AppError('Verification session not found or expired.', 400);
   if (session.userId !== userId) throw new AppError('Verification session mismatch.', 403);
   if (session.expiresAt < Date.now()) {
-    verificationStore.delete(verificationId);
+    await deleteSession(verificationId);
     throw new AppError('Verification session expired.', 400);
   }
   if (session.confirmed) throw new AppError('Verification already confirmed.', 400);
 
   session.attempts++;
   if (session.attempts > MAX_ATTEMPTS) {
-    verificationStore.delete(verificationId);
+    await deleteSession(verificationId);
     throw new AppError('Too many verification attempts. Please start a new verification.', 429);
   }
 
@@ -260,23 +306,25 @@ export async function confirmVerification(
     session.expiresAt = Date.now() + CONSUME_WINDOW_MS;
   }
 
+  await saveSession(verificationId, session);
+
   return valid;
 }
 
-export function consumeVerification(
+export async function consumeVerification(
   verificationId: string,
   userId: string,
   purpose: VerificationPurpose,
-): void {
-  const session = verificationStore.get(verificationId);
+): Promise<void> {
+  const session = await loadSession(verificationId);
   if (!session) throw new AppError('Verification session not found or expired.', 400);
   if (!session.confirmed) throw new AppError('Verification not yet confirmed.', 400);
   if (session.userId !== userId) throw new AppError('Verification session mismatch.', 403);
   if (session.purpose !== purpose) throw new AppError('Verification purpose mismatch.', 403);
   if (session.expiresAt < Date.now()) {
-    verificationStore.delete(verificationId);
+    await deleteSession(verificationId);
     throw new AppError('Verification expired. Please start a new verification.', 400);
   }
 
-  verificationStore.delete(verificationId);
+  await deleteSession(verificationId);
 }

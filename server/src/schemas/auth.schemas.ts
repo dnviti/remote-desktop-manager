@@ -38,6 +38,7 @@ export type RequestWebAuthnInput = z.infer<typeof requestWebAuthnSchema>;
 export const verifyWebAuthnSchema = z.object({
   tempToken: z.string(),
   credential: z.record(z.string(), z.unknown()),
+  expectedChallenge: z.string().optional(),
 });
 export type VerifyWebAuthnInput = z.infer<typeof verifyWebAuthnSchema>;
 

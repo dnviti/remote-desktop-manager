@@ -155,8 +155,8 @@ export async function requestWebAuthnOptions(req: Request, res: Response, next: 
 
 export async function verifyWebAuthn(req: Request, res: Response, next: NextFunction) {
   try {
-    const { tempToken, credential } = req.body as VerifyWebAuthnInput;
-    const result = await authService.verifyWebAuthn(tempToken, credential, getRequestBinding(req));
+    const { tempToken, credential, expectedChallenge } = req.body as VerifyWebAuthnInput & { expectedChallenge?: string };
+    const result = await authService.verifyWebAuthn(tempToken, credential, getRequestBinding(req), expectedChallenge);
     const ip = getClientIp(req);
     const activeTenantId = result.tenantMemberships?.find((m) => m.isActive)?.tenantId ?? null;
     const { flagged, blocked } = await enforceIpAllowlist(activeTenantId, ip);

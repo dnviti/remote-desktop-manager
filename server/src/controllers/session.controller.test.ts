@@ -14,11 +14,11 @@ vi.mock('../services/domain.service', () => ({
   resolveDomainCredentials: vi.fn(),
 }));
 vi.mock('../services/rdp.service', () => ({
-  generateGuacamoleToken: vi.fn().mockReturnValue('rdp-token-123'),
+  buildRdpGuacamoleSettings: vi.fn().mockReturnValue({ hostname: '192.168.1.10', port: '3389' }),
   mergeRdpSettings: vi.fn().mockReturnValue({}),
 }));
 vi.mock('../services/vnc.service', () => ({
-  generateVncGuacamoleToken: vi.fn().mockReturnValue('vnc-token-123'),
+  buildVncGuacamoleSettings: vi.fn().mockReturnValue({ hostname: '192.168.1.10', port: '5900' }),
   mergeVncSettings: vi.fn().mockReturnValue({}),
 }));
 vi.mock('../utils/dlp', () => ({
@@ -67,6 +67,11 @@ vi.mock('../services/lateralMovement.service', () => ({
 vi.mock('../services/goTerminalBroker.service', () => ({
   startSshSession: vi.fn(),
 }));
+vi.mock('../services/goDesktopSession.service', () => ({
+  issueDesktopSessionGrant: vi.fn().mockResolvedValue({ token: 'desktop-token-123', sessionId: 'session-id-1' }),
+  heartbeatDesktopSession: vi.fn(),
+  endDesktopSession: vi.fn(),
+}));
 vi.mock('../utils/logger', () => ({
   logger: { info: vi.fn(), error: vi.fn(), debug: vi.fn(), warn: vi.fn() },
 }));
@@ -97,6 +102,7 @@ import { getConnection, getConnectionCredentials } from '../services/connection.
 import { resolveDomainCredentials } from '../services/domain.service';
 import { checkLateralMovement } from '../services/lateralMovement.service';
 import { startSshSession } from '../services/goTerminalBroker.service';
+import { issueDesktopSessionGrant, heartbeatDesktopSession, endDesktopSession } from '../services/goDesktopSession.service';
 import * as sessionService from '../services/session.service';
 import * as auditService from '../services/audit.service';
 import { forceDisconnectSession } from '../services/sessionCleanup.service';
@@ -176,11 +182,10 @@ describe('session.controller', () => {
       await createRdpSession(req, res, next);
 
       expect(getConnection).toHaveBeenCalledWith('user-1', 'conn-1', 'tenant-1');
-      expect(sessionService.closeStaleSessionsForConnection).toHaveBeenCalledWith('user-1', 'conn-1', 'RDP');
-      expect(sessionService.startSession).toHaveBeenCalled();
+      expect(issueDesktopSessionGrant).toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({
-          token: 'rdp-token-123',
+          token: 'desktop-token-123',
           sessionId: 'session-id-1',
         }),
       );
@@ -332,7 +337,7 @@ describe('session.controller', () => {
       await createVncSession(req, res, next);
 
       expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({ token: 'vnc-token-123', sessionId: 'session-id-1' }),
+        expect.objectContaining({ token: 'desktop-token-123', sessionId: 'session-id-1' }),
       );
     });
 
@@ -524,7 +529,7 @@ describe('session.controller', () => {
 
       await rdpHeartbeat(req, res);
 
-      expect(sessionService.heartbeat).toHaveBeenCalledWith('sess-1');
+      expect(heartbeatDesktopSession).toHaveBeenCalledWith('sess-1', 'user-1');
       expect(res.json).toHaveBeenCalledWith({ ok: true });
     });
 
@@ -532,7 +537,7 @@ describe('session.controller', () => {
       const req = mockAuthRequest({ params: { sessionId: 'sess-nope' } });
       const res = mockResponse();
 
-      vi.mocked(prisma.activeSession.findUnique).mockResolvedValue(null);
+      vi.mocked(heartbeatDesktopSession).mockRejectedValueOnce(new Error('Session not found'));
 
       await expect(rdpHeartbeat(req, res)).rejects.toThrow('Session not found');
     });
@@ -541,11 +546,7 @@ describe('session.controller', () => {
       const req = mockAuthRequest({ params: { sessionId: 'sess-1' } });
       const res = mockResponse();
 
-      vi.mocked(prisma.activeSession.findUnique).mockResolvedValue({
-        id: 'sess-1',
-        userId: 'other-user',
-        status: 'ACTIVE',
-      } as never);
+      vi.mocked(heartbeatDesktopSession).mockRejectedValueOnce(new Error('Session not found'));
 
       await expect(rdpHeartbeat(req, res)).rejects.toThrow('Session not found');
     });
@@ -554,11 +555,7 @@ describe('session.controller', () => {
       const req = mockAuthRequest({ params: { sessionId: 'sess-1' } });
       const res = mockResponse();
 
-      vi.mocked(prisma.activeSession.findUnique).mockResolvedValue({
-        id: 'sess-1',
-        userId: 'user-1',
-        status: 'CLOSED',
-      } as never);
+      vi.mocked(heartbeatDesktopSession).mockRejectedValueOnce(new Error('Session already closed'));
 
       await expect(rdpHeartbeat(req, res)).rejects.toThrow('Session already closed');
     });
@@ -578,7 +575,7 @@ describe('session.controller', () => {
 
       await rdpEnd(req, res);
 
-      expect(sessionService.endSession).toHaveBeenCalledWith('sess-1', 'client_disconnect');
+      expect(endDesktopSession).toHaveBeenCalledWith('sess-1', 'user-1', 'client_disconnect');
       expect(res.json).toHaveBeenCalledWith({ ok: true });
     });
 
@@ -586,7 +583,7 @@ describe('session.controller', () => {
       const req = mockAuthRequest({ params: { sessionId: 'sess-nope' } });
       const res = mockResponse();
 
-      vi.mocked(prisma.activeSession.findUnique).mockResolvedValue(null);
+      vi.mocked(endDesktopSession).mockRejectedValueOnce(new Error('Session not found'));
 
       await expect(rdpEnd(req, res)).rejects.toThrow('Session not found');
     });

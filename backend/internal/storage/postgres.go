@@ -10,7 +10,7 @@ import (
 )
 
 func OpenPostgres(ctx context.Context) (*pgxpool.Pool, error) {
-	databaseURL, err := databaseURLFromEnv()
+	databaseURL, err := DatabaseURLFromEnv()
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func OpenPostgres(ctx context.Context) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-func databaseURLFromEnv() (string, error) {
+func DatabaseURLFromEnv() (string, error) {
 	if value := os.Getenv("DATABASE_URL"); value != "" {
 		return value, nil
 	}

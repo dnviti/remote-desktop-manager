@@ -173,7 +173,7 @@ export async function confirmEmailChange(
     }
   } else if (data.verificationId) {
     // Identity verification flow
-    identityVerification.consumeVerification(data.verificationId, userId, 'email-change');
+    await identityVerification.consumeVerification(data.verificationId, userId, 'email-change');
   } else {
     throw new AppError('Invalid confirmation payload.', 400);
   }
@@ -239,7 +239,7 @@ export async function changePassword(
 
   if (verificationId) {
     // Identity was verified via a non-password method — consume verification
-    identityVerification.consumeVerification(verificationId, userId, 'password-change');
+    await identityVerification.consumeVerification(verificationId, userId, 'password-change');
 
     // Get master key from in-memory vault session (already unlocked)
     const sessionKey = await getMasterKey(userId);

@@ -63,8 +63,8 @@ export async function requestWebAuthnOptionsApi(tempToken: string) {
   return data;
 }
 
-export async function verifyWebAuthnApi(tempToken: string, credential: unknown) {
-  const { data } = await api.post('/auth/verify-webauthn', { tempToken, credential });
+export async function verifyWebAuthnApi(tempToken: string, credential: unknown, expectedChallenge?: string) {
+  const { data } = await api.post('/auth/verify-webauthn', { tempToken, credential, expectedChallenge });
   return data as AuthSuccessResponse;
 }
 

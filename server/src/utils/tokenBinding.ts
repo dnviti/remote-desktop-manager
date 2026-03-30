@@ -1,6 +1,5 @@
 import crypto from 'crypto';
 import { Request } from 'express';
-import { Socket } from 'socket.io';
 import { getClientIp } from './ip';
 
 /**
@@ -17,7 +16,7 @@ export function getRequestBinding(req: Request): { ip: string; userAgent: string
 }
 
 /** Extracts the User-Agent string from a Socket.IO handshake. */
-export function getSocketUserAgent(socket: Socket): string {
+export function getSocketUserAgent(socket: { handshake: { headers: Record<string, string | string[] | undefined> } }): string {
   const ua = socket.handshake.headers['user-agent'];
   return Array.isArray(ua) ? ua[0] ?? '' : ua ?? '';
 }

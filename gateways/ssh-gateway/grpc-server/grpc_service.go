@@ -1,6 +1,6 @@
 // Hand-written gRPC service definition for KeyManagement.
 // Uses JSON codec (no protobuf code generation required).
-// Same pattern as infrastructure/gocache/grpc_service.go.
+// Same pattern as the generated protobuf service implementation used elsewhere.
 package main
 
 import (

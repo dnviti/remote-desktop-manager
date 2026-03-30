@@ -151,6 +151,9 @@ func resolvePool(
 	}
 
 	database := strings.TrimSpace(target.Database)
+	if database == "" && target.SessionConfig != nil {
+		database = strings.TrimSpace(target.SessionConfig.ActiveDatabase)
+	}
 	if database == "" {
 		database = "postgres"
 	}
@@ -171,7 +174,23 @@ func resolvePool(
 	}
 	u.RawQuery = query.Encode()
 
-	pool, err := pgxpool.New(ctx, u.String())
+	cfg, err := pgxpool.ParseConfig(u.String())
+	if err != nil {
+		return nil, nil, fmt.Errorf("parse target postgres config: %w", err)
+	}
+
+	if initStatements := buildSessionInitStatements(target.SessionConfig); len(initStatements) > 0 {
+		cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
+			for _, statement := range initStatements {
+				if _, err := conn.Exec(ctx, statement); err != nil {
+					return fmt.Errorf("apply session config statement %q: %w", statement, err)
+				}
+			}
+			return nil
+		}
+	}
+
+	pool, err := pgxpool.NewWithConfig(ctx, cfg)
 	if err != nil {
 		return nil, nil, fmt.Errorf("connect to target postgres: %w", err)
 	}

@@ -1,5 +1,4 @@
 import { Request } from 'express';
-import { Socket } from 'socket.io';
 
 /**
  * IPv4-mapped IPv6 prefix that Node/Express often prepends.
@@ -24,10 +23,8 @@ export function getClientIp(req: Request): string {
 }
 
 /**
- * Extract the real client IP from a Socket.IO handshake.
- * Socket.IO does not inherit Express's `req.ip` resolution; use the actual
- * handshake peer address rather than trusting user-controlled forwarded headers.
+ * Extract the real client IP from a websocket-style handshake object.
  */
-export function getSocketClientIp(socket: Socket): string {
+export function getSocketClientIp(socket: { handshake: { address: string } }): string {
   return stripV4Mapped(socket.handshake.address);
 }

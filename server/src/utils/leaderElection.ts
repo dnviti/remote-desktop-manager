@@ -1,5 +1,5 @@
 /**
- * Distributed leader election using gocache distributed locks.
+ * Distributed leader election using the shared distributed lock backend.
  *
  * In a multi-instance deployment, only the leader instance should run
  * scheduled jobs (cleanup, rotation, etc.) to prevent duplicate work.
@@ -18,7 +18,7 @@ export const instanceId = `node-${process.pid}-${Date.now()}`;
  * Acquire a distributed lock, run the given function if acquired, and release
  * the lock in the `finally` block.
  *
- * If the sidecar is unavailable or disabled, the function runs unconditionally
+ * If the distributed cache backend is unavailable or disabled, the function runs unconditionally
  * (single-instance fallback).
  */
 export async function runIfLeader(
@@ -26,14 +26,14 @@ export async function runIfLeader(
   fn: () => Promise<void>,
   ttlMs = 30_000,
 ): Promise<void> {
-  if (!config.cacheSidecarEnabled) {
+  if (!config.distributedCacheEnabled) {
     await fn();
     return;
   }
 
   const result = await cache.acquireLock(lockName, ttlMs, instanceId);
 
-  // Sidecar unavailable — run anyway (single-instance fallback)
+  // Distributed cache unavailable — run anyway (single-instance fallback)
   if (result === null) {
     await fn();
     return;
@@ -69,7 +69,7 @@ export function startLeaderHeartbeat(
   ttlMs = 30_000,
   intervalMs = 10_000,
 ): { stop: () => void } {
-  if (!config.cacheSidecarEnabled) {
+  if (!config.distributedCacheEnabled) {
     return { stop: () => {} };
   }
 

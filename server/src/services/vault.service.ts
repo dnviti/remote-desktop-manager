@@ -80,7 +80,7 @@ export async function unlockVault(userId: string, password: string) {
     storeVaultSession(userId, masterKey, ttl);
     storeVaultRecovery(userId, masterKey);
     // Publish vault unlock event (fire-and-forget)
-    if (config.cacheSidecarEnabled) {
+    if (config.distributedPubSubEnabled) {
       cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
     }
     // Process any pending tenant vault key distributions
@@ -171,7 +171,7 @@ export async function unlockVaultWithTotp(userId: string, code: string) {
   }
 
   // Publish vault unlock event (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedPubSubEnabled) {
     cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
   }
   processPendingDistributions(userId).catch(() => {/* non-blocking */});
@@ -202,7 +202,7 @@ export async function unlockVaultWithWebAuthn(userId: string, credential: Record
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
   // Publish vault unlock event (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedPubSubEnabled) {
     cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
   }
   processPendingDistributions(userId).catch(() => {/* non-blocking */});
@@ -241,7 +241,7 @@ export async function unlockVaultWithSms(userId: string, code: string) {
   const ttl = await resolveVaultTtl(userId);
   storeVaultSession(userId, masterKey, ttl);
   // Publish vault unlock event (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedPubSubEnabled) {
     cache.publish('vault:status', JSON.stringify({ userId, unlocked: true })).catch(() => {});
   }
   processPendingDistributions(userId).catch(() => {/* non-blocking */});

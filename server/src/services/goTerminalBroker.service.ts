@@ -7,7 +7,7 @@ import { getGatewayCredentials } from './gateway.service';
 import { selectInstance } from './loadBalancer.service';
 import { getPrivateKey as getTenantPrivateKey } from './sshkey.service';
 import * as sessionService from './session.service';
-import { createTcpProxy, isTunnelConnected } from './tunnel.service';
+import { createTcpProxy, ensureTunnelConnected } from './tunnel.service';
 import type { DlpPolicy, ResolvedDlpPolicy } from '../types';
 import type { EnforcedConnectionSettings } from '../schemas/tenant.schemas';
 import { resolveDlpPolicy } from '../utils/dlp';
@@ -98,7 +98,7 @@ export async function startSshSession(input: IssueSshGrantInput): Promise<SshSes
     }
 
     if (gateway.tunnelEnabled) {
-      if (!isTunnelConnected(gateway.id)) {
+      if (!await ensureTunnelConnected(gateway.id)) {
         throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
       }
 

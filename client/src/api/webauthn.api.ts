@@ -15,8 +15,8 @@ export async function getWebAuthnRegistrationOptions() {
   return data;
 }
 
-export async function registerWebAuthnCredential(credential: unknown, friendlyName?: string) {
-  const { data } = await api.post('/user/2fa/webauthn/register', { credential, friendlyName });
+export async function registerWebAuthnCredential(credential: unknown, friendlyName?: string, expectedChallenge?: string) {
+  const { data } = await api.post('/user/2fa/webauthn/register', { credential, friendlyName, expectedChallenge });
   return data as WebAuthnCredentialInfo;
 }
 

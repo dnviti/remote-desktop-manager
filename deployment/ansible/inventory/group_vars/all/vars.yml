@@ -45,20 +45,12 @@ arsenale_allowed_web_sources: ["0.0.0.0/0"]
 
 # Scalability
 arsenale_server_replicas: 1
-arsenale_gocache_cache_replicas: 1
-arsenale_gocache_pubsub_replicas: 1
-arsenale_gocache_cache_peer_discovery: dns
-arsenale_gocache_pubsub_peer_discovery: dns
-arsenale_gocache_cache_peers: ""
-arsenale_gocache_pubsub_peers: ""
 
 # Container resource limits
 arsenale_resource_limits:
   postgres: { cpus: "1.0", memory: "1g", pids: 256 }
   guacd: { cpus: "1.0", memory: "512m", pids: 256 }
   guacenc: { cpus: "1.0", memory: "768m", pids: 256 }
-  gocache_cache: { cpus: "1.0", memory: "512m", pids: 256 }
-  gocache_pubsub: { cpus: "1.0", memory: "512m", pids: 256 }
   server: { cpus: "2.0", memory: "1536m", pids: 512 }
   client: { cpus: "0.75", memory: "256m", pids: 256 }
   go_service: { cpus: "0.5", memory: "256m", pids: 128 }

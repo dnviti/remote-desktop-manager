@@ -45,10 +45,11 @@ type config struct {
 	aggTheme         string
 	tlsCert          string
 	tlsKey           string
-	cachePubSubURL   string
-	cacheTLSCA       string
-	cacheTLSCert     string
-	cacheTLSKey      string
+	redisURL         string
+	redisTLSEnabled  bool
+	redisTLSCA       string
+	redisTLSCert     string
+	redisTLSKey      string
 }
 
 type tokenStore struct {
@@ -117,7 +118,7 @@ func main() {
 	rootCtx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
-	startGocacheSubscriber(rootCtx, cfg, tokens)
+	startSecretSubscriber(rootCtx, cfg, tokens)
 	log.Printf("Bearer auth: %s", enabledDisabled(tokens.Get() != ""))
 	log.Printf("Listening on port %d", cfg.port)
 	log.Printf("Max concurrent jobs: %d", cfg.maxConcurrent)
@@ -174,10 +175,11 @@ func loadConfig() config {
 		aggTheme:         envString("AGG_THEME", defaultAggTheme),
 		tlsCert:          strings.TrimSpace(os.Getenv("GUACENC_TLS_CERT")),
 		tlsKey:           strings.TrimSpace(os.Getenv("GUACENC_TLS_KEY")),
-		cachePubSubURL:   firstNonEmptyEnv("CACHE_PUBSUB_URL", "CACHE_SIDECAR_URL"),
-		cacheTLSCA:       firstNonEmptyEnv("CACHE_PUBSUB_TLS_CA", "CACHE_SIDECAR_TLS_CA"),
-		cacheTLSCert:     firstNonEmptyEnv("CACHE_PUBSUB_TLS_CERT", "CACHE_SIDECAR_TLS_CERT"),
-		cacheTLSKey:      firstNonEmptyEnv("CACHE_PUBSUB_TLS_KEY", "CACHE_SIDECAR_TLS_KEY"),
+		redisURL:         strings.TrimSpace(os.Getenv("REDIS_URL")),
+		redisTLSEnabled:  strings.EqualFold(strings.TrimSpace(os.Getenv("REDIS_TLS_ENABLED")), "true"),
+		redisTLSCA:       strings.TrimSpace(os.Getenv("REDIS_TLS_CA")),
+		redisTLSCert:     strings.TrimSpace(os.Getenv("REDIS_TLS_CERT")),
+		redisTLSKey:      strings.TrimSpace(os.Getenv("REDIS_TLS_KEY")),
 	}
 }
 

@@ -13,7 +13,7 @@ interface RateLimitOpts {
 }
 
 /**
- * Distributed rate limit store backed by gocache.
+ * Distributed rate limit store backed by the shared cache backend.
  *
  * Uses fixed-window counters with timestamp-bucketed keys so that
  * rate limits are shared across all server instances.
@@ -64,7 +64,7 @@ export function createRateLimiter({ windowMs, max, message, keyPrefix, extra }: 
     message: { error: message },
     standardHeaders: true,
     legacyHeaders: false,
-    ...(config.cacheSidecarEnabled && {
+    ...(config.distributedCacheEnabled && {
       store: new GoCacheRateLimitStore(windowMs),
     }),
     ...(keyPrefix && {

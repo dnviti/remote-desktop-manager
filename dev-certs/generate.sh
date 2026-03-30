@@ -7,8 +7,6 @@
 # Structure:
 #   dev-certs/
 #     ca.pem / ca-key.pem         — shared CA (trusted by all services)
-#     gocache-cache/              — cache service gRPC mTLS (server + client)
-#     gocache-pubsub/             — pubsub service gRPC mTLS (server + client)
 #     tunnel/                     — tunnel mTLS server
 #     postgres/                   — PostgreSQL SSL
 #     guacenc/                    — guacenc sidecar HTTPS
@@ -81,39 +79,27 @@ EOF
   rm -f "$dir"/*.csr "$dir"/*.cnf
 }
 
-# 1. gocache-cache (gRPC mTLS — server + client)
-echo "=== gocache-cache mTLS ==="
-generate_server_cert "$CERT_DIR/gocache-cache" "gocache-cache" "DNS:gocache-cache, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id gocache-cache)" "clientAuth"
-generate_client_cert "$CERT_DIR/gocache-cache" "arsenale-server-cache" "$(service_spiffe_id server)"
-chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/gocache-cache"/*-key.pem
-
-# 2. gocache-pubsub (gRPC mTLS — server + client)
-echo "=== gocache-pubsub mTLS ==="
-generate_server_cert "$CERT_DIR/gocache-pubsub" "gocache-pubsub" "DNS:gocache-pubsub, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id gocache-pubsub)" "clientAuth"
-generate_client_cert "$CERT_DIR/gocache-pubsub" "arsenale-server-pubsub" "$(service_spiffe_id server)"
-chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/gocache-pubsub"/*-key.pem
-
-# 3. tunnel (mTLS server)
+# 1. tunnel (mTLS server)
 echo "=== Tunnel mTLS ==="
 generate_server_cert "$CERT_DIR/tunnel" "localhost" "DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id tunnel)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/tunnel/server-key.pem"
 
-# 4. PostgreSQL
+# 2. PostgreSQL
 echo "=== PostgreSQL SSL ==="
 generate_server_cert "$CERT_DIR/postgres" "postgres" "DNS:postgres, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id postgres)"
 chmod 600 "$CERT_DIR/postgres/server-key.pem"  # PostgreSQL requires strict perms
 
-# 5. guacenc sidecar
+# 3. guacenc sidecar
 echo "=== Guacenc HTTPS ==="
 generate_server_cert "$CERT_DIR/guacenc" "guacenc" "DNS:guacenc, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id guacenc)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacenc/server-key.pem"
 
-# 6. guacd (Guacamole Daemon — TLS listener)
+# 4. guacd (Guacamole Daemon — TLS listener)
 echo "=== guacd TLS ==="
 generate_server_cert "$CERT_DIR/guacd" "guacd" "DNS:guacd, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id guacd)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/guacd/server-key.pem"
 
-# 7. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
+# 5. SSH Gateway gRPC mTLS (server cert for the gateway + client cert for the Arsenale server)
 echo "=== SSH Gateway gRPC mTLS ==="
 generate_server_cert "$CERT_DIR/ssh-gateway" "ssh-gateway" "DNS:ssh-gateway, DNS:arsenale-ssh-gateway, DNS:dev-tunnel-ssh-gateway, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id ssh-gateway)" "clientAuth"
 openssl ecparam -genkey -name prime256v1 -out "$CERT_DIR/ssh-gateway/client-ca-key.pem" 2>/dev/null
@@ -126,24 +112,24 @@ generate_client_cert "$CERT_DIR/ssh-gateway" "arsenale-server" "$(service_spiffe
 chmod 600 "$CERT_DIR/ssh-gateway/client-ca-key.pem"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/ssh-gateway"/*-key.pem
 
-# 8. RD Gateway (MS-TSGU proxy)
+# 6. RD Gateway (MS-TSGU proxy)
 echo "=== RD Gateway HTTPS ==="
 generate_server_cert "$CERT_DIR/rdgw" "rdgw" "DNS:rdgw, DNS:arsenale-rdgw, DNS:localhost, IP:127.0.0.1" "$(service_spiffe_id rdgw)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/rdgw/server-key.pem"
 
-# 9. Development tunnel gateway client certificates
+# 7. Development tunnel gateway client certificates
 echo "=== Development tunnel gateway mTLS ==="
 generate_client_cert "$CERT_DIR/tunnel-managed-ssh" "dev-tunnel-managed-ssh" "$(gateway_spiffe_id 11111111-1111-4111-8111-111111111111)"
 generate_client_cert "$CERT_DIR/tunnel-guacd" "dev-tunnel-guacd" "$(gateway_spiffe_id 22222222-2222-4222-8222-222222222222)"
 generate_client_cert "$CERT_DIR/tunnel-db-proxy" "dev-tunnel-db-proxy" "$(gateway_spiffe_id 33333333-3333-4333-8333-333333333333)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/tunnel-managed-ssh/client-key.pem" "$CERT_DIR/tunnel-guacd/client-key.pem" "$CERT_DIR/tunnel-db-proxy/client-key.pem"
 
-# 10. Frontend HTTPS
+# 8. Frontend HTTPS
 echo "=== Frontend HTTPS ==="
 generate_server_cert "$CERT_DIR/client" "localhost" "DNS:arsenale-client, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id client)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/client/server-key.pem"
 
-# 11. Express + guacamole-lite
+# 9. Express + guacamole-lite
 echo "=== Dev Server HTTPS ==="
 generate_server_cert "$CERT_DIR/server" "arsenale-server" "DNS:arsenale-server, DNS:server, DNS:localhost, IP:127.0.0.1, IP:::1" "$(service_spiffe_id server)"
 chmod "$RUNTIME_KEY_MODE" "$CERT_DIR/server/server-key.pem"
@@ -153,8 +139,6 @@ rm -f "$CERT_DIR"/*.srl
 
 echo ""
 echo "=== All certificates generated (shared CA: $CERT_DIR/ca.pem) ==="
-echo "  gocache-cache:   $CERT_DIR/gocache-cache/"
-echo "  gocache-pubsub: $CERT_DIR/gocache-pubsub/"
 echo "  tunnel:      $CERT_DIR/tunnel/"
 echo "  PostgreSQL:  $CERT_DIR/postgres/"
 echo "  guacenc:     $CERT_DIR/guacenc/"

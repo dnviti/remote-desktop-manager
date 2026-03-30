@@ -39,7 +39,6 @@ WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY server/ ./server/
-COPY infrastructure/gocache/proto/cache.proto ./infrastructure/gocache/proto/cache.proto
 
 # Generate Prisma client
 RUN npx prisma generate --schema=server/prisma/schema.prisma
@@ -85,9 +84,6 @@ COPY --from=build /app/server/dist ./dist
 # Prisma schema + migrations (needed for prisma migrate deploy at runtime)
 COPY --from=build /app/server/prisma ./prisma
 COPY --from=build /app/server/prisma.config.ts ./prisma.config.ts
-
-# Cache proto for gRPC client
-COPY --from=build /app/infrastructure/gocache/proto/cache.proto ./dist/utils/cache.proto
 
 # CLI wrapper
 RUN printf '#!/bin/sh\nexec node /app/dist/cli.js "$@"\n' > /usr/local/bin/arsenale && \

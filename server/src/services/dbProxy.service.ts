@@ -4,9 +4,10 @@ import { getConnectionCredentials } from './connection.service';
 import * as sessionService from './session.service';
 import * as auditService from './audit.service';
 import * as dbQueryExecutor from './dbQueryExecutor.service';
+import * as goDbSession from './goDbSession.service';
 import { selectInstance } from './loadBalancer.service';
 import { getDefaultGateway } from './gateway.service';
-import { isTunnelConnected, createTcpProxy, closeTcpProxy } from './tunnel.service';
+import { ensureTunnelConnected, createTcpProxy, closeTcpProxy } from './tunnel.service';
 import { logger } from '../utils/logger';
 import type { DbSettings, DbSessionConfig } from '../types';
 import { config } from '../config';
@@ -20,6 +21,67 @@ export interface DbProxySessionResult {
   proxyPort: number;
   protocol: string;
   databaseName?: string;
+}
+
+function shouldUseGoDatabaseSessionRuntime(params: {
+  dbProtocol?: string;
+  sessionConfig?: DbSessionConfig;
+  usesOverrideCredentials?: boolean;
+}): boolean {
+  void params.sessionConfig;
+  return config.goQueryRunnerEnabled
+    && params.dbProtocol === 'postgresql'
+    && !params.usesOverrideCredentials
+    && goDbSession.usesDelegatableDatabaseSessionConfig();
+}
+
+function buildSessionMetadata(params: {
+  connHost: string;
+  connPort: number;
+  dbProtocol: string;
+  databaseName?: string;
+  username: string;
+  resolvedHost: string;
+  resolvedPort: number;
+  dbSettings: DbSettings;
+  sessionConfig?: DbSessionConfig;
+  usesOverrideCredentials: boolean;
+}): Record<string, unknown> {
+  const {
+    connHost,
+    connPort,
+    dbProtocol,
+    databaseName,
+    username,
+    resolvedHost,
+    resolvedPort,
+    dbSettings,
+    sessionConfig,
+    usesOverrideCredentials,
+  } = params;
+
+  return {
+    host: connHost,
+    port: connPort,
+    dbProtocol,
+    databaseName,
+    username,
+    resolvedHost,
+    resolvedPort,
+    usesOverrideCredentials,
+    ...(dbSettings.sslMode && { sslMode: dbSettings.sslMode }),
+    ...(dbSettings.oracleConnectionType && { oracleConnectionType: dbSettings.oracleConnectionType }),
+    ...(dbSettings.oracleSid && { oracleSid: dbSettings.oracleSid }),
+    ...(dbSettings.oracleServiceName && { oracleServiceName: dbSettings.oracleServiceName }),
+    ...(dbSettings.oracleRole && { oracleRole: dbSettings.oracleRole }),
+    ...(dbSettings.oracleTnsAlias && { oracleTnsAlias: dbSettings.oracleTnsAlias }),
+    ...(dbSettings.oracleTnsDescriptor && { oracleTnsDescriptor: dbSettings.oracleTnsDescriptor }),
+    ...(dbSettings.oracleConnectString && { oracleConnectString: dbSettings.oracleConnectString }),
+    ...(dbSettings.mssqlInstanceName && { mssqlInstanceName: dbSettings.mssqlInstanceName }),
+    ...(dbSettings.mssqlAuthMode && { mssqlAuthMode: dbSettings.mssqlAuthMode }),
+    ...(dbSettings.db2DatabaseAlias && { db2DatabaseAlias: dbSettings.db2DatabaseAlias }),
+    ...(sessionConfig && { sessionConfig }),
+  };
 }
 
 /**
@@ -55,7 +117,13 @@ export async function createDbProxySession(params: {
     const dbSettings = (conn.dbSettings as DbSettings | null) ?? { protocol: 'postgresql' };
     const dbProtocol = dbSettings.protocol ?? 'postgresql';
     const databaseName = dbSettings.databaseName;
-    const useDirectPostgresPath = config.goQueryRunnerEnabled && dbProtocol === 'postgresql';
+    const usesOverrideCredentials = Boolean(overrideUsername && overridePassword);
+    const useGoSessionRuntime = shouldUseGoDatabaseSessionRuntime({
+      dbProtocol,
+      sessionConfig,
+      usesOverrideCredentials,
+    });
+    const useDirectPostgresPath = useGoSessionRuntime;
 
     // Resolve gateway: explicit > tenant default > none
     const explicitGw = conn.gateway;
@@ -109,7 +177,7 @@ export async function createDbProxySession(params: {
         proxyHost = conn.host;
         proxyPort = conn.port;
       } else if (gateway.tunnelEnabled) {
-        if (!isTunnelConnected(gateway.id)) {
+        if (!await ensureTunnelConnected(gateway.id)) {
           throw new AppError('Gateway tunnel is disconnected — the gateway may be unreachable', 503);
         }
         const targetPort = proxyPort;
@@ -137,125 +205,125 @@ export async function createDbProxySession(params: {
     // Resolve credentials (password is verified but not stored in session metadata;
     // it is injected into the proxy container at the protocol level)
     let username: string;
-    let _password: string;
+    let password: string;
 
     if (overrideUsername && overridePassword) {
       username = overrideUsername;
-      _password = overridePassword;
+      password = overridePassword;
     } else {
       const creds = await getConnectionCredentials(userId, connectionId, tenantId);
       username = creds.username;
-      _password = creds.password;
+      password = creds.password;
     }
-    // Ensure credentials were resolved (validates vault access)
-    void _password;
-
-    // Close stale sessions for this user+connection
-    await sessionService.closeStaleSessionsForConnection(userId, connectionId, 'DATABASE');
-
-    // Create persistent session record
-    const sessionId = await sessionService.startSession({
-      userId,
-      connectionId,
-      gatewayId: gateway?.id,
-      instanceId: selectedInstanceId,
-      protocol: 'DATABASE',
-      ipAddress,
-      metadata: {
-        host: conn.host,
-        port: conn.port,
-        dbProtocol,
-        databaseName,
-        username,
-        resolvedHost: proxyHost,
-        resolvedPort: proxyPort,
-        usesOverrideCredentials: Boolean(overrideUsername && overridePassword),
-        ...(dbSettings.sslMode && { sslMode: dbSettings.sslMode }),
-        // Propagate DB-specific settings so pool creation can reconstruct DbSettings
-        ...(dbSettings.oracleConnectionType && { oracleConnectionType: dbSettings.oracleConnectionType }),
-        ...(dbSettings.oracleSid && { oracleSid: dbSettings.oracleSid }),
-        ...(dbSettings.oracleServiceName && { oracleServiceName: dbSettings.oracleServiceName }),
-        ...(dbSettings.oracleRole && { oracleRole: dbSettings.oracleRole }),
-        ...(dbSettings.oracleTnsAlias && { oracleTnsAlias: dbSettings.oracleTnsAlias }),
-        ...(dbSettings.oracleTnsDescriptor && { oracleTnsDescriptor: dbSettings.oracleTnsDescriptor }),
-        ...(dbSettings.oracleConnectString && { oracleConnectString: dbSettings.oracleConnectString }),
-        ...(dbSettings.mssqlInstanceName && { mssqlInstanceName: dbSettings.mssqlInstanceName }),
-        ...(dbSettings.mssqlAuthMode && { mssqlAuthMode: dbSettings.mssqlAuthMode }),
-        ...(dbSettings.db2DatabaseAlias && { db2DatabaseAlias: dbSettings.db2DatabaseAlias }),
-        ...(sessionConfig && { sessionConfig }),
-      },
-      routingDecision,
+    const sessionMetadata = buildSessionMetadata({
+      connHost: conn.host,
+      connPort: conn.port,
+      dbProtocol,
+      databaseName,
+      username,
+      resolvedHost: proxyHost,
+      resolvedPort: proxyPort,
+      dbSettings,
+      sessionConfig,
+      usesOverrideCredentials,
     });
 
-    // Eagerly test database connectivity so the client gets an immediate error
-    // instead of a false "connected" state when the target DB is unreachable.
-    try {
-      await dbQueryExecutor.testConnection({
-        sessionId,
-        connectionId,
+    let sessionId: string;
+
+    if (useGoSessionRuntime) {
+      const issued = await goDbSession.issueDatabaseSession({
         userId,
-        tenantId: tenantId ?? '',
-        metadata: {
-          host: conn.host,
-          port: conn.port,
-          dbProtocol,
-          databaseName,
+        connectionId,
+        gatewayId: gateway?.id,
+        instanceId: selectedInstanceId,
+        protocol: 'DATABASE',
+        ipAddress,
+        username,
+        proxyHost,
+        proxyPort,
+        databaseName,
+        sessionMetadata,
+        routingDecision,
+        target: {
+          protocol: 'postgresql',
+          host: proxyHost,
+          port: proxyPort,
+          database: sessionConfig?.activeDatabase || databaseName,
+          sslMode: dbSettings.sslMode,
           username,
-          resolvedHost: proxyHost,
-          resolvedPort: proxyPort,
-          ...(dbSettings.sslMode && { sslMode: dbSettings.sslMode }),
-          ...(dbSettings.oracleConnectionType && { oracleConnectionType: dbSettings.oracleConnectionType }),
-          ...(dbSettings.oracleSid && { oracleSid: dbSettings.oracleSid }),
-          ...(dbSettings.oracleServiceName && { oracleServiceName: dbSettings.oracleServiceName }),
-          ...(dbSettings.oracleRole && { oracleRole: dbSettings.oracleRole }),
-          ...(dbSettings.oracleTnsAlias && { oracleTnsAlias: dbSettings.oracleTnsAlias }),
-          ...(dbSettings.oracleTnsDescriptor && { oracleTnsDescriptor: dbSettings.oracleTnsDescriptor }),
-          ...(dbSettings.oracleConnectString && { oracleConnectString: dbSettings.oracleConnectString }),
-          ...(dbSettings.mssqlInstanceName && { mssqlInstanceName: dbSettings.mssqlInstanceName }),
-          ...(dbSettings.mssqlAuthMode && { mssqlAuthMode: dbSettings.mssqlAuthMode }),
-          ...(dbSettings.db2DatabaseAlias && { db2DatabaseAlias: dbSettings.db2DatabaseAlias }),
-          ...(sessionConfig && { sessionConfig }),
+          password,
+          sessionConfig,
         },
       });
-    } catch (err) {
-      await closeTcpProxy(tunnelProxyServer);
-      // Connectivity check failed — clean up the session record
-      await sessionService.endSession(sessionId, 'connectivity_check_failed');
-      const msg = err instanceof Error ? err.message : 'Unknown error';
-      log.warn(`DB connectivity check failed for session ${sessionId}: ${msg}`);
+      sessionId = issued.sessionId;
+      proxyHost = issued.proxyHost;
+      proxyPort = issued.proxyPort;
+    } else {
+      // Close stale sessions for this user+connection
+      await sessionService.closeStaleSessionsForConnection(userId, connectionId, 'DATABASE');
 
-      if (err instanceof AppError) throw err;
+      // Create persistent session record
+      sessionId = await sessionService.startSession({
+        userId,
+        connectionId,
+        gatewayId: gateway?.id,
+        instanceId: selectedInstanceId,
+        protocol: 'DATABASE',
+        ipAddress,
+        metadata: sessionMetadata,
+        routingDecision,
+      });
 
-      // Classify common driver errors into user-friendly responses
-      const lower = msg.toLowerCase();
-      if (lower.includes('econnrefused') || lower.includes('connection refused')) {
-        throw new AppError('Database unreachable — connection refused', 502);
+      // Eagerly test database connectivity so the client gets an immediate error
+      // instead of a false "connected" state when the target DB is unreachable.
+      try {
+        await dbQueryExecutor.testConnection({
+          sessionId,
+          connectionId,
+          userId,
+          tenantId: tenantId ?? '',
+          metadata: sessionMetadata,
+        });
+      } catch (err) {
+        await closeTcpProxy(tunnelProxyServer);
+        await sessionService.endSession(sessionId, 'connectivity_check_failed');
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        log.warn(`DB connectivity check failed for session ${sessionId}: ${msg}`);
+
+        if (err instanceof AppError) throw err;
+
+        const lower = msg.toLowerCase();
+        if (lower.includes('econnrefused') || lower.includes('connection refused')) {
+          throw new AppError('Database unreachable — connection refused', 502);
+        }
+        if (lower.includes('authentication') || lower.includes('password') || lower.includes('login failed') || lower.includes('access denied')) {
+          throw new AppError('Database authentication failed', 401);
+        }
+        if (lower.includes('timeout') || lower.includes('etimedout') || lower.includes('timed out')) {
+          throw new AppError('Database connection timed out', 504);
+        }
+        throw new AppError(`Failed to connect to database: ${msg}`, 502);
       }
-      if (lower.includes('authentication') || lower.includes('password') || lower.includes('login failed') || lower.includes('access denied')) {
-        throw new AppError('Database authentication failed', 401);
-      }
-      if (lower.includes('timeout') || lower.includes('etimedout') || lower.includes('timed out')) {
-        throw new AppError('Database connection timed out', 504);
-      }
-      throw new AppError(`Failed to connect to database: ${msg}`, 502);
     }
 
     log.info(`DB proxy session ${sessionId} created for connection ${connectionId} (${dbProtocol})`);
 
-    auditService.log({
-      userId,
-      action: 'SESSION_START',
-      targetType: 'Connection',
-      targetId: connectionId,
-      details: {
-        protocol: 'DATABASE',
-        dbProtocol,
-        databaseName,
-        sessionId,
-      },
-      ipAddress,
-      gatewayId: gateway?.id,
-    });
+    if (!useGoSessionRuntime) {
+      auditService.log({
+        userId,
+        action: 'SESSION_START',
+        targetType: 'Connection',
+        targetId: connectionId,
+        details: {
+          protocol: 'DATABASE',
+          dbProtocol,
+          databaseName,
+          sessionId,
+        },
+        ipAddress,
+        gatewayId: gateway?.id,
+      });
+    }
 
     return {
       sessionId,
@@ -287,7 +355,19 @@ export async function endDbProxySession(
     throw new AppError('Session already closed', 410);
   }
 
-  await dbQueryExecutor.destroyPool(sessionId);
-  await sessionService.endSession(sessionId, 'client_disconnect');
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  const sessionConfig = (metadata.sessionConfig as DbSessionConfig | undefined) ?? undefined;
+  const useGoSessionRuntime = shouldUseGoDatabaseSessionRuntime({
+    dbProtocol: typeof metadata.dbProtocol === 'string' ? metadata.dbProtocol : undefined,
+    sessionConfig,
+    usesOverrideCredentials: metadata.usesOverrideCredentials === true,
+  });
+
+  if (useGoSessionRuntime) {
+    await goDbSession.endDatabaseSession(sessionId, { userId, reason: 'client_disconnect' });
+  } else {
+    await dbQueryExecutor.destroyPool(sessionId);
+    await sessionService.endSession(sessionId, 'client_disconnect');
+  }
   log.info(`DB proxy session ${sessionId} ended`);
 }

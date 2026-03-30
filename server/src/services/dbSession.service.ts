@@ -10,6 +10,7 @@ import * as dbRateLimit from './dbRateLimit.service';
 import * as dbQueryExecutor from './dbQueryExecutor.service';
 import * as dbIntrospection from './dbIntrospection.service';
 import * as goQueryRunner from './goQueryRunner.service';
+import * as goDbSession from './goDbSession.service';
 import { config } from '../config';
 import { logger } from '../utils/logger';
 import type { DbSettings, DbSessionConfig, TenantRoleType } from '../types';
@@ -100,27 +101,16 @@ export interface DbTypeInfo {
   kind: string;
 }
 
-function usesDelegatableSessionConfig(sessionConfig?: DbSessionConfig): boolean {
-  return !sessionConfig
-    || (
-      !sessionConfig.timezone
-      && !sessionConfig.searchPath
-      && !sessionConfig.encoding
-      && (!sessionConfig.initCommands || sessionConfig.initCommands.length === 0)
-    );
-}
-
-function shouldUseGoReadOnlyRunner(params: {
-  queryType: string;
+function shouldUseGoExecuteRunner(params: {
   dbProtocol?: string;
   sessionConfig?: DbSessionConfig;
   usesOverrideCredentials?: boolean;
 }): boolean {
+  void params.sessionConfig;
   return config.goQueryRunnerEnabled
-    && params.queryType === 'SELECT'
     && params.dbProtocol === 'postgresql'
     && !params.usesOverrideCredentials
-    && usesDelegatableSessionConfig(params.sessionConfig);
+    && goDbSession.usesDelegatableDatabaseSessionConfig();
 }
 
 function shouldUseGoSchemaRunner(params: {
@@ -128,10 +118,11 @@ function shouldUseGoSchemaRunner(params: {
   sessionConfig?: DbSessionConfig;
   usesOverrideCredentials?: boolean;
 }): boolean {
+  void params.sessionConfig;
   return config.goQueryRunnerEnabled
     && params.dbProtocol === 'postgresql'
     && !params.usesOverrideCredentials
-    && usesDelegatableSessionConfig(params.sessionConfig);
+    && goDbSession.usesDelegatableDatabaseSessionConfig();
 }
 
 function shouldUseGoExplainRunner(params: {
@@ -139,10 +130,11 @@ function shouldUseGoExplainRunner(params: {
   sessionConfig?: DbSessionConfig;
   usesOverrideCredentials?: boolean;
 }): boolean {
+  void params.sessionConfig;
   return config.goQueryRunnerEnabled
     && params.dbProtocol === 'postgresql'
     && !params.usesOverrideCredentials
-    && usesDelegatableSessionConfig(params.sessionConfig);
+    && goDbSession.usesDelegatableDatabaseSessionConfig();
 }
 
 function shouldUseGoIntrospectionRunner(params: {
@@ -150,10 +142,11 @@ function shouldUseGoIntrospectionRunner(params: {
   sessionConfig?: DbSessionConfig;
   usesOverrideCredentials?: boolean;
 }): boolean {
+  void params.sessionConfig;
   return config.goQueryRunnerEnabled
     && params.dbProtocol === 'postgresql'
     && !params.usesOverrideCredentials
-    && usesDelegatableSessionConfig(params.sessionConfig);
+    && goDbSession.usesDelegatableDatabaseSessionConfig();
 }
 
 function resolveSessionTarget(metadata: Record<string, unknown>, fallbackHost: string, fallbackPort: number): { host: string; port: number } {
@@ -164,6 +157,31 @@ function resolveSessionTarget(metadata: Record<string, unknown>, fallbackHost: s
     ? metadata.resolvedPort
     : fallbackPort;
   return { host: resolvedHost, port: resolvedPort };
+}
+
+async function buildGoDatabaseTarget(params: {
+  userId: string;
+  tenantId: string;
+  connectionId: string;
+  sessionMetadata: Record<string, unknown>;
+  connectionHost: string;
+  connectionPort: number;
+  dbSettings?: DbSettings;
+  sessionConfig?: DbSessionConfig;
+}) {
+  const creds = await getConnectionCredentials(params.userId, params.connectionId, params.tenantId);
+  const target = resolveSessionTarget(params.sessionMetadata, params.connectionHost, params.connectionPort);
+  const effectiveSessionConfig = params.sessionConfig ?? (params.sessionMetadata.sessionConfig as DbSessionConfig | undefined);
+  return {
+    protocol: 'postgresql' as const,
+    host: target.host,
+    port: target.port,
+    database: effectiveSessionConfig?.activeDatabase || params.dbSettings?.databaseName,
+    sslMode: params.dbSettings?.sslMode,
+    username: creds.username,
+    password: creds.password,
+    sessionConfig: effectiveSessionConfig,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -248,6 +266,18 @@ export async function heartbeat(sessionId: string, userId: string): Promise<void
   if (session.status === 'CLOSED') {
     throw new AppError('Session already closed', 410);
   }
+
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  const sessionConfig = (metadata.sessionConfig as DbSessionConfig | undefined) ?? undefined;
+  if (shouldUseGoExecuteRunner({
+    dbProtocol: typeof metadata.dbProtocol === 'string' ? metadata.dbProtocol : undefined,
+    sessionConfig,
+    usesOverrideCredentials: metadata.usesOverrideCredentials === true,
+  })) {
+    await goDbSession.heartbeatDatabaseSession(sessionId, { userId });
+    return;
+  }
+
   await prisma.activeSession.update({
     where: { id: sessionId },
     data: { lastActivityAt: new Date() },
@@ -446,8 +476,7 @@ export async function executeQuery(params: {
 
   // --- Execute query against target database ---
   const dbProtocol = dbSettings?.protocol;
-  const useGoReadOnlyRunner = shouldUseGoReadOnlyRunner({
-    queryType,
+  const useGoExecuteRunner = shouldUseGoExecuteRunner({
     dbProtocol,
     sessionConfig,
     usesOverrideCredentials: sessionMetadata.usesOverrideCredentials === true,
@@ -456,21 +485,20 @@ export async function executeQuery(params: {
   let pool: Awaited<ReturnType<typeof dbQueryExecutor.getOrCreatePool>> | undefined;
   let rawResult: QueryResult;
 
-  if (useGoReadOnlyRunner) {
-    const creds = await getConnectionCredentials(userId, session.connectionId, tenantId);
-    const target = resolveSessionTarget(sessionMetadata, session.connection.host, session.connection.port);
-    rawResult = await goQueryRunner.executeReadOnlyQuery({
+  if (useGoExecuteRunner) {
+    rawResult = await goQueryRunner.executeQuery({
       sql,
       maxRows: config.dbQueryMaxRows,
-      target: {
-        protocol: 'postgresql',
-        host: target.host,
-        port: target.port,
-        database: databaseName,
-        sslMode: dbSettings?.sslMode,
-        username: creds.username,
-        password: creds.password,
-      },
+      target: await buildGoDatabaseTarget({
+        userId,
+        tenantId,
+        connectionId: session.connectionId,
+        sessionMetadata,
+        connectionHost: session.connection.host,
+        connectionPort: session.connection.port,
+        dbSettings,
+        sessionConfig,
+      }),
     });
   } else {
     pool = await dbQueryExecutor.getOrCreatePool({
@@ -494,7 +522,28 @@ export async function executeQuery(params: {
   // --- Best-effort execution plan capture (for audit log) ---
   let executionPlanJson: unknown = undefined;
   const unsupportedProtocols = new Set(['mongodb', 'db2']);
-  if (pool && !unsupportedProtocols.has(pool.protocol)) {
+  if (useGoExecuteRunner) {
+    try {
+      const explainResult = await goQueryRunner.explainQuery({
+        sql,
+        target: await buildGoDatabaseTarget({
+          userId,
+          tenantId,
+          connectionId: session.connectionId,
+          sessionMetadata,
+          connectionHost: session.connection.host,
+          connectionPort: session.connection.port,
+          dbSettings,
+          sessionConfig,
+        }),
+      });
+      if (explainResult.supported) {
+        executionPlanJson = explainResult;
+      }
+    } catch {
+      // Execution plan capture is best-effort; never fail the query
+    }
+  } else if (pool && !unsupportedProtocols.has(pool.protocol)) {
     try {
       const explainResult = await dbQueryExecutor.runExplain(pool, sql);
       if (explainResult.supported) {
@@ -592,20 +641,17 @@ export async function getSchema(userId: string, sessionId: string, tenantId: str
     sessionConfig,
     usesOverrideCredentials: sessionMetadata.usesOverrideCredentials === true,
   })) {
-    const creds = await getConnectionCredentials(userId, session.connectionId, tenantId);
-    const databaseName = sessionConfig?.activeDatabase || dbSettings?.databaseName;
-    const target = resolveSessionTarget(sessionMetadata, session.connection.host, session.connection.port);
-
     return await goQueryRunner.fetchSchema({
-      target: {
-        protocol: 'postgresql',
-        host: target.host,
-        port: target.port,
-        database: databaseName,
-        sslMode: dbSettings?.sslMode,
-        username: creds.username,
-        password: creds.password,
-      },
+      target: await buildGoDatabaseTarget({
+        userId,
+        tenantId,
+        connectionId: session.connectionId,
+        sessionMetadata,
+        connectionHost: session.connection.host,
+        connectionPort: session.connection.port,
+        dbSettings,
+        sessionConfig,
+      }),
     });
   }
 
@@ -697,19 +743,18 @@ export async function getExecutionPlan(params: {
     sessionConfig,
     usesOverrideCredentials: sessionMetadata.usesOverrideCredentials === true,
   })) {
-    const creds = await getConnectionCredentials(userId, session.connectionId, tenantId);
-    const target = resolveSessionTarget(sessionMetadata, session.connection.host, session.connection.port);
     result = await goQueryRunner.explainQuery({
       sql,
-      target: {
-        protocol: 'postgresql',
-        host: target.host,
-        port: target.port,
-        database: databaseName,
-        sslMode: dbSettings?.sslMode,
-        username: creds.username,
-        password: creds.password,
-      },
+      target: await buildGoDatabaseTarget({
+        userId,
+        tenantId,
+        connectionId: session.connectionId,
+        sessionMetadata,
+        connectionHost: session.connection.host,
+        connectionPort: session.connection.port,
+        dbSettings,
+        sessionConfig,
+      }),
     });
   } else {
     const pool = await dbQueryExecutor.getOrCreatePool({
@@ -781,21 +826,19 @@ export async function introspectDatabase(params: {
     sessionConfig,
     usesOverrideCredentials: sessionMetadata.usesOverrideCredentials === true,
   })) {
-    const creds = await getConnectionCredentials(userId, session.connectionId, tenantId);
-    const databaseName = sessionConfig?.activeDatabase || dbSettings?.databaseName;
-    const dbTarget = resolveSessionTarget(sessionMetadata, session.connection.host, session.connection.port);
     result = await goQueryRunner.introspectQuery({
       type,
       target: type === 'database_version' ? undefined : (target ?? ''),
-      db: {
-        protocol: 'postgresql',
-        host: dbTarget.host,
-        port: dbTarget.port,
-        database: databaseName,
-        sslMode: dbSettings?.sslMode,
-        username: creds.username,
-        password: creds.password,
-      },
+      db: await buildGoDatabaseTarget({
+        userId,
+        tenantId,
+        connectionId: session.connectionId,
+        sessionMetadata,
+        connectionHost: session.connection.host,
+        connectionPort: session.connection.port,
+        dbSettings,
+        sessionConfig,
+      }),
     });
   } else {
     const pool = await dbQueryExecutor.getOrCreatePool({
@@ -839,12 +882,12 @@ export async function updateSessionConfig(params: {
   sessionId: string;
   sessionConfig: DbSessionConfig;
   ipAddress?: string;
-}): Promise<{ applied: boolean; activeDatabase?: string }> {
+}): Promise<{ applied: boolean; activeDatabase?: string; sessionConfig?: DbSessionConfig }> {
   const { userId, tenantId, tenantRole, sessionId, sessionConfig, ipAddress } = params;
 
   const session = await prisma.activeSession.findUnique({
     where: { id: sessionId },
-    include: { connection: { select: { id: true, dbSettings: true } } },
+    include: { connection: { select: { id: true, host: true, port: true, dbSettings: true } } },
   });
   if (!session || session.userId !== userId) {
     throw new AppError('Session not found', 404);
@@ -874,11 +917,58 @@ export async function updateSessionConfig(params: {
     }
   }
 
+  const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  const dbProtocol = dbSettings?.protocol;
+  const useGoSessionRuntime = shouldUseGoExecuteRunner({
+    dbProtocol,
+    sessionConfig,
+    usesOverrideCredentials: metadata.usesOverrideCredentials === true,
+  });
+
+  if (useGoSessionRuntime) {
+    const nextTarget = await buildGoDatabaseTarget({
+      userId,
+      tenantId,
+      connectionId: session.connectionId,
+      sessionMetadata: metadata,
+      connectionHost: session.connection.host,
+      connectionPort: session.connection.port,
+      dbSettings,
+      sessionConfig,
+    });
+
+    const response = await goDbSession.updateDatabaseSessionConfig(sessionId, {
+      userId,
+      sessionConfig,
+      target: nextTarget,
+    });
+
+    auditService.log({
+      userId,
+      action: 'DB_SESSION_CONFIG_UPDATED',
+      targetType: 'DatabaseQuery',
+      targetId: session.connectionId,
+      details: {
+        sessionId,
+        protocol: 'postgresql',
+        configKeys: Object.keys(sessionConfig).filter((k) => (sessionConfig as Record<string, unknown>)[k] !== undefined),
+      },
+      ipAddress,
+    });
+
+    log.info(`Session config updated for session ${sessionId}`);
+
+    return {
+      applied: response.applied,
+      activeDatabase: response.activeDatabase,
+      sessionConfig: response.sessionConfig ?? sessionConfig,
+    };
+  }
+
   // Destroy existing pool
   await dbQueryExecutor.destroyPool(sessionId);
 
   // Merge sessionConfig into session metadata
-  const metadata = (session.metadata as Record<string, unknown>) ?? {};
   metadata.sessionConfig = sessionConfig;
 
   await prisma.activeSession.update({
@@ -917,6 +1007,7 @@ export async function updateSessionConfig(params: {
   return {
     applied: true,
     activeDatabase: pool.databaseName,
+    sessionConfig,
   };
 }
 
@@ -926,13 +1017,21 @@ export async function updateSessionConfig(params: {
 export async function getSessionConfig(userId: string, sessionId: string): Promise<DbSessionConfig> {
   const session = await prisma.activeSession.findUnique({
     where: { id: sessionId },
-    select: { userId: true, metadata: true },
+    select: { userId: true, metadata: true, connection: { select: { id: true, host: true, port: true, dbSettings: true } } },
   });
   if (!session || session.userId !== userId) {
     throw new AppError('Session not found', 404);
   }
 
   const metadata = (session.metadata as Record<string, unknown>) ?? {};
+  const dbSettings = (session.connection?.dbSettings as DbSettings | null) ?? undefined;
+  if (shouldUseGoExecuteRunner({
+    dbProtocol: dbSettings?.protocol,
+    sessionConfig: metadata.sessionConfig as DbSessionConfig | undefined,
+    usesOverrideCredentials: metadata.usesOverrideCredentials === true,
+  })) {
+    return await goDbSession.getDatabaseSessionConfig(sessionId, userId);
+  }
   return (metadata.sessionConfig as DbSessionConfig) ?? {};
 }
 

@@ -40,6 +40,21 @@ func main() {
 
 				app.WriteJSON(w, http.StatusOK, result)
 			})
+			mux.HandleFunc("POST /v1/query-runs:execute-any", func(w http.ResponseWriter, r *http.Request) {
+				var req contracts.QueryExecutionRequest
+				if err := app.ReadJSON(r, &req); err != nil {
+					app.ErrorJSON(w, http.StatusBadRequest, err.Error())
+					return
+				}
+
+				result, err := queryrunner.ExecuteQuery(r.Context(), db, req)
+				if err != nil {
+					app.ErrorJSON(w, http.StatusBadRequest, err.Error())
+					return
+				}
+
+				app.WriteJSON(w, http.StatusOK, result)
+			})
 			mux.HandleFunc("POST /v1/schema:fetch", func(w http.ResponseWriter, r *http.Request) {
 				var req contracts.SchemaFetchRequest
 				if err := app.ReadJSON(r, &req); err != nil {

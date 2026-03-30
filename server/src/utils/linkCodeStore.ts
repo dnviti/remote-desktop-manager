@@ -10,7 +10,7 @@ import { config } from '../config';
  * `code` (via Axios with Authorization header), then redirects to
  * the link endpoint with `?code=...` instead of `?token=...`.
  *
- * When the cache sidecar is available, codes are stored in the
+ * When a distributed cache backend is available, codes are stored in the
  * distributed cache with TTL-based expiry. Falls back to an
  * in-memory Map when the sidecar is unavailable.
  */
@@ -46,7 +46,7 @@ export async function generateLinkCode(userId: string): Promise<string> {
   const code = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + LINK_CODE_TTL_MS;
 
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const stored = await cache.set(
       `link:code:${code}`,
       JSON.stringify({ userId, expiresAt }),
@@ -63,7 +63,7 @@ export async function generateLinkCode(userId: string): Promise<string> {
 
 /** Consume a one-time link code, returning the userId or null if invalid/expired */
 export async function consumeLinkCode(code: string): Promise<string | null> {
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const buf = await cache.getdel(`link:code:${code}`);
     if (buf) {
       const entry: LinkCodeEntry = JSON.parse(buf.toString());
@@ -99,7 +99,7 @@ export async function generateRelayCode(userId: string): Promise<string> {
   const code = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + RELAY_STATE_TTL_MS;
 
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const stored = await cache.set(
       `relay:code:${code}`,
       JSON.stringify({ userId, expiresAt }),
@@ -118,7 +118,7 @@ export async function generateRelayCode(userId: string): Promise<string> {
 export async function consumeRelayCode(code: string): Promise<string | null> {
   if (typeof code !== 'string') return null;
 
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const buf = await cache.getdel(`relay:code:${code}`);
     if (buf) {
       const entry: LinkCodeEntry = JSON.parse(buf.toString());

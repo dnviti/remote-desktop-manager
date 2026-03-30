@@ -104,10 +104,7 @@ services:
       - /tmp
     environment:
       GUACENC_AUTH_TOKEN_FILE: /run/secrets/guacenc_auth_token
-      CACHE_PUBSUB_URL: "gocache-pubsub:6380"
-      CACHE_PUBSUB_TLS_CA: /certs/gocache-pubsub/ca.pem
-      CACHE_PUBSUB_TLS_CERT: /certs/gocache-pubsub/client-cert.pem
-      CACHE_PUBSUB_TLS_KEY: /certs/gocache-pubsub/client-key.pem
+      REDIS_URL: "redis://redis:6379/0"
       GUACENC_TLS_CERT: /certs/guacenc/server-cert.pem
       GUACENC_TLS_KEY: /certs/guacenc/server-key.pem
     secrets:
@@ -115,9 +112,6 @@ services:
     volumes:
       - arsenale_recordings:/recordings
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs:/certs:ro
-    depends_on:
-      gocache-pubsub:
-        condition: service_healthy
     restart: always
     cap_drop:
       - ALL
@@ -134,87 +128,27 @@ services:
       - net-cache
 
   # ---------------------------------------------------------------------------
-  # GoCache Cache — KV / TTL / locks / queues
+  # Redis — preferred distributed coordination backend
   # ---------------------------------------------------------------------------
-  gocache-cache:
-    build:
-      context: /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/gocache
-      dockerfile: Dockerfile
-    container_name: arsenale-gocache-cache
-    read_only: true
-    cpus: "1.0"
-    mem_limit: "512m"
+  redis:
+    image: quay.io/sclorg/redis-7-c9s
+    container_name: arsenale-redis
+    cpus: "0.5"
+    mem_limit: "256m"
     pids_limit: 256
     tmpfs:
       - /tmp
-    environment:
-      CACHE_ROLE: "cache"
-      SPIFFE_TRUST_DOMAIN: "arsenale.local"
-      CACHE_LISTEN: "tcp://0.0.0.0:6380"
-      CACHE_HEALTH_ADDR: "0.0.0.0:6381"
-      CACHE_DISCOVERY: "dns"
-      CACHE_DNS_NAME: "gocache-cache"
-      CACHE_PEER_SPIFFE_ID: "spiffe://arsenale.local/service/gocache-cache"
-      CACHE_CLIENT_SPIFFE_ID: "spiffe://arsenale.local/service/server"
-      CACHE_TLS_CA: /certs/ca.pem
-      CACHE_TLS_CERT: /certs/server-cert.pem
-      CACHE_TLS_KEY: /certs/server-key.pem
-    volumes:
-      - gocache_cache_data:/data
-      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/gocache-cache:/certs:ro
     restart: always
     cap_drop:
       - ALL
     security_opt:
       - no-new-privileges:true
     healthcheck:
-      test: ["CMD-SHELL", "curl --silent --show-error --fail --cacert /certs/ca.pem https://localhost:6381/health >/dev/null || exit 1"]
+      test: ["CMD-SHELL", "redis-cli -h 127.0.0.1 -p 6379 ping | grep -q PONG"]
       interval: 10s
-      timeout: 3s
-      retries: 3
+      timeout: 5s
+      retries: 5
       start_period: 5s
-    networks:
-      - net-cache
-
-  # ---------------------------------------------------------------------------
-  # GoCache PubSub — central service-to-service data wiring
-  # ---------------------------------------------------------------------------
-  gocache-pubsub:
-    build:
-      context: /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/gocache
-      dockerfile: Dockerfile
-    container_name: arsenale-gocache-pubsub
-    read_only: true
-    cpus: "1.0"
-    mem_limit: "512m"
-    pids_limit: 256
-    tmpfs:
-      - /tmp
-    environment:
-      CACHE_ROLE: "pubsub"
-      SPIFFE_TRUST_DOMAIN: "arsenale.local"
-      CACHE_LISTEN: "tcp://0.0.0.0:6380"
-      CACHE_HEALTH_ADDR: "0.0.0.0:6381"
-      CACHE_DISCOVERY: "dns"
-      CACHE_DNS_NAME: "gocache-pubsub"
-      CACHE_PEER_SPIFFE_ID: "spiffe://arsenale.local/service/gocache-pubsub"
-      CACHE_CLIENT_SPIFFE_ID: "spiffe://arsenale.local/service/server"
-      CACHE_TLS_CA: /certs/ca.pem
-      CACHE_TLS_CERT: /certs/server-cert.pem
-      CACHE_TLS_KEY: /certs/server-key.pem
-    restart: always
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    healthcheck:
-      test: ["CMD-SHELL", "curl --silent --show-error --fail --cacert /certs/ca.pem https://localhost:6381/health >/dev/null || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-      start_period: 5s
-    volumes:
-      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/gocache-pubsub:/certs:ro
     networks:
       - net-cache
 
@@ -228,6 +162,11 @@ services:
       args:
         SERVICE: control-plane-api
     container_name: arsenale-control-plane-api-go
+    entrypoint:
+      - /bin/sh
+      - -lc
+      - mkdir -p /guacd-drive /recordings && chmod 1777 /guacd-drive /recordings && exec /usr/local/bin/service
+    user: "0:0"
     read_only: true
     cpus: "0.5"
     mem_limit: "256m"
@@ -240,18 +179,48 @@ services:
       - no-new-privileges:true
     secrets:
       - database_url
+      - guacamole_secret
+      - guacenc_auth_token
+      - jwt_secret
+      - server_encryption_key
     environment:
       PORT: "8080"
       ARSENALE_VERSION: "latest"
+      HIBP_FAIL_OPEN: "true"
+      DRIVE_BASE_PATH: "/guacd-drive"
+      FILE_UPLOAD_MAX_SIZE: "10485760"
+      USER_DRIVE_QUOTA: "104857600"
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
+      REDIS_URL: "redis://redis:6379/0"
+      RECORDING_PATH: "/recordings"
+      GUACAMOLE_SECRET_FILE: /run/secrets/guacamole_secret
+      GUACENC_AUTH_TOKEN_FILE: /run/secrets/guacenc_auth_token
+      GUACENC_SERVICE_URL: "https://guacenc:3003"
+      GUACENC_USE_TLS: "true"
+      GUACENC_TLS_CA: /certs/guacenc/ca.pem
+      GUACENC_TIMEOUT_MS: "120000"
+      GUACENC_RECORDING_PATH: "/recordings"
+      ASCIICAST_CONVERTER_URL: "https://guacenc:3003"
+      JWT_SECRET_FILE: /run/secrets/jwt_secret
+      SERVER_ENCRYPTION_KEY_FILE: /run/secrets/server_encryption_key
+      LEGACY_NODE_API_URL: "https://server:3001"
+      LEGACY_NODE_API_CA_CERT: /certs/ca.pem
     ports:
       - "127.0.0.1:18080:8080"
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      server:
+        condition: service_healthy
     volumes:
+      - arsenale_drive:/guacd-drive
+      - arsenale_recordings:/recordings
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/postgres:/certs/postgres:ro
+      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/ca.pem:/certs/ca.pem:ro
+      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/guacenc:/certs/guacenc:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8080/healthz >/dev/null || exit 1"]
       interval: 10s
@@ -262,6 +231,9 @@ services:
     networks:
       - net-edge
       - net-db
+      - net-cache
+      - net-guacd
+      - net-gateway
 
   control-plane-controller-go:
     build:
@@ -429,6 +401,55 @@ services:
     networks:
       - net-edge
       - net-db
+
+  tunnel-broker-go:
+    build:
+      context: /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: tunnel-broker
+    image: ghcr.io/dnviti/arsenale/tunnel-broker-go:latest
+    container_name: arsenale-tunnel-broker-go
+    read_only: true
+    cpus: "0.5"
+    mem_limit: "256m"
+    pids_limit: 128
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    secrets:
+      - database_url
+      - server_encryption_key
+    environment:
+      PORT: "8092"
+      ARSENALE_VERSION: "latest"
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
+      SERVER_ENCRYPTION_KEY_FILE: /run/secrets/server_encryption_key
+      SPIFFE_TRUST_DOMAIN: "arsenale.local"
+      TUNNEL_TCP_PROXY_BIND_HOST: "0.0.0.0"
+      TUNNEL_TCP_PROXY_ADVERTISE_HOST: "tunnel-broker-go"
+    ports:
+      - "127.0.0.1:18092:8092"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/postgres:/certs/postgres:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8092/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: always
+    networks:
+      - net-edge
+      - net-db
+      - net-gateway
 
   tool-gateway-go:
     build:
@@ -750,6 +771,7 @@ services:
       - ai_api_key
     environment:
       NODE_ENV: "development"
+      HIBP_FAIL_OPEN: "true"
       SPIFFE_TRUST_DOMAIN: "arsenale.local"
       NODE_EXTRA_CA_CERTS: /certs/ca.pem
       CLI_ENABLED: "true"
@@ -766,6 +788,7 @@ services:
       DATABASE_URL: ""
       CLIENT_URL: "https://localhost:3000"
       TRUST_PROXY: "1"
+      RATE_LIMIT_WHITELIST_CIDRS: "127.0.0.1/32,::1/128"
       COOKIE_SECURE: "true"
       GUACD_HOST: guacd
       GUACD_PORT: "4822"
@@ -774,15 +797,7 @@ services:
       GUACENC_SERVICE_URL: "https://guacenc:3003"
       GUACENC_USE_TLS: "true"
       GUACENC_TLS_CA: /certs/guacenc/ca.pem
-      CACHE_SIDECAR_ENABLED: "true"
-      CACHE_KV_URL: "gocache-cache:6380"
-      CACHE_KV_TLS_CA: /certs/gocache-cache/ca.pem
-      CACHE_KV_TLS_CERT: /certs/gocache-cache/client-cert.pem
-      CACHE_KV_TLS_KEY: /certs/gocache-cache/client-key.pem
-      CACHE_PUBSUB_URL: "gocache-pubsub:6380"
-      CACHE_PUBSUB_TLS_CA: /certs/gocache-pubsub/ca.pem
-      CACHE_PUBSUB_TLS_CERT: /certs/gocache-pubsub/client-cert.pem
-      CACHE_PUBSUB_TLS_KEY: /certs/gocache-pubsub/client-key.pem
+      REDIS_URL: "redis://redis:6379/0"
       SERVER_TLS_CERT: /certs/server/server-cert.pem
       SERVER_TLS_KEY: /certs/server/server-key.pem
       TUNNEL_SERVER_CERT: /certs/server/server-cert.pem
@@ -792,13 +807,18 @@ services:
       RECORDING_ENABLED: "false"
       RECORDING_PATH: /recordings
       ALLOW_LOCAL_NETWORK: "true"
+      LATERAL_MOVEMENT_DETECTION_ENABLED: "false"
       SELF_SIGNUP_ENABLED: "false"
       EMAIL_PROVIDER: "smtp"
       GATEWAY_GRPC_TLS_CA: /certs/ca.pem
       GATEWAY_GRPC_TLS_CERT: /certs/ssh-gateway/client-cert.pem
       GATEWAY_GRPC_TLS_KEY: /certs/ssh-gateway/client-key.pem
       GO_QUERY_RUNNER_ENABLED: "true"
+      GO_CONTROL_PLANE_API_URL: "http://control-plane-api-go:8080"
       GO_QUERY_RUNNER_URL: "http://query-runner-go:8093"
+      GO_TUNNEL_BROKER_ENABLED: "true"
+      GO_TUNNEL_BROKER_URL: "http://tunnel-broker-go:8092"
+      TUNNEL_SERVER_URL: "ws://tunnel-broker-go:8092/api/tunnel/connect"
       GO_DESKTOP_BROKER_ENABLED: "true"
       INTERNAL_SERVER_HOST: "server"
       TUNNEL_TCP_PROXY_BIND_HOST: "0.0.0.0"
@@ -811,8 +831,6 @@ services:
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/tunnel-guacd:/certs/tunnel-guacd:ro
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/tunnel-db-proxy:/certs/tunnel-db-proxy:ro
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/server:/certs/server:ro
-      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/gocache-cache:/certs/gocache-cache:ro
-      - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/gocache-pubsub:/certs/gocache-pubsub:ro
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/guacenc:/certs/guacenc:ro
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/ssh-gateway:/certs/ssh-gateway:ro
     healthcheck:
@@ -824,13 +842,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
       guacd:
         condition: service_healthy
-      gocache-cache:
-        condition: service_healthy
-      gocache-pubsub:
-        condition: service_healthy
       desktop-broker-go:
+        condition: service_healthy
+      tunnel-broker-go:
         condition: service_healthy
     restart: always
     networks:
@@ -873,6 +891,8 @@ services:
       retries: 3
       start_period: 5s
     depends_on:
+      control-plane-api-go:
+        condition: service_healthy
       server:
         condition: service_healthy
       desktop-broker-go:
@@ -941,7 +961,7 @@ services:
       - no-new-privileges:true
     environment:
       SPIFFE_TRUST_DOMAIN: "arsenale.local"
-      TUNNEL_SERVER_URL: "wss://server:3011/api/tunnel/connect"
+      TUNNEL_SERVER_URL: "ws://tunnel-broker-go:8092/api/tunnel/connect"
       TUNNEL_TOKEN: "${DEV_TUNNEL_MANAGED_SSH_TOKEN}"
       TUNNEL_GATEWAY_ID: "${DEV_TUNNEL_MANAGED_SSH_GATEWAY_ID}"
       TUNNEL_LOCAL_HOST: "127.0.0.1"
@@ -959,7 +979,7 @@ services:
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/ssh-gateway:/certs:ro
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/tunnel-managed-ssh:/tunnel-certs:ro
     depends_on:
-      server:
+      tunnel-broker-go:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "nc -z localhost 2222 || exit 1"]
@@ -986,7 +1006,7 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      TUNNEL_SERVER_URL: "wss://server:3011/api/tunnel/connect"
+      TUNNEL_SERVER_URL: "ws://tunnel-broker-go:8092/api/tunnel/connect"
       TUNNEL_TOKEN: "${DEV_TUNNEL_GUACD_TOKEN}"
       TUNNEL_GATEWAY_ID: "${DEV_TUNNEL_GUACD_GATEWAY_ID}"
       TUNNEL_LOCAL_HOST: "127.0.0.1"
@@ -997,7 +1017,7 @@ services:
     volumes:
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/tunnel-guacd:/tunnel-certs:ro
     depends_on:
-      server:
+      tunnel-broker-go:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const net=require('net');const socket=net.connect({host:'127.0.0.1',port:4822});socket.on('connect',()=>{socket.end();process.exit(0);});socket.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000);\""]
@@ -1026,7 +1046,7 @@ services:
       - no-new-privileges:true
     environment:
       DB_LISTEN_PORT: "5432"
-      TUNNEL_SERVER_URL: "wss://server:3011/api/tunnel/connect"
+      TUNNEL_SERVER_URL: "ws://tunnel-broker-go:8092/api/tunnel/connect"
       TUNNEL_TOKEN: "${DEV_TUNNEL_DB_PROXY_TOKEN}"
       TUNNEL_GATEWAY_ID: "${DEV_TUNNEL_DB_PROXY_GATEWAY_ID}"
       TUNNEL_LOCAL_HOST: "127.0.0.1"
@@ -1037,7 +1057,7 @@ services:
     volumes:
       - /home/daniele/Documents/Repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/tunnel-db-proxy:/tunnel-certs:ro
     depends_on:
-      server:
+      tunnel-broker-go:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "node -e \"const net=require('net');const socket=net.connect({host:'127.0.0.1',port:5432});socket.on('connect',()=>{socket.end();process.exit(0);});socket.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000);\""]
@@ -1098,7 +1118,6 @@ secrets:
 # Volumes — Persistent data storage
 # =============================================================================
 volumes:
-  gocache_cache_data:
   pgdata:
   arsenale_drive:
   arsenale_recordings:

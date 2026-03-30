@@ -32,7 +32,7 @@ import * as sessionService from './session.service';
 import * as abacService from './abac.service';
 import { getMasterKey } from './crypto.service';
 import { getConnectionCredentials } from './connection.service';
-import { isTunnelConnected, openStream } from './tunnel.service';
+import { ensureTunnelConnected, openStream } from './tunnel.service';
 import { AppError } from '../middleware/error.middleware';
 
 const log = logger.child('ssh-proxy');
@@ -363,7 +363,7 @@ export async function handleProxyConnection(
   let targetStream: Duplex | net.Socket;
 
   try {
-    if (connection.gatewayId && isTunnelConnected(connection.gatewayId)) {
+    if (connection.gatewayId && await ensureTunnelConnected(connection.gatewayId)) {
       // Route through zero-trust tunnel
       targetStream = await openStream(
         connection.gatewayId,

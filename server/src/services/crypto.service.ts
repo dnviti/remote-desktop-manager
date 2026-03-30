@@ -254,7 +254,7 @@ export function storeVaultSession(userId: string, masterKey: Buffer, ttlMinutes?
     ttlMs,
   });
   // Cache (async, fire-and-forget)
-  if (config.cacheSidecarEnabled && effective !== 0) {
+  if (config.distributedCacheEnabled && effective !== 0) {
     const ttlMs = effective * 60 * 1000;
     const encrypted = encrypt(masterKey.toString('hex'), config.serverEncryptionKey);
     cache.set(`vault:user:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
@@ -275,7 +275,7 @@ export async function getVaultSession(userId: string): Promise<VaultSession | nu
       if (local.expiresAt !== Infinity && local.ttlMs > 0) {
         local.expiresAt = Date.now() + local.ttlMs;
         // Refresh cache TTL (fire-and-forget)
-        if (config.cacheSidecarEnabled) {
+        if (config.distributedCacheEnabled) {
           const encrypted = encrypt(local.masterKey.toString('hex'), config.serverEncryptionKey);
           cache.set(`vault:user:${userId}`, JSON.stringify(encrypted), { ttl: local.ttlMs }).catch(() => {});
         }
@@ -285,7 +285,7 @@ export async function getVaultSession(userId: string): Promise<VaultSession | nu
   }
 
   // Cache fallback (cross-instance)
-  if (!config.cacheSidecarEnabled) return null;
+  if (!config.distributedCacheEnabled) return null;
   const buf = await cache.get(`vault:user:${userId}`);
   if (!buf) return null;
   try {
@@ -324,10 +324,11 @@ export function lockVault(userId: string): void {
   lockUserTeamVaults(userId);
   lockUserTenantVaults(userId);
   // Async cache cleanup (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.del(`vault:user:${userId}`).catch(() => {});
     cache.del(`vault:recovery:${userId}`).catch(() => {});
-    // Publish vault lock event
+  }
+  if (config.distributedPubSubEnabled) {
     cache.publish('vault:status', JSON.stringify({ userId, unlocked: false })).catch(() => {});
   }
 }
@@ -345,8 +346,10 @@ export function softLockVault(userId: string): void {
   lockUserTeamVaults(userId);
   lockUserTenantVaults(userId);
   // Async cache cleanup (fire-and-forget) — keep recovery entry
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.del(`vault:user:${userId}`).catch(() => {});
+  }
+  if (config.distributedPubSubEnabled) {
     cache.publish('vault:status', JSON.stringify({ userId, unlocked: false })).catch(() => {});
   }
 }
@@ -365,7 +368,7 @@ export function storeVaultRecovery(userId: string, masterKey: Buffer): void {
     expiresAt: Date.now() + config.vaultRecoveryTtlMs,
   });
   // Cache (async, fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.set(
       `vault:recovery:${userId}`,
       JSON.stringify(encryptedKey),
@@ -388,7 +391,7 @@ export async function getVaultRecovery(userId: string): Promise<Buffer | null> {
     }
   }
   // Cache fallback (cross-instance)
-  if (!config.cacheSidecarEnabled) return null;
+  if (!config.distributedCacheEnabled) return null;
   const buf = await cache.get(`vault:recovery:${userId}`);
   if (!buf) return null;
   try {
@@ -417,14 +420,14 @@ export async function hasVaultRecovery(userId: string): Promise<boolean> {
     }
   }
   // Cache fallback
-  if (!config.cacheSidecarEnabled) return false;
+  if (!config.distributedCacheEnabled) return false;
   const buf = await cache.get(`vault:recovery:${userId}`);
   return buf !== null;
 }
 
 export function clearVaultRecovery(userId: string): void {
   vaultRecoveryStore.delete(userId);
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.del(`vault:recovery:${userId}`).catch(() => {});
   }
 }
@@ -454,7 +457,7 @@ export function storeTeamVaultSession(teamId: string, userId: string, teamKey: B
     ttlMs,
   });
   // Cache (async, fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const encrypted = encrypt(teamKey.toString('hex'), config.serverEncryptionKey);
     cache.set(`vault:team:${teamId}:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
     // Update indexes for prefix-based cleanup
@@ -475,7 +478,7 @@ export async function getTeamMasterKey(teamId: string, userId: string): Promise<
     } else {
       // Sliding window: use stored ttlMs instead of config default
       session.expiresAt = Date.now() + session.ttlMs;
-      if (config.cacheSidecarEnabled) {
+      if (config.distributedCacheEnabled) {
         const encrypted = encrypt(session.teamKey.toString('hex'), config.serverEncryptionKey);
         cache.set(`vault:team:${teamId}:${userId}`, JSON.stringify(encrypted), { ttl: session.ttlMs }).catch(() => {});
       }
@@ -483,7 +486,7 @@ export async function getTeamMasterKey(teamId: string, userId: string): Promise<
     }
   }
   // Cache fallback (cross-instance)
-  if (!config.cacheSidecarEnabled) return null;
+  if (!config.distributedCacheEnabled) return null;
   const buf = await cache.get(`vault:team:${teamId}:${userId}`);
   if (!buf) return null;
   try {
@@ -510,7 +513,7 @@ export function lockTeamVault(teamId: string): void {
     }
   }
   // Async cache cleanup via index (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.get(`vault:team-idx:${teamId}`).then(async (buf) => {
       if (!buf) return;
       const userIds: string[] = JSON.parse(buf.toString());
@@ -532,7 +535,7 @@ export function lockUserTeamVaults(userId: string): void {
     }
   }
   // Async cache cleanup via reverse index (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.get(`vault:user-teams:${userId}`).then(async (buf) => {
       if (!buf) return;
       const teamIds: string[] = JSON.parse(buf.toString());
@@ -570,7 +573,7 @@ export function storeTenantVaultSession(tenantId: string, userId: string, tenant
     ttlMs,
   });
   // Cache (async, fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const encrypted = encrypt(tenantKey.toString('hex'), config.serverEncryptionKey);
     cache.set(`vault:tenant:${tenantId}:${userId}`, JSON.stringify(encrypted), { ttl: ttlMs }).catch(() => {});
     // Update indexes for prefix-based cleanup
@@ -591,7 +594,7 @@ export async function getTenantMasterKey(tenantId: string, userId: string): Prom
     } else {
       // Sliding window: use stored ttlMs instead of config default
       session.expiresAt = Date.now() + session.ttlMs;
-      if (config.cacheSidecarEnabled) {
+      if (config.distributedCacheEnabled) {
         const encrypted = encrypt(session.tenantKey.toString('hex'), config.serverEncryptionKey);
         cache.set(`vault:tenant:${tenantId}:${userId}`, JSON.stringify(encrypted), { ttl: session.ttlMs }).catch(() => {});
       }
@@ -599,7 +602,7 @@ export async function getTenantMasterKey(tenantId: string, userId: string): Prom
     }
   }
   // Cache fallback (cross-instance)
-  if (!config.cacheSidecarEnabled) return null;
+  if (!config.distributedCacheEnabled) return null;
   const buf = await cache.get(`vault:tenant:${tenantId}:${userId}`);
   if (!buf) return null;
   try {
@@ -626,7 +629,7 @@ export function lockTenantVault(tenantId: string): void {
     }
   }
   // Async cache cleanup via index (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.get(`vault:tenant-idx:${tenantId}`).then(async (buf) => {
       if (!buf) return;
       const userIds: string[] = JSON.parse(buf.toString());
@@ -648,7 +651,7 @@ export function lockUserTenantVaults(userId: string): void {
     }
   }
   // Async cache cleanup via reverse index (fire-and-forget)
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     cache.get(`vault:user-tenants:${userId}`).then(async (buf) => {
       if (!buf) return;
       const tenantIds: string[] = JSON.parse(buf.toString());

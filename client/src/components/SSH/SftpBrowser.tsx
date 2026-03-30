@@ -18,8 +18,7 @@ import {
   NavigateNext as NavNextIcon,
   Home as HomeIcon,
 } from '@mui/icons-material';
-import type { Socket } from 'socket.io-client';
-import { useSftpTransfers } from '../../hooks/useSftpTransfers';
+import { useSftpTransfers, type SftpSocket } from '../../hooks/useSftpTransfers';
 import SftpTransferQueue from './SftpTransferQueue';
 
 interface SftpEntry {
@@ -49,7 +48,7 @@ function formatDate(iso: string): string {
 interface SftpBrowserProps {
   open: boolean;
   onClose: () => void;
-  socket: Socket | null;
+  socket: SftpSocket | null;
   disableDownload?: boolean;
   disableUpload?: boolean;
 }

@@ -1,67 +1,35 @@
-import { useEffect, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+import { useEffect } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { useGatewayStore } from '../store/gatewayStore';
-import type {
-  GatewayHealthEvent,
-  GatewayData,
-  ManagedInstanceData,
-  ScalingStatusData,
-} from '../api/gateway.api';
-
-interface InstancesUpdatedEvent {
-  gatewayId: string;
-  instances: ManagedInstanceData[];
-}
-
-interface ScalingUpdatedEvent {
-  gatewayId: string;
-  scalingStatus: ScalingStatusData;
-}
-
-interface GatewayUpdatedEvent {
-  gatewayId: string;
-  gateway: Partial<GatewayData>;
-}
 
 export function useGatewayMonitor() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const tenantId = useAuthStore((s) => s.user?.tenantId);
-  const applyHealthUpdate = useGatewayStore((s) => s.applyHealthUpdate);
-  const applyInstancesUpdate = useGatewayStore((s) => s.applyInstancesUpdate);
-  const applyScalingUpdate = useGatewayStore((s) => s.applyScalingUpdate);
-  const applyGatewayUpdate = useGatewayStore((s) => s.applyGatewayUpdate);
-  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    if (!accessToken || !tenantId) return;
+    if (!accessToken || !tenantId) return undefined;
 
-    const socket = io('/gateway-monitor', {
-      auth: { token: accessToken },
-      transports: ['websocket'],
-    });
+    const refresh = () => {
+      const state = useGatewayStore.getState();
+      void state.fetchGateways();
+      void state.fetchSessionCount();
+      void state.fetchSessionCountByGateway();
+      void state.fetchTunnelOverview();
 
-    socket.on('gateway:health', (event: GatewayHealthEvent) => {
-      applyHealthUpdate(event);
-    });
+      for (const gatewayId of Object.keys(state.instances)) {
+        void state.fetchInstances(gatewayId);
+      }
 
-    socket.on('instances:updated', (event: InstancesUpdatedEvent) => {
-      applyInstancesUpdate(event.gatewayId, event.instances);
-    });
+      for (const gatewayId of Object.keys(state.scalingStatus)) {
+        void state.fetchScalingStatus(gatewayId);
+      }
+    };
 
-    socket.on('scaling:updated', (event: ScalingUpdatedEvent) => {
-      applyScalingUpdate(event.gatewayId, event.scalingStatus);
-    });
-
-    socket.on('gateway:updated', (event: GatewayUpdatedEvent) => {
-      applyGatewayUpdate(event.gatewayId, event.gateway);
-    });
-
-    socketRef.current = socket;
+    refresh();
+    const interval = window.setInterval(refresh, 10_000);
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      window.clearInterval(interval);
     };
-  }, [accessToken, tenantId, applyHealthUpdate, applyInstancesUpdate, applyScalingUpdate, applyGatewayUpdate]);
+  }, [accessToken, tenantId]);
 }

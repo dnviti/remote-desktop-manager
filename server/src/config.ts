@@ -188,8 +188,11 @@ export const config = {
   dbQueryTimeoutMs: parseInt(process.env.DB_QUERY_TIMEOUT_MS || '30000', 10),
   dbQueryMaxRows: parseInt(process.env.DB_QUERY_MAX_ROWS || '10000', 10),
   goQueryRunnerEnabled: process.env.GO_QUERY_RUNNER_ENABLED === 'true',
+  goControlPlaneApiUrl: process.env.GO_CONTROL_PLANE_API_URL || 'http://control-plane-api-go:8080',
   goQueryRunnerUrl: process.env.GO_QUERY_RUNNER_URL || 'http://query-runner-go:8093',
   goTerminalBrokerUrl: process.env.GO_TERMINAL_BROKER_URL || process.env.TERMINAL_BROKER_URL || 'http://terminal-broker-go:8090',
+  goTunnelBrokerEnabled: process.env.GO_TUNNEL_BROKER_ENABLED === 'true',
+  goTunnelBrokerUrl: process.env.GO_TUNNEL_BROKER_URL || 'http://tunnel-broker-go:8092',
   goDesktopBrokerEnabled: process.env.GO_DESKTOP_BROKER_ENABLED === 'true',
   internalServerHost: process.env.INTERNAL_SERVER_HOST || 'server',
   tunnelTcpProxyBindHost: process.env.TUNNEL_TCP_PROXY_BIND_HOST || '127.0.0.1',
@@ -346,19 +349,14 @@ export const config = {
     queryGenerationModel: process.env.AI_QUERY_GENERATION_MODEL || '',
     maxRequestsPerDay: parseInt(process.env.AI_MAX_REQUESTS_PER_DAY || '100', 10),
   },
-  // Cache sidecar (gocache)
-  cacheSidecarEnabled: process.env.CACHE_SIDECAR_ENABLED !== 'false',
-  cacheProtoPath: process.env.CACHE_PROTO_PATH || '',
-  cacheKvUrl: process.env.CACHE_KV_URL || process.env.CACHE_SIDECAR_URL || 'localhost:6380',
-  cachePubSubUrl: process.env.CACHE_PUBSUB_URL || process.env.CACHE_SIDECAR_URL || 'localhost:6480',
-  // Cache service mTLS — paths to PEM files for gRPC channel encryption
-  cacheKvTlsCa: process.env.CACHE_KV_TLS_CA || process.env.CACHE_SIDECAR_TLS_CA || '',
-  cacheKvTlsCert: process.env.CACHE_KV_TLS_CERT || process.env.CACHE_SIDECAR_TLS_CERT || '',
-  cacheKvTlsKey: process.env.CACHE_KV_TLS_KEY || process.env.CACHE_SIDECAR_TLS_KEY || '',
-  // PubSub service mTLS — paths to PEM files for gRPC channel encryption
-  cachePubSubTlsCa: process.env.CACHE_PUBSUB_TLS_CA || process.env.CACHE_SIDECAR_TLS_CA || '',
-  cachePubSubTlsCert: process.env.CACHE_PUBSUB_TLS_CERT || process.env.CACHE_SIDECAR_TLS_CERT || '',
-  cachePubSubTlsKey: process.env.CACHE_PUBSUB_TLS_KEY || process.env.CACHE_SIDECAR_TLS_KEY || '',
+  // Redis coordination backend
+  redisUrl: process.env.REDIS_URL || '',
+  redisTlsEnabled: process.env.REDIS_TLS_ENABLED === 'true',
+  redisTlsCa: process.env.REDIS_TLS_CA || '',
+  redisTlsCert: process.env.REDIS_TLS_CERT || '',
+  redisTlsKey: process.env.REDIS_TLS_KEY || '',
+  distributedCacheEnabled: !!process.env.REDIS_URL,
+  distributedPubSubEnabled: !!process.env.REDIS_URL,
 };
 
 // Runtime setter for auto-managed system secrets (populated from DB after startup)

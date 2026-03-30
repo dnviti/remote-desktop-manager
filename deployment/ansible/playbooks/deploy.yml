@@ -137,6 +137,56 @@
       until: go_service_checks.status == 200
       when: _is_dev | bool and _state == 'present'
 
+    - name: Verify Go setup status endpoints in development
+      shell: |
+        set -euo pipefail
+        curl --silent --show-error --fail https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api/setup/status \
+          --cacert {{ arsenale_cert_dir }}/client/ca.pem \
+          | jq -e '.required == false' >/dev/null
+        curl --silent --show-error https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api/setup/db-status \
+          --cacert {{ arsenale_cert_dir }}/client/ca.pem \
+          | tee /tmp/arsenale-setup-db-status.json \
+          | jq -e '.error == "Setup has already been completed"' >/dev/null
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: setup_status_check
+      until: setup_status_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify Go auth public config endpoint in development
+      shell: |
+        set -euo pipefail
+        curl --silent --show-error --fail https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api/auth/config \
+          --cacert {{ arsenale_cert_dir }}/client/ca.pem \
+          | jq -e '.selfSignupEnabled == false and .features.databaseProxyEnabled == true and .features.connectionsEnabled == true and .features.keychainEnabled == true' >/dev/null
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: auth_config_check
+      until: auth_config_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify Go authenticated user profile endpoint in development
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec arsenale-redis sh -lc 'keys=$(redis-cli --scan --pattern "rl:*"); if [ -n "$keys" ]; then redis-cli DEL $keys >/dev/null; fi'
+        {{ container_runtime | default('podman') }} exec arsenale-postgres sh -lc "printf '%s\n' \"UPDATE \\\"User\\\" SET \\\"failedLoginAttempts\\\" = 0, \\\"lockedUntil\\\" = NULL WHERE email = '{{ arsenale_dev_bootstrap_admin_email }}';\" | PGPASSWORD='{{ vault_postgres_password }}' psql -U '{{ arsenale_db_user }}' -d '{{ arsenale_db_name }}' >/dev/null"
+        rm -f /tmp/arsenale-dev-access-token /tmp/arsenale-dev-tenant-id
+        {{ playbook_dir }}/../../../scripts/dev-api-acceptance.sh >/tmp/arsenale-ansible-acceptance.log
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: user_profile_check
+      until: user_profile_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
     - name: Verify Go read-only query execution in development
       command: >
         curl --silent --show-error --fail
@@ -198,6 +248,60 @@
       delay: 5
       register: query_runner_schema_check
       until: query_runner_schema_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify Go session-config execution in development
+      shell: |
+        set -euo pipefail
+        curl --silent --show-error --fail \
+          -H "content-type: application/json" \
+          -d '{"sql":"select current_setting('"'"'TIMEZONE'"'"') as timezone, current_setting('"'"'search_path'"'"') as search_path","target":{"protocol":"postgresql","host":"postgres","port":5432,"database":"{{ arsenale_db_name }}","sslMode":"require","username":"{{ arsenale_db_user }}","password":"{{ vault_postgres_password }}","sessionConfig":{"timezone":"Europe/Rome","searchPath":"public"}}}' \
+          http://127.0.0.1:18093/v1/query-runs:execute \
+          | jq -e '.rowCount == 1 and .rows[0].timezone == "Europe/Rome" and (.rows[0].search_path | tostring | contains("public"))' >/dev/null
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: query_runner_session_config_check
+      until: query_runner_session_config_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify Go write execution in development
+      shell: |
+        set -euo pipefail
+        write_probe_table="ansible_query_runner_write_$(date +%s)"
+
+        curl --silent --show-error --fail \
+          -H "content-type: application/json" \
+          -d "{\"sql\":\"create table if not exists public.${write_probe_table} (id integer primary key, note text not null)\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          http://127.0.0.1:18093/v1/query-runs:execute-any \
+          | jq -e '.rowCount == 0' >/dev/null
+
+        curl --silent --show-error --fail \
+          -H "content-type: application/json" \
+          -d "{\"sql\":\"insert into public.${write_probe_table} (id, note) values (1, 'go-write') on conflict (id) do update set note = excluded.note\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          http://127.0.0.1:18093/v1/query-runs:execute-any \
+          | jq -e '.rowCount >= 1' >/dev/null
+
+        curl --silent --show-error --fail \
+          -H "content-type: application/json" \
+          -d "{\"sql\":\"select note from public.${write_probe_table} where id = 1\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          http://127.0.0.1:18093/v1/query-runs:execute-any \
+          | jq -e '.rowCount == 1 and .rows[0].note == "go-write"' >/dev/null
+
+        curl --silent --show-error --fail \
+          -H "content-type: application/json" \
+          -d "{\"sql\":\"drop table if exists public.${write_probe_table}\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          http://127.0.0.1:18093/v1/query-runs:execute-any \
+          | jq -e '.rowCount == 0' >/dev/null
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: query_runner_write_check
+      until: query_runner_write_check.rc == 0
       changed_when: false
       when: _is_dev | bool and _state == 'present'
 
@@ -286,16 +390,12 @@
     - name: Verify Go model-gateway persistence path in development
       shell: |
         set -euo pipefail
-        api_base="https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api"
-        ca_cert="{{ arsenale_cert_dir }}/client/ca.pem"
-        login_json="$(curl --silent --show-error --fail \
-          --cacert "${ca_cert}" \
-          -H 'content-type: application/json' \
-          -d '{"email":"{{ arsenale_dev_bootstrap_admin_email }}","password":"{{ arsenale_dev_bootstrap_admin_password }}"}' \
-          "${api_base}/auth/login")"
-        tenant_id="$(printf '%s' "${login_json}" | jq -r '.user.tenantId')"
+        tenant_id="$(
+          {{ container_runtime | default('podman') }} exec arsenale-postgres sh -lc \
+            "PGPASSWORD='{{ vault_postgres_password }}' psql -U '{{ arsenale_db_user }}' -d '{{ arsenale_db_name }}' -Atqc \"select tm.\\\"tenantId\\\" from \\\"User\\\" u join \\\"TenantMember\\\" tm on tm.\\\"userId\\\" = u.id where u.email = '{{ arsenale_dev_bootstrap_admin_email }}' and tm.status = 'ACCEPTED' order by tm.\\\"joinedAt\\\" asc limit 1\""
+        )"
         if [ -z "${tenant_id}" ] || [ "${tenant_id}" = "null" ]; then
-          echo "login did not return a tenantId" >&2
+          echo "tenant lookup did not return a tenantId" >&2
           exit 1
         fi
         curl --silent --show-error --fail \
@@ -315,6 +415,31 @@
       delay: 5
       register: model_gateway_check
       until: model_gateway_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify Redis coordination path in development
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec arsenale-redis redis-cli -h 127.0.0.1 -p 6379 ping | grep -q '^PONG$'
+        redis_coordination_ok=0
+        for attempt in 1 2 3 4 5; do
+          if {{ container_runtime | default('podman') }} exec arsenale-redis redis-cli -h 127.0.0.1 -p 6379 ping | grep -q '^PONG$'; then
+            redis_rate_limit_keys="$({{ container_runtime | default('podman') }} exec arsenale-redis redis-cli --scan --pattern 'rl:*' 2>/dev/null || true)"
+            if grep -q '^rl:' <<<"${redis_rate_limit_keys}"; then
+              redis_coordination_ok=1
+              break
+            fi
+          fi
+          sleep 1
+        done
+        [[ "${redis_coordination_ok}" -eq 1 ]]
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: redis_coordination_check
+      until: redis_coordination_check.rc == 0
       changed_when: false
       when: _is_dev | bool and _state == 'present'
 
@@ -404,6 +529,20 @@
       changed_when: false
       when: _is_dev | bool and _state == 'present'
 
+    - name: Verify Go tunnel-broker metadata path in development
+      shell: |
+        set -euo pipefail
+        curl --silent --show-error --fail http://127.0.0.1:18092/v1/meta/service \
+          | jq -e '.service.name == "tunnel-broker"' >/dev/null
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: tunnel_broker_check
+      until: tunnel_broker_check.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
     - name: Verify Go memory-service persistence path in development
       shell: |
         set -euo pipefail
@@ -483,6 +622,7 @@
         api_base="https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api"
         ca_cert="{{ arsenale_cert_dir }}/client/ca.pem"
         connection_name="Dev Go Query Runner Validation $(date +%s)"
+        token_file="/tmp/arsenale-dev-access-token"
         access_token=""
         connection_id=""
         session_id=""
@@ -507,13 +647,17 @@
         }
         trap cleanup EXIT
 
-        login_json="$(curl --silent --show-error --fail \
-          --cacert "${ca_cert}" \
-          -H 'content-type: application/json' \
-          -d '{"email":"{{ arsenale_dev_bootstrap_admin_email }}","password":"{{ arsenale_dev_bootstrap_admin_password }}"}' \
-          "${api_base}/auth/login")"
-
-        access_token="$(printf '%s' "${login_json}" | jq -r '.accessToken')"
+        if [ -s "${token_file}" ]; then
+          access_token="$(cat "${token_file}")"
+        else
+          login_json="$(curl --silent --show-error --fail \
+            --cacert "${ca_cert}" \
+            -H 'content-type: application/json' \
+            -d '{"email":"{{ arsenale_dev_bootstrap_admin_email }}","password":"{{ arsenale_dev_bootstrap_admin_password }}"}' \
+            "${api_base}/auth/login")"
+          access_token="$(printf '%s' "${login_json}" | jq -r '.accessToken')"
+          printf '%s' "${access_token}" > "${token_file}"
+        fi
         if [ -z "${access_token}" ] || [ "${access_token}" = "null" ]; then
           echo "login did not return an access token" >&2
           exit 1
@@ -544,6 +688,41 @@
           echo "session creation did not return a sessionId" >&2
           exit 1
         fi
+
+        heartbeat_json="$(curl --silent --show-error --fail \
+          --cacert "${ca_cert}" \
+          -H "authorization: Bearer ${access_token}" \
+          -H 'content-type: application/json' \
+          -d '{}' \
+          "${api_base}/sessions/database/${session_id}/heartbeat")"
+
+        printf '%s' "${heartbeat_json}" | jq -e '.ok == true' >/dev/null
+
+        config_update_json="$(curl --silent --show-error --fail \
+          --cacert "${ca_cert}" \
+          -X PUT \
+          -H "authorization: Bearer ${access_token}" \
+          -H 'content-type: application/json' \
+          -d '{"sessionConfig":{"timezone":"Europe/Rome","searchPath":"public"}}' \
+          "${api_base}/sessions/database/${session_id}/config")"
+
+        printf '%s' "${config_update_json}" | jq -e '.applied == true and .sessionConfig.timezone == "Europe/Rome" and .sessionConfig.searchPath == "public"' >/dev/null
+
+        config_json="$(curl --silent --show-error --fail \
+          --cacert "${ca_cert}" \
+          -H "authorization: Bearer ${access_token}" \
+          "${api_base}/sessions/database/${session_id}/config")"
+
+        printf '%s' "${config_json}" | jq -e '.timezone == "Europe/Rome" and .searchPath == "public"' >/dev/null
+
+        session_config_query_json="$(curl --silent --show-error --fail \
+          --cacert "${ca_cert}" \
+          -H "authorization: Bearer ${access_token}" \
+          -H 'content-type: application/json' \
+          -d '{"sql":"select current_setting('"'"'TIMEZONE'"'"') as timezone, current_setting('"'"'search_path'"'"') as search_path"}' \
+          "${api_base}/sessions/database/${session_id}/query")"
+
+        printf '%s' "${session_config_query_json}" | jq -e '.rowCount == 1 and .rows[0].timezone == "Europe/Rome" and (.rows[0].search_path | tostring | contains("public"))' >/dev/null
 
         query_json="$(curl --silent --show-error --fail \
           --cacert "${ca_cert}" \

@@ -13,11 +13,12 @@ export async function registrationOptions(req: AuthRequest, res: Response) {
 
 export async function register(req: AuthRequest, res: Response) {
   assertAuthenticated(req);
-  const { credential, friendlyName } = req.body as WebauthnRegisterInput;
+  const { credential, friendlyName, expectedChallenge } = req.body as WebauthnRegisterInput & { expectedChallenge?: string };
   const result = await webauthnService.verifyRegistration(
     req.user.userId,
     credential as unknown as Parameters<typeof webauthnService.verifyRegistration>[1],
     friendlyName,
+    expectedChallenge,
   );
   auditService.log({
     userId: req.user.userId,

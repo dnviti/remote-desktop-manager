@@ -188,6 +188,7 @@ func (b *Broker) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		closed:       make(chan struct{}),
 	}
 
+	runtime.outputWG.Add(2)
 	go runtime.streamOutput(stdout)
 	go runtime.streamOutput(stderr)
 	go runtime.readWebSocket()
@@ -209,6 +210,7 @@ type terminalRuntime struct {
 	wsWriteMu sync.Mutex
 	closeOnce sync.Once
 	closed    chan struct{}
+	outputWG  sync.WaitGroup
 
 	activityMu       sync.Mutex
 	lastActivityAt   time.Time
@@ -262,6 +264,8 @@ func (r *terminalRuntime) readWebSocket() {
 }
 
 func (r *terminalRuntime) streamOutput(reader io.Reader) {
+	defer r.outputWG.Done()
+
 	buffer := make([]byte, 8192)
 	for {
 		n, err := reader.Read(buffer)
@@ -287,6 +291,18 @@ func (r *terminalRuntime) waitForSession() {
 			_ = r.send(serverMessage{Type: "error", Code: "SESSION_ERROR", Message: "terminal session ended unexpectedly"})
 		}
 	}
+
+	outputDone := make(chan struct{})
+	go func() {
+		r.outputWG.Wait()
+		close(outputDone)
+	}()
+
+	select {
+	case <-outputDone:
+	case <-time.After(250 * time.Millisecond):
+	}
+
 	r.close()
 }
 
@@ -363,7 +379,7 @@ func (r *terminalRuntime) noteActivity(force bool) {
 	r.activityMu.Unlock()
 
 	if err := r.sessionStore.HeartbeatTerminalSession(context.Background(), r.sessionID); err != nil {
-			r.logger.Warn("terminal session heartbeat failed", "error", err)
+		r.logger.Warn("terminal session heartbeat failed", "error", err)
 	}
 }
 

@@ -152,7 +152,7 @@ export default defineConfig({
           if (id.includes('node_modules/@glokon/guacamole-common-js')) {
             return 'vendor-guacamole';
           }
-          if (id.includes('node_modules/axios') || id.includes('node_modules/socket.io-client')) {
+          if (id.includes('node_modules/axios')) {
             return 'vendor-network';
           }
         },
@@ -226,11 +226,6 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
         secure: false, // accept self-signed certs from backend
-      },
-      '/socket.io': {
-        target: apiTarget,
-        ws: true,
-        secure: false,
       },
       '/guacamole': {
         target: guacTarget,

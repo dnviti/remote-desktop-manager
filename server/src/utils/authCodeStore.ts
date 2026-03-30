@@ -9,7 +9,7 @@ import { config } from '../config';
  * in URL parameters. The callback redirects with a one-time `code`
  * that the client exchanges via POST for the actual token data.
  *
- * When the cache sidecar is available, codes are stored in the
+ * When a distributed cache backend is available, codes are stored in the
  * distributed cache with TTL-based expiry. Falls back to an
  * in-memory Map when the sidecar is unavailable.
  */
@@ -44,7 +44,7 @@ export async function generateAuthCode(data: Omit<AuthCodeEntry, 'expiresAt'>): 
   const code = crypto.randomBytes(32).toString('hex');
   const expiresAt = Date.now() + AUTH_CODE_TTL_MS;
 
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const stored = await cache.set(
       `auth:code:${code}`,
       JSON.stringify({ ...data, expiresAt }),
@@ -61,7 +61,7 @@ export async function generateAuthCode(data: Omit<AuthCodeEntry, 'expiresAt'>): 
 
 /** Consume a one-time code, returning the stored data or null if invalid/expired */
 export async function consumeAuthCode(code: string): Promise<Omit<AuthCodeEntry, 'expiresAt'> | null> {
-  if (config.cacheSidecarEnabled) {
+  if (config.distributedCacheEnabled) {
     const buf = await cache.getdel(`auth:code:${code}`);
     if (buf) {
       const entry: AuthCodeEntry = JSON.parse(buf.toString());

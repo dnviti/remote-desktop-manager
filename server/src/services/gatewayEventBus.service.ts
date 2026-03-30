@@ -1,9 +1,10 @@
 /**
- * Gateway event bus using gocache pub/sub for event-driven gateway management.
+ * Gateway event bus using the shared pub/sub backend for event-driven gateway management.
  *
- * When the cache sidecar is available, events are published to named channels
- * and all server instances receive them via pattern subscription. When the
- * sidecar is unavailable, events are routed inline (single-instance fallback).
+ * When the distributed pub/sub backend is available, events are published to
+ * named channels and all server instances receive them via pattern
+ * subscription. When it is unavailable, events are routed inline
+ * (single-instance fallback).
  */
 
 import { publish, subscribe } from '../utils/cacheClient';
@@ -60,7 +61,7 @@ export async function publishGatewayEvent(
     sourceInstanceId: instanceId,
   };
 
-  if (!config.cacheSidecarEnabled) {
+  if (!config.distributedPubSubEnabled) {
     log.debug('[event-bus] Sidecar disabled — routing event inline: %s', type);
     await routeEvent(type, event);
     return;
@@ -89,7 +90,7 @@ export async function publishGatewayEvent(
 // ---------------------------------------------------------------------------
 
 export async function startGatewayEventSubscriptions(): Promise<void> {
-  if (!config.cacheSidecarEnabled) {
+  if (!config.distributedPubSubEnabled) {
     log.info('[event-bus] Sidecar disabled — event subscriptions skipped (inline routing only)');
     return;
   }
@@ -166,7 +167,7 @@ async function routeEvent(type: GatewayEventType | string, event: GatewayEventPa
 // ---------------------------------------------------------------------------
 
 async function handleInstanceDeployed(event: GatewayEventPayload): Promise<void> {
-  if (event.sourceInstanceId !== instanceId) return;
+  if (event.sourceInstanceId === instanceId) return;
   emitInstancesForGateway(event.gatewayId).catch(() => {});
   emitGatewayData(event.gatewayId).catch(() => {});
   emitScalingForGateway(event.gatewayId).catch(() => {});
@@ -174,25 +175,25 @@ async function handleInstanceDeployed(event: GatewayEventPayload): Promise<void>
 }
 
 async function handleInstanceRemoved(event: GatewayEventPayload): Promise<void> {
-  if (event.sourceInstanceId !== instanceId) return;
+  if (event.sourceInstanceId === instanceId) return;
   emitInstancesForGateway(event.gatewayId).catch(() => {});
   emitGatewayData(event.gatewayId).catch(() => {});
   emitScalingForGateway(event.gatewayId).catch(() => {});
 }
 
 async function handleInstanceRecovered(event: GatewayEventPayload): Promise<void> {
-  if (event.sourceInstanceId !== instanceId) return;
+  if (event.sourceInstanceId === instanceId) return;
   emitInstancesForGateway(event.gatewayId).catch(() => {});
   await autoPushSshKey(event);
 }
 
 async function handleInstanceRestarted(event: GatewayEventPayload): Promise<void> {
-  if (event.sourceInstanceId !== instanceId) return;
+  if (event.sourceInstanceId === instanceId) return;
   emitInstancesForGateway(event.gatewayId).catch(() => {});
 }
 
 async function handleReconcileCompleted(event: GatewayEventPayload): Promise<void> {
-  if (event.sourceInstanceId !== instanceId) return;
+  if (event.sourceInstanceId === instanceId) return;
   emitInstancesForGateway(event.gatewayId).catch(() => {});
   emitGatewayData(event.gatewayId).catch(() => {});
   emitScalingForGateway(event.gatewayId).catch(() => {});

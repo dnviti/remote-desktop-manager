@@ -4,7 +4,6 @@ import {
   ListItemText, ListItemIcon, Button, Divider,
 } from '@mui/material';
 import { NotificationsOutlined, DoneAll, Close as CloseIcon } from '@mui/icons-material';
-import { io, Socket } from 'socket.io-client';
 import { useAuthStore } from '../../store/authStore';
 import { useNotificationListStore } from '../../store/notificationListStore';
 import type { NotificationEntry } from '../../api/notifications.api';
@@ -39,13 +38,11 @@ export default function NotificationBell({ navigationActions }: NotificationBell
   const fetchNotifications = useNotificationListStore((s) => s.fetchNotifications);
   const markAsRead = useNotificationListStore((s) => s.markAsRead);
   const markAllAsRead = useNotificationListStore((s) => s.markAllAsRead);
-  const addNotification = useNotificationListStore((s) => s.addNotification);
   const removeNotification = useNotificationListStore((s) => s.removeNotification);
 
   const [anchorEl, setAnchorEl] = useState<HTMLElement | null>(null);
-  const socketRef = useRef<Socket | null>(null);
 
-  const { sendDesktopNotification, setOnClick } = useDesktopNotifications();
+  const { setOnClick } = useDesktopNotifications();
 
   // Open notification popover when user clicks a native desktop notification
   const anchorRef = useRef<HTMLButtonElement | null>(null);
@@ -55,35 +52,19 @@ export default function NotificationBell({ navigationActions }: NotificationBell
     });
   }, [setOnClick]);
 
-  // Fetch notifications on mount
+  // Poll notifications while authenticated.
   useEffect(() => {
-    fetchNotifications();
-  }, [fetchNotifications]);
+    if (!accessToken) return undefined;
 
-  // Socket.IO connection for real-time notifications
-  useEffect(() => {
-    if (!accessToken) return;
-
-    const socket = io('/notifications', {
-      auth: { token: accessToken },
-      transports: ['websocket'],
-    });
-
-    socket.on('notification:new', (notification: NotificationEntry) => {
-      addNotification(notification);
-      sendDesktopNotification('Arsenale', {
-        body: notification.message,
-        tag: notification.id,
-      });
-    });
-
-    socketRef.current = socket;
+    void fetchNotifications();
+    const interval = window.setInterval(() => {
+      void fetchNotifications();
+    }, 15_000);
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
+      window.clearInterval(interval);
     };
-  }, [accessToken, addNotification, sendDesktopNotification]);
+  }, [accessToken, fetchNotifications]);
 
   const handleClick = (notification: NotificationEntry) => {
     if (!notification.read) {

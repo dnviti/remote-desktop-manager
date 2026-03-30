@@ -55,10 +55,9 @@ export function mergeVncSettings(
 }
 
 /**
- * Generate an encrypted token for guacamole-lite with VNC protocol.
- * Same encryption format as RDP — guacamole-lite handles both.
+ * Build Guacamole/VNC connection settings.
  */
-export function generateVncGuacamoleToken(params: VncConnectionParams): string {
+export function buildVncGuacamoleSettings(params: VncConnectionParams): Record<string, string> {
   const vnc = params.vncSettings ?? {};
 
   const settings: Record<string, string> = {
@@ -84,6 +83,16 @@ export function generateVncGuacamoleToken(params: VncConnectionParams): string {
 
   if (params.dlpPolicy?.disableCopy) settings['disable-copy'] = 'true';
   if (params.dlpPolicy?.disablePaste) settings['disable-paste'] = 'true';
+
+  return settings;
+}
+
+/**
+ * Generate an encrypted token for guacamole-lite with VNC protocol.
+ * Same encryption format as RDP — guacamole-lite handles both.
+ */
+export function generateVncGuacamoleToken(params: VncConnectionParams): string {
+  const settings = buildVncGuacamoleSettings(params);
 
   const connectionConfig = {
     connection: {

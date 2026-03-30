@@ -269,7 +269,7 @@ export default function LoginPage() {
     try {
       const options = await requestWebAuthnOptionsApi(t);
       const credential = await startAuthentication({ optionsJSON: options });
-      const data = await verifyWebAuthnApi(t, credential);
+      const data = await verifyWebAuthnApi(t, credential, options.challenge);
       completeLogin(data);
     } catch (err: unknown) {
       if ((err as Error)?.name === 'NotAllowedError') {

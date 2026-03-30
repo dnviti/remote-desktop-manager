@@ -18,10 +18,14 @@ import crypto from 'crypto';
 import http from 'http';
 import type https from 'https';
 import type tls from 'tls';
-import { WebSocketServer } from 'ws';
+import WS, { WebSocketServer } from 'ws';
 import type { WebSocket } from 'ws';
 import {
   authenticateTunnelRequest,
+  MsgType,
+  noteProxiedTunnelActivity,
+  noteProxiedTunnelConnected,
+  noteProxiedTunnelDisconnected,
   registerTunnel,
 } from '../services/tunnel.service';
 import * as auditService from '../services/audit.service';
@@ -36,6 +40,10 @@ import {
 const log = logger.child('tunnel-handler');
 
 export function setupTunnelHandler(server: http.Server | https.Server): WebSocketServer {
+  if (config.goTunnelBrokerEnabled) {
+    return setupTunnelProxyHandler(server);
+  }
+
   const wss = new WebSocketServer({ noServer: true });
 
   // Handle the HTTP upgrade
@@ -184,6 +192,122 @@ export function setupTunnelHandler(server: http.Server | https.Server): WebSocke
   return wss;
 }
 
+function setupTunnelProxyHandler(server: http.Server | https.Server): WebSocketServer {
+  const wss = new WebSocketServer({ noServer: true });
+
+  server.on('upgrade', (req: http.IncomingMessage, socket: import('net').Socket, head: Buffer) => {
+    if (req.url !== '/api/tunnel/connect') {
+      return;
+    }
+
+    const authHeader = req.headers['authorization'] ?? '';
+    const gatewayId = (req.headers['x-gateway-id'] as string | undefined) ?? '';
+    const agentVersion = (req.headers['x-agent-version'] as string | undefined) ?? undefined;
+    const bearerToken = authHeader.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length).trim()
+      : '';
+
+    if (!bearerToken || !gatewayId) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n');
+      socket.destroy();
+      return;
+    }
+
+    const clientCertPem = extractPeerClientCertificatePem(req);
+    if (!clientCertPem) {
+      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\nClient certificate required');
+      socket.destroy();
+      return;
+    }
+
+    const upstream = new WS(tunnelBrokerWebSocketUrl(), {
+      handshakeTimeout: 10_000,
+      headers: {
+        Authorization: `Bearer ${bearerToken}`,
+        'X-Gateway-Id': gatewayId,
+        ...(agentVersion ? { 'X-Agent-Version': agentVersion } : {}),
+        'X-Client-Cert': encodeURIComponent(clientCertPem),
+        'X-Client-Cert-Verified': 'SUCCESS',
+        ...(extractRemoteIp(req) ? { 'X-Forwarded-For': extractRemoteIp(req)! } : {}),
+      },
+    });
+
+    let upgraded = false;
+    const rejectUpgrade = (statusCode: number, message: string) => {
+      if (upgraded || socket.destroyed) return;
+      socket.write(`HTTP/1.1 ${statusCode} ${http.STATUS_CODES[statusCode] ?? 'Error'}\r\nConnection: close\r\n\r\n${message}`);
+      socket.destroy();
+    };
+
+    upstream.once('unexpected-response', (_upstreamReq, response) => {
+      const chunks: Buffer[] = [];
+      response.on('data', (chunk) => chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
+      response.on('end', () => {
+        rejectUpgrade(response.statusCode || 502, Buffer.concat(chunks).toString('utf8') || 'Tunnel broker rejected the connection');
+      });
+    });
+
+    upstream.once('error', (err) => {
+      rejectUpgrade(502, `Tunnel broker unavailable: ${err.message}`);
+    });
+
+    upstream.once('open', () => {
+      wss.handleUpgrade(req, socket, head, (downstream: WebSocket) => {
+        upgraded = true;
+        wss.emit('connection', downstream, req, gatewayId, agentVersion, upstream);
+      });
+    });
+  });
+
+  wss.on('connection', (
+    downstream: WebSocket,
+    req: http.IncomingMessage,
+    gatewayId: string,
+    agentVersion?: string,
+    upstream?: WS,
+  ) => {
+    if (!upstream) {
+      downstream.close(1011, 'missing upstream tunnel broker');
+      return;
+    }
+
+    const clientIp = extractRemoteIp(req);
+    noteProxiedTunnelConnected(gatewayId, agentVersion, clientIp);
+
+    let closed = false;
+    const shutdown = () => {
+      if (closed) return;
+      closed = true;
+      noteProxiedTunnelDisconnected(gatewayId);
+      try { upstream.close(); } catch { /* ignore */ }
+      try { downstream.close(); } catch { /* ignore */ }
+    };
+
+    downstream.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+      const buf = toBuffer(data);
+      recordProxyActivity(gatewayId, buf);
+      upstream.send(buf, (err) => {
+        if (err) shutdown();
+      });
+    });
+
+    upstream.on('message', (data: Buffer | ArrayBuffer | Buffer[]) => {
+      const buf = toBuffer(data);
+      downstream.send(buf, (err) => {
+        if (err) shutdown();
+      });
+    });
+
+    downstream.on('close', shutdown);
+    upstream.on('close', shutdown);
+    downstream.on('error', shutdown);
+    upstream.on('error', shutdown);
+  });
+
+  log.info('[tunnel] Proxying tunnel websocket traffic to Go tunnel-broker at /api/tunnel/connect');
+  return wss;
+}
+
 function extractRemoteIp(req: http.IncomingMessage): string | undefined {
   const socketAddr = req.socket.remoteAddress ?? undefined;
   const forwarded = req.headers['x-forwarded-for'];
@@ -195,4 +319,48 @@ function extractRemoteIp(req: http.IncomingMessage): string | undefined {
     }
   }
   return socketAddr;
+}
+
+function extractPeerClientCertificatePem(req: http.IncomingMessage): string | null {
+  const tlsSocket = req.socket as tls.TLSSocket;
+  if (typeof tlsSocket.getPeerCertificate !== 'function') {
+    return null;
+  }
+
+  const peerCert = tlsSocket.getPeerCertificate(false);
+  if (!peerCert || !peerCert.raw) {
+    return null;
+  }
+
+  const b64 = peerCert.raw.toString('base64');
+  const pemLines = b64.match(/.{1,64}/g) ?? [b64];
+  return `-----BEGIN CERTIFICATE-----\n${pemLines.join('\n')}\n-----END CERTIFICATE-----`;
+}
+
+function tunnelBrokerWebSocketUrl(): string {
+  const base = config.goTunnelBrokerUrl.replace(/\/+$/, '');
+  if (base.startsWith('https://')) {
+    return `${base.replace(/^https:/, 'wss:')}/api/tunnel/connect`;
+  }
+  return `${base.replace(/^http:/, 'ws:')}/api/tunnel/connect`;
+}
+
+function toBuffer(data: Buffer | ArrayBuffer | Buffer[]): Buffer {
+  if (Buffer.isBuffer(data)) return data;
+  if (Array.isArray(data)) return Buffer.concat(data);
+  return Buffer.from(data as ArrayBuffer);
+}
+
+function recordProxyActivity(gatewayId: string, buf: Buffer): void {
+  if (buf.length < 4) {
+    noteProxiedTunnelActivity(gatewayId, undefined, buf.length);
+    return;
+  }
+  const type = buf[0];
+  const payload = buf.subarray(4);
+  if (type === MsgType.PING || type === MsgType.HEARTBEAT) {
+    noteProxiedTunnelActivity(gatewayId, payload, buf.length);
+    return;
+  }
+  noteProxiedTunnelActivity(gatewayId, undefined, buf.length);
 }

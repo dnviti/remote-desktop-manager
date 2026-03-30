@@ -6,6 +6,5 @@ use (
 	./gateways/guacenc
 	./gateways/rdgw
 	./gateways/ssh-gateway/grpc-server
-	./infrastructure/gocache
 	./tools/arsenale-cli
 )

@@ -1,6 +1,6 @@
 // Package main provides a JSON codec for gRPC, allowing plain Go structs
 // to be used as message types without protobuf code generation.
-// Same pattern as infrastructure/gocache/codec.go.
+// Same pattern as the generated protobuf codec shim used elsewhere.
 package main
 
 import (
@@ -11,7 +11,7 @@ import (
 
 func init() {
 	// Register a JSON codec under the name "proto" to replace the default
-	// protobuf codec. This matches the gocache sidecar pattern — the TS
+	// protobuf codec. This matches the plain protobuf transport pattern the TS
 	// client uses JSON serialization on the wire.
 	encoding.RegisterCodec(&jsonCodec{})
 }

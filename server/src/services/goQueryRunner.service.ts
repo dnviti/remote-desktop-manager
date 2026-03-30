@@ -1,5 +1,6 @@
 import { config } from '../config';
 import { AppError } from '../middleware/error.middleware';
+import type { DbSessionConfig } from '../types';
 
 export interface GoQueryRunnerRequest {
   sql: string;
@@ -12,6 +13,7 @@ export interface GoQueryRunnerRequest {
     sslMode?: 'disable' | 'prefer' | 'require' | 'verify-ca' | 'verify-full';
     username: string;
     password: string;
+    sessionConfig?: DbSessionConfig;
   };
 }
 
@@ -102,6 +104,27 @@ function resolveUrl(): string {
 
 export async function executeReadOnlyQuery(req: GoQueryRunnerRequest): Promise<GoQueryRunnerResponse> {
   const response = await fetch(`${resolveUrl()}/v1/query-runs:execute`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+
+  if (!response.ok) {
+    let message = `Go query runner returned status ${response.status}`;
+    try {
+      const body = await response.json() as { error?: string };
+      if (body?.error) message = body.error;
+    } catch {
+      // ignore malformed error body
+    }
+    throw new AppError(message, response.status >= 500 ? 502 : 400);
+  }
+
+  return await response.json() as GoQueryRunnerResponse;
+}
+
+export async function executeQuery(req: GoQueryRunnerRequest): Promise<GoQueryRunnerResponse> {
+  const response = await fetch(`${resolveUrl()}/v1/query-runs:execute-any`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify(req),

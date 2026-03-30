@@ -1,6 +1,0 @@
-# Generated certificates — never commit private keys
-*.pem
-*.csr
-*.srl
-*.cnf
-!generate-dev-certs.sh

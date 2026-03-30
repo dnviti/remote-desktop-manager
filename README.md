@@ -169,7 +169,7 @@ npm run db:migrate          # Run Prisma migrations
 
 # Infrastructure (via Makefile + Ansible)
 make setup                  # First-time setup (Ansible collections, vault)
-make dev                    # Start dev infrastructure (postgres + gocache)
+make dev                    # Start dev infrastructure (postgres + redis)
 make dev-down               # Stop dev infrastructure
 make deploy                 # Full production deployment
 
@@ -195,7 +195,7 @@ This deploys the full container stack via Ansible:
 - **guacenc** — Recording-to-video conversion sidecar
 - **Server** — Express API + Guacamole WebSocket (runs migrations on startup)
 - **Client** — Nginx serving the React app with reverse proxy to the API
-- **gocache** — In-memory cache sidecar
+- **Redis** — Distributed coordination backend
 - **ssh-gateway** — Optional SSH gateway container (port 2222)
 
 See [deployment/ansible/README.md](deployment/ansible/README.md) for detailed configuration.
@@ -204,10 +204,10 @@ See [deployment/ansible/README.md](deployment/ansible/README.md) for detailed co
 
 ### Server
 
-Layered architecture: **Routes → Controllers → Services → Prisma ORM**
+Layered architecture during migration: **Routes → Controllers → Services → Prisma ORM / Go services**
 
 - 238+ REST endpoints across 29 route groups
-- Socket.IO namespaces: `/ssh` (terminal), `/notifications`, `/gateway-monitor`
+- Browser SSH and desktop runtime are being migrated to direct Go WebSocket brokers
 - Guacamole WebSocket server (port 3002) for RDP/VNC tunneling
 - Background jobs: SSH key rotation, gateway health checks, session cleanup, secret expiry notifications
 - Container orchestration: Docker, Podman, and Kubernetes providers

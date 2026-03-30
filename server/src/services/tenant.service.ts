@@ -789,7 +789,7 @@ export async function adminChangeUserEmail(
   newEmail: string,
   verificationId: string,
 ) {
-  identityVerification.consumeVerification(verificationId, actingUserId, 'admin-action');
+  await identityVerification.consumeVerification(verificationId, actingUserId, 'admin-action');
 
   const actingMembership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId: actingUserId } },
@@ -939,7 +939,7 @@ export async function adminChangeUserPassword(
   newPassword: string,
   verificationId: string,
 ) {
-  identityVerification.consumeVerification(verificationId, actingUserId, 'admin-action');
+  await identityVerification.consumeVerification(verificationId, actingUserId, 'admin-action');
 
   const actingMembership = await prisma.tenantMember.findUnique({
     where: { tenantId_userId: { tenantId, userId: actingUserId } },

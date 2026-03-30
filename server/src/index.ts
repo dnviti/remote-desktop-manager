@@ -7,7 +7,6 @@ import https from 'https';
 import app from './app';
 import { config } from './config';
 import { initializePassport } from './config/passport';
-import { setupSocketIO } from './socket';
 import { logger, toGuacamoleLogLevel } from './utils/logger';
 import prisma from './lib/prisma';
 import { startKeyRotationJob, startLdapSyncJob, startMembershipExpiryJob, startCheckoutExpiryJob, startPasswordRotationJob, startSystemSecretRotationJob, stopAllJobs } from './services/scheduler.service';
@@ -70,6 +69,26 @@ async function runDatabaseMigrations() {
 }
 
 async function runStartupMigrations() {
+  if (config.nodeEnv === 'development') {
+    const devAdminEmail = (process.env.DEV_BOOTSTRAP_ADMIN_EMAIL || 'admin@example.com').trim().toLowerCase();
+    const unlockResult = await prisma.user.updateMany({
+      where: {
+        email: devAdminEmail,
+        OR: [
+          { lockedUntil: { not: null } },
+          { failedLoginAttempts: { gt: 0 } },
+        ],
+      },
+      data: {
+        lockedUntil: null,
+        failedLoginAttempts: 0,
+      },
+    });
+    if (unlockResult.count > 0) {
+      logger.info(`Startup migration: cleared login lock state for ${unlockResult.count} development admin account(s)`);
+    }
+  }
+
   // Mark existing users without emailVerified as verified so they aren't locked out
   const emailResult = await prisma.user.updateMany({
     where: { emailVerified: false, emailVerifyToken: null },
@@ -214,17 +233,14 @@ async function main() {
     tunnelServer = server;
   }
 
-  // Setup Socket.io for SSH
-  const io = setupSocketIO(server);
-
   // Setup zero-trust tunnel WebSocket endpoint (on the TLS-enabled server when available)
   setupTunnelHandler(tunnelServer);
 
   // Start SSH protocol proxy (if enabled)
   startSshProxyServer();
 
-  // Initialize session cleanup with Socket.IO reference
-  initSessionCleanup(io);
+  // Initialize session cleanup hooks
+  initSessionCleanup();
 
   // Start scheduled jobs
   startKeyRotationJob();
