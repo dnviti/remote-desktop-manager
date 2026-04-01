@@ -2,7 +2,7 @@
 
 > Auto-generated on 2026-03-20. High-level product overview for LLM RAG consumption.
 
-> Runtime note: the live platform now runs through the Go control plane and companion Go services. References to `server/src` or Prisma below are archived implementation notes unless explicitly restated as current.
+> Runtime note: the live platform now runs through the Go control plane and companion Go services. References to `server/src` or Prisma below are historical migration notes unless explicitly restated as current.
 
 ## What is Arsenale
 
@@ -261,7 +261,7 @@ Redis runs as a shared service alongside the Go API and brokers. The runtime ope
 
 ### Leader Election
 
-In multi-instance deployments, the shared Redis coordination layer lets the API and brokers enforce consistent rate limits, challenge validation, and short-lived state. Long-running background work remains in the Go control/controller services rather than in the archived Node scheduler path.
+In multi-instance deployments, the shared Redis coordination layer lets the API and brokers enforce consistent rate limits, challenge validation, and short-lived state. Long-running background work remains in the Go control/controller services rather than the legacy Node scheduler path.
 
 ### Configuration
 
@@ -271,4 +271,4 @@ In multi-instance deployments, the shared Redis coordination layer lets the API 
 
 ## Technology
 
-Arsenale is built on a Go-first service stack backed by PostgreSQL and Redis, with a React client using Zustand and Material UI. The active JavaScript workspaces are `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`; the old `server/` tree remains archived in-repo as historical reference only. Remote desktop rendering uses guacd and guacamole-common-js, SSH terminals use XTerm.js with the Go terminal broker, and the zero-trust tunnel system uses raw WebSockets with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. ABAC enforcement now lives in the Go access-policy services and is evaluated on the active Go session path.
+Arsenale is built on a Go-first service stack backed by PostgreSQL and Redis, with a React client using Zustand and Material UI. The active JavaScript workspaces are `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`; the old `server/` implementation is no longer present. Remote desktop rendering uses guacd and guacamole-common-js, SSH terminals use XTerm.js with the Go terminal broker, and the zero-trust tunnel system uses raw WebSockets with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. ABAC enforcement now lives in the Go access-policy services and is evaluated on the active Go session path.

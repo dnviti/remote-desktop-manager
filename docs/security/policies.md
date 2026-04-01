@@ -3,7 +3,7 @@
 > Auto-generated on 2026-03-15 by /docs create security.
 > Source of truth is the codebase. Run /docs update security after code changes.
 
-> Runtime note: the current authorization and policy enforcement path is Go-first. Any `server/src` citations below are archived reference material.
+> Runtime note: the current authorization and policy enforcement path is Go-first. Any `server/src` references below are historical notes kept for migration context.
 
 ## Connection Sharing Security
 

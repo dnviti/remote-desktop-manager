@@ -18,7 +18,7 @@ source-files:
 
 ## 🏗 Monorepo Structure
 
-> Runtime note: `backend/` contains the active Go services used by the running application. The `server/` directory is archived reference code and is no longer part of the root npm workspace, CI gate, or default dev flow.
+> Runtime note: `backend/` contains the active Go services used by the running application. The legacy Node `server/` implementation has been removed; runtime flows are now fully Go-first.
 
 Arsenale uses npm workspaces for the active JavaScript packages and a separate Go module for the backend:
 

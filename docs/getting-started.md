@@ -82,7 +82,6 @@ On first access, the **Setup Wizard** will guide you through creating an admin a
 ```
 arsenale/
 ├── backend/                 # Go split services
-├── server/                  # Archived Express reference code (not part of active dev loop)
 ├── client/                  # React 19 + Vite + MUI v7
 │   ├── src/                 # Source code
 │   └── package.json
@@ -102,7 +101,6 @@ arsenale/
 ├── dev-certs/               # Development TLS certificates
 ├── docs/                    # Documentation
 ├── Makefile                 # Infrastructure management
-├── compose.demo.yml         # Demo deployment
 ├── .env.example             # Environment template
 └── package.json             # Root workspace config
 ```

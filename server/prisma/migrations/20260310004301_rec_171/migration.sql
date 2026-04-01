@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "AuditAction" ADD VALUE 'RECORDING_EXPORT_VIDEO';

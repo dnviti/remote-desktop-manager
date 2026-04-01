@@ -18,7 +18,7 @@ source-files:
 
 ## Project Summary
 
-Arsenale is a Go-first remote access platform for SSH, RDP, VNC, and database access through a browser. The active runtime lives in `backend/` and the active JavaScript workspaces are `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`. The old `server/` code remains archived in-repo for historical reference only.
+Arsenale is a Go-first remote access platform for SSH, RDP, VNC, and database access through a browser. The active runtime lives in `backend/` and the active JavaScript workspaces are `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`. The legacy Node `server/` implementation has been removed from the repository.
 
 ## Runtime Architecture
 
@@ -73,8 +73,8 @@ The public `/api` surface is served by the Go control plane. Major domains inclu
 
 - Root `.env` is the shared config file for the stack.
 - Environment variables override DB-backed system settings.
-- New runtime behavior should target Go services and Go-backed stores, not the archived Node/Prisma code.
+- New runtime behavior should target Go services and Go-backed stores.
 
 ## Historical Note
 
-`server/` and its Prisma schema are no longer part of the active runtime, top-level npm workspace, or default CI path. Keep it as reference only unless a deliberate archival/deletion task says otherwise.
+`server/` has been removed. If runtime behavior is needed, implement it directly in `backend/`.

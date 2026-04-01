@@ -5,7 +5,6 @@ generated-by: claw-docs
 generated-at: 2026-03-27T12:00:00Z
 source-files:
   - Makefile
-  - compose.demo.yml
   - backend/Dockerfile
   - client/Dockerfile
   - gateways/ssh-gateway/Dockerfile

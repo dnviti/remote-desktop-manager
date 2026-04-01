@@ -48,7 +48,7 @@ Open `https://localhost:3000` for the containerized app, or `https://localhost:3
 | Layer | Technologies |
 |-------|-------------|
 | Frontend | React 19, Vite, Material-UI v7, Zustand, XTerm.js, guacamole-common-js |
-| Backend | Go split services (`backend/`) with archived Express reference code in `server/` |
+| Backend | Go split services (`backend/`) |
 | Database | PostgreSQL 16 (SSL/TLS) |
 | Remote Access | SSH (ssh2), RDP/VNC (guacd), Database Proxy |
 | Security | JWT + refresh tokens, Argon2, AES-256-GCM, WebAuthn, TOTP, mTLS |
@@ -90,7 +90,6 @@ flowchart LR
 ```
 arsenale/
 ├── backend/                   # Go split services (API, brokers, orchestration, AI)
-├── server/                    # Archived Express reference code
 ├── client/                    # React SPA (Vite + MUI)
 ├── gateways/
 │   ├── tunnel-agent/          # Zero-trust tunnel client

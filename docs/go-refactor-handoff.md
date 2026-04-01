@@ -39,7 +39,7 @@ What is true now:
 
 ## Archived Material
 
-`server/` remains in the repository as historical reference code only. It is not part of the default runtime, root npm workspace, or deploy path.
+`server/` has been removed from the repository. The live system now uses `backend/` as the sole server-side source of truth for runtime behavior, builds, and deployments.
 
 ## Continuation Guidance
 

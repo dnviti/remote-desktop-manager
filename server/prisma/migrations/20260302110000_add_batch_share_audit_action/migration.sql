@@ -1,2 +1,0 @@
--- AlterEnum
-ALTER TYPE "AuditAction" ADD VALUE IF NOT EXISTS 'BATCH_SHARE';

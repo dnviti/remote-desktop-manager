@@ -10,7 +10,7 @@ All environment variables are loaded from a single `.env` file at the monorepo r
 In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 
 <!-- manual-start -->
-> Runtime note: the active public edge is the Go control plane behind the client on `https://localhost:3000`, with direct local development access on `http://localhost:18080`. Legacy-only variables may still appear below because the archived `server/` code remains in the repo for reference, but new runtime work should target the Go services.
+> Runtime note: the active public edge is the Go control plane behind the client on `https://localhost:3000`, with direct local development access on `http://localhost:18080`. Legacy-only variables are still preserved here when historically relevant, but new runtime work should target the Go services.
 <!-- manual-end -->
 
 ## Variable Reference

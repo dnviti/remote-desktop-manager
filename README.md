@@ -113,18 +113,6 @@ arsenale/
 │   ├── internal/                 # Internal Go packages
 │   └── pkg/                      # Shared Go contracts and workload spec
 │
-├── server/                        # Archived Express reference code (not in active runtime/tooling)
-│   ├── src/
-│   │   ├── index.ts              # Entry point (HTTP + Socket.IO + Guacamole WS)
-│   │   ├── app.ts                # Express app setup
-│   │   ├── routes/               # REST API route definitions
-│   │   ├── controllers/          # Request handling and validation
-│   │   ├── services/             # Business logic and database operations
-│   │   ├── socket/               # Socket.IO handlers (SSH, notifications, gateway monitor)
-│   │   ├── middleware/           # Auth, CSRF, rate limiting, error handling
-│   │   ├── orchestrator/         # Container orchestration (Docker/Podman/Kubernetes)
-│   │   └── types/                # Shared TypeScript types
-│
 ├── client/                        # React frontend
 │   ├── src/
 │   │   ├── pages/                # Login, Register, Dashboard, RecordingPlayer, PublicShare
@@ -200,7 +188,7 @@ See [deployment/ansible/README.md](deployment/ansible/README.md) for detailed co
 
 ### Backend
 
-The public edge is now Go-first: control-plane, desktop, terminal, tunnel, query, AI, and orchestration services run from `backend/`, while `server/` remains archived as reference code only.
+The public edge is now Go-first: control-plane, desktop, terminal, tunnel, query, AI, and orchestration services run from `backend/`.
 
 - The public `/api` surface is handled by `control-plane-api-go`
 - Browser SSH and desktop runtime terminate in direct Go brokers

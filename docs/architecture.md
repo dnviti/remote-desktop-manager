@@ -24,7 +24,7 @@ Arsenale is a secure remote access platform built as a monorepo with npm workspa
 
 **Why this architecture:** Arsenale consolidates fragmented remote access tools (PuTTY, RDP clients, VPN tunnels, database GUIs) into a single zero-trust platform where every connection is authenticated, encrypted, audited, and optionally recorded.
 
-> Runtime note: the active application edge runs through the Go split services in `backend/`. Archived `server/` material remains useful for historical route shape reference, but it is not part of the live runtime.
+> Runtime note: the active application edge runs through the Go split services in `backend/`; there is no local legacy `server/` implementation in-tree.
 
 ## 🧩 High-Level Architecture
 
@@ -95,7 +95,6 @@ flowchart TD
 | Workspace | Path | Technology | Purpose |
 |-----------|------|-----------|---------|
 | Backend | `backend/` | Go 1.25 | Control plane, brokers, orchestration, AI, runtime |
-| Archived Reference | `server/` | TypeScript | Historical route and service reference only |
 | Client | `client/` | React 19 + Vite + MUI v7 | Web UI (SPA) |
 | Tunnel Agent | `gateways/tunnel-agent/` | Node.js + TypeScript | Zero-trust tunnel client |
 | Browser Extension | `extra-clients/browser-extensions/` | Chrome MV3 + React | Autofill, keychain |

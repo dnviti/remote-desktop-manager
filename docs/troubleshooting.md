@@ -14,7 +14,7 @@ source-files:
 
 ## 🐛 Common Errors
 
-> Runtime note: the current stack is the Go control plane plus supporting Go services. Any older references to `server/` paths are archived implementation history, not the active runtime.
+> Runtime note: the current stack is the Go control plane plus supporting Go services. If historical `server/` references appear in docs, they are not part of the active runtime.
 
 ### Database Connection
 
