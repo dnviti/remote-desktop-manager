@@ -127,7 +127,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
 
     // Determine WebSocket URL for guacamole-lite (proxied through Vite/nginx)
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/?token=${encodeURIComponent(token)}`;
+        const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/`;`${wsProtocol}//${window.location.host}/guacamole/?token=${encodeURIComponent(token)}`;
 
     const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
     const client = new Guacamole.Client(tunnel);
@@ -292,7 +292,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
 
     // Connect — pass empty string so WebSocketTunnel doesn't append
     // literal "undefined" to the URL (which corrupts the base64 token)
-    client.connect('');
+        client.connect(`token=${encodeURIComponent(token)}`);
 
     innerCleanupRef.current = () => {
       display.removeEventListener('contextmenu', preventContextMenu);

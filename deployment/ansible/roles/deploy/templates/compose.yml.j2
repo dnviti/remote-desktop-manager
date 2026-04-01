@@ -1234,6 +1234,7 @@ services:
 {% endfor %}
 {% endif %}
     networks:
+      - net-egress
       - net-gateway
 
   dev-tunnel-guacd:
@@ -1287,6 +1288,7 @@ services:
 {% endfor %}
 {% endif %}
     networks:
+      - net-egress
       - net-gateway
 
   dev-tunnel-db-proxy:
@@ -1336,6 +1338,7 @@ services:
 {% endfor %}
 {% endif %}
     networks:
+      - net-egress
       - net-gateway
 
 {% endif %}

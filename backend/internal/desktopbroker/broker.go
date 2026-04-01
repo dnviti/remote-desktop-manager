@@ -51,6 +51,7 @@ func NewBroker(config BrokerConfig) *Broker {
 		config: config,
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true },
+			Subprotocols: []string{"guacamole"},
 		},
 	}
 }
@@ -281,7 +282,7 @@ func (s *guacSession) handleGuacdInstruction(instruction []string) error {
 		s.pending = nil
 		s.bufferMu.Unlock()
 
-		if err := s.writeWebSocket(EncodeInstruction("", readyPayload)); err != nil {
+		if err := s.writeWebSocket(EncodeInstruction("ready", readyPayload)); err != nil {
 			return err
 		}
 		for _, message := range pending {
