@@ -27,6 +27,7 @@ import { useVaultStore } from '../../store/vaultStore';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useFeatureFlagsStore } from '../../store/featureFlagsStore';
 import { listVaultProviders, VaultProviderData } from '../../api/externalVault.api';
+import { gatewayEndpointLabel } from '../../utils/gatewayMode';
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -348,7 +349,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                 <MenuItem value="">None (Direct connection)</MenuItem>
                 {availableGateways.map((gw) => (
                   <MenuItem key={gw.id} value={gw.id}>
-                    {gw.name} — {gw.host}:{gw.port}
+                    {gw.name} — {gatewayEndpointLabel(gw)}
                   </MenuItem>
                 ))}
               </Select>

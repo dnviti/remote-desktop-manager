@@ -20,6 +20,7 @@ type gatewayTemplateResponse struct {
 	Type                     string               `json:"type"`
 	Host                     string               `json:"host"`
 	Port                     int                  `json:"port"`
+	DeploymentMode           string               `json:"deploymentMode"`
 	Description              *string              `json:"description"`
 	APIPort                  *int                 `json:"apiPort"`
 	AutoScale                bool                 `json:"autoScale"`
@@ -48,6 +49,7 @@ type createTemplatePayload struct {
 	Type                     string  `json:"type"`
 	Host                     *string `json:"host"`
 	Port                     *int    `json:"port"`
+	DeploymentMode           *string `json:"deploymentMode"`
 	Description              *string `json:"description"`
 	APIPort                  *int    `json:"apiPort"`
 	AutoScale                *bool   `json:"autoScale"`
@@ -67,6 +69,7 @@ type normalizedCreateTemplatePayload struct {
 	Type                     string
 	Host                     string
 	Port                     int
+	DeploymentMode           string
 	Description              *string
 	APIPort                  *int
 	AutoScale                *bool
@@ -86,6 +89,7 @@ type updateTemplatePayload struct {
 	Type                     optionalString `json:"type"`
 	Host                     optionalString `json:"host"`
 	Port                     optionalInt    `json:"port"`
+	DeploymentMode           optionalString `json:"deploymentMode"`
 	Description              optionalString `json:"description"`
 	APIPort                  optionalInt    `json:"apiPort"`
 	AutoScale                optionalBool   `json:"autoScale"`
@@ -106,6 +110,7 @@ type gatewayTemplateRecord struct {
 	Type                     string
 	Host                     string
 	Port                     int
+	DeploymentMode           string
 	Description              *string
 	APIPort                  *int
 	AutoScale                bool
@@ -132,6 +137,7 @@ SELECT
 	t.type::text,
 	t.host,
 	t.port,
+	t."deploymentMode"::text,
 	t.description,
 	t."apiPort",
 	t."autoScale",
@@ -164,6 +170,7 @@ INSERT INTO "GatewayTemplate" (
 	type,
 	host,
 	port,
+	"deploymentMode",
 	description,
 	"apiPort",
 	"autoScale",
@@ -187,20 +194,21 @@ VALUES (
 	$3::"GatewayType",
 	$4,
 	$5,
-	$6,
+	$6::"GatewayDeploymentMode",
 	$7,
-	COALESCE($8, false),
-	COALESCE($9, 1),
-	COALESCE($10, 5),
-	COALESCE($11, 10),
-	COALESCE($12, 300),
-	COALESCE($13, true),
-	COALESCE($14, 5000),
-	COALESCE($15, 3600),
-	COALESCE($16, false),
-	COALESCE($17::"LoadBalancingStrategy", 'ROUND_ROBIN'::"LoadBalancingStrategy"),
-	$18,
+	$8,
+	COALESCE($9, false),
+	COALESCE($10, 1),
+	COALESCE($11, 5),
+	COALESCE($12, 10),
+	COALESCE($13, 300),
+	COALESCE($14, true),
+	COALESCE($15, 5000),
+	COALESCE($16, 3600),
+	COALESCE($17, false),
+	COALESCE($18::"LoadBalancingStrategy", 'ROUND_ROBIN'::"LoadBalancingStrategy"),
 	$19,
+	$20,
 	NOW(),
 	NOW()
 )
@@ -213,6 +221,7 @@ INSERT INTO "Gateway" (
 	type,
 	host,
 	port,
+	"deploymentMode",
 	description,
 	"apiPort",
 	"isManaged",
@@ -239,10 +248,8 @@ VALUES (
 	$3::"GatewayType",
 	$4,
 	$5,
-	$6,
+	$6::"GatewayDeploymentMode",
 	$7,
-	true,
-	1,
 	$8,
 	$9,
 	$10,
@@ -252,10 +259,12 @@ VALUES (
 	$14,
 	$15,
 	$16,
-	$17::"LoadBalancingStrategy",
+	$17,
 	$18,
-	$19,
+	$19::"LoadBalancingStrategy",
 	$20,
+	$21,
+	$22,
 	NOW(),
 	NOW()
 )
@@ -304,7 +313,7 @@ func (s Service) CreateGatewayTemplate(ctx context.Context, claims authn.Claims,
 	defer func() { _ = tx.Rollback(ctx) }()
 
 	id := uuid.NewString()
-	if _, err := tx.Exec(ctx, insertGatewayTemplateSQL, id, normalized.Name, normalized.Type, normalized.Host, normalized.Port, trimStringPtr(normalized.Description), normalized.APIPort, normalized.AutoScale, normalized.MinReplicas, normalized.MaxReplicas, normalized.SessionsPerInstance, normalized.ScaleDownCooldownSeconds, normalized.MonitoringEnabled, normalized.MonitorIntervalMS, normalized.InactivityTimeoutSeconds, normalized.PublishPorts, normalized.LBStrategy, claims.TenantID, claims.UserID); err != nil {
+	if _, err := tx.Exec(ctx, insertGatewayTemplateSQL, id, normalized.Name, normalized.Type, normalized.Host, normalized.Port, normalized.DeploymentMode, trimStringPtr(normalized.Description), normalized.APIPort, normalized.AutoScale, normalized.MinReplicas, normalized.MaxReplicas, normalized.SessionsPerInstance, normalized.ScaleDownCooldownSeconds, normalized.MonitoringEnabled, normalized.MonitorIntervalMS, normalized.InactivityTimeoutSeconds, normalized.PublishPorts, normalized.LBStrategy, claims.TenantID, claims.UserID); err != nil {
 		return gatewayTemplateResponse{}, fmt.Errorf("insert gateway template: %w", err)
 	}
 
@@ -342,7 +351,16 @@ func (s Service) UpdateGatewayTemplate(ctx context.Context, claims authn.Claims,
 	if input.Type.Present && input.Type.Value != nil {
 		updatedType = strings.ToUpper(strings.TrimSpace(*input.Type.Value))
 	}
-	updatedHost := strings.TrimSpace(chooseString(record.Host, input.Host))
+	updatedHostInput := chooseString(record.Host, input.Host)
+	deploymentModeInput := record.DeploymentMode
+	if input.DeploymentMode.Present && input.DeploymentMode.Value != nil {
+		deploymentModeInput = *input.DeploymentMode.Value
+	}
+	updatedDeploymentMode, err := normalizeDeploymentMode(&deploymentModeInput, updatedType, updatedHostInput)
+	if err != nil {
+		return gatewayTemplateResponse{}, err
+	}
+	updatedHost := normalizeGatewayHostForMode(updatedDeploymentMode, updatedHostInput)
 	updatedPort := chooseInt(record.Port, input.Port)
 	updatedDescription := chooseNullableString(record.Description, input.Description)
 	updatedAPIPort := chooseNullableInt(record.APIPort, input.APIPort)
@@ -372,21 +390,22 @@ UPDATE "GatewayTemplate"
        type = $3::"GatewayType",
        host = $4,
        port = $5,
-       description = $6,
-       "apiPort" = $7,
-       "autoScale" = $8,
-       "minReplicas" = $9,
-       "maxReplicas" = $10,
-       "sessionsPerInstance" = $11,
-       "scaleDownCooldownSeconds" = $12,
-       "monitoringEnabled" = $13,
-       "monitorIntervalMs" = $14,
-       "inactivityTimeoutSeconds" = $15,
-       "publishPorts" = $16,
-       "lbStrategy" = $17::"LoadBalancingStrategy",
+       "deploymentMode" = $6::"GatewayDeploymentMode",
+       description = $7,
+       "apiPort" = $8,
+       "autoScale" = $9,
+       "minReplicas" = $10,
+       "maxReplicas" = $11,
+       "sessionsPerInstance" = $12,
+       "scaleDownCooldownSeconds" = $13,
+       "monitoringEnabled" = $14,
+       "monitorIntervalMs" = $15,
+       "inactivityTimeoutSeconds" = $16,
+       "publishPorts" = $17,
+       "lbStrategy" = $18::"LoadBalancingStrategy",
        "updatedAt" = NOW()
  WHERE id = $1
-`, templateID, updatedName, updatedType, updatedHost, updatedPort, updatedDescription, updatedAPIPort, updatedAutoScale, updatedMinReplicas, updatedMaxReplicas, updatedSessionsPerInstance, updatedScaleDownCooldown, updatedMonitoringEnabled, updatedMonitorInterval, updatedInactivityTimeout, updatedPublishPorts, updatedLBStrategy); err != nil {
+`, templateID, updatedName, updatedType, updatedHost, updatedPort, updatedDeploymentMode, updatedDescription, updatedAPIPort, updatedAutoScale, updatedMinReplicas, updatedMaxReplicas, updatedSessionsPerInstance, updatedScaleDownCooldown, updatedMonitoringEnabled, updatedMonitorInterval, updatedInactivityTimeout, updatedPublishPorts, updatedLBStrategy); err != nil {
 		return gatewayTemplateResponse{}, fmt.Errorf("update gateway template: %w", err)
 	}
 
@@ -453,10 +472,11 @@ func (s Service) DeployGatewayTemplate(ctx context.Context, claims authn.Claims,
 
 	id := uuid.NewString()
 	name := buildTemplateDeploymentName(claims.TenantID, template.Name)
-	host := strings.TrimSpace(template.Host)
-	if host == "" {
-		host = "pending-deploy"
+	deploymentMode := template.DeploymentMode
+	if strings.TrimSpace(deploymentMode) == "" {
+		deploymentMode = "SINGLE_INSTANCE"
 	}
+	host := normalizeGatewayHostForMode(deploymentMode, template.Host)
 
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
@@ -464,7 +484,11 @@ func (s Service) DeployGatewayTemplate(ctx context.Context, claims authn.Claims,
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 
-	if _, err := tx.Exec(ctx, insertGatewayFromTemplateSQL, id, name, template.Type, host, template.Port, trimStringPtr(template.Description), template.APIPort, template.AutoScale, template.MinReplicas, template.MaxReplicas, template.SessionsPerInstance, template.ScaleDownCooldownSeconds, template.MonitoringEnabled, template.MonitorIntervalMS, template.InactivityTimeoutSeconds, template.PublishPorts, template.LBStrategy, claims.TenantID, claims.UserID, templateID); err != nil {
+	desiredReplicas := 0
+	if deploymentModeIsGroup(deploymentMode) {
+		desiredReplicas = 1
+	}
+	if _, err := tx.Exec(ctx, insertGatewayFromTemplateSQL, id, name, template.Type, host, template.Port, deploymentMode, trimStringPtr(template.Description), template.APIPort, deploymentModeIsGroup(deploymentMode), desiredReplicas, template.AutoScale, template.MinReplicas, template.MaxReplicas, template.SessionsPerInstance, template.ScaleDownCooldownSeconds, template.MonitoringEnabled, template.MonitorIntervalMS, template.InactivityTimeoutSeconds, template.PublishPorts, template.LBStrategy, claims.TenantID, claims.UserID, templateID); err != nil {
 		return gatewayResponse{}, fmt.Errorf("insert gateway from template: %w", err)
 	}
 
@@ -482,8 +506,10 @@ func (s Service) DeployGatewayTemplate(ctx context.Context, claims authn.Claims,
 	if err != nil {
 		return gatewayResponse{}, err
 	}
-	if _, err := s.DeployGatewayInstance(ctx, claims, id); err != nil {
-		return gatewayResponse{}, err
+	if deploymentModeIsGroup(deploymentMode) {
+		if _, err := s.DeployGatewayInstance(ctx, claims, id); err != nil {
+			return gatewayResponse{}, err
+		}
 	}
 	record, err = s.loadGateway(ctx, claims.TenantID, id)
 	if err != nil {
@@ -515,6 +541,7 @@ func scanGatewayTemplate(row rowScanner) (gatewayTemplateRecord, error) {
 		&item.Type,
 		&item.Host,
 		&item.Port,
+		&item.DeploymentMode,
 		&description,
 		&apiPort,
 		&item.AutoScale,
@@ -540,16 +567,30 @@ func scanGatewayTemplate(row rowScanner) (gatewayTemplateRecord, error) {
 	}
 	item.Description = nullStringPtr(description)
 	item.APIPort = nullIntPtr(apiPort)
+	if strings.TrimSpace(item.DeploymentMode) == "" {
+		mode, err := normalizeDeploymentMode(nil, item.Type, item.Host)
+		if err == nil {
+			item.DeploymentMode = mode
+		}
+	}
 	return item, nil
 }
 
 func gatewayTemplateRecordToResponse(item gatewayTemplateRecord) gatewayTemplateResponse {
+	deploymentMode := item.DeploymentMode
+	if strings.TrimSpace(deploymentMode) == "" {
+		mode, err := normalizeDeploymentMode(nil, item.Type, item.Host)
+		if err == nil {
+			deploymentMode = mode
+		}
+	}
 	return gatewayTemplateResponse{
 		ID:                       item.ID,
 		Name:                     item.Name,
 		Type:                     item.Type,
 		Host:                     item.Host,
 		Port:                     item.Port,
+		DeploymentMode:           deploymentMode,
 		Description:              item.Description,
 		APIPort:                  item.APIPort,
 		AutoScale:                item.AutoScale,
@@ -603,23 +644,24 @@ func normalizeCreateTemplatePayload(input createTemplatePayload) (normalizedCrea
 	if input.Host != nil {
 		host = strings.TrimSpace(*input.Host)
 	}
+	deploymentMode, err := normalizeDeploymentMode(input.DeploymentMode, gatewayType, host)
+	if err != nil {
+		return normalizedCreateTemplatePayload{}, err
+	}
 
 	port := 0
 	if input.Port != nil {
 		port = *input.Port
 	}
 
-	if isManagedGatewayType(gatewayType) {
-		host = ""
-		if port == 0 {
-			switch gatewayType {
-			case "MANAGED_SSH":
-				port = 2222
-			case "GUACD":
-				port = 4822
-			case "DB_PROXY":
-				port = 5432
-			}
+	if deploymentModeIsGroup(deploymentMode) && port == 0 {
+		switch gatewayType {
+		case "MANAGED_SSH":
+			port = 2222
+		case "GUACD":
+			port = 4822
+		case "DB_PROXY":
+			port = 5432
 		}
 	}
 	if gatewayType == "SSH_BASTION" && port == 0 {
@@ -629,8 +671,9 @@ func normalizeCreateTemplatePayload(input createTemplatePayload) (normalizedCrea
 	normalized := normalizedCreateTemplatePayload{
 		Name:                     name,
 		Type:                     gatewayType,
-		Host:                     host,
+		Host:                     normalizeGatewayHostForMode(deploymentMode, host),
 		Port:                     port,
+		DeploymentMode:           deploymentMode,
 		Description:              trimStringPtr(input.Description),
 		APIPort:                  input.APIPort,
 		AutoScale:                input.AutoScale,
@@ -679,6 +722,13 @@ func validateUpdateTemplatePayload(input updateTemplatePayload) error {
 	}
 	if input.Type.Present && input.Type.Value != nil && !isAllowedGatewayType(strings.ToUpper(strings.TrimSpace(*input.Type.Value))) {
 		return &requestError{status: http.StatusBadRequest, message: "type must be one of GUACD, SSH_BASTION, MANAGED_SSH, DB_PROXY"}
+	}
+	if input.DeploymentMode.Present && input.DeploymentMode.Value != nil {
+		switch strings.ToUpper(strings.TrimSpace(*input.DeploymentMode.Value)) {
+		case "SINGLE_INSTANCE", "MANAGED_GROUP":
+		default:
+			return &requestError{status: http.StatusBadRequest, message: "deploymentMode must be SINGLE_INSTANCE or MANAGED_GROUP"}
+		}
 	}
 	return validateTemplateConstraints(
 		input.Description.Value,
@@ -745,6 +795,13 @@ func changedTemplateDetails(input updateTemplatePayload) map[string]any {
 	}
 	if input.Port.Present {
 		details["port"] = input.Port.Value
+	}
+	if input.DeploymentMode.Present {
+		if input.DeploymentMode.Value == nil {
+			details["deploymentMode"] = nil
+		} else {
+			details["deploymentMode"] = strings.ToUpper(strings.TrimSpace(*input.DeploymentMode.Value))
+		}
 	}
 	if input.Description.Present {
 		details["description"] = input.Description.Value

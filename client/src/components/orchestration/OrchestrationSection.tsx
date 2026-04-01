@@ -7,6 +7,7 @@ import { ExpandMore as ExpandMoreIcon } from '@mui/icons-material';
 import { useAuthStore } from '../../store/authStore';
 import { useGatewayStore } from '../../store/gatewayStore';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
+import { isGatewayGroup } from '../../utils/gatewayMode';
 import SessionDashboard from './SessionDashboard';
 import GatewayInstanceList from './GatewayInstanceList';
 import ScalingControls from './ScalingControls';
@@ -46,7 +47,7 @@ export default function OrchestrationSection({ onNavigateToTab }: OrchestrationS
   }
 
   const managedGateways = gateways.filter(
-    (g) => g.type === 'MANAGED_SSH' || g.type === 'GUACD',
+    (g) => isGatewayGroup(g) && (g.type === 'MANAGED_SSH' || g.type === 'GUACD' || g.type === 'DB_PROXY'),
   );
 
   return (
@@ -74,15 +75,15 @@ export default function OrchestrationSection({ onNavigateToTab }: OrchestrationS
             </Box>
           ) : (
             managedGateways.map((gw) => (
-              <Accordion key={gw.id} defaultExpanded={gw.isManaged}>
+              <Accordion key={gw.id} defaultExpanded={isGatewayGroup(gw)}>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                   <Stack direction="row" spacing={1} alignItems="center">
                     <Typography variant="subtitle1">{gw.name}</Typography>
                     <Chip label={gw.type} size="small" variant="outlined" />
-                    {gw.isManaged && (
+                    {isGatewayGroup(gw) && (
                       <Chip label="Managed" size="small" color="primary" />
                     )}
-                    {gw.isManaged && (
+                    {isGatewayGroup(gw) && (
                       <Typography variant="caption" color="text.secondary">
                         {gw.runningInstances}/{gw.totalInstances} instances
                       </Typography>
@@ -91,7 +92,7 @@ export default function OrchestrationSection({ onNavigateToTab }: OrchestrationS
                 </AccordionSummary>
                 <AccordionDetails>
                   <ScalingControls gatewayId={gw.id} gateway={gw} />
-                  {gw.isManaged && gw.totalInstances > 0 && (
+                  {isGatewayGroup(gw) && gw.totalInstances > 0 && (
                     <Box sx={{ mt: 2 }}>
                       <Typography variant="subtitle2" gutterBottom>Instances</Typography>
                       <GatewayInstanceList gatewayId={gw.id} />

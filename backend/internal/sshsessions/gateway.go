@@ -39,7 +39,7 @@ func (s Service) resolveBastion(ctx context.Context, claims authn.Claims, access
 	host := gateway.Host
 	port := gateway.Port
 	instanceID := ""
-	if gateway.Type == "MANAGED_SSH" && gateway.IsManaged {
+	if gateway.Type == "MANAGED_SSH" && strings.EqualFold(strings.TrimSpace(gateway.DeploymentMode), "MANAGED_GROUP") {
 		selected, err := s.selectManagedGatewayInstance(ctx, gateway.ID, gateway.LBStrategy)
 		if err != nil {
 			return nil, "", "", err
@@ -104,6 +104,7 @@ SELECT
 	port,
 	"tenantId",
 	"isManaged",
+	"deploymentMode"::text,
 	"tunnelEnabled",
 	COALESCE("lbStrategy"::text, 'ROUND_ROBIN'),
 	"encryptedUsername",
@@ -124,6 +125,7 @@ WHERE id = $1
 		&record.Port,
 		&record.TenantID,
 		&record.IsManaged,
+		&record.DeploymentMode,
 		&record.TunnelEnabled,
 		&record.LBStrategy,
 		&record.EncryptedUsername,

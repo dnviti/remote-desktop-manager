@@ -14,6 +14,11 @@ import { resolveDlpPolicy } from '../utils/dlp';
 
 type CredentialSource = 'saved' | 'domain' | 'manual';
 
+function isManagedGroup(deploymentMode: string | null | undefined, legacyIsManaged: boolean | null | undefined): boolean {
+  if (deploymentMode) return deploymentMode === 'MANAGED_GROUP';
+  return Boolean(legacyIsManaged);
+}
+
 interface IssueSshGrantInput {
   userId: string;
   tenantId?: string;
@@ -80,7 +85,7 @@ export async function startSshSession(input: IssueSshGrantInput): Promise<SshSes
 
     let bastionHost = gateway.host;
     let bastionPort = gateway.port;
-    if (gateway.isManaged) {
+    if (isManagedGroup(gateway.deploymentMode, gateway.isManaged)) {
       const instance = await selectInstance(gateway.id, gateway.lbStrategy);
       if (!instance && !gateway.tunnelEnabled) {
         throw new AppError('No healthy gateway instances available. The gateway may be scaling — please try again.', 503);

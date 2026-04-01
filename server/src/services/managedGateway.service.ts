@@ -23,6 +23,10 @@ const MAX_REPLICAS = 20;
 const HEALTH_CHECK_FAILURE_THRESHOLD = 3;
 const log = logger.child('managed-gateway');
 
+function isManagedGroup(deploymentMode: string | null | undefined): boolean {
+  return deploymentMode === 'MANAGED_GROUP';
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -206,6 +210,9 @@ export async function deployGatewayInstance(
       400,
     );
   }
+  if (!isManagedGroup(gateway.deploymentMode)) {
+    throw new AppError('Only MANAGED_GROUP gateways can be deployed as managed containers', 400);
+  }
 
   let publicKey: string | undefined;
   if (gateway.type === 'MANAGED_SSH') {
@@ -327,7 +334,7 @@ export async function deployGatewayInstance(
   if (orchestrator.type === OrchestratorType.KUBERNETES) {
     host = containerConfig.name;
   } else if (gateway.publishPorts && containerInfo.ports[0]?.host) {
-    host = (gateway.host && gateway.host !== 'pending-deploy') ? gateway.host : 'localhost';
+    host = gateway.host.trim() ? gateway.host : 'localhost';
   } else if (containerInfo.ports[0]?.host) {
     host = 'localhost';
   } else if (config.dockerNetwork) {
@@ -466,6 +473,9 @@ export async function scaleGateway(
       400,
     );
   }
+  if (!isManagedGroup(gateway.deploymentMode)) {
+    throw new AppError('Only MANAGED_GROUP gateways can be scaled', 400);
+  }
 
   const currentInstances = await prisma.managedGatewayInstance.findMany({
     where: {
@@ -510,7 +520,6 @@ export async function scaleGateway(
     where: { id: gatewayId },
     data: {
       desiredReplicas: replicas,
-      isManaged: replicas > 0,
     },
   });
 
@@ -542,7 +551,7 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
   const gateway = await prisma.gateway.findUnique({
     where: { id: gatewayId },
   });
-  if (!gateway || !gateway.isManaged) return;
+  if (!gateway || !isManagedGroup(gateway.deploymentMode)) return;
 
   const orchestrator = getOrchestrator();
   if (orchestrator.type === OrchestratorType.NONE) return;
@@ -676,7 +685,7 @@ export async function reconcileGateway(gatewayId: string): Promise<void> {
 
 export async function reconcileAll(): Promise<void> {
   const managedGateways = await prisma.gateway.findMany({
-    where: { isManaged: true },
+    where: { deploymentMode: 'MANAGED_GROUP' },
     select: { id: true },
   });
 

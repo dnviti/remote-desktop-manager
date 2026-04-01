@@ -80,6 +80,9 @@ func (s Service) DeployGatewayInstance(ctx context.Context, claims authn.Claims,
 	if !isManagedLifecycleGatewayType(record.Type) {
 		return managedGatewayInstanceResponse{}, &requestError{status: http.StatusBadRequest, message: "Only MANAGED_SSH, GUACD, and DB_PROXY gateways can be deployed as managed containers"}
 	}
+	if !deploymentModeIsGroup(record.DeploymentMode) {
+		return managedGatewayInstanceResponse{}, &requestError{status: http.StatusBadRequest, message: "Only MANAGED_GROUP gateways can be deployed as managed containers"}
+	}
 	if err := s.ensureManagedGatewayDeployable(ctx, record); err != nil {
 		return managedGatewayInstanceResponse{}, err
 	}
@@ -121,6 +124,9 @@ func (s Service) ScaleGateway(ctx context.Context, claims authn.Claims, gatewayI
 	}
 	if !isManagedLifecycleGatewayType(record.Type) {
 		return scaleResult{}, &requestError{status: http.StatusBadRequest, message: "Only MANAGED_SSH, GUACD, and DB_PROXY gateways can be scaled"}
+	}
+	if !deploymentModeIsGroup(record.DeploymentMode) {
+		return scaleResult{}, &requestError{status: http.StatusBadRequest, message: "Only MANAGED_GROUP gateways can be scaled"}
 	}
 	if err := s.ensureManagedGatewayDeployable(ctx, record); err != nil {
 		return scaleResult{}, err
@@ -184,11 +190,10 @@ func (s Service) ScaleGateway(ctx context.Context, claims authn.Claims, gatewayI
 	if _, err := tx.Exec(ctx, `
 UPDATE "Gateway"
    SET "desiredReplicas" = $2,
-       "isManaged" = $3,
        "lastScaleAction" = NOW(),
        "updatedAt" = NOW()
  WHERE id = $1
-`, gatewayID, replicas, replicas > 0); err != nil {
+`, gatewayID, replicas); err != nil {
 		return scaleResult{}, fmt.Errorf("update gateway scale state: %w", err)
 	}
 
@@ -519,7 +524,6 @@ VALUES (
 		if _, err := tx.Exec(ctx, `
 UPDATE "Gateway"
    SET "desiredReplicas" = $2,
-       "isManaged" = true,
        "lastScaleAction" = NOW(),
        "updatedAt" = NOW()
  WHERE id = $1
@@ -701,7 +705,7 @@ func managedGatewayInstanceAddress(record gatewayRecord, info managedContainerIn
 	port := fallbackPort
 	if publishedPort, ok := info.PublishedPorts[fallbackPort]; ok && publishedPort > 0 {
 		host := strings.TrimSpace(record.Host)
-		if host == "" || strings.EqualFold(host, "pending-deploy") {
+		if host == "" {
 			host = "127.0.0.1"
 		}
 		return host, publishedPort

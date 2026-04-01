@@ -42,6 +42,7 @@ type gatewayResponse struct {
 	Type                     string     `json:"type"`
 	Host                     string     `json:"host"`
 	Port                     int        `json:"port"`
+	DeploymentMode           string     `json:"deploymentMode"`
 	Description              *string    `json:"description"`
 	IsDefault                bool       `json:"isDefault"`
 	HasSSHKey                bool       `json:"hasSshKey"`
@@ -89,6 +90,7 @@ type gatewayRecord struct {
 	Type                     string
 	Host                     string
 	Port                     int
+	DeploymentMode           string
 	Description              *string
 	IsDefault                bool
 	EncryptedUsername        *string
@@ -143,6 +145,7 @@ type createPayload struct {
 	Type                     string  `json:"type"`
 	Host                     string  `json:"host"`
 	Port                     int     `json:"port"`
+	DeploymentMode           *string `json:"deploymentMode"`
 	Description              *string `json:"description"`
 	IsDefault                *bool   `json:"isDefault"`
 	Username                 *string `json:"username"`
@@ -217,6 +220,7 @@ type updatePayload struct {
 	Name                     optionalString `json:"name"`
 	Host                     optionalString `json:"host"`
 	Port                     optionalInt    `json:"port"`
+	DeploymentMode           optionalString `json:"deploymentMode"`
 	Description              optionalString `json:"description"`
 	IsDefault                optionalBool   `json:"isDefault"`
 	Username                 optionalString `json:"username"`

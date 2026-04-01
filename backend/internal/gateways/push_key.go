@@ -90,7 +90,6 @@ SELECT id, name
 FROM "Gateway"
 WHERE "tenantId" = $1
   AND type = 'MANAGED_SSH'::"GatewayType"
-  AND "isManaged" = true
 ORDER BY name ASC
 `, tenantID)
 	if err != nil {

@@ -13,6 +13,7 @@ import { useNotificationStore } from '../../store/notificationStore';
 import type { GatewayTemplateData } from '../../api/gateway.api';
 import GatewayTemplateDialog from './GatewayTemplateDialog';
 import { extractApiError } from '../../utils/apiError';
+import { gatewayModeLabel, isGatewayGroup } from '../../utils/gatewayMode';
 
 export default function GatewayTemplateSection() {
   const templates = useGatewayStore((s) => s.templates);
@@ -106,7 +107,7 @@ export default function GatewayTemplateSection() {
               <TableRow>
                 <TableCell>Name</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Host</TableCell>
+                <TableCell>Endpoint</TableCell>
                 <TableCell>Auto-Scale</TableCell>
                 <TableCell>Deployed</TableCell>
                 <TableCell align="right">Actions</TableCell>
@@ -132,7 +133,18 @@ export default function GatewayTemplateSection() {
                     />
                   </TableCell>
                   <TableCell>
-                    <Typography variant="body2">{tpl.host}:{tpl.port}</Typography>
+                    {isGatewayGroup(tpl) ? (
+                      <>
+                        <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                          {gatewayModeLabel(tpl)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          Service port {tpl.port}
+                        </Typography>
+                      </>
+                    ) : (
+                      <Typography variant="body2">{tpl.host}:{tpl.port}</Typography>
+                    )}
                   </TableCell>
                   <TableCell>
                     <Chip

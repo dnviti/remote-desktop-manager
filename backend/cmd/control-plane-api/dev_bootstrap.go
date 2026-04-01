@@ -388,13 +388,13 @@ WHERE "tenantId" = $1
 	if _, err := deps.db.Exec(ctx, `
 INSERT INTO "Gateway" (
   id, name, type, host, port, "apiPort", description, "tenantId", "createdById",
-  "isDefault", "isManaged", "publishPorts", "desiredReplicas", "lbStrategy",
+  "isDefault", "deploymentMode", "isManaged", "publishPorts", "desiredReplicas", "lbStrategy",
   "tunnelEnabled", "encryptedTunnelToken", "tunnelTokenIV", "tunnelTokenTag", "tunnelTokenHash",
   "tunnelClientCert", "tunnelClientCertExp", "tunnelClientKey", "tunnelClientKeyIV", "tunnelClientKeyTag",
   "monitoringEnabled", "monitorIntervalMs", "inactivityTimeoutSeconds", "updatedAt"
 ) VALUES (
   $1, $2, $3::"GatewayType", $4, $5, $6, $7, $8, $9,
-  true, true, false, 1, 'ROUND_ROBIN'::"LoadBalancingStrategy",
+  true, 'MANAGED_GROUP'::"GatewayDeploymentMode", true, false, 1, 'ROUND_ROBIN'::"LoadBalancingStrategy",
   true, $10, $11, $12, $13,
   $14, $15, $16, $17, $18,
   true, 5000, 3600, NOW()
@@ -409,6 +409,7 @@ SET name = EXCLUDED.name,
     "tenantId" = EXCLUDED."tenantId",
     "createdById" = EXCLUDED."createdById",
     "isDefault" = true,
+    "deploymentMode" = 'MANAGED_GROUP'::"GatewayDeploymentMode",
     "isManaged" = true,
     "publishPorts" = false,
     "desiredReplicas" = 1,

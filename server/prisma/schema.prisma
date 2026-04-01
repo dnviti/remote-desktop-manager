@@ -365,12 +365,18 @@ enum LoadBalancingStrategy {
   LEAST_CONNECTIONS
 }
 
+enum GatewayDeploymentMode {
+  SINGLE_INSTANCE
+  MANAGED_GROUP
+}
+
 model Gateway {
   id          String      @id @default(uuid())
   name        String
   type        GatewayType
   host        String
   port        Int
+  deploymentMode GatewayDeploymentMode @default(SINGLE_INSTANCE)
   description String?
   isDefault   Boolean     @default(false)
   tenantId    String
@@ -446,6 +452,7 @@ model GatewayTemplate {
   type                     GatewayType
   host                     String
   port                     Int
+  deploymentMode           GatewayDeploymentMode @default(SINGLE_INSTANCE)
   description              String?
   apiPort                  Int?
   autoScale                Boolean     @default(false)

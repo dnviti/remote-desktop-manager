@@ -1,5 +1,5 @@
 import prisma from '../lib/prisma';
-import type { GatewayType } from '../lib/prisma';
+import type { GatewayDeploymentMode, GatewayType } from '../lib/prisma';
 import { AppError } from '../middleware/error.middleware';
 import { deployGatewayInstance } from './managedGateway.service';
 import { startMonitor, startInstanceMonitor } from './gatewayMonitor.service';
@@ -8,11 +8,31 @@ import { v4 as uuidv4 } from 'uuid';
 
 const log = logger.child('gateway-template');
 
+function normalizeDeploymentMode(
+  type: GatewayType,
+  host: string,
+  deploymentMode?: GatewayDeploymentMode,
+): GatewayDeploymentMode {
+  const mode = deploymentMode ?? ((type === 'SSH_BASTION' || host.trim()) ? 'SINGLE_INSTANCE' : 'MANAGED_GROUP');
+  if (type === 'SSH_BASTION' && mode !== 'SINGLE_INSTANCE') {
+    throw new AppError('SSH_BASTION gateways must use SINGLE_INSTANCE deployment mode', 400);
+  }
+  if (mode === 'MANAGED_GROUP' && type !== 'MANAGED_SSH' && type !== 'GUACD' && type !== 'DB_PROXY') {
+    throw new AppError('Only MANAGED_SSH, GUACD, and DB_PROXY gateways can use MANAGED_GROUP deployment mode', 400);
+  }
+  return mode;
+}
+
+function isManagedGroup(mode: GatewayDeploymentMode): boolean {
+  return mode === 'MANAGED_GROUP';
+}
+
 export interface CreateTemplateInput {
   name: string;
   type: GatewayType;
   host: string;
   port: number;
+  deploymentMode?: GatewayDeploymentMode;
   description?: string;
   apiPort?: number;
   autoScale?: boolean;
@@ -32,6 +52,7 @@ export interface UpdateTemplateInput {
   type?: GatewayType;
   host?: string;
   port?: number;
+  deploymentMode?: GatewayDeploymentMode;
   description?: string | null;
   apiPort?: number | null;
   autoScale?: boolean;
@@ -62,12 +83,14 @@ export async function createTemplate(
   input: CreateTemplateInput,
 ) {
   log.info(`Creating template "${input.name}" (${input.type}) in tenant ${tenantId}`);
+  const deploymentMode = normalizeDeploymentMode(input.type, input.host, input.deploymentMode);
   return prisma.gatewayTemplate.create({
     data: {
       name: input.name,
       type: input.type,
-      host: input.host,
+      host: isManagedGroup(deploymentMode) ? '' : input.host,
       port: input.port,
+      deploymentMode,
       description: input.description,
       apiPort: input.apiPort,
       autoScale: input.autoScale,
@@ -99,9 +122,20 @@ export async function updateTemplate(
   if (!existing) throw new AppError('Gateway template not found', 404);
 
   log.info(`Updating template ${templateId} "${existing.name}" in tenant ${tenantId}`);
+  const nextType = input.type ?? existing.type;
+  const nextHost = input.host ?? existing.host;
+  const deploymentMode = normalizeDeploymentMode(
+    nextType,
+    nextHost,
+    input.deploymentMode ?? existing.deploymentMode,
+  );
   return prisma.gatewayTemplate.update({
     where: { id: templateId },
-    data: input,
+    data: {
+      ...input,
+      deploymentMode,
+      host: isManagedGroup(deploymentMode) ? '' : nextHost,
+    },
     include: { _count: { select: { gateways: true } } },
   });
 }
@@ -141,10 +175,9 @@ export async function deployFromTemplate(
 
   const tenantPrefix = tenantId.slice(0, 8);
   const autoName = `${tenantPrefix}-${template.name}-${uuidv4().slice(0, 6)}`;
-
-  // If the template host is blank, use a placeholder; it will be updated
-  // after the first container is deployed with the actual container name.
-  const initialHost = template.host || 'pending-deploy';
+  const deploymentMode = template.deploymentMode ?? normalizeDeploymentMode(template.type, template.host);
+  const managedGroup = isManagedGroup(deploymentMode);
+  const initialHost = managedGroup ? '' : template.host;
 
   let gateway = await prisma.gateway.create({
     data: {
@@ -152,10 +185,11 @@ export async function deployFromTemplate(
       type: template.type,
       host: initialHost,
       port: template.port,
+      deploymentMode,
       description: template.description,
       apiPort: template.apiPort,
-      isManaged: true,
-      desiredReplicas: 1,
+      isManaged: managedGroup,
+      desiredReplicas: managedGroup ? 1 : 0,
       autoScale: template.autoScale,
       minReplicas: template.minReplicas,
       maxReplicas: template.maxReplicas,
@@ -175,31 +209,20 @@ export async function deployFromTemplate(
   log.info(`Created gateway "${autoName}" from template "${template.name}"`);
 
   let deployResult;
-  try {
-    deployResult = await deployGatewayInstance(gateway.id, userId);
-  } catch (err) {
-    log.warn(
-      `Gateway created but initial deploy failed: ${(err as Error).message}`,
-    );
+  if (managedGroup) {
+    try {
+      deployResult = await deployGatewayInstance(gateway.id, userId);
+    } catch (err) {
+      log.warn(
+        `Gateway created but initial deploy failed: ${(err as Error).message}`,
+      );
+    }
   }
 
-  // If host was blank on the template, update the gateway with the resolved
-  // host/port from the deployed container (container name = DNS-resolvable).
-  if (!template.host && deployResult) {
-    gateway = await prisma.gateway.update({
-      where: { id: gateway.id },
-      data: { host: deployResult.host, port: deployResult.port },
-    });
-    log.info(
-      `Auto-resolved gateway host to "${deployResult.host}:${deployResult.port}"`,
-    );
-  }
-
-  if (gateway.monitoringEnabled && gateway.host !== 'pending-deploy') {
-    const isManagedPublished = gateway.publishPorts && (gateway.type === 'MANAGED_SSH' || gateway.type === 'GUACD');
-    if (isManagedPublished) {
+  if (gateway.monitoringEnabled) {
+    if (managedGroup) {
       startInstanceMonitor(gateway.id, tenantId, gateway.monitorIntervalMs);
-    } else {
+    } else if (gateway.host) {
       startMonitor(gateway.id, gateway.host, gateway.port, tenantId, gateway.monitorIntervalMs);
     }
   }

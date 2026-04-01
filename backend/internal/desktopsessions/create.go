@@ -74,6 +74,7 @@ type gatewaySnapshot struct {
 	Host          string
 	Port          int
 	IsManaged     bool
+	DeploymentMode string
 	TunnelEnabled bool
 	LBStrategy    string
 }
@@ -517,7 +518,7 @@ func (s Service) resolveDesktopRoute(ctx context.Context, tenantID string, expli
 		RecordingGatewayDir: "default",
 	}
 
-	if gateway.IsManaged {
+	if strings.EqualFold(strings.TrimSpace(gateway.DeploymentMode), "MANAGED_GROUP") {
 		selected, err := s.selectManagedInstance(ctx, gateway.ID, gateway.LBStrategy)
 		if err != nil {
 			return desktopRoute{}, err
@@ -573,7 +574,7 @@ func (s Service) loadRoutingGateway(ctx context.Context, tenantID string, explic
 func (s Service) loadGatewayByID(ctx context.Context, gatewayID string) (*gatewaySnapshot, error) {
 	var gateway gatewaySnapshot
 	if err := s.DB.QueryRow(ctx, `
-SELECT id, type::text, host, port, "isManaged", "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN')
+SELECT id, type::text, host, port, "isManaged", "deploymentMode"::text, "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN')
 FROM "Gateway"
 WHERE id = $1
 `, gatewayID).Scan(
@@ -582,6 +583,7 @@ WHERE id = $1
 		&gateway.Host,
 		&gateway.Port,
 		&gateway.IsManaged,
+		&gateway.DeploymentMode,
 		&gateway.TunnelEnabled,
 		&gateway.LBStrategy,
 	); err != nil {
@@ -600,7 +602,7 @@ func (s Service) loadDefaultGateway(ctx context.Context, tenantID string) (*gate
 
 	var gateway gatewaySnapshot
 	if err := s.DB.QueryRow(ctx, `
-SELECT id, type::text, host, port, "isManaged", "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN')
+SELECT id, type::text, host, port, "isManaged", "deploymentMode"::text, "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN')
 FROM "Gateway"
 WHERE "tenantId" = $1
   AND type = 'GUACD'::"GatewayType"
@@ -612,6 +614,7 @@ LIMIT 1
 		&gateway.Host,
 		&gateway.Port,
 		&gateway.IsManaged,
+		&gateway.DeploymentMode,
 		&gateway.TunnelEnabled,
 		&gateway.LBStrategy,
 	); err != nil {

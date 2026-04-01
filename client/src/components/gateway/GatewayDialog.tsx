@@ -17,7 +17,12 @@ import {
 import { useGatewayStore } from '../../store/gatewayStore';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
 import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
-import type { GatewayData, TunnelEventData, TunnelMetricsData } from '../../api/gateway.api';
+import type {
+  GatewayData,
+  GatewayDeploymentMode,
+  TunnelEventData,
+  TunnelMetricsData,
+} from '../../api/gateway.api';
 import {
   forceDisconnectTunnel as forceDisconnectApi,
   getTunnelEvents as getTunnelEventsApi,
@@ -36,6 +41,7 @@ interface GatewayDialogProps {
 export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY'>('GUACD');
+  const [deploymentMode, setDeploymentMode] = useState<GatewayDeploymentMode>('SINGLE_INSTANCE');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [description, setDescription] = useState('');
@@ -91,11 +97,14 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
   const isEditMode = Boolean(gateway);
   const isTunnelEnabled = gateway?.tunnelEnabled ?? false;
   const isTunnelConnected = gateway?.tunnelConnected ?? false;
+  const supportsGroupMode = type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY';
+  const isGroupMode = deploymentMode === 'MANAGED_GROUP';
 
   useEffect(() => {
     if (open && gateway) {
       setName(gateway.name);
       setType(gateway.type);
+      setDeploymentMode(gateway.deploymentMode ?? (gateway.isManaged ? 'MANAGED_GROUP' : 'SINGLE_INSTANCE'));
       setHost(gateway.host);
       setPort(String(gateway.port));
       setDescription(gateway.description || '');
@@ -117,6 +126,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
     } else if (open) {
       setName('');
       setType('GUACD');
+      setDeploymentMode('SINGLE_INSTANCE');
       setHost('');
       setPort('');
       setDescription('');
@@ -159,6 +169,9 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
     } else if (newType !== 'MANAGED_SSH') {
       setApiPort('');
     }
+    if (newType === 'SSH_BASTION') {
+      setDeploymentMode('SINGLE_INSTANCE');
+    }
   };
 
   const handleSubmit = async () => {
@@ -167,7 +180,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
       setError('Gateway name is required');
       return;
     }
-    if (!host.trim()) {
+    if (!isGroupMode && !host.trim()) {
       setError('Host is required');
       return;
     }
@@ -180,8 +193,11 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
     const ok = await run(async () => {
       if (isEditMode && gateway) {
         const data: Record<string, unknown> = {};
+        const normalizedHost = isGroupMode ? '' : host.trim();
+        const existingDeploymentMode = gateway.deploymentMode ?? (gateway.isManaged ? 'MANAGED_GROUP' : 'SINGLE_INSTANCE');
         if (name.trim() !== gateway.name) data.name = name.trim();
-        if (host.trim() !== gateway.host) data.host = host.trim();
+        if (deploymentMode !== existingDeploymentMode) data.deploymentMode = deploymentMode;
+        if (normalizedHost !== gateway.host) data.host = normalizedHost;
         if (portNum !== gateway.port) data.port = portNum;
         if ((description.trim() || null) !== gateway.description) {
           data.description = description.trim() || null;
@@ -196,8 +212,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           if (password) data.password = password;
           if (sshPrivateKey) data.sshPrivateKey = sshPrivateKey;
         }
-        if (publishPorts !== (gateway.publishPorts ?? false)) data.publishPorts = publishPorts;
-        if ((type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && lbStrategy !== (gateway.lbStrategy ?? 'ROUND_ROBIN')) data.lbStrategy = lbStrategy;
+        if (supportsGroupMode && publishPorts !== (gateway.publishPorts ?? false)) data.publishPorts = publishPorts;
+        if (supportsGroupMode && lbStrategy !== (gateway.lbStrategy ?? 'ROUND_ROBIN')) data.lbStrategy = lbStrategy;
         if (monitoringEnabled !== gateway.monitoringEnabled) data.monitoringEnabled = monitoringEnabled;
         const intervalNum = parseInt(monitorIntervalMs, 10);
         if (intervalNum && intervalNum !== gateway.monitorIntervalMs) data.monitorIntervalMs = intervalNum;
@@ -209,7 +225,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
         await createGateway({
           name: name.trim(),
           type,
-          host: host.trim(),
+          deploymentMode,
+          host: isGroupMode ? '' : host.trim(),
           port: portNum,
           description: description.trim() || undefined,
           isDefault: isDefault || undefined,
@@ -220,8 +237,8 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           ...(type === 'SSH_BASTION' && password ? { password } : {}),
           ...(type === 'SSH_BASTION' && sshPrivateKey ? { sshPrivateKey } : {}),
           ...(type === 'MANAGED_SSH' && apiPortNum ? { apiPort: apiPortNum } : {}),
-          ...((type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && publishPorts ? { publishPorts } : {}),
-          ...((type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') ? { lbStrategy } : {}),
+          ...(supportsGroupMode && publishPorts ? { publishPorts } : {}),
+          ...(supportsGroupMode ? { lbStrategy } : {}),
         });
       }
     }, isEditMode ? 'Failed to update gateway' : 'Failed to create gateway');
@@ -386,6 +403,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
   const handleClose = () => {
     setName('');
     setType('GUACD');
+    setDeploymentMode('SINGLE_INSTANCE');
     setHost('');
     setPort('');
     setDescription('');
@@ -464,6 +482,24 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               <MenuItem value="DB_PROXY">DB Proxy (Database Gateway)</MenuItem>
             </Select>
           </FormControl>
+          {supportsGroupMode && (
+            <FormControl fullWidth size="small">
+              <InputLabel>Deployment Mode</InputLabel>
+              <Select
+                value={deploymentMode}
+                label="Deployment Mode"
+                onChange={(e) => setDeploymentMode(e.target.value as GatewayDeploymentMode)}
+              >
+                <MenuItem value="SINGLE_INSTANCE">Single Instance</MenuItem>
+                <MenuItem value="MANAGED_GROUP">Managed Group</MenuItem>
+              </Select>
+            </FormControl>
+          )}
+          {!supportsGroupMode && (
+            <Alert severity="info" variant="outlined">
+              SSH bastions are always single-instance gateways.
+            </Alert>
+          )}
           {type === 'MANAGED_SSH' && (
             <Alert severity="info">
               This gateway uses the server&apos;s SSH key pair for authentication. No credentials needed.
@@ -485,7 +521,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               helperText={publishPorts ? 'Auto-assigned at deploy' : 'gRPC port for key management mTLS (default: 9022)'}
             />
           )}
-          {(type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
+          {supportsGroupMode && isGroupMode && (
             <FormControlLabel
               control={
                 <Switch
@@ -493,8 +529,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                   onChange={(_, v) => {
                     setPublishPorts(v);
                     if (v) {
-                      if (!host) setHost('localhost');
-                      const defaultPort = type === 'GUACD' ? '4822' : '2222';
+                      const defaultPort = type === 'GUACD' ? '4822' : type === 'DB_PROXY' ? '5432' : '2222';
                       setPort(defaultPort);
                     }
                   }}
@@ -504,12 +539,12 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               label="Publish Ports (external access)"
             />
           )}
-          {publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
+          {publishPorts && supportsGroupMode && isGroupMode && (
             <Alert severity="info" sx={{ py: 0.5 }}>
               Each deployed instance will get a unique randomly-assigned host port for external access.
             </Alert>
           )}
-          {(type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
+          {supportsGroupMode && isGroupMode && (
             <FormControl fullWidth size="small">
               <InputLabel>Load Balancing Strategy</InputLabel>
               <Select
@@ -522,30 +557,42 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
               </Select>
             </FormControl>
           )}
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField
-              label="Host"
-              value={host}
-              onChange={(e) => setHost(e.target.value)}
-              fullWidth
-              required
-              slotProps={{ input: { readOnly: isTunnelEnabled && isEditMode } }}
-              helperText={isTunnelEnabled && isEditMode ? 'Managed by tunnel' : undefined}
-            />
-            <TextField
-              label="Port"
-              value={port}
-              onChange={(e) => setPort(e.target.value)}
-              type="number"
-              sx={{ width: 120 }}
-              disabled={(publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY')) || (isTunnelEnabled && isEditMode)}
-              helperText={
-                isTunnelEnabled && isEditMode ? 'Tunnel' :
-                publishPorts && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') ? 'Host port auto-assigned at deploy' :
-                undefined
-              }
-            />
-          </Box>
+          {isGroupMode ? (
+            <>
+              <Alert severity="info" variant="outlined">
+                This gateway is a logical group. It does not expose a single stable host. The port below is the service port used by deployed instances.
+              </Alert>
+              <TextField
+                label="Service Port"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                type="number"
+                fullWidth
+                helperText={publishPorts ? 'External host ports are assigned per instance at deploy time.' : undefined}
+              />
+            </>
+          ) : (
+            <Box sx={{ display: 'flex', gap: 2 }}>
+              <TextField
+                label="Host"
+                value={host}
+                onChange={(e) => setHost(e.target.value)}
+                fullWidth
+                required
+                slotProps={{ input: { readOnly: isTunnelEnabled && isEditMode } }}
+                helperText={isTunnelEnabled && isEditMode ? 'Managed by tunnel' : undefined}
+              />
+              <TextField
+                label="Port"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                type="number"
+                sx={{ width: 120 }}
+                disabled={isTunnelEnabled && isEditMode}
+                helperText={isTunnelEnabled && isEditMode ? 'Tunnel' : undefined}
+              />
+            </Box>
+          )}
           {type === 'SSH_BASTION' && (
             <>
               <TextField
@@ -622,7 +669,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           <SessionTimeoutConfig value={inactivityTimeout} onChange={setInactivityTimeout} />
 
           {/* Auto-Scaling Configuration (edit mode, managed gateway types only) */}
-          {isEditMode && gateway?.isManaged && (type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY') && (
+          {isEditMode && isGroupMode && supportsGroupMode && (
             <Accordion sx={{ mt: 1 }}>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography variant="subtitle2">Auto-Scaling Configuration</Typography>
@@ -762,7 +809,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                       <Divider />
 
                       {/* Managed gateway: show newly generated token once */}
-                      {gateway?.isManaged && tunnelToken && (
+                      {isGroupMode && tunnelToken && (
                         <Alert severity="warning">
                           Token generated — copy it now, it will not be shown again.
                           <Box sx={{ mt: 1 }}>
@@ -785,7 +832,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                       )}
 
                       {/* Non-managed gateway: show docker run command */}
-                      {!gateway?.isManaged && (
+                      {!isGroupMode && (
                         <>
                           <Typography variant="body2" color="text.secondary">
                             Run the following Docker command on the gateway machine:
@@ -1004,7 +1051,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                       </Accordion>
 
                       {/* Deployment Guides */}
-                      {!gateway?.isManaged && tunnelToken && (
+                      {!isGroupMode && tunnelToken && (
                         <Accordion
                           expanded={tunnelDeployGuidesOpen}
                           onChange={(_, expanded) => setUiPref('tunnelDeployGuidesOpen', expanded)}

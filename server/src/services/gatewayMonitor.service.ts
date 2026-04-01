@@ -153,7 +153,8 @@ export async function emitGatewayData(gatewayId: string) {
       gatewayId,
       gateway: {
         id: gw.id,
-        isManaged: gw.isManaged,
+        deploymentMode: gw.deploymentMode,
+        isManaged: gw.deploymentMode === 'MANAGED_GROUP',
         desiredReplicas: gw.desiredReplicas,
         autoScale: gw.autoScale,
         minReplicas: gw.minReplicas,

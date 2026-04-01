@@ -114,6 +114,7 @@ type gatewayRecord struct {
 	Port              int
 	TenantID          string
 	IsManaged         bool
+	DeploymentMode    string
 	TunnelEnabled     bool
 	LBStrategy        string
 	EncryptedUsername *string

@@ -21,6 +21,11 @@ func (s Service) CreateGateway(ctx context.Context, claims authn.Claims, input c
 	if err := validateCreatePayload(input); err != nil {
 		return gatewayResponse{}, err
 	}
+	deploymentMode, err := normalizeDeploymentMode(input.DeploymentMode, input.Type, input.Host)
+	if err != nil {
+		return gatewayResponse{}, err
+	}
+	normalizedHost := normalizeGatewayHostForMode(deploymentMode, input.Host)
 
 	enc, err := s.prepareCredentialFields(ctx, claims.UserID, strings.TrimSpace(input.Type), input.Username, input.Password, input.SSHPrivateKey)
 	if err != nil {
@@ -69,29 +74,32 @@ UPDATE "Gateway"
 	if _, err := tx.Exec(ctx, `
 INSERT INTO "Gateway" (
   id, name, type, host, port, description, "isDefault", "tenantId", "createdById",
+  "deploymentMode",
   "encryptedUsername", "usernameIV", "usernameTag",
   "encryptedPassword", "passwordIV", "passwordTag",
   "encryptedSshKey", "sshKeyIV", "sshKeyTag",
   "apiPort", "monitoringEnabled", "monitorIntervalMs", "inactivityTimeoutSeconds",
-  "publishPorts", "lbStrategy", "createdAt", "updatedAt"
+  "isManaged", "publishPorts", "lbStrategy", "createdAt", "updatedAt"
 ) VALUES (
   $1, $2, $3::"GatewayType", $4, $5, $6, $7, $8, $9,
-  $10, $11, $12,
-  $13, $14, $15,
-  $16, $17, $18,
-  $19, $20, $21, $22,
-  $23, $24::"LoadBalancingStrategy", NOW(), NOW()
+  $10::"GatewayDeploymentMode",
+  $11, $12, $13,
+  $14, $15, $16,
+  $17, $18, $19,
+  $20, $21, $22, $23,
+  $24, $25, $26::"LoadBalancingStrategy", NOW(), NOW()
 )
 `,
 		id,
 		strings.TrimSpace(input.Name),
 		strings.ToUpper(strings.TrimSpace(input.Type)),
-		strings.TrimSpace(input.Host),
+		normalizedHost,
 		input.Port,
 		trimStringPtr(input.Description),
 		isDefault,
 		claims.TenantID,
 		claims.UserID,
+		deploymentMode,
 		usernameCipher,
 		usernameIV,
 		usernameTag,
@@ -105,6 +113,7 @@ INSERT INTO "Gateway" (
 		boolValue(input.MonitoringEnabled, true),
 		intValue(input.MonitorIntervalMS, 5000),
 		intValue(input.InactivityTimeoutSeconds, 3600),
+		deploymentModeIsGroup(deploymentMode),
 		boolValue(input.PublishPorts, false),
 		stringValue(input.LBStrategy, "ROUND_ROBIN"),
 	); err != nil {
@@ -141,6 +150,18 @@ func (s Service) UpdateGateway(ctx context.Context, claims authn.Claims, gateway
 	if err := validateUpdatePayload(record.Type, input); err != nil {
 		return gatewayResponse{}, err
 	}
+	updatedHostInput := record.Host
+	if input.Host.Present && input.Host.Value != nil {
+		updatedHostInput = *input.Host.Value
+	}
+	deploymentModeInput := record.DeploymentMode
+	if input.DeploymentMode.Present && input.DeploymentMode.Value != nil {
+		deploymentModeInput = *input.DeploymentMode.Value
+	}
+	deploymentMode, err := normalizeDeploymentMode(&deploymentModeInput, record.Type, updatedHostInput)
+	if err != nil {
+		return gatewayResponse{}, err
+	}
 
 	if strings.EqualFold(record.Type, "MANAGED_SSH") && input.APIPort.Present && input.APIPort.Value == nil {
 		return gatewayResponse{}, &requestError{status: http.StatusBadRequest, message: "apiPort cannot be null for MANAGED_SSH gateways"}
@@ -155,7 +176,7 @@ func (s Service) UpdateGateway(ctx context.Context, claims authn.Claims, gateway
 	sshKeyCipher, sshKeyIV, sshKeyTag := encryptedFieldParts(enc.sshKey)
 
 	updatedName := chooseString(record.Name, input.Name)
-	updatedHost := chooseString(record.Host, input.Host)
+	updatedHost := normalizeGatewayHostForMode(deploymentMode, chooseString(record.Host, input.Host))
 	updatedPort := chooseInt(record.Port, input.Port)
 	updatedDescription := chooseNullableString(record.Description, input.Description)
 	updatedDefault := chooseBool(record.IsDefault, input.IsDefault)
@@ -191,29 +212,32 @@ UPDATE "Gateway"
    SET name = $2,
        host = $3,
        port = $4,
-       description = $5,
-       "isDefault" = $6,
-       "encryptedUsername" = $7,
-       "usernameIV" = $8,
-       "usernameTag" = $9,
-       "encryptedPassword" = $10,
-       "passwordIV" = $11,
-       "passwordTag" = $12,
-       "encryptedSshKey" = $13,
-       "sshKeyIV" = $14,
-       "sshKeyTag" = $15,
-       "apiPort" = $16,
-       "monitoringEnabled" = $17,
-       "monitorIntervalMs" = $18,
-       "inactivityTimeoutSeconds" = $19,
-       "publishPorts" = $20,
-       "lbStrategy" = $21::"LoadBalancingStrategy",
+       "deploymentMode" = $5::"GatewayDeploymentMode",
+       description = $6,
+       "isDefault" = $7,
+       "encryptedUsername" = $8,
+       "usernameIV" = $9,
+       "usernameTag" = $10,
+       "encryptedPassword" = $11,
+       "passwordIV" = $12,
+       "passwordTag" = $13,
+       "encryptedSshKey" = $14,
+       "sshKeyIV" = $15,
+       "sshKeyTag" = $16,
+       "apiPort" = $17,
+       "monitoringEnabled" = $18,
+       "monitorIntervalMs" = $19,
+       "inactivityTimeoutSeconds" = $20,
+       "isManaged" = $21,
+       "publishPorts" = $22,
+       "lbStrategy" = $23::"LoadBalancingStrategy",
        "updatedAt" = NOW()
  WHERE id = $1
 `, record.ID,
 		updatedName,
 		updatedHost,
 		updatedPort,
+		deploymentMode,
 		updatedDescription,
 		updatedDefault,
 		usernameCipher,
@@ -229,6 +253,7 @@ UPDATE "Gateway"
 		updatedMonitoringEnabled,
 		updatedMonitorInterval,
 		updatedInactivity,
+		deploymentModeIsGroup(deploymentMode),
 		updatedPublishPorts,
 		updatedLB,
 	); err != nil {
@@ -454,12 +479,17 @@ func validateCreatePayload(input createPayload) error {
 	if strings.TrimSpace(input.Name) == "" {
 		return &requestError{status: http.StatusBadRequest, message: "name is required"}
 	}
-	switch strings.ToUpper(strings.TrimSpace(input.Type)) {
+	gatewayType := strings.ToUpper(strings.TrimSpace(input.Type))
+	switch gatewayType {
 	case "GUACD", "SSH_BASTION", "MANAGED_SSH", "DB_PROXY":
 	default:
 		return &requestError{status: http.StatusBadRequest, message: "type must be one of GUACD, SSH_BASTION, MANAGED_SSH, DB_PROXY"}
 	}
-	if strings.TrimSpace(input.Host) == "" {
+	deploymentMode, err := normalizeDeploymentMode(input.DeploymentMode, gatewayType, input.Host)
+	if err != nil {
+		return err
+	}
+	if !deploymentModeIsGroup(deploymentMode) && strings.TrimSpace(input.Host) == "" {
 		return &requestError{status: http.StatusBadRequest, message: "host is required"}
 	}
 	if input.Port < 1 || input.Port > 65535 {
@@ -485,6 +515,11 @@ func validateCreatePayload(input createPayload) error {
 }
 
 func validateUpdatePayload(gatewayType string, input updatePayload) error {
+	if input.DeploymentMode.Present && input.DeploymentMode.Value != nil {
+		if _, err := normalizeDeploymentMode(input.DeploymentMode.Value, gatewayType, ""); err != nil {
+			return err
+		}
+	}
 	if input.Port.Present && input.Port.Value != nil && (*input.Port.Value < 1 || *input.Port.Value > 65535) {
 		return &requestError{status: http.StatusBadRequest, message: "port must be between 1 and 65535"}
 	}
@@ -521,6 +556,9 @@ func changedGatewayFields(input updatePayload) []string {
 	if input.Port.Present {
 		fields = append(fields, "port")
 	}
+	if input.DeploymentMode.Present {
+		fields = append(fields, "deploymentMode")
+	}
 	if input.Description.Present {
 		fields = append(fields, "description")
 	}
@@ -555,6 +593,44 @@ func changedGatewayFields(input updatePayload) []string {
 		fields = append(fields, "inactivityTimeoutSeconds")
 	}
 	return fields
+}
+
+func normalizeDeploymentMode(raw *string, gatewayType, host string) (string, error) {
+	mode := ""
+	if raw != nil {
+		mode = strings.ToUpper(strings.TrimSpace(*raw))
+	}
+	if mode == "" {
+		if strings.ToUpper(strings.TrimSpace(gatewayType)) == "SSH_BASTION" || strings.TrimSpace(host) != "" {
+			mode = "SINGLE_INSTANCE"
+		} else {
+			mode = "MANAGED_GROUP"
+		}
+	}
+	switch mode {
+	case "SINGLE_INSTANCE", "MANAGED_GROUP":
+	default:
+		return "", &requestError{status: http.StatusBadRequest, message: "deploymentMode must be SINGLE_INSTANCE or MANAGED_GROUP"}
+	}
+	gatewayType = strings.ToUpper(strings.TrimSpace(gatewayType))
+	if gatewayType == "SSH_BASTION" && mode == "MANAGED_GROUP" {
+		return "", &requestError{status: http.StatusBadRequest, message: "SSH_BASTION gateways must use SINGLE_INSTANCE deployment mode"}
+	}
+	if mode == "MANAGED_GROUP" && !isManagedLifecycleGatewayType(gatewayType) {
+		return "", &requestError{status: http.StatusBadRequest, message: "Only MANAGED_SSH, GUACD, and DB_PROXY gateways can use MANAGED_GROUP deployment mode"}
+	}
+	return mode, nil
+}
+
+func deploymentModeIsGroup(mode string) bool {
+	return strings.EqualFold(strings.TrimSpace(mode), "MANAGED_GROUP")
+}
+
+func normalizeGatewayHostForMode(mode, host string) string {
+	if deploymentModeIsGroup(mode) {
+		return ""
+	}
+	return strings.TrimSpace(host)
 }
 
 func boolValue(value *bool, fallback bool) bool {

@@ -50,7 +50,7 @@ export async function canViewConnection(
     where: { id: connectionId },
     include: {
       team: { select: { tenantId: true } },
-      gateway: { select: { id: true, type: true, host: true, port: true, isManaged: true, lbStrategy: true, tunnelEnabled: true } },
+      gateway: { select: { id: true, type: true, host: true, port: true, deploymentMode: true, isManaged: true, lbStrategy: true, tunnelEnabled: true } },
       credentialSecret: { select: { id: true, name: true, type: true, scope: true, teamId: true, tenantId: true, encryptedData: true, dataIV: true, dataTag: true } },
     },
   });

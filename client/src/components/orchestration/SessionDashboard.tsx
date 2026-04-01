@@ -17,6 +17,7 @@ import { connectSSE } from '../../api/sse';
 import { useAuthStore } from '../../store/authStore';
 import { useGatewayStore } from '../../store/gatewayStore';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
+import { isGatewayGroup } from '../../utils/gatewayMode';
 
 const statusColor: Record<string, 'success' | 'warning' | 'default'> = {
   ACTIVE: 'success',
@@ -80,7 +81,7 @@ export default function SessionDashboard() {
 
   const sshCount = activeSessions.filter((s) => s.protocol === 'SSH').length;
   const rdpCount = activeSessions.filter((s) => s.protocol === 'RDP').length;
-  const managedGateways = gateways.filter((g) => g.isManaged).length;
+  const managedGateways = gateways.filter((g) => isGatewayGroup(g)).length;
 
   const handleTerminate = async () => {
     if (!terminateTarget) return;

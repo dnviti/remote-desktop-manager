@@ -4,7 +4,7 @@ import {
   FormControl, InputLabel, Select, MenuItem, FormControlLabel, Typography, Switch, Stack,
 } from '@mui/material';
 import { useGatewayStore } from '../../store/gatewayStore';
-import type { GatewayTemplateData } from '../../api/gateway.api';
+import type { GatewayDeploymentMode, GatewayTemplateData } from '../../api/gateway.api';
 import SessionTimeoutConfig from '../orchestration/SessionTimeoutConfig';
 import { extractApiError } from '../../utils/apiError';
 
@@ -17,6 +17,7 @@ interface GatewayTemplateDialogProps {
 export default function GatewayTemplateDialog({ open, onClose, template }: GatewayTemplateDialogProps) {
   const [name, setName] = useState('');
   const [type, setType] = useState<'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY'>('MANAGED_SSH');
+  const [deploymentMode, setDeploymentMode] = useState<GatewayDeploymentMode>('MANAGED_GROUP');
   const [host, setHost] = useState('');
   const [port, setPort] = useState('');
   const [description, setDescription] = useState('');
@@ -42,6 +43,7 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
     if (open && template) {
       setName(template.name);
       setType(template.type);
+      setDeploymentMode(template.deploymentMode ?? ((template.type === 'SSH_BASTION' || template.host) ? 'SINGLE_INSTANCE' : 'MANAGED_GROUP'));
       setHost(template.host);
       setPort(String(template.port));
       setDescription(template.description || '');
@@ -59,8 +61,9 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
     } else if (open) {
       setName('');
       setType('MANAGED_SSH');
+      setDeploymentMode('MANAGED_GROUP');
       setHost('');
-      setPort('22');
+      setPort('2222');
       setDescription('');
       setApiPort('9022');
       setMonitoringEnabled(true);
@@ -80,10 +83,11 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
   const handleTypeChange = (newType: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY') => {
     setType(newType);
     if (newType === 'SSH_BASTION') {
-      if (!port || port === '4822' || port === '2222' || port === '5432') setPort('22');
+      setDeploymentMode('SINGLE_INSTANCE');
     }
-    if (newType === 'DB_PROXY') {
-      if (!port || port === '4822' || port === '2222' || port === '22') setPort('5432');
+    const defaultPort = newType === 'GUACD' ? '4822' : newType === 'MANAGED_SSH' ? '2222' : newType === 'DB_PROXY' ? '5432' : '22';
+    if (!port || port === '4822' || port === '2222' || port === '5432' || port === '22') {
+      setPort(defaultPort);
     }
     if (newType === 'MANAGED_SSH' && !apiPort) {
       setApiPort('9022');
@@ -93,17 +97,18 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
   };
 
   const isManagedType = type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY';
+  const isGroupMode = deploymentMode === 'MANAGED_GROUP';
 
   const handleSave = async () => {
     if (!name.trim()) {
       setError('Name is required');
       return;
     }
-    if (!isManagedType && !host.trim()) {
+    if (!isGroupMode && !host.trim()) {
       setError('Host is required for SSH Bastion gateways');
       return;
     }
-    if (!isManagedType && !port.trim()) {
+    if (!port.trim()) {
       setError('Port is required for SSH Bastion gateways');
       return;
     }
@@ -113,7 +118,9 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
       const data = {
         name: name.trim(),
         type,
-        ...(!isManagedType ? { host: host.trim(), port: parseInt(port, 10) } : {}),
+        deploymentMode,
+        host: isGroupMode ? '' : host.trim(),
+        port: parseInt(port, 10),
         description: description.trim() || undefined,
         apiPort: apiPort ? parseInt(apiPort, 10) : undefined,
         monitoringEnabled,
@@ -168,11 +175,39 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
               <MenuItem value="DB_PROXY">DB Proxy (Database Gateway)</MenuItem>
             </Select>
           </FormControl>
-
           {isManagedType ? (
+            <FormControl fullWidth size="small">
+              <InputLabel>Deployment Mode</InputLabel>
+              <Select
+                value={deploymentMode}
+                label="Deployment Mode"
+                onChange={(e) => setDeploymentMode(e.target.value as GatewayDeploymentMode)}
+              >
+                <MenuItem value="SINGLE_INSTANCE">Single Instance</MenuItem>
+                <MenuItem value="MANAGED_GROUP">Managed Group</MenuItem>
+              </Select>
+            </FormControl>
+          ) : (
             <Alert severity="info" variant="outlined">
-              Host and port are automatically assigned by the orchestrator when instances are deployed.
+              SSH bastion templates are always single-instance.
             </Alert>
+          )}
+
+          {isGroupMode ? (
+            <Stack spacing={2}>
+              <Alert severity="info" variant="outlined">
+                This template creates a logical gateway group. Instances get their own runtime addresses when deployed.
+              </Alert>
+              <TextField
+                label="Service Port"
+                value={port}
+                onChange={(e) => setPort(e.target.value)}
+                type="number"
+                fullWidth
+                required
+                helperText={publishPorts ? 'External host ports are assigned per instance at deploy time.' : undefined}
+              />
+            </Stack>
           ) : (
             <Box sx={{ display: 'flex', gap: 2 }}>
               <TextField
@@ -193,7 +228,7 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
             </Box>
           )}
 
-          {isManagedType && (
+          {isManagedType && isGroupMode && (
             <FormControlLabel
               control={
                 <Switch
@@ -206,7 +241,7 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
             />
           )}
 
-          {isManagedType && (
+          {isManagedType && isGroupMode && (
             <FormControl fullWidth size="small">
               <InputLabel>Load Balancing Strategy</InputLabel>
               <Select
@@ -270,53 +305,54 @@ export default function GatewayTemplateDialog({ open, onClose, template }: Gatew
             onChange={setInactivityTimeout}
           />
 
-          {/* Auto-Scaling */}
-          <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
-            <Typography variant="subtitle2" gutterBottom>Auto-Scaling Configuration</Typography>
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={autoScaleEnabled}
-                  onChange={(e) => setAutoScaleEnabled(e.target.checked)}
-                />
-              }
-              label="Enable auto-scaling"
-            />
-            {autoScaleEnabled && (
-              <Stack spacing={2} sx={{ mt: 1 }}>
-                <Box sx={{ display: 'flex', gap: 2 }}>
+          {isManagedType && isGroupMode && (
+            <Box sx={{ border: 1, borderColor: 'divider', borderRadius: 1, p: 2 }}>
+              <Typography variant="subtitle2" gutterBottom>Auto-Scaling Configuration</Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={autoScaleEnabled}
+                    onChange={(e) => setAutoScaleEnabled(e.target.checked)}
+                  />
+                }
+                label="Enable auto-scaling"
+              />
+              {autoScaleEnabled && (
+                <Stack spacing={2} sx={{ mt: 1 }}>
+                  <Box sx={{ display: 'flex', gap: 2 }}>
+                    <TextField
+                      label="Min Replicas"
+                      value={minReplicasVal}
+                      onChange={(e) => setMinReplicasVal(e.target.value)}
+                      type="number"
+                      fullWidth
+                    />
+                    <TextField
+                      label="Max Replicas"
+                      value={maxReplicasVal}
+                      onChange={(e) => setMaxReplicasVal(e.target.value)}
+                      type="number"
+                      fullWidth
+                    />
+                  </Box>
                   <TextField
-                    label="Min Replicas"
-                    value={minReplicasVal}
-                    onChange={(e) => setMinReplicasVal(e.target.value)}
+                    label="Sessions per Instance"
+                    value={sessPerInstance}
+                    onChange={(e) => setSessPerInstance(e.target.value)}
                     type="number"
                     fullWidth
                   />
                   <TextField
-                    label="Max Replicas"
-                    value={maxReplicasVal}
-                    onChange={(e) => setMaxReplicasVal(e.target.value)}
+                    label="Scale-Down Cooldown (seconds)"
+                    value={cooldownVal}
+                    onChange={(e) => setCooldownVal(e.target.value)}
                     type="number"
                     fullWidth
                   />
-                </Box>
-                <TextField
-                  label="Sessions per Instance"
-                  value={sessPerInstance}
-                  onChange={(e) => setSessPerInstance(e.target.value)}
-                  type="number"
-                  fullWidth
-                />
-                <TextField
-                  label="Scale-Down Cooldown (seconds)"
-                  value={cooldownVal}
-                  onChange={(e) => setCooldownVal(e.target.value)}
-                  type="number"
-                  fullWidth
-                />
-              </Stack>
-            )}
-          </Box>
+                </Stack>
+              )}
+            </Box>
+          )}
         </Stack>
       </DialogContent>
       <DialogActions>

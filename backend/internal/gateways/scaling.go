@@ -71,8 +71,8 @@ func (s Service) UpdateScalingConfig(ctx context.Context, claims authn.Claims, g
 	if err != nil {
 		return scalingConfigResponse{}, err
 	}
-	if !gateway.IsManaged {
-		return scalingConfigResponse{}, &requestError{status: http.StatusBadRequest, message: "Auto-scaling is only available for managed gateways"}
+	if !deploymentModeIsGroup(gateway.DeploymentMode) {
+		return scalingConfigResponse{}, &requestError{status: http.StatusBadRequest, message: "Auto-scaling is only available for MANAGED_GROUP gateways"}
 	}
 	if err := validateScalingConfigPayload(gateway, input); err != nil {
 		return scalingConfigResponse{}, err

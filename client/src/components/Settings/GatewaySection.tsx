@@ -28,6 +28,7 @@ import ScalingControls from '../orchestration/ScalingControls';
 import GatewayInstanceList from '../orchestration/GatewayInstanceList';
 import GatewayTemplateSection from '../gateway/GatewayTemplateSection';
 import { extractApiError } from '../../utils/apiError';
+import { gatewayModeLabel, isGatewayGroup } from '../../utils/gatewayMode';
 import { isOperatorOrAbove } from '../../utils/roles';
 
 interface TestState {
@@ -102,7 +103,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   };
 
   const canExpand = (gw: GatewayData) =>
-    gw.type === 'MANAGED_SSH' || gw.type === 'GUACD' || gw.type === 'DB_PROXY';
+    isGatewayGroup(gw) && (gw.type === 'MANAGED_SSH' || gw.type === 'GUACD' || gw.type === 'DB_PROXY');
 
   const handleEdit = (gw: GatewayData) => {
     setEditingGateway(gw);
@@ -442,7 +443,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                     <TableCell sx={{ width: 40 }} />
                     <TableCell>Name</TableCell>
                     <TableCell>Type</TableCell>
-                    <TableCell>Host</TableCell>
+                    <TableCell>Endpoint</TableCell>
                     <TableCell>Status</TableCell>
                     <TableCell align="right">Actions</TableCell>
                   </TableRow>
@@ -452,6 +453,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                     const test = testStates[gw.id];
                     const isExpanded = expandedRows.has(gw.id);
                     const expandable = canExpand(gw);
+                    const isGroup = isGatewayGroup(gw);
                     return (
                       <Fragment key={gw.id}>
                         <TableRow>
@@ -468,20 +470,20 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                               {gw.isDefault && (
                                 <Chip label="Default" size="small" color="primary" variant="outlined" />
                               )}
-                              {gw.isManaged && (
-                                <Chip label="Managed" size="small" color="secondary" variant="outlined" />
+                              {isGroup && (
+                                <Chip label={gatewayModeLabel(gw)} size="small" color="secondary" variant="outlined" />
                               )}
                               {gw.publishPorts && (
                                 <Chip label="Published" size="small" color="info" variant="outlined" />
                               )}
-                              {gw.isManaged && (
+                              {isGroup && (
                                 <Chip
                                   label={gw.lbStrategy === 'LEAST_CONNECTIONS' ? 'Least Conn' : 'Round Robin'}
                                   size="small"
                                   variant="outlined"
                                 />
                               )}
-                              {gw.isManaged && (
+                              {isGroup && (
                                 <Typography variant="caption" color="text.secondary">
                                   {gw.runningInstances}/{gw.totalInstances} instances
                                 </Typography>
@@ -502,16 +504,22 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                             />
                           </TableCell>
                           <TableCell>
-                            {gw.publishPorts && gw.isManaged ? (
-                              <Typography variant="body2" color="text.secondary" fontStyle="italic">Per instance</Typography>
+                            {isGroup ? (
+                              <>
+                                <Typography variant="body2" color="text.secondary" fontStyle="italic">
+                                  Managed Group
+                                </Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  Service port {gw.port}
+                                </Typography>
+                              </>
                             ) : (
                               <Typography variant="body2">{gw.host}:{gw.port}</Typography>
                             )}
                           </TableCell>
                           <TableCell>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
-                              {gw.publishPorts && gw.isManaged ? (
-                                // For published-port managed gateways, derive status from instances
+                              {isGroup ? (
                                 gw.totalInstances === 0 ? (
                                   <Typography variant="caption" color="text.secondary">No instances</Typography>
                                 ) : gw.runningInstances === gw.totalInstances ? (
@@ -613,7 +621,7 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
                               <Collapse in={isExpanded} timeout="auto" unmountOnExit>
                                 <Box sx={{ p: 2 }}>
                                   <ScalingControls gatewayId={gw.id} gateway={gw} />
-                                  {gw.isManaged && gw.totalInstances > 0 && (
+                                  {isGroup && gw.totalInstances > 0 && (
                                     <Box sx={{ mt: 2 }}>
                                       <Typography variant="subtitle2" gutterBottom>Instances</Typography>
                                       <GatewayInstanceList gatewayId={gw.id} />

@@ -33,7 +33,7 @@ export interface ScalingStatus {
 
 export async function evaluateScaling(): Promise<void> {
   const gateways = await prisma.gateway.findMany({
-    where: { isManaged: true, autoScale: true },
+    where: { deploymentMode: 'MANAGED_GROUP', autoScale: true },
     select: {
       id: true,
       minReplicas: true,

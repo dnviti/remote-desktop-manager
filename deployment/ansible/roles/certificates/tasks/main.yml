@@ -43,7 +43,7 @@
                 else ('DNS:' ~ (arsenale_domain | trim))
             ]
           )
-          + ((_dev_client_extra_ipv4s | default([])) | map('regex_replace', '^(.*)$', 'IP:\\1') | list)
+          + ((_dev_client_extra_ipv4s | default([])) | map('regex_replace', '^', 'IP:') | list)
         ) | unique
       }}
 
@@ -76,7 +76,7 @@
                 else ('DNS:' ~ (arsenale_domain | trim))
             ]
           )
-          + ((_dev_client_extra_ipv4s | default([])) | map('regex_replace', '^(.*)$', 'IP Address:\\1') | list)
+          + ((_dev_client_extra_ipv4s | default([])) | map('regex_replace', '^', 'IP Address:') | list)
         )
         | reject('in', _dev_client_cert_sans.stdout | default(''))
         | list

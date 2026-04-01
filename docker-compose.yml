@@ -197,7 +197,6 @@ services:
       ARSENALE_VERSION: "latest"
       GO_QUERY_RUNNER_ENABLED: "true"
       HIBP_FAIL_OPEN: "true"
-      SELF_SIGNUP_ENABLED: "true"
       CLIENT_URL: "https://arsenale.home.arpa.viti"
       WEBAUTHN_RP_ID: "arsenale.home.arpa.viti"
       WEBAUTHN_RP_ORIGIN: "https://arsenale.home.arpa.viti"
@@ -249,7 +248,6 @@ services:
     volumes:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
-      - /run/user/1000/podman/podman.sock:/run/podman/podman.sock
       - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/ca.pem:/certs/ca.pem:ro
       - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/ssh-gateway:/certs/ssh-gateway:ro
       - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/ca-key.pem:/certs/ca-key.pem:ro
@@ -296,8 +294,6 @@ services:
       ARSENALE_VERSION: "latest"
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
-      ORCHESTRATOR_TYPE: "podman"
-      PODMAN_SOCKET_PATH: "/run/podman/podman.sock"
       RUNTIME_AGENT_URL: "http://runtime-agent-go:8095"
     ports:
       - "127.0.0.1:18081:8081"
@@ -307,7 +303,6 @@ services:
       runtime-agent-go:
         condition: service_healthy
     volumes:
-      - /run/user/1000/podman/podman.sock:/run/podman/podman.sock
       - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../dev-certs/postgres:/certs/postgres:ro
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/healthz >/dev/null || exit 1"]
@@ -854,8 +849,6 @@ services:
   # Development tunnel gateways — end-to-end tunnel registration fixtures
   # ---------------------------------------------------------------------------
   dev-tunnel-ssh-gateway:
-    profiles:
-      - dev-fixtures
     build:
       context: /home/debian/repos/arsenale/deployment/ansible/playbooks/../../..
       dockerfile: gateways/ssh-gateway/Dockerfile
@@ -902,8 +895,6 @@ services:
       - net-gateway
 
   dev-tunnel-guacd:
-    profiles:
-      - dev-fixtures
     build:
       context: /home/debian/repos/arsenale/deployment/ansible/playbooks/../../..
       dockerfile: gateways/guacd/Dockerfile
@@ -943,8 +934,6 @@ services:
       - net-gateway
 
   dev-tunnel-db-proxy:
-    profiles:
-      - dev-fixtures
     build:
       context: /home/debian/repos/arsenale/deployment/ansible/playbooks/../../..
       dockerfile: gateways/db-proxy/Dockerfile

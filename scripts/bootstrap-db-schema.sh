@@ -40,6 +40,52 @@ container_exec() {
     sh -lc "$1"
 }
 
+ensure_gateway_deployment_mode_schema() {
+  "$RUNTIME" exec -i \
+    -e "ARSENALE_DB_USER=$DB_USER" \
+    -e "ARSENALE_DB_NAME=$DB_NAME" \
+    "$POSTGRES_CONTAINER" \
+    sh -lc '
+      db_user=${ARSENALE_DB_USER:-${POSTGRES_USER:-arsenale}}
+      db_name=${ARSENALE_DB_NAME:-${POSTGRES_DB:-arsenale}}
+      export PGPASSWORD="$(cat "${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}")"
+      psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name"
+    ' <<'SQL'
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_type
+    WHERE typname = 'GatewayDeploymentMode'
+  ) THEN
+    CREATE TYPE public."GatewayDeploymentMode" AS ENUM ('SINGLE_INSTANCE', 'MANAGED_GROUP');
+  END IF;
+END $$;
+
+ALTER TABLE public."Gateway"
+  ADD COLUMN IF NOT EXISTS "deploymentMode" public."GatewayDeploymentMode"
+  DEFAULT 'SINGLE_INSTANCE' NOT NULL;
+
+ALTER TABLE public."GatewayTemplate"
+  ADD COLUMN IF NOT EXISTS "deploymentMode" public."GatewayDeploymentMode"
+  DEFAULT 'SINGLE_INSTANCE' NOT NULL;
+
+UPDATE public."Gateway"
+SET "deploymentMode" = CASE
+  WHEN type = 'SSH_BASTION'::public."GatewayType" THEN 'SINGLE_INSTANCE'::public."GatewayDeploymentMode"
+  WHEN "isManaged" THEN 'MANAGED_GROUP'::public."GatewayDeploymentMode"
+  ELSE 'SINGLE_INSTANCE'::public."GatewayDeploymentMode"
+END;
+
+UPDATE public."GatewayTemplate"
+SET "deploymentMode" = CASE
+  WHEN type = 'SSH_BASTION'::public."GatewayType" THEN 'SINGLE_INSTANCE'::public."GatewayDeploymentMode"
+  WHEN COALESCE(BTRIM(host), '') = '' THEN 'MANAGED_GROUP'::public."GatewayDeploymentMode"
+  ELSE 'SINGLE_INSTANCE'::public."GatewayDeploymentMode"
+END;
+SQL
+}
+
 for _ in $(seq 1 30); do
   if container_exec '
     db_user=${ARSENALE_DB_USER:-${POSTGRES_USER:-arsenale}}
@@ -70,6 +116,7 @@ schema_present="$(container_exec '
 ')"
 
 if [[ "$schema_present" == "t" ]]; then
+  ensure_gateway_deployment_mode_schema
   printf 'schema-bootstrap: already-present (%s)\n' "${DB_NAME:-default}"
   exit 0
 fi
@@ -84,5 +131,7 @@ fi
     export PGPASSWORD="$(cat "${POSTGRES_PASSWORD_FILE:-/run/secrets/postgres_password}")"
     psql -v ON_ERROR_STOP=1 -U "$db_user" -d "$db_name"
   ' < "$SCHEMA_FILE"
+
+ensure_gateway_deployment_mode_schema
 
 printf 'schema-bootstrap: applied (%s)\n' "${DB_NAME:-default}"

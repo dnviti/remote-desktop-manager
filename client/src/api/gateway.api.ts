@@ -1,6 +1,7 @@
 import api from './client';
 
 export type GatewayHealthStatus = 'UNKNOWN' | 'REACHABLE' | 'UNREACHABLE';
+export type GatewayDeploymentMode = 'SINGLE_INSTANCE' | 'MANAGED_GROUP';
 
 export interface GatewayData {
   id: string;
@@ -8,6 +9,7 @@ export interface GatewayData {
   type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host: string;
   port: number;
+  deploymentMode: GatewayDeploymentMode;
   description: string | null;
   isDefault: boolean;
   hasSshKey: boolean;
@@ -47,6 +49,7 @@ export interface GatewayInput {
   type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host: string;
   port: number;
+  deploymentMode?: GatewayDeploymentMode;
   description?: string;
   isDefault?: boolean;
   username?: string;
@@ -64,6 +67,7 @@ export interface GatewayUpdate {
   name?: string;
   host?: string;
   port?: number;
+  deploymentMode?: GatewayDeploymentMode;
   description?: string | null;
   isDefault?: boolean;
   username?: string;
@@ -325,6 +329,7 @@ export interface GatewayTemplateData {
   type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
   host: string;
   port: number;
+  deploymentMode: GatewayDeploymentMode;
   description: string | null;
   apiPort: number | null;
   autoScale: boolean;
@@ -347,6 +352,7 @@ export interface GatewayTemplateData {
 export interface GatewayTemplateInput {
   name: string;
   type: 'GUACD' | 'SSH_BASTION' | 'MANAGED_SSH' | 'DB_PROXY';
+  deploymentMode?: GatewayDeploymentMode;
   host?: string;
   port?: number;
   description?: string;

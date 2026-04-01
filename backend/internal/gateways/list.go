@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -16,6 +17,7 @@ SELECT
 	g.type::text,
 	g.host,
 	g.port,
+	g."deploymentMode"::text,
 	g.description,
 	g."isDefault",
 	(g."encryptedSshKey" IS NOT NULL) AS "hasSshKey",
@@ -140,6 +142,7 @@ func scanGateway(row rowScanner) (gatewayRecord, error) {
 		&item.Type,
 		&item.Host,
 		&item.Port,
+		&item.DeploymentMode,
 		&description,
 		&item.IsDefault,
 		&hasSSHKey,
@@ -216,6 +219,14 @@ func scanGateway(row rowScanner) (gatewayRecord, error) {
 	item.TunnelClientKeyIV = nullStringPtr(tunnelClientKeyIV)
 	item.TunnelClientKeyTag = nullStringPtr(tunnelClientKeyTag)
 	item.TunnelClientCertExp = nullTimePtr(tunnelClientCertExp)
+	if strings.TrimSpace(item.DeploymentMode) == "" {
+		if item.IsManaged {
+			item.DeploymentMode = "MANAGED_GROUP"
+		} else {
+			item.DeploymentMode = "SINGLE_INSTANCE"
+		}
+	}
+	item.IsManaged = deploymentModeIsGroup(item.DeploymentMode)
 	if !hasSSHKey {
 		item.EncryptedSSHKey = nil
 	}
@@ -223,12 +234,21 @@ func scanGateway(row rowScanner) (gatewayRecord, error) {
 }
 
 func gatewayRecordToResponse(item gatewayRecord) gatewayResponse {
+	deploymentMode := item.DeploymentMode
+	if strings.TrimSpace(deploymentMode) == "" {
+		if item.IsManaged {
+			deploymentMode = "MANAGED_GROUP"
+		} else {
+			deploymentMode = "SINGLE_INSTANCE"
+		}
+	}
 	return gatewayResponse{
 		ID:                       item.ID,
 		Name:                     item.Name,
 		Type:                     item.Type,
 		Host:                     item.Host,
 		Port:                     item.Port,
+		DeploymentMode:           deploymentMode,
 		Description:              item.Description,
 		IsDefault:                item.IsDefault,
 		HasSSHKey:                item.EncryptedSSHKey != nil,
@@ -244,7 +264,7 @@ func gatewayRecordToResponse(item gatewayRecord) gatewayResponse {
 		LastCheckedAt:            item.LastCheckedAt,
 		LastLatencyMS:            item.LastLatencyMS,
 		LastError:                item.LastError,
-		IsManaged:                item.IsManaged,
+		IsManaged:                deploymentModeIsGroup(deploymentMode),
 		PublishPorts:             item.PublishPorts,
 		LBStrategy:               item.LBStrategy,
 		DesiredReplicas:          item.DesiredReplicas,

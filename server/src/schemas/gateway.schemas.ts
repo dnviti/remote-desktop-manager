@@ -1,9 +1,28 @@
 import { z } from 'zod';
 
+const gatewayTypeSchema = z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']);
+const deploymentModeSchema = z.enum(['SINGLE_INSTANCE', 'MANAGED_GROUP']);
+
+function supportsGroupMode(type: z.infer<typeof gatewayTypeSchema>) {
+  return type === 'MANAGED_SSH' || type === 'GUACD' || type === 'DB_PROXY';
+}
+
+function normalizeDeploymentMode(type: z.infer<typeof gatewayTypeSchema>, host: string, deploymentMode?: z.infer<typeof deploymentModeSchema>) {
+  const mode = deploymentMode ?? (type === 'SSH_BASTION' || host.trim() ? 'SINGLE_INSTANCE' : 'MANAGED_GROUP');
+  if (type === 'SSH_BASTION' && mode !== 'SINGLE_INSTANCE') {
+    throw new Error('SSH_BASTION gateways must use SINGLE_INSTANCE deployment mode');
+  }
+  if (mode === 'MANAGED_GROUP' && !supportsGroupMode(type)) {
+    throw new Error('Only MANAGED_SSH, GUACD, and DB_PROXY gateways can use MANAGED_GROUP deployment mode');
+  }
+  return mode;
+}
+
 export const createGatewaySchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']),
-  host: z.string().min(1),
+  type: gatewayTypeSchema,
+  deploymentMode: deploymentModeSchema.optional(),
+  host: z.string().default(''),
   port: z.number().int().min(1).max(65535),
   description: z.string().max(500).optional(),
   isDefault: z.boolean().optional(),
@@ -16,13 +35,30 @@ export const createGatewaySchema = z.object({
   monitoringEnabled: z.boolean().optional(),
   monitorIntervalMs: z.number().int().min(1000).max(3600000).optional(),
   inactivityTimeoutSeconds: z.number().int().min(60).max(86400).optional(),
+}).superRefine((data, ctx) => {
+  try {
+    const mode = normalizeDeploymentMode(data.type, data.host, data.deploymentMode);
+    if (mode === 'SINGLE_INSTANCE' && !data.host.trim()) {
+      ctx.addIssue({ code: 'custom', path: ['host'], message: 'Host is required for single-instance gateways' });
+    }
+  } catch (error) {
+    ctx.addIssue({ code: 'custom', path: ['deploymentMode'], message: (error as Error).message });
+  }
+}).transform((data) => {
+  const deploymentMode = normalizeDeploymentMode(data.type, data.host, data.deploymentMode);
+  return {
+    ...data,
+    deploymentMode,
+    host: deploymentMode === 'MANAGED_GROUP' ? '' : data.host,
+  };
 });
 export type CreateGatewayInput = z.infer<typeof createGatewaySchema>;
 
 export const updateGatewaySchema = z.object({
   name: z.string().min(1).max(100).optional(),
-  host: z.string().min(1).optional(),
+  host: z.string().optional(),
   port: z.number().int().min(1).max(65535).optional(),
+  deploymentMode: deploymentModeSchema.optional(),
   description: z.string().max(500).nullable().optional(),
   isDefault: z.boolean().optional(),
   username: z.string().optional(),
@@ -68,7 +104,8 @@ export type RotationPolicyInput = z.infer<typeof rotationPolicySchema>;
 
 export const createTemplateSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']),
+  type: gatewayTypeSchema,
+  deploymentMode: deploymentModeSchema.optional(),
   host: z.string().default(''),
   port: z.number().int().min(1).max(65535).optional(),
   description: z.string().max(500).optional(),
@@ -84,10 +121,11 @@ export const createTemplateSchema = z.object({
   publishPorts: z.boolean().optional(),
   lbStrategy: z.enum(['ROUND_ROBIN', 'LEAST_CONNECTIONS']).optional(),
 }).transform((data) => {
-  const isManagedType = data.type === 'MANAGED_SSH' || data.type === 'GUACD' || data.type === 'DB_PROXY';
+  const deploymentMode = normalizeDeploymentMode(data.type, data.host, data.deploymentMode);
   return {
     ...data,
-    host: isManagedType ? '' : data.host,
+    deploymentMode,
+    host: deploymentMode === 'MANAGED_GROUP' ? '' : data.host,
     port: data.port ?? (data.type === 'MANAGED_SSH' ? 2222 : data.type === 'GUACD' ? 4822 : data.type === 'DB_PROXY' ? 5432 : undefined),
   };
 }).refine(
@@ -98,7 +136,8 @@ export type CreateTemplateInput = z.infer<typeof createTemplateSchema>;
 
 export const updateTemplateSchema = z.object({
   name: z.string().min(1).max(100),
-  type: z.enum(['GUACD', 'SSH_BASTION', 'MANAGED_SSH', 'DB_PROXY']),
+  type: gatewayTypeSchema,
+  deploymentMode: deploymentModeSchema,
   host: z.string(),
   port: z.number().int().min(1).max(65535),
   description: z.string().max(500),

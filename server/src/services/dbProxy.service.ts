@@ -14,6 +14,11 @@ import { config } from '../config';
 
 const log = logger.child('db-proxy');
 
+function isManagedGroup(deploymentMode: string | null | undefined, legacyIsManaged: boolean | null | undefined): boolean {
+  if (deploymentMode) return deploymentMode === 'MANAGED_GROUP';
+  return Boolean(legacyIsManaged);
+}
+
 
 export interface DbProxySessionResult {
   sessionId: string;
@@ -106,7 +111,7 @@ export async function createDbProxySession(params: {
     const conn = await prisma.connection.findUnique({
       where: { id: connectionId },
       include: {
-        gateway: { select: { id: true, type: true, host: true, port: true, isManaged: true, lbStrategy: true, tunnelEnabled: true } },
+        gateway: { select: { id: true, type: true, host: true, port: true, deploymentMode: true, isManaged: true, lbStrategy: true, tunnelEnabled: true } },
       },
     });
     if (!conn) throw new AppError('Connection not found', 404);
@@ -134,7 +139,7 @@ export async function createDbProxySession(params: {
     const gateway = gatewayRef
       ? await prisma.gateway.findUnique({
           where: { id: gatewayRef.id },
-          select: { id: true, type: true, host: true, port: true, isManaged: true, lbStrategy: true, tunnelEnabled: true },
+          select: { id: true, type: true, host: true, port: true, deploymentMode: true, isManaged: true, lbStrategy: true, tunnelEnabled: true },
         })
       : null;
 
@@ -150,7 +155,7 @@ export async function createDbProxySession(params: {
       proxyHost = gateway.host;
       proxyPort = gateway.port;
 
-      if (gateway.isManaged) {
+      if (isManagedGroup(gateway.deploymentMode, gateway.isManaged)) {
         const inst = await selectInstance(gateway.id, gateway.lbStrategy);
         if (!inst && !gateway.tunnelEnabled) {
           throw new AppError(

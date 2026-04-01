@@ -232,8 +232,11 @@ export async function deploy(req: AuthRequest, res: Response) {
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
 
-  if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD') {
-    throw new AppError('Only MANAGED_SSH and GUACD gateways can be deployed as managed containers', 400);
+  if (gateway.type !== 'MANAGED_SSH' && gateway.type !== 'GUACD' && gateway.type !== 'DB_PROXY') {
+    throw new AppError('Only MANAGED_SSH, GUACD, and DB_PROXY gateways can be deployed as managed containers', 400);
+  }
+  if (gateway.deploymentMode !== 'MANAGED_GROUP') {
+    throw new AppError('Only MANAGED_GROUP gateways can be deployed as managed containers', 400);
   }
 
   const result = await managedGatewayService.deployGatewayInstance(gatewayId, req.user.userId);
@@ -244,7 +247,7 @@ export async function deploy(req: AuthRequest, res: Response) {
   });
   await prisma.gateway.update({
     where: { id: gatewayId },
-    data: { isManaged: true, desiredReplicas: instanceCount },
+    data: { desiredReplicas: instanceCount },
   });
 
   res.status(201).json(result);
@@ -397,8 +400,8 @@ export async function updateScalingConfig(req: AuthRequest, res: Response) {
   });
   if (!gateway) throw new AppError('Gateway not found', 404);
 
-  if (!gateway.isManaged) {
-    throw new AppError('Auto-scaling is only available for managed gateways', 400);
+  if (gateway.deploymentMode !== 'MANAGED_GROUP') {
+    throw new AppError('Auto-scaling is only available for MANAGED_GROUP gateways', 400);
   }
 
   const data = req.body as ScalingConfigInput;

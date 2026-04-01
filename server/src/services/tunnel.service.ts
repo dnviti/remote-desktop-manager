@@ -1066,7 +1066,7 @@ export async function processCertRotations(): Promise<void> {
       id: true,
       name: true,
       tenantId: true,
-      isManaged: true,
+      deploymentMode: true,
       tunnelClientCertExp: true,
       tenant: {
         select: {
@@ -1146,7 +1146,7 @@ export async function processCertRotations(): Promise<void> {
 
       // For managed gateways the mTLS handshake material cannot be hot-swapped —
       // trigger a rolling restart so instances pick up the new cert and key.
-      if (gw.isManaged) {
+      if (gw.deploymentMode === 'MANAGED_GROUP') {
         try {
           const { rollingRestartForCertRotation } = await import('./managedGateway.service');
           await rollingRestartForCertRotation(gw.id, clientResult.certPem, clientResult.keyPem);

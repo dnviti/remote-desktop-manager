@@ -59,6 +59,8 @@ server_encryption_key="$(resolve_server_encryption_key)"
 jwt_secret="$(resolve_jwt_secret)"
 ca_cert="${ARSENALE_CA_CERT:-$repo_root/dev-certs/client/ca.pem}"
 api_base="${ARSENALE_API_BASE:-https://localhost:3000/api}"
+client_base="${ARSENALE_CLIENT_BASE:-}"
+expected_webauthn_rp_id="${ARSENALE_WEBAUTHN_RP_ID:-}"
 cp_base="${ARSENALE_CP_BASE:-http://127.0.0.1:18080}"
 controller_base="${ARSENALE_CONTROLLER_BASE:-http://127.0.0.1:18081}"
 authz_base="${ARSENALE_AUTHZ_BASE:-http://127.0.0.1:18082}"
@@ -1136,7 +1138,15 @@ curl --silent --show-error --fail \
   -H 'content-type: application/json' \
   -d '{}' \
   "${api_base}/user/2fa/webauthn/registration-options" \
-  | jq -e '.challenge and .rp.id == "localhost" and .rp.name == "Arsenale" and .attestation == "none" and .user.name == "admin@example.com" and .authenticatorSelection.userVerification == "preferred"' >/dev/null
+  | jq -e --arg expectedRpId "${expected_webauthn_rp_id}" --arg expectedUser "${admin_email}" '
+      .challenge
+      and (.rp.id | type == "string" and length > 0)
+      and ($expectedRpId == "" or .rp.id == $expectedRpId)
+      and .rp.name == "Arsenale"
+      and .attestation == "none"
+      and .user.name == $expectedUser
+      and .authenticatorSelection.userVerification == "preferred"
+    ' >/dev/null
 
 echo '2.1.4.1 /api/vault/status'
 curl --silent --show-error --fail \
@@ -2659,7 +2669,14 @@ verify_email_temp_email="go-verify-${verify_email_temp_user_id}@example.com"
 verify_email_redirect="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}|%{redirect_url}' \
   --cacert "${ca_cert}" \
   "${api_base}/auth/verify-email?token=${verify_email_temp_token}")"
-[[ "${verify_email_redirect}" == "302|https://localhost:3000/login?verified=true" ]]
+verify_email_status="${verify_email_redirect%%|*}"
+verify_email_location="${verify_email_redirect#*|}"
+[[ "${verify_email_status}" == "302" ]]
+if [[ -n "${client_base}" ]]; then
+  [[ "${verify_email_location}" == "${client_base%/}/login?verified=true" ]]
+else
+  [[ "${verify_email_location}" == */login?verified=true ]]
+fi
 
 "${container_runtime}" exec \
   -e PGPASSWORD="${postgres_password}" \
@@ -2861,7 +2878,7 @@ curl --silent --show-error --fail \
   -H 'content-type: application/json' \
   -d "{\"tempToken\":\"${webauthn_login_temp_token}\"}" \
   "${api_base}/auth/request-webauthn-options" \
-  | jq -e --arg ref "${webauthn_login_temp_credential_ref}" '.challenge and .rpId == "localhost" and .userVerification == "preferred" and ((.allowCredentials | map(select(.id == $ref)) | length) == 1)' >/dev/null
+  | jq -e --arg ref "${webauthn_login_temp_credential_ref}" --arg expectedRpId "${expected_webauthn_rp_id}" '.challenge and ((($expectedRpId | length) == 0 and (.rpId | type == "string") and (.rpId | length > 0)) or .rpId == $expectedRpId) and .userVerification == "preferred" and ((.allowCredentials | map(select(.id == $ref)) | length) == 1)' >/dev/null
 
 echo '2.1.11.4.6 /api/auth/mfa-setup/init + /verify'
 mfa_setup_temp_tenant_id="$(python3 - <<'PY'

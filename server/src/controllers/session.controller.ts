@@ -29,6 +29,11 @@ import { endDesktopSession, heartbeatDesktopSession, issueDesktopSessionGrant } 
 const DEFAULT_RDP_WIDTH = 1024;
 const DEFAULT_RDP_HEIGHT = 768;
 
+function isManagedGroup(deploymentMode: string | null | undefined, legacyIsManaged: boolean | null | undefined): boolean {
+  if (deploymentMode) return deploymentMode === 'MANAGED_GROUP';
+  return Boolean(legacyIsManaged);
+}
+
 // ---- RDP session creation (migrated from rdp.handler.ts) ----
 
 export async function createRdpSession(req: AuthRequest, res: Response, next: NextFunction) {
@@ -95,7 +100,7 @@ export async function createRdpSession(req: AuthRequest, res: Response, next: Ne
     let selectedContainerName: string | undefined;
     let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
-    if (gateway.isManaged) {
+    if (isManagedGroup(gateway.deploymentMode, gateway.isManaged)) {
       const inst = await selectInstance(gateway.id, gateway.lbStrategy);
       if (!inst && !gateway.tunnelEnabled) {
         throw new AppError(
@@ -357,7 +362,7 @@ export async function createVncSession(req: AuthRequest, res: Response, next: Ne
     let selectedContainerName: string | undefined;
     let routingDecision: { strategy: string; candidateCount: number; selectedSessionCount: number } | undefined;
 
-    if (gateway.isManaged) {
+    if (isManagedGroup(gateway.deploymentMode, gateway.isManaged)) {
       const inst = await selectInstance(gateway.id, gateway.lbStrategy);
       if (!inst && !gateway.tunnelEnabled) {
         throw new AppError(
