@@ -806,6 +806,31 @@ services:
         aliases:
           - terminal-target
 
+  dev-debian-ssh-target:
+    build:
+      context: /home/debian/repos/arsenale/deployment/ansible/playbooks/../../..
+      dockerfile: infrastructure/dev/debian-ssh-target/Dockerfile
+    container_name: arsenale-dev-debian-ssh-target
+    cpus: "0.5"
+    mem_limit: "128m"
+    pids_limit: 128
+    tmpfs:
+      - /tmp
+      - /run
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 22 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: always
+    networks:
+      net-edge: {}
+      net-gateway:
+        aliases:
+          - dev-debian-target
+          - dev-debian-ssh-target
+
   # ---------------------------------------------------------------------------
   # Client — React SPA served by Nginx
   # ---------------------------------------------------------------------------
@@ -932,7 +957,11 @@ services:
       timeout: 5s
       retries: 3
     restart: always
+    dns:
+      - "192.168.254.1"
+      - "192.168.254.3"
     networks:
+      - net-egress
       - net-gateway
 
   dev-tunnel-guacd:
@@ -975,7 +1004,11 @@ services:
       retries: 3
       start_period: 10s
     restart: always
+    dns:
+      - "192.168.254.1"
+      - "192.168.254.3"
     networks:
+      - net-egress
       - net-gateway
 
   dev-tunnel-db-proxy:
@@ -1014,7 +1047,11 @@ services:
       timeout: 5s
       retries: 3
     restart: always
+    dns:
+      - "192.168.254.1"
+      - "192.168.254.3"
     networks:
+      - net-egress
       - net-gateway
 
 
