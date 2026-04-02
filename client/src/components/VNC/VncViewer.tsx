@@ -97,7 +97,7 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
     if (resDlp) { setDlpPolicy(resDlp); dlpPolicyRef.current = resDlp; }
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/?token=${encodeURIComponent(token)}`;
+    const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/`;
 
     const tunnel = new Guacamole.WebSocketTunnel(wsUrl);
     const client = new Guacamole.Client(tunnel);
@@ -242,7 +242,9 @@ export default function VncViewer({ connectionId, tabId, isActive = true, creden
       client.sendKeyEvent(0, keysym);
     };
 
-    client.connect('');
+    // Pass the token as connect data so guacamole-common-js appends a single
+    // query string instead of mutating a pre-tokenized URL with an extra '?'.
+    client.connect(`token=${encodeURIComponent(token)}`);
 
     innerCleanupRef.current = () => {
       display.removeEventListener('contextmenu', preventContextMenu);
