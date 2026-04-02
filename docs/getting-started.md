@@ -2,41 +2,61 @@
 title: Getting Started
 description: Installation, prerequisites, and first-run instructions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-03-27T12:00:00Z
+generated-at: 2026-04-02T12:57:10Z
 source-files:
   - README.md
+  - AGENT.md
   - package.json
-  - Makefile
   - client/package.json
-  - dev-certs/generate.sh
+  - Makefile
   - .env.example
-  - backend/migrations/000001_baseline.sql
-  - backend/sqlc.yaml
+  - dev-certs/generate.sh
+  - scripts/db-migrate.sh
+  - scripts/dev-api-acceptance.sh
   - deployment/ansible/inventory/group_vars/all/vars.yml
 ---
 
 ## 🎯 Overview
 
-Arsenale is a secure remote access platform that provides SSH, RDP, VNC, and database proxy access through a unified web interface. This guide covers setting up a local development environment.
+The fastest way to work on Arsenale locally is to let Ansible bring up the containerized Go stack and then run the React frontend in local Vite mode. That gives you:
 
-## 📋 Prerequisites
+- the full control plane and brokers,
+- seeded development credentials,
+- demo database fixtures,
+- local HTTPS,
+- and hot reloading for frontend changes.
 
-| Requirement | Minimum Version | Purpose |
-|-------------|----------------|---------|
-| Node.js | 22.x | Frontend and JS workspace runtime |
-| npm | 10.x | Package management |
-| Podman or Docker | Latest | Local stack containers and Go fallback builds |
-| Podman Compose or Docker Compose | Latest | Container orchestration |
-| Python 3 | 3.9+ | Ansible automation scripts |
-| Ansible | Latest | Infrastructure provisioning |
-| OpenSSL | 3.x | TLS certificate generation |
-| Git | 2.x | Version control |
+## ✅ Prerequisites
 
-**Operating system support:** Linux, macOS, Windows (with PowerShell Core).
+| Requirement | Recommended Version | Why it is needed |
+|-------------|---------------------|------------------|
+| Node.js | `22.x` | Root workspaces, frontend build, tunnel-agent workspace |
+| npm | `10.x` or newer | Workspace install and scripts |
+| Go | `1.25.x` | Local backend and CLI builds when not using container-only flow |
+| Podman or Docker | Recent | Local stack containers |
+| Ansible | Recent | Unified dev and production deployment |
+| Python 3 | `3.9+` | Ansible helpers and acceptance parsing |
+| OpenSSL | `3.x` | Local CA and service certificate generation |
+| Git | `2.x` | Repository operations |
 
-## 🚀 Quick Start
+## 🚀 First-Run Flow
 
-### 1. Clone and Install
+```mermaid
+flowchart TD
+    A["git clone + npm install"] --> B["make setup"]
+    B --> C["Generate vault secrets"]
+    B --> D["Generate dev certificates"]
+    C --> E["npm run dev"]
+    D --> E
+    E --> F["make dev via Ansible"]
+    F --> G["Wait for Go service health"]
+    G --> H["Start Vite on :3005"]
+    H --> I["Open UI or use CLI"]
+```
+
+## 🛠 Step-by-Step Setup
+
+### 1. Clone and install dependencies
 
 ```bash
 git clone https://github.com/dnviti/arsenale.git
@@ -44,179 +64,128 @@ cd arsenale
 npm install
 ```
 
-### 2. First-Time Setup
+### 2. Generate local secrets and certificates
 
 ```bash
 make setup
 ```
 
-This command:
-- Installs Ansible collections
-- Generates `vault.yml` with auto-generated secrets (JWT, Guacamole, encryption keys, DB password)
-- Creates TLS certificates in `dev-certs/` (CA + per-service certs)
+`make setup` installs required Ansible collections and creates:
 
-### 3. Start Development Environment
+- `deployment/ansible/inventory/group_vars/all/vault.yml`
+- `deployment/ansible/.vault-pass` when generated locally
+- `dev-certs/` with a shared CA and per-service certificates
+
+### 3. Start the development stack
 
 ```bash
 npm run dev
 ```
 
-This single command:
-1. Runs `make dev` -- starts the full local Go stack via Ansible
-2. Brings up the containerized HTTPS app on `https://localhost:3000`
-3. Starts the Vite dev server on `https://localhost:3005`
-4. Proxies local frontend requests to the Go services on `:18080`, `:18090`, and `:18091`
+Under the hood this does two things:
 
-### 4. Access the Application
+1. `make dev` deploys the local containers and Go services.
+2. `npm run dev -w client` starts Vite after `http://localhost:18080/healthz`, `:18090/healthz`, and `:18091/healthz` are reachable.
 
-| URL | Purpose |
-|-----|---------|
-| `https://localhost:3000` | Containerized web UI |
+### 4. Open the application
+
+| URL | Use |
+|-----|-----|
+| `https://localhost:3000` | Containerized client with reverse proxy |
 | `https://localhost:3005` | Local Vite frontend |
-| `http://localhost:18080/api` | Public Go API edge |
-| `http://localhost:18080/healthz` | Control plane health check |
+| `http://127.0.0.1:18080/healthz` | Control-plane health |
+| `http://127.0.0.1:18092/healthz` | Tunnel-broker health |
+| `http://127.0.0.1:18093/healthz` | Query-runner health |
 
-On first access, the **Setup Wizard** will guide you through creating an admin account.
+### 5. Sign in with the seeded dev admin
 
-## 📁 Project Structure
+The development deploy playbook seeds an admin and tenant automatically:
 
-```
-arsenale/
-├── backend/                 # Go split services
-├── client/                  # React 19 + Vite + MUI v7
-│   ├── src/                 # Source code
-│   └── package.json
-├── gateways/                # Gateway containers
-│   ├── tunnel-agent/        # Zero-trust tunnel client
-│   ├── ssh-gateway/         # SSH bastion
-│   ├── guacd/               # Guacamole daemon
-│   ├── guacenc/             # Recording video converter
-│   └── db-proxy/            # Database protocol proxy
-├── extra-clients/
-│   └── browser-extensions/  # Chrome extension (MV3)
-├── infrastructure/
-│   ├── dev/                 # Dev support containers and fixtures
-│   └── postgres/            # Database bootstrap assets
-├── deployment/
-│   └── ansible/             # Ansible playbooks + roles
-├── dev-certs/               # Development TLS certificates
-├── docs/                    # Documentation
-├── Makefile                 # Infrastructure management
-├── .env.example             # Environment template
-└── package.json             # Root workspace config
+```text
+Email:    admin@example.com
+Password: DevAdmin123!
+Tenant:   Development Environment
 ```
 
-## 🔧 Development Commands
+## 🗄 Demo Databases Included In Dev
 
-### Application
+The development stack now provisions five non-application demo databases. They are seeded during the Ansible deploy and bootstrapped into Arsenale as ready-to-query `DATABASE` connections.
+
+| Connection name | Protocol | Seeded database | Seed object |
+|-----------------|----------|-----------------|-------------|
+| `Dev Demo PostgreSQL` | PostgreSQL | `arsenale_demo` | `public.demo_customers` |
+| `Dev Demo MySQL` | MySQL / MariaDB | `arsenale_demo` | `demo_customers` |
+| `Dev Demo MongoDB` | MongoDB | `arsenale_demo` | `demo_customers` |
+| `Dev Demo Oracle` | Oracle | `FREEPDB1` service | `demo_customers` |
+| `Dev Demo SQL Server` | SQL Server | `ArsenaleDemo` | `dbo.demo_customers` |
+
+These connections are intended for end-to-end DB proxy testing and UI smoke tests. They are separate from the application's own PostgreSQL database.
+
+## 🧪 Quick Verification
+
+### Browser and API
 
 ```bash
-npm run dev              # Go dev stack + Vite on :3005
-npm run dev:client       # Vite only (HMR, port 3005)
-npm run build            # Production build (active runtime workspaces)
-npm run verify           # Full quality gate: typecheck -> lint -> audit -> test -> build
-npm run typecheck        # TypeScript check (all workspaces)
-npm run lint             # ESLint (all workspaces)
-npm run lint:fix         # Auto-fix lint issues
-npm run test             # Run all tests (vitest)
-npm run test:watch       # Watch mode
+curl -k https://localhost:3000/health
+curl http://127.0.0.1:18080/healthz
 ```
 
-### Database migrations
+### CLI smoke
 
 ```bash
-npm run db:migrate       # Apply pending backend migrations
-npm run db:status        # Show applied/pending migrations
-npm run db:bootstrap     # Compatibility alias of db:migrate
-npm run backend:generate # Regenerate sqlc code for converted domains
+go build -o /tmp/arsenale-cli ./tools/arsenale-cli
+/tmp/arsenale-cli --server https://localhost:3000 health
+/tmp/arsenale-cli --server https://localhost:3000 login
+/tmp/arsenale-cli --server https://localhost:3000 whoami
 ```
 
-### Infrastructure (Makefile)
+### Acceptance flow
 
 ```bash
-make setup               # First-time: Ansible, vault, certs
-make dev                 # Start the dev stack containers and Go services
-make dev-down            # Stop dev containers
-make status              # Show container status
-make logs                # Tail all container logs (SVC=arsenale-control-plane-api-go for specific)
-make backup              # Database backup
-make rotate              # Rotate system secrets
-make vault               # Edit Ansible Vault
-make certs               # Regenerate TLS certificates
-make deploy              # Full production deployment
-make clean               # Stop and remove everything
-make help                # Show all targets
+npm run dev:api-acceptance
 ```
 
-## 🌐 Environment Configuration
+The acceptance script exercises auth, sessions, audit, gateways, secrets, and database operations against the running dev stack.
 
-The `.env` file is auto-generated at the monorepo root by `make dev` via Ansible templates. Key variables to customize:
+## 🧰 Everyday Commands
 
-| Variable | Default | Purpose |
-|----------|---------|---------|
-| `DATABASE_URL` | Auto-generated | PostgreSQL connection string |
-| `JWT_SECRET` | Auto-generated | JWT signing key (64 hex chars) |
-| `GUACAMOLE_SECRET` | Auto-generated | RDP/VNC encryption key |
-| `CLIENT_URL` | `https://localhost:3000` | Containerized frontend URL |
-| `VITE_API_TARGET` | `http://localhost:18080` | Local Vite proxy target for `/api` |
-| `VITE_GUAC_TARGET` | `http://localhost:18091` | Local Vite proxy target for `/guacamole` |
-| `VITE_TERMINAL_TARGET` | `http://localhost:18090` | Local Vite proxy target for `/ws/terminal` |
-| `NODE_ENV` | `development` | Environment mode |
-| `LOG_LEVEL` | `info` | Log verbosity: error, warn, info, verbose, debug |
-| `NODE_EXTRA_CA_CERTS` | `dev-certs/ca.pem` | Trust the dev CA certificate |
+| Command | Purpose |
+|---------|---------|
+| `make dev` | Deploy the full local stack via Ansible |
+| `make dev-down` | Tear the local stack down |
+| `make status` | Show service status |
+| `make logs SVC=arsenale-control-plane-api` | Follow a specific service log |
+| `npm run dev:client` | Frontend only |
+| `npm run db:migrate` | Apply migrations |
+| `npm run db:status` | Show migration status |
+| `npm run verify` | Full quality gate |
+| `npm run backend:test` | Go test pass for the backend module |
+| `npm run go:test` | Go tests across backend, gateways, and CLI |
 
-See [Configuration](configuration.md) for the full list of 120+ environment variables.
+## 🔐 Certificates and Local Trust
 
-## 🧪 Testing
+`dev-certs/generate.sh` creates a shared CA and the service certificates consumed by:
 
-```bash
-# Run all tests
-npm run test
+- the client HTTPS listener,
+- PostgreSQL TLS,
+- `guacd`,
+- `guacenc`,
+- `ssh-gateway`,
+- tunnel identities.
 
-# Run tests for a specific workspace
-npm run backend:test
-npm run test -w client
+If the browser does not trust the local certs yet, import the CA from:
 
-# Watch mode (re-runs on file change)
-npm run test:watch
+```text
+dev-certs/ca.pem
 ```
 
-**Test frameworks:**
-- **Client**: Vitest with jsdom environment for DOM simulation
-- **Tunnel Agent**: Vitest with Node environment
+## 📁 Files Worth Knowing Early
 
-## 🔑 TLS Certificates (Development)
-
-Development certificates are generated by `make setup` (or `./dev-certs/generate.sh` directly):
-
-```
-dev-certs/
-├── ca.pem, ca-key.pem          # Shared CA (10-year validity)
-├── server/                     # Historical client-edge cert name retained for compatibility
-├── client/                     # Nginx TLS
-├── postgres/                   # PostgreSQL SSL
-├── guacd/                      # Guacamole daemon TLS
-├── guacenc/                    # Video converter HTTPS
-├── ssh-gateway/                # SSH gateway API
-└── tunnel/                     # Tunnel mTLS
-```
-
-All certificates use ECC (secp256r1) and are valid for 10 years. The shared CA is automatically trusted via `NODE_EXTRA_CA_CERTS`.
-
-## 🐛 Common Issues
-
-| Issue | Solution |
-|-------|----------|
-| `ECONNREFUSED :5432` | Run `make dev` to start PostgreSQL |
-| `SSL certificate problem` | Run `make certs` to regenerate dev certificates |
-| `Port already in use` | The dev server auto-detects and cleans stale processes |
-| Empty DB after a reset | Run `npm run db:migrate` or redeploy with `make dev` |
-| `Permission denied` on certs | Certificate files should be readable; run `chmod 644 dev-certs/**/*.pem` |
-| First access shows setup wizard | Expected on fresh install -- create your admin account |
-
-## ➡ Next Steps
-
-- [Architecture](architecture.md) -- Understand the system design
-- [Configuration](configuration.md) -- Full environment variable reference
-- [API Reference](api-reference.md) -- Explore the 200+ API endpoints
-- [Development](development.md) -- Contributing, branch strategy, testing details
+| Path | Why it matters |
+|------|----------------|
+| `Makefile` | Human entry point for Ansible deploy tasks |
+| `docker-compose.yml` | Generated dev stack snapshot checked into the repo |
+| `deployment/ansible/playbooks/deploy.yml` | Unified deploy logic |
+| `scripts/dev-api-acceptance.sh` | End-to-end API verification |
+| `AGENT.md` | CLI-first smoke-test guidance |
+| `client/vite.config.ts` | Local frontend proxy behavior |

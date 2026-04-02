@@ -1,236 +1,124 @@
 ---
 title: Troubleshooting
-description: Common errors, debugging techniques, and frequently asked questions
+description: Common failures, debugging commands, and operator guidance for Arsenale
 generated-by: claw-docs
-generated-at: 2026-03-27T12:00:00Z
+generated-at: 2026-04-02T12:57:10Z
 source-files:
-  - backend/cmd/control-plane-api/main.go
-  - backend/cmd/control-plane-api/dev_bootstrap.go
-  - backend/internal/systemsettingsapi/service.go
-  - client/src/api/client.ts
-  - dev-certs/generate.sh
   - Makefile
+  - scripts/dev-api-acceptance.sh
+  - scripts/db-migrate.sh
+  - dev-certs/generate.sh
+  - client/vite.config.ts
+  - client/nginx.dev.conf
+  - backend/internal/app/app.go
+  - backend/cmd/control-plane-api/routes_public.go
+  - backend/cmd/control-plane-api/dev_bootstrap.go
+  - docker-compose.yml
 ---
 
-## 🐛 Common Errors
+## 🩺 First Checks
 
-> Runtime note: the current stack is the Go control plane plus supporting Go services. If historical `server/` references appear in docs, they are not part of the active runtime.
-
-### Database Connection
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `ECONNREFUSED 127.0.0.1:5432` | PostgreSQL not running | Run `make dev` to start containers |
-| `FATAL: password authentication failed` | Wrong DB password | Check `vault.yml` or regenerate with `make vault` |
-| `SSL connection required` | Missing SSL certs | Ensure `DATABASE_URL` includes `?sslmode=require` |
-| App starts against an empty DB | Migrations have not been applied yet | Run `npm run db:migrate` or redeploy with `make dev` |
-
-### TLS and Certificates
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `UNABLE_TO_VERIFY_LEAF_SIGNATURE` | CA not trusted | Set `NODE_EXTRA_CA_CERTS=dev-certs/ca.pem` in `.env` |
-| `ERR_CERT_AUTHORITY_INVALID` | Browser doesn't trust dev CA | Import `dev-certs/ca.pem` into browser trust store |
-| `DEPTH_ZERO_SELF_SIGNED_CERT` | Self-signed cert without CA | Run `make certs` to regenerate with proper CA chain |
-| `certificate has expired` | Expired dev certs | Run `make certs` to regenerate (default: 10-year validity) |
-| `ENOENT: dev-certs/control-plane-api/server-cert.pem` | Missing cert files | Run `./dev-certs/generate.sh` or `make setup` |
-
-### Authentication
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `401 Unauthorized` on every request | Expired or invalid JWT | Check `JWT_SECRET` matches between restarts |
-| `403 CSRF validation failed` | CSRF token mismatch | Ensure `X-CSRF-Token` header matches `arsenale-csrf` cookie |
-| `403 Account locked` | Too many failed logins | Wait for lockout duration (default: 30 min) or reset via CLI |
-| `TOKEN_HIJACK_ATTEMPT` in logs | IP or User-Agent changed | Disable `TOKEN_BINDING_ENABLED` or re-login from new location |
-| `429 Too Many Requests` | Rate limit exceeded | Wait for window to expire, or add IP to `RATE_LIMIT_WHITELIST_CIDRS` |
-
-### Server Startup
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `EADDRINUSE :::3001` | Port already in use | The server auto-cleans stale processes in dev; otherwise `kill` the process |
-| `JWT_SECRET is required in production` | Missing env var | Set `JWT_SECRET` (64 hex chars) in `.env` or vault |
-| `guacd connection refused` | guacd not running | Run `make dev` or check guacd container: `make status` |
-| `GUACD_SSL=true but no GUACD_CA_CERT` | TLS misconfigured for guacd | Set `GUACD_CA_CERT` path or disable `GUACD_SSL` |
-
-### Client / Frontend
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| Blank page after build | Asset paths wrong | Check `CLIENT_URL` matches actual deployment URL |
-| `Mixed Content` errors | HTTP/HTTPS mismatch | Ensure all URLs use HTTPS; check `CLIENT_URL` |
-| WebSocket connection failed | Proxy not forwarding | Check Nginx config proxies `/socket.io` and `/guacamole` |
-| `CORS error` on API calls | Origin mismatch | Set `CLIENT_URL` to match the exact origin (including port) |
-| HMR not working in dev | Vite WebSocket blocked | Check browser dev tools for blocked WebSocket connections |
-
-### RDP/VNC Sessions
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Guacamole connection failed` | guacd unreachable or creds wrong | Check `make status` for guacd, verify connection credentials |
-| Black screen after connect | Display resolution issue | Try different resolution in connection settings |
-| `AES decryption failed` | Guacamole secret mismatch | Ensure `GUACAMOLE_SECRET` is consistent between server and guacamole-lite |
-| Session disconnects after 24h | WebSocket timeout | Default Nginx timeout is 86400s; check reverse proxy config |
-
-### SSH Sessions
-
-| Error | Cause | Solution |
-|-------|-------|----------|
-| `Authentication failed` | Wrong credentials | Verify connection username/password or SSH key |
-| `Connection refused` | Target SSH server down | Check target host connectivity |
-| Terminal garbled output | Encoding mismatch | Set terminal encoding to UTF-8 in connection settings |
-| `ALLOW_LOCAL_NETWORK is false` | Blocked RFC 1918 target | Set `ALLOW_LOCAL_NETWORK=true` or `ALLOW_LOOPBACK=true` |
-
-## 🔍 Debugging Techniques
-
-### Enable Verbose Logging
+Start with health and container state before debugging feature code.
 
 ```bash
-# In .env
-LOG_LEVEL=debug
-LOG_HTTP_REQUESTS=true
-LOG_GUACAMOLE=true
-```
-
-**Log levels:** `error` < `warn` < `info` < `verbose` < `debug`
-
-### Structured JSON Logs
-
-For log aggregation (ELK, Datadog, etc.):
-
-```bash
-LOG_FORMAT=json
-```
-
-### View Container Logs
-
-```bash
-make logs              # All services
-make logs SVC=arsenale-control-plane-api-go
-make logs SVC=guacd    # guacd only
-make logs SVC=postgres # PostgreSQL only
-```
-
-### Check Service Health
-
-```bash
-# Container status
 make status
-
-# API health check
-curl -k https://localhost:3000/api/health
-
-# Readiness check
-curl -k https://localhost:3000/api/ready
+curl -k https://localhost:3000/health
+curl http://127.0.0.1:18080/healthz
+curl http://127.0.0.1:18090/healthz
+curl http://127.0.0.1:18091/healthz
 ```
 
-### Database Debugging
+Useful log tail:
 
 ```bash
-# Connect directly to PostgreSQL
-psql "$DATABASE_URL"
-
-# Confirm migrations are present
-find backend/migrations -maxdepth 1 -name '*.sql' | sort
+make logs SVC=arsenale-control-plane-api
+make logs SVC=arsenale-client
+make logs SVC=arsenale-query-runner
+make logs SVC=arsenale-dev-tunnel-db-proxy
 ```
 
-### Network Debugging
+## 🔐 TLS and Browser Issues
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| Browser warns about the cert | Dev CA not trusted | Import `dev-certs/ca.pem` |
+| `ERR_CERT_AUTHORITY_INVALID` | Fresh machine or browser profile | Re-import CA and restart browser |
+| Vite starts without HTTPS | Dev cert files missing | Run `make setup` or `./dev-certs/generate.sh` |
+| API calls fail only in local Vite | Proxy targets or TLS overrides wrong | Check `client/vite.config.ts` and `VITE_*` overrides |
+| Containerized client is up but UI assets fail | nginx template mismatch | Check `client/nginx.dev.conf` and `make logs SVC=arsenale-client` |
+
+## 🔑 Auth, Vault, and Tenant Bootstrap Problems
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| `403 CSRF` on writes | Missing or stale `X-CSRF-Token` | Re-login and verify `arsenale-csrf` cookie is present |
+| Login loops on 401 | Refresh flow broken or expired cookies | Clear cookies and re-authenticate |
+| Tenant vault says not initialized on a newly created tenant | Old control-plane container or stale session | Restart the current stack and log in again; new tenants auto-provision tenant vault state now |
+| Tenant SSH keypair is missing on a new tenant | Old control-plane container | Redeploy the current stack; tenant SSH keys are auto-generated during tenant creation now |
+| Setup wizard appears unexpectedly | Empty DB or dev bootstrap did not run | Check `arsenale-control-plane-api` logs and rerun `make dev` |
+
+## 🖥 Session and Gateway Issues
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| `/guacamole` fails or black screen | `guacd` unhealthy or target issue | Check `arsenale-guacd` logs and `desktop-broker` health |
+| SSH session fails immediately | SSH target, gateway, or credentials wrong | Verify connection settings and `ssh-gateway` health |
+| Gateway inventory looks empty | Dev bootstrap did not finish | Re-run `make dev` and confirm bootstrap output |
+| Tunneled gateway stays disconnected | Tunnel certs or tunnel-broker state issue | Check `arsenale-dev-tunnel-*` logs and `tunnel-broker` health |
+
+## 🗄 Database Query Issues
+
+| Symptom | Likely cause | Action |
+|---------|--------------|--------|
+| `No active session to fetch execution plan.` in audit | Old audit entry without stored plan | Enable `Persist execution plans in audit logs` on the connection and run a new query |
+| Oracle error `ORA-01435: user does not exist` with `CURRENT_SCHEMA = FREEPDB1` | Session config used the Oracle service name as schema | Reopen the session after the fix, or clear `searchPath` when it matches the service name |
+| Query blocked by firewall | Built-in or custom SQL firewall matched | Inspect `/api/db-audit/firewall-rules` and the DB audit entry |
+| Query throttled | DB rate-limit policy triggered | Inspect `/api/db-audit/rate-limit-policies` and retry later |
+| DB session created but host-side DB tunnel is unreachable | Raw DB tunnel flow is different from UI query path | Use `DATABASE` sessions through `db-proxy`; do not treat host DB tunnel reachability as the UI query path |
+| Demo DB connection refused | Demo fixture container not healthy | Check `arsenale-dev-demo-postgres`, `-mysql`, `-mongodb`, `-oracle`, or `-mssql` |
+| DB2 fields exist in the UI but queries fail | DB2 metadata exists, query protocol support does not | Treat DB2 as not yet supported for interactive queries |
+
+Representative direct fixture checks:
 
 ```bash
-# Test guacd connectivity
-nc -zv localhost 4822
-
-# Test Redis connectivity
-nc -zv localhost 6379
-
-# Test PostgreSQL connectivity
-pg_isready -h localhost -p 5432
+podman exec arsenale-dev-demo-postgres psql -U demo_pg_user -d arsenale_demo -At -c "select count(*) from public.demo_customers;"
+podman exec arsenale-dev-demo-mysql mysql -u demo_mysql_user -pDemoMySqlPass123! -D arsenale_demo -Nse "select count(*) from demo_customers;"
+podman exec arsenale-dev-demo-mongodb mongosh --quiet -u demo_mongo_user -p DemoMongoPass123! --authenticationDatabase arsenale_demo arsenale_demo --eval "db.demo_customers.countDocuments({})"
 ```
 
-### Reset Development Environment
+## 🧪 Deeper Diagnostics
+
+### Acceptance script
 
 ```bash
-make dev-down          # Stop containers
-make clean             # Remove everything
-make setup             # Regenerate vault + certs
-make dev               # Fresh start
-npm run db:migrate     # Apply schema if needed
+npm run dev:api-acceptance
 ```
 
-## ❓ FAQ
+This is the fastest way to determine whether the breakage is local UI-only or a real platform regression.
 
-### How do I reset the admin password?
-
-Use the dev bootstrap credentials or reset the password directly in PostgreSQL if you intentionally changed the seeded admin user.
-
-### How do I add a new OAuth provider?
-
-1. Set the provider's env vars (e.g., `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_CALLBACK_URL`)
-2. Restart the server (or use the live reload system via Settings UI)
-3. The login page will automatically show the new provider
-
-### How do I enable session recording?
-
-Set in `.env`:
-```bash
-RECORDING_ENABLED=true
-RECORDING_PATH=/recordings
-```
-
-For video conversion, deploy the guacenc container and set `GUACENC_SERVICE_URL`.
-
-### How do I connect to hosts on the local network?
-
-By default, `ALLOW_LOCAL_NETWORK=true` in development. For production:
-```bash
-ALLOW_LOCAL_NETWORK=true   # RFC 1918 addresses (10.x, 172.16-31.x, 192.168.x)
-ALLOW_LOOPBACK=true        # 127.x, ::1 (opt-in, default false)
-```
-
-### How do I scale to multiple API instances?
-
-1. Set `arsenale_server_replicas` in Ansible vars
-2. Point all replicas at the same `REDIS_URL`
-3. Redis handles rate limits and other short-lived coordination state across instances
-4. Keep PostgreSQL shared and externalize it for HA if you need production-grade failover
-
-### How do I rotate secrets?
+### Database migrations
 
 ```bash
-make rotate            # Rotate JWT, Guacamole, and encryption keys
+./scripts/db-migrate.sh status
+./scripts/db-migrate.sh up
 ```
 
-This generates new secrets, updates the vault, and restarts affected services.
+### CLI smoke
 
-### Why does my browser show a certificate warning?
-
-Development uses self-signed certificates. Options:
-1. Import `dev-certs/ca.pem` into your browser's trust store
-2. Click "Advanced" -> "Proceed anyway" (not recommended for production)
-3. Set `NODE_EXTRA_CA_CERTS=dev-certs/ca.pem` for Node.js processes
-
-### How do I debug rate limiting?
-
-Check the response headers:
-```
-RateLimit-Limit: 200
-RateLimit-Remaining: 150
-RateLimit-Reset: 1711540800
+```bash
+go build -o /tmp/arsenale-cli ./tools/arsenale-cli
+/tmp/arsenale-cli --server https://localhost:3000 health
+/tmp/arsenale-cli --server https://localhost:3000 whoami
+/tmp/arsenale-cli --server https://localhost:3000 gateway list
 ```
 
-To bypass in development, add your IP to `RATE_LIMIT_WHITELIST_CIDRS`.
+## 🔄 Safe Reset Options
 
-### Where are audit logs stored?
+Use these in order, from least disruptive to most disruptive:
 
-Audit logs are stored in the `AuditLog` table in PostgreSQL. Access via:
-- **UI**: Settings -> Audit Log
-- **API**: `GET /api/audit` or `GET /api/audit/tenant`
-- **Direct SQL**: `SELECT * FROM "AuditLog" ORDER BY "createdAt" DESC LIMIT 100;`
+1. `make logs SVC=...` for the failing service.
+2. `make status` to confirm container health.
+3. `make certs` if the symptom is TLS-only.
+4. `make dev-down && make dev` to recreate the local stack.
 
-### How do I enable the database proxy?
-
-The database proxy is enabled by default (`FEATURE_DATABASE_PROXY_ENABLED=true`). To use it:
-1. Create a connection with type `DATABASE` or `DB_TUNNEL`
-2. Specify the target database host, port, and type (PostgreSQL, MySQL, etc.)
-3. Optionally configure a bastion connection for tunneling
+Avoid deleting PostgreSQL volumes unless you intentionally want to lose the local application database.

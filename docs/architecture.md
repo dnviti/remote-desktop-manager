@@ -2,411 +2,231 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and design decisions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-03-27T12:00:00Z
+generated-at: 2026-04-02T12:57:10Z
 source-files:
-  - backend/cmd/control-plane-api/main.go
-  - backend/cmd/desktop-broker/main.go
-  - backend/cmd/terminal-broker/main.go
-  - backend/cmd/tunnel-broker/main.go
-  - backend/migrations/000001_baseline.sql
-  - backend/sqlc.yaml
-  - backend/internal/authservice/service.go
-  - backend/internal/sshsessions/service.go
-  - backend/internal/dbsessions/service.go
-  - backend/internal/gateways/service.go
+  - backend/internal/catalog/catalog.go
+  - backend/internal/app/app.go
+  - backend/cmd/control-plane-api/runtime.go
+  - backend/cmd/control-plane-api/routes_public.go
+  - backend/cmd/control-plane-api/routes_sessions.go
+  - backend/cmd/control-plane-api/routes_operations.go
+  - backend/internal/dbsessions/create.go
+  - backend/internal/dbsessions/query_runtime.go
+  - backend/internal/dbsessions/dbproxy_client.go
+  - backend/internal/queryrunner/protocols.go
+  - backend/internal/queryrunnerapi/service.go
+  - backend/cmd/db-proxy/main.go
   - client/src/api/client.ts
   - client/vite.config.ts
-  - gateways/tunnel-agent/src/config.ts
+  - docker-compose.yml
 ---
 
-## 🏗 Overview
+## 🎯 Why This Architecture Exists
 
-Arsenale is a secure remote access platform built as a monorepo with npm workspaces. It provides SSH, RDP, VNC, and database proxy access through a unified web interface with enterprise-grade security, multi-tenancy, and session recording.
+Arsenale is structured around a strict split between **control**, **runtime**, **gateway**, and **operator** concerns. The control plane owns identity, tenancy, policy, audit, routing, and orchestration. Runtime brokers own browser session transport. Gateways own target-network access. This split keeps high-risk protocol handling away from the public edge while still exposing a unified browser and CLI experience.
 
-**Why this architecture:** Arsenale consolidates fragmented remote access tools (PuTTY, RDP clients, VPN tunnels, database GUIs) into a single zero-trust platform where every connection is authenticated, encrypted, audited, and optionally recorded.
+The key architectural rule for database access is now explicit: **the backend is an orchestrator and control plane, not the database client of record**. Interactive database queries are issued through `db-proxy` gateways, exactly as SSH and desktop traffic flow through dedicated gateway services.
 
-> Runtime note: the active application edge runs through the Go split services in `backend/`; there is no local legacy `server/` implementation in-tree.
+## 🧭 Service Planes
 
-## 🧩 High-Level Architecture
+| Plane | Service | Default Port | Role |
+|------|---------|--------------|------|
+| Control | `control-plane-api` | `8080` | Public tenant API, auth, routing, policy, audit |
+| Control | `control-plane-controller` | `8081` | Placement and reconciliation |
+| Control | `authz-pdp` | `8082` | Central policy decision point |
+| Agent | `model-gateway` | `8083` | LLM and embedding provider gateway |
+| Agent | `tool-gateway` | `8084` | Typed capability gateway |
+| Agent | `agent-orchestrator` | `8085` | Agent run lifecycle |
+| Agent | `memory-service` | `8086` | Working and semantic memory service |
+| Runtime | `terminal-broker` | `8090` | Browser SSH/WebSocket runtime |
+| Runtime | `desktop-broker` | `8091` | Browser RDP/VNC runtime |
+| Runtime | `tunnel-broker` | `8092` | Tunnel registration and TCP proxying |
+| Runtime | `query-runner` | `8093` | Shared query execution service |
+| Runtime | `recording-worker` | `8094` | Recording conversion and retention |
+| Execution | `runtime-agent` | `8095` | Host-local workload validation |
+| Runtime gateway | `db-proxy` | `5432` | Database middleware for connectivity, query, schema, plan, and introspection |
+
+Every Go service uses the same service wrapper in `backend/internal/app/app.go`, which means the following conventions are stable across the fleet:
+
+- `GET /healthz`
+- `GET /readyz`
+- `GET /v1/meta/service`
+- `GET /v1/meta/architecture`
+
+## 🏗 High-Level Component Diagram
 
 ```mermaid
 flowchart TD
-    subgraph External["External Clients"]
-        Browser["Browser (React SPA)"]
-        Extension["Chrome Extension"]
-        CLI["CLI Tool"]
+    subgraph clients["Clients"]
+        Browser["Browser SPA"]
+        CLI["arsenale CLI"]
+        Extension["Browser extension"]
     end
 
-    subgraph Frontend["Frontend Layer"]
-        Nginx["Nginx Reverse Proxy\n(Port 8080)"]
+    subgraph edge["Public edge"]
+        Client["client / nginx"]
+        API["control-plane-api"]
+        Terminal["terminal-broker"]
+        Desktop["desktop-broker"]
     end
 
-    subgraph Backend["Backend Layer"]
-        API["control-plane-api-go\n(Port 8080)"]
-        Desktop["desktop-broker-go\n(Port 8091)"]
-        Terminal["terminal-broker-go\n(Port 8090)"]
-        Tunnel["tunnel-broker-go\n(Port 8092)"]
+    subgraph control["Control and agent services"]
+        Controller["control-plane-controller"]
+        Authz["authz-pdp"]
+        Model["model-gateway"]
+        Tool["tool-gateway"]
+        Agent["agent-orchestrator"]
+        Memory["memory-service"]
     end
 
-    subgraph Data["Data Layer"]
-        Postgres["PostgreSQL 16\n(SSL/TLS)"]
-        Redis["Redis\n(Co-ordination + cache)"]
+    subgraph gateways["Runtime gateways"]
+        Tunnel["tunnel-broker"]
+        SSH["ssh-gateway"]
+        Guacd["guacd"]
+        DBProxy["db-proxy"]
+        Guacenc["guacenc"]
     end
 
-    subgraph Gateways["Gateway Layer"]
-        Guacd["guacd\n(RDP/VNC, Port 4822)"]
-        SSHGw["SSH Gateway\n(Port 2222)"]
-        DBProxy["DB Proxy\n(Port 5432)"]
-        Guacenc["guacenc\n(Video Converter, Port 3003)"]
+    subgraph state["State and storage"]
+        Postgres["PostgreSQL"]
+        Redis["Redis"]
+        Files["drive + recordings volumes"]
     end
 
-    subgraph Targets["Remote Targets"]
-        RDPServer["RDP Servers"]
-        SSHServer["SSH Servers"]
-        VNCServer["VNC Servers"]
-        DBServer["Databases"]
-    end
-
-    Browser --> Nginx
-    Extension --> Nginx
+    Browser --> Client
+    Extension --> Client
     CLI --> API
 
-    Nginx -->|"/api"| API
-    Nginx -->|"/guacamole"| Desktop
-    Nginx -->|"/ws/terminal"| Terminal
+    Client --> API
+    Client --> Terminal
+    Client --> Desktop
 
     API --> Postgres
     API --> Redis
+    API --> Controller
+    API --> Authz
+    API --> Model
+    API --> Tool
+    API --> Agent
+    API --> Memory
+    API --> Tunnel
+    API --> SSH
     API --> Guacd
-    API --> SSHGw
     API --> DBProxy
     API --> Guacenc
-    API --> Tunnel
 
     Desktop --> Guacd
-
-    Guacd --> RDPServer
-    Guacd --> VNCServer
-    SSHGw --> SSHServer
-    DBProxy --> DBServer
+    Terminal --> SSH
+    DBProxy --> Files
+    API --> Files
 ```
 
-## 📦 Workspace Structure
-
-| Workspace | Path | Technology | Purpose |
-|-----------|------|-----------|---------|
-| Backend | `backend/` | Go 1.25 | Control plane, brokers, orchestration, AI, runtime |
-| Client | `client/` | React 19 + Vite + MUI v7 | Web UI (SPA) |
-| Tunnel Agent | `gateways/tunnel-agent/` | Node.js + TypeScript | Zero-trust tunnel client |
-| Browser Extension | `extra-clients/browser-extensions/` | Chrome MV3 + React | Autofill, keychain |
-
-## 🔀 Active Service Architecture
-
-The live request path follows a Go service architecture centered on explicit handlers and stores: **Routers -> Handlers -> Services -> SQL/Redis/Downstream brokers**.
+## 🔐 Public Request Pipeline
 
 ```mermaid
 flowchart LR
-    Request["HTTPS Request"] --> Middleware["Edge Middleware"]
-    Middleware --> Route["Go Route Handler"]
-    Route --> Service["Service Package"]
-    Service --> SQL["pgx / SQL stores"]
-    Service --> Redis["Redis state + coordination"]
-    Service --> External["Downstream services\n(guacd, brokers, guacenc, gateways)"]
+    A["HTTPS request"] --> B["client / nginx routing"]
+    B --> C["control-plane-api handler"]
+    C --> D["JWT + tenant resolution"]
+    D --> E["RBAC / policy checks"]
+    E --> F["domain service package"]
+    F --> G["PostgreSQL / Redis / gateway call"]
+    G --> H["audit event + JSON response"]
 ```
 
-**Why this shape:** handlers stay close to the public wire contract, service packages own business rules, stores keep SQL explicit, and Redis-backed coordination remains isolated from request serialization.
+This split is intentional:
 
-## 🛡 Edge Request Pipeline
+- The client is only a reverse proxy and static asset host.
+- The control plane terminates auth, tenancy, and audit.
+- Runtime services only handle transport after the control plane has issued a grant or session.
 
-The public Go edge applies security and tenancy checks before dispatching to a feature package.
+## 🗄 Database Session Architecture
 
-```mermaid
-flowchart TD
-    A["TLS ingress via client"] --> B["Host + origin validation"]
-    B --> C["Request size / body parsing"]
-    C --> D["Cookie + bearer token parsing"]
-    D --> E["JWT / refresh validation"]
-    E --> F["CSRF + rate limiting"]
-    F --> G["Tenant membership normalization"]
-    G --> H["Route-specific authz / feature checks"]
-    H --> I["Handler + service execution"]
-    I --> J["Structured JSON error/response writer"]
-```
-
-**Key design decisions:**
-
-- **CSRF uses double-submit cookies**, not server-side tokens, enabling stateless JWT auth without session storage
-- **Rate limiting is Redis-backed** so repeated login/session attempts are enforced across instances
-- **Feature gates evaluate dynamically** on each request, allowing runtime toggles without restarts via the Settings UI
-- **Host validation** prevents DNS rebinding attacks by checking the Host header against allowed values
-
-## 🔐 Authentication Flow
+Database querying follows the same gateway pattern as other remote access types.
 
 ```mermaid
 sequenceDiagram
-    participant Client
-    participant API as control-plane-api-go
-    participant DB
-    participant MFA as MFA / Redis state
+    participant UI as Browser / Database UI
+    participant CP as control-plane-api
+    participant TB as tunnel-broker
+    participant GP as db-proxy gateway
+    participant DB as Target database
 
-    Client->>API: POST /api/auth/login {email, password}
-    API->>DB: Find user, verify Argon2 hash
-    alt MFA Required
-        API->>Client: 200 {requiresMFA, tempToken, methods[]}
-        Client->>API: POST /api/auth/verify-totp {tempToken, code}
-        API->>MFA: Validate challenge / WebAuthn or SMS state
-        MFA-->>API: Valid
-    end
-    API->>DB: Create RefreshToken (family-based)
-    API-->>Client: 200 {accessToken, csrfToken} + Set-Cookie: refresh token
-    Note over Client,API: Access token: 15min, in-memory only<br/>Refresh token: 7d, HttpOnly cookie<br/>CSRF token: in header + cookie
+    UI->>CP: POST /api/sessions/database
+    CP->>CP: Resolve connection, tenant, permissions, DB settings
+    CP->>TB: Optional TCP proxy allocation for tunneled gateways
+    CP-->>UI: sessionId + proxyHost + proxyPort + protocol
 
-    Client->>API: GET /api/... (Authorization: Bearer token)
-    API->>API: Verify JWT signature + token binding
-    API->>DB: Normalize tenant membership
-    API-->>Client: 200 Response
+    UI->>CP: POST /api/sessions/database/{id}/query
+    CP->>GP: POST /v1/query-runs:execute-any
+    GP->>DB: Native driver query
+    DB-->>GP: Rows / metadata / errors
+    GP-->>CP: QueryExecutionResponse
+    CP->>CP: SQL firewall, rate limits, masking, audit, optional stored plan
+    CP-->>UI: Query result
 ```
 
-**Security properties:**
-- Access tokens are short-lived (15 min) and held in-memory only (never in localStorage)
-- Refresh tokens use family-based rotation to detect token replay attacks
-- Token binding ties JWTs to the originating IP + User-Agent hash (configurable)
-- Account lockout after repeated failures remains centrally enforced on the Go auth path
+Important design details:
 
-## 🌐 Interactive Session Flows
+- The session record is created by `backend/internal/dbsessions/create.go`.
+- The control plane locates a `DB_PROXY` gateway, optionally resolves a managed instance, and optionally opens a tunnel-broker TCP proxy in `backend/internal/dbsessions/dbproxy_client.go`.
+- Query, schema, explain, and introspection all call the DB proxy's shared `queryrunnerapi` surface:
+  - `POST /v1/connectivity:validate`
+  - `POST /v1/query-runs:execute-any`
+  - `POST /v1/schema:fetch`
+  - `POST /v1/query-plans:explain`
+  - `POST /v1/introspection:run`
+- The control plane applies masking, firewall, rate-limit, and audit logic after the DB proxy returns data.
+- Persisted execution plans are opt-in per connection via `dbSettings.persistExecutionPlan`.
 
-### SSH Terminal
+Supported interactive query protocols come from `backend/internal/queryrunner/protocols.go`:
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant API as control-plane-api-go
-    participant Terminal as terminal-broker-go
-    participant Target as SSH Server
+- PostgreSQL
+- MySQL / MariaDB
+- SQL Server
+- Oracle
+- MongoDB
 
-    Browser->>API: POST /api/sessions/ssh
-    API-->>Browser: {sessionId, wsUrl}
-    Browser->>Terminal: WSS /ws/terminal
-    Terminal->>Target: SSH handshake
-    Browser->>Terminal: Terminal input
-    Target-->>Terminal: Terminal output
-    Terminal-->>Browser: Render in XTerm.js
-```
+`client/src/api/connections.api.ts` already includes DB2 connection metadata fields, but DB2 is not part of the active query protocol switch yet.
 
-### RDP/VNC via Guacamole
+## 🌉 Gateways and Tunnel Model
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant API as control-plane-api-go
-    participant Desktop as desktop-broker-go
-    participant Guacd as guacd (TLS :4822)
-    participant Target as RDP/VNC Server
+Arsenale supports both directly managed gateway containers and tunneled gateway instances.
 
-    Browser->>API: POST /api/sessions/rdp {connectionId}
-    API-->>Browser: {sessionId, guacToken}
-    Browser->>Desktop: WSS /guacamole with guacToken
-    Desktop->>Guacd: Guacamole protocol (TLS)
-    Guacd->>Target: RDP/VNC protocol
-    Target-->>Guacd: Screen updates
-    Guacd-->>Desktop: Guacamole instructions
-    Desktop-->>Browser: Render via guacamole-common-js
-```
+- `ssh-gateway` exposes SSH transport and gRPC key management.
+- `guacd` handles RDP and VNC protocol termination.
+- `db-proxy` hosts the query middleware and database drivers.
+- `tunnel-agent` can be embedded into `ssh-gateway`, `guacd`, and `db-proxy` images.
+- `tunnel-broker` allocates and multiplexes TCP proxies for tunneled instances.
 
-### Database Sessions
+The development stack ships sample tunneled fixtures for all three gateway types:
 
-```mermaid
-sequenceDiagram
-    participant Browser
-    participant API as control-plane-api-go
-    participant Query as query-runner-go
-    participant Target as Database
+- `dev-tunnel-ssh-gateway`
+- `dev-tunnel-guacd`
+- `dev-tunnel-db-proxy`
 
-    Browser->>API: POST /api/sessions/database
-    API-->>Browser: {sessionId}
-    Browser->>API: POST /api/sessions/database/{id}/query
-    API->>Query: Execute query for session
-    Query->>Target: SQL over managed connection
-    Target-->>Query: Rows / metadata
-    Query-->>API: Result payload
-    API-->>Browser: JSON result
-```
+## 💾 Data, State, and Persistence
 
-## 🗄 Database Schema
+| Component | Purpose |
+|-----------|---------|
+| PostgreSQL | Durable truth for users, tenants, connections, sessions, policies, audit, and memory metadata |
+| Redis | Coordination, rate limits, grants, leases, and stream fan-out |
+| `arsenale_drive` volume | Browser file transfer staging |
+| `arsenale_recordings` volume | Session recordings and exported artifacts |
+| Podman secrets | Runtime delivery for JWT, database URL, guacamole secret, encryption key, and provider credentials |
+| `dev-certs/` | Shared CA plus service, gateway, and tunnel certificates |
 
-The SQL bootstrap schema and Go stores define the core entities across these domains:
+## 🧪 Shared Service Patterns
 
-```mermaid
-erDiagram
-    Tenant ||--o{ TenantMember : "has members"
-    Tenant ||--o{ Team : "contains"
-    Tenant ||--o{ Gateway : "manages"
-    Tenant ||--o{ SshKeyPair : "owns"
+The Go services deliberately use a narrow common shape:
 
-    TenantMember }o--|| User : "references"
-    Team ||--o{ TeamMember : "has members"
-    TeamMember }o--|| User : "references"
+- `main.go` wires dependencies and registers routes.
+- `app.StaticService` declares metadata and a route registration function.
+- `app.Run` handles listen address, logging, `/healthz`, `/readyz`, and graceful shutdown.
+- Public route registration is consolidated in `backend/cmd/control-plane-api/routes_*.go`.
 
-    User ||--o{ Connection : "owns"
-    User ||--o{ VaultSecret : "owns"
-    User ||--o{ ActiveSession : "has"
-    User ||--o{ RefreshToken : "has"
-    User ||--o{ OAuthAccount : "links"
-    User ||--o{ WebAuthnCredential : "registers"
-    User ||--o{ AuditLog : "generates"
+That uniformity matters for operators and LLMs because it makes new services easy to discover:
 
-    Connection ||--o{ SharedConnection : "shared via"
-    Connection ||--o{ ActiveSession : "used by"
-    Connection }o--o| Gateway : "routes through"
-    Connection }o--o| Folder : "organized in"
-
-    VaultSecret ||--o{ VaultSecretVersion : "versioned"
-    VaultSecret ||--o{ SharedSecret : "shared via"
-    VaultSecret }o--o| VaultFolder : "organized in"
-
-    ActiveSession ||--o{ SessionRecording : "recorded as"
-    Gateway ||--o{ ManagedGatewayInstance : "scales to"
-```
-
-**Key design decisions:**
-
-- **Multi-tenancy** is enforced at the data model level -- every resource belongs to a Tenant, and queries are scoped by tenantId
-- **Vault encryption** uses per-user keys derived from passwords via Argon2, with AES-256-GCM at rest
-- **Role hierarchy** provides 7 levels: GUEST < AUDITOR < CONSULTANT < MEMBER < OPERATOR < ADMIN < OWNER
-- **Team roles** are separate: TEAM_VIEWER < TEAM_EDITOR < TEAM_ADMIN
-- **Audit logging** captures 70+ distinct action types for compliance
-
-## 📡 Distributed Coordination
-
-When running multiple API or broker instances, Arsenale uses Redis for shared ephemeral state and coordination:
-
-```mermaid
-flowchart LR
-    subgraph Instance1["Runtime Instance 1"]
-        S1["API / Brokers"]
-    end
-
-    subgraph Instance2["Runtime Instance 2"]
-        S2["API / Brokers"]
-    end
-
-    subgraph Cache["Redis"]
-        KV["Keys / TTL / PubSub"]
-    end
-
-    S1 --> KV
-    S2 --> KV
-```
-
-**What Redis provides:**
-- **KV + TTL**: Distributed rate limit counters, auth challenge state, vault status, and short-lived coordination data
-- **Pub/Sub**: Cross-instance fanout for status notifications and broker coordination where needed
-- **Shared coordination**: Ensures horizontally scaled services observe consistent ephemeral state
-
-## 🔄 Scheduled Jobs
-
-The Go control plane and controller services run background jobs and reconciliation loops:
-
-| Job | Default Schedule | Purpose |
-|-----|-----------------|---------|
-| Key Rotation | `0 2 * * *` (2 AM daily) | Rotate JWT signing keys |
-| LDAP Sync | `0 */6 * * *` (every 6h) | Sync users/groups from LDAP |
-| Membership Expiry | Hourly | Auto-remove expired tenant/team members |
-| Secret Rotation | Configurable | Rotate passwords per policy |
-| Session Cleanup | Hourly | Close idle sessions, purge 30-day old closed sessions |
-| Recording Cleanup | Daily | Remove recordings past retention (default 90 days) |
-| Token Cleanup | Hourly | Purge expired refresh tokens |
-| Gateway Health | 30s interval | Health check managed gateways |
-| Auto-scaling | 30s interval | Evaluate gateway replica counts |
-| System Secret Rotation | Configurable | Roll over JWT + Guacamole keys |
-| Device Auth Cleanup | 5-min interval | Purge expired device auth codes |
-
-## ⚙ Live Reload
-
-Configuration changes from the Settings UI take effect immediately via the live reload system:
-
-```mermaid
-flowchart LR
-    Settings["Settings UI"] -->|"PUT /api/system-settings"| API["control-plane-api-go"]
-    API -->|"registerReload()"| Callbacks["Reload Callbacks"]
-    Callbacks --> OAuth["OAuth Strategies"]
-    Callbacks --> LDAP["LDAP Config"]
-    Callbacks --> RateLimits["Rate Limiters"]
-    Callbacks --> Email["Email Provider"]
-    Callbacks --> SMS["SMS Provider"]
-    Callbacks --> Vault["Vault TTL"]
-    Callbacks --> AI["AI Config"]
-    Callbacks --> Features["Feature Flags"]
-    Callbacks --> Gateway["Gateway Routing"]
-```
-
-No service restart is required for supported configuration changes.
-
-## 🔒 Security Architecture
-
-### Encryption at Rest
-
-- **Vault secrets**: AES-256-GCM with per-user master key (Argon2-derived from password)
-- **Connection credentials**: AES-256-GCM with server encryption key
-- **SSH key pairs**: AES-256-GCM with tenant-scoped key
-- **Refresh tokens**: SHA-256 hashed before DB storage
-
-### Network Security
-
-All service-to-service communication uses TLS or mTLS:
-
-| Connection | Protocol | Authentication |
-|-----------|----------|---------------|
-| Client -> Nginx | HTTPS | - |
-| Nginx -> control-plane-api-go | HTTP/HTTPS | Internal network or service cert verify |
-| Nginx -> desktop-broker-go / terminal-broker-go | HTTP+WS | Internal network |
-| control-plane-api-go -> PostgreSQL | SSL | Certificate |
-| control-plane-api-go -> Redis | TCP/TLS | Internal network / deployment policy |
-| control-plane-api-go -> guacd | TLS | CA verify |
-| control-plane-api-go -> guacenc | HTTPS + mTLS | Client + server certs |
-| SSH Gateway -> control-plane-api-go | gRPC + mTLS | Client + server certs |
-
-### Logging Security
-
-The active Go services emit structured logs with explicit field redaction and bounded request metadata. Archived `server/src` logging code remains reference-only.
-
-## 🧱 Client Architecture
-
-```mermaid
-flowchart TD
-    subgraph UI["React 19 + MUI v7"]
-        Pages["Pages\n(Login, Dashboard, Setup)"]
-        Components["Components\n(Terminal, RDP, VNC, Sidebar, Tabs)"]
-    end
-
-    subgraph State["Zustand Stores (17)"]
-        Auth["authStore"]
-        Connections["connectionsStore"]
-        Tabs["tabsStore"]
-        Vault["vaultStore"]
-        Secrets["secretStore"]
-        Gateway["gatewayStore"]
-        Teams["teamStore"]
-        Tenant["tenantStore"]
-    end
-
-    subgraph API["API Layer (29 modules)"]
-        Client["Axios Client\n(JWT interceptor, CSRF)"]
-    end
-
-    subgraph Realtime["Real-time"]
-        WS["WebSocket + Guacamole Clients"]
-    end
-
-    Pages --> Components
-    Components --> State
-    State --> API
-    API --> Client
-    Components --> WS
-```
-
-**Key patterns:**
-- **Access tokens in-memory only** -- never persisted to localStorage
-- **Axios interceptor** auto-refreshes tokens on 401 responses
-- **UI preferences** persisted via Zustand + localStorage (`uiPreferencesStore`)
-- **Full-screen dialogs** overlay the workspace without destroying active SSH/RDP sessions
+- service metadata is machine-readable,
+- default ports are declared centrally in `backend/internal/catalog/catalog.go`,
+- and every service exposes the same health and meta endpoints.

@@ -1,301 +1,159 @@
 ---
 title: Development
-description: Contributing guide, local development setup, testing, code quality, and branch strategy
+description: Local workflow, quality gates, testing strategy, CLI alignment, and contribution conventions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-03-27T12:00:00Z
+generated-at: 2026-04-02T12:57:10Z
 source-files:
+  - AGENT.md
+  - CONTRIBUTING.md
   - package.json
   - client/package.json
-  - gateways/tunnel-agent/package.json
-  - extra-clients/browser-extensions/package.json
   - eslint.config.mjs
-  - client/vitest.config.ts
   - client/vite.config.ts
-  - client/tsconfig.json
+  - client/vitest.config.ts
   - Makefile
-  - CLAUDE.md
+  - scripts/go-build-all.sh
+  - scripts/go-test-all.sh
+  - scripts/security-scan.sh
+  - scripts/dev-api-acceptance.sh
+  - tools/arsenale-cli/cmd/root.go
 ---
 
-## 🏗 Monorepo Structure
+## 🧱 Monorepo Shape
 
-> Runtime note: `backend/` contains the active Go services used by the running application. The legacy Node `server/` implementation has been removed; runtime flows are now fully Go-first.
+Arsenale is a mixed Go and JavaScript monorepo.
 
-Arsenale uses npm workspaces for the active JavaScript packages and a separate Go module for the backend:
+| Area | Path | Stack |
+|------|------|-------|
+| Control and runtime services | `backend/` | Go 1.25 |
+| Web client | `client/` | React 19, Vite 8, Vitest |
+| Tunnel agent | `gateways/tunnel-agent/` | TypeScript workspace |
+| Browser extension | `extra-clients/browser-extensions/` | Chrome MV3 workspace |
+| CLI | `tools/arsenale-cli/` | Go |
 
-| Workspace | Path | Technology |
-|-----------|------|-----------|
-| Backend | `backend/` | Go 1.25 | Active control plane, brokers, orchestration, AI |
-| Client | `client/` | React 19 + Vite + MUI v7 + Zustand |
-| Tunnel Agent | `gateways/tunnel-agent/` | Node.js + TypeScript |
-| Browser Extension | `extra-clients/browser-extensions/` | Chrome MV3 + React |
+One important correction to older contributor material: the active runtime is not a legacy Express `server/`. The live platform is Go-first and the route surface comes from `backend/cmd/control-plane-api`.
 
-Install all dependencies with `npm install` at the root.
-
-## 🔀 Branch Strategy
+## 🔁 Daily Development Loop
 
 ```mermaid
-gitgraph
-    commit id: "main (production)"
-    branch staging
-    commit id: "staging (pre-prod)"
-    branch develop
-    commit id: "develop (integration)"
-    branch task/FEAT-0001
-    commit id: "feature work"
-    commit id: "more work"
-    checkout develop
-    merge task/FEAT-0001 id: "PR merge"
-    checkout staging
-    merge develop id: "staging deploy"
-    checkout main
-    merge staging id: "release"
+flowchart LR
+    A["npm install"] --> B["npm run dev"]
+    B --> C["Edit backend / client / gateways"]
+    C --> D["Focused tests"]
+    D --> E["npm run verify"]
+    E --> F["CLI smoke via arsenale-cli"]
 ```
 
-**Protected branches:** `main`, `staging`, `develop` -- never commit directly.
+Recommended day-to-day loop:
 
-| Branch Pattern | Purpose | PR Target |
-|---------------|---------|-----------|
-| `task/<CODE>` | Feature/task work | `develop` |
-| `fix/<CODE>` | Bug fixes | `develop` |
-| `chore/<CODE>` | Maintenance | `develop` |
-| `feat/<CODE>` | Features | `develop` |
+1. Keep the dev stack running with `npm run dev`.
+2. Use `npm run dev:client` only when frontend-only work does not need backend restarts.
+3. Run focused Go or Vitest commands while iterating.
+4. Run `npm run verify` before declaring a change complete.
+5. Use the CLI from `tools/arsenale-cli` as an acceptance client for auth, connection, gateway, and session flows.
 
-## 🧪 Testing
+## ✅ Quality Gates
 
-### Framework
+Top-level scripts from `package.json`:
 
-- **Vitest** for the frontend and JS workspaces
-- Go tests for the active backend services
-- Client: jsdom environment for DOM simulation
-- Globals enabled across all workspaces
+| Command | What it does |
+|---------|--------------|
+| `npm run typecheck` | Typecheck active JS workspaces |
+| `npm run lint` | Run ESLint across the repo |
+| `npm run sast` | Run `npm audit --audit-level=critical` |
+| `npm run security` | Run the repo security scan wrapper |
+| `npm run backend:test` | `go test ./...` in `backend/` |
+| `npm run go:test` | Go tests across backend, gateways, and CLI |
+| `npm run go:build` | Go builds across backend, gateways, and CLI |
+| `npm run verify` | Generate SQL, run Go tests, typecheck, lint, audit, JS tests, and build |
 
-### Commands
+Supporting scripts:
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/go-test-all.sh` | Aggregate Go test runner |
+| `scripts/go-build-all.sh` | Aggregate Go build runner |
+| `scripts/security-scan.sh` | npm audit, ESLint security, Trivy filesystem, optional image scans |
+| `scripts/dev-api-acceptance.sh` | Full API and runtime acceptance against the dev stack |
+
+## 🧪 Testing Surfaces
+
+### Frontend
+
+- `client/package.json` uses `vitest run` for tests.
+- `client/vitest.config.ts` defines the test runtime.
+- Vite and the SPA proxy behavior live in `client/vite.config.ts`.
+
+### Go services
+
+The backend, gateway modules, and CLI are all first-class test targets. `scripts/go-test-all.sh` currently covers:
+
+- `backend`
+- `gateways/gateway-core`
+- `gateways/db-proxy`
+- `gateways/guacenc`
+- `gateways/rdgw`
+- `gateways/ssh-gateway/grpc-server`
+- `tools/arsenale-cli`
+
+### End-to-end
+
+`scripts/dev-api-acceptance.sh` is the highest-signal integration check in the repo. It touches:
+
+- auth and tenant flows,
+- sessions,
+- gateways,
+- secrets and vault,
+- recordings,
+- audit,
+- database sessions and policies.
+
+## 🧰 CLI Alignment Rule
+
+`AGENT.md` is explicit: use `tools/arsenale-cli` as the primary operator and smoke-test client whenever you need real end-to-end verification.
+
+That rule has practical consequences:
+
+- if API contracts change, the CLI must be updated in the same change set,
+- CLI smoke tests are part of the acceptance bar,
+- `arsenale health`, `login`, `whoami`, `connection`, `gateway`, `session`, `rdgw`, `vault`, and `connect` are the highest-value commands to keep aligned.
+
+Typical smoke sequence:
 
 ```bash
-npm run test              # Run all tests
-npm run backend:test      # Go backend tests
-npm run test -w client    # Client tests only
-npm run test:watch        # Watch mode (re-runs on change)
+go build -o /tmp/arsenale-cli ./tools/arsenale-cli
+/tmp/arsenale-cli --server https://localhost:3000 health
+/tmp/arsenale-cli --server https://localhost:3000 login
+/tmp/arsenale-cli --server https://localhost:3000 whoami
+/tmp/arsenale-cli --server https://localhost:3000 connection list
+/tmp/arsenale-cli --server https://localhost:3000 gateway list
 ```
 
-### Test File Naming
+## 📝 Conventions That Matter
 
-Test files follow the pattern `**/*.test.{ts,tsx}` and are colocated with source files or in `__tests__/` directories.
+| Area | Convention |
+|------|------------|
+| Public routes | `backend/cmd/control-plane-api/routes_*.go` |
+| Service entrypoints | `backend/cmd/<service>/main.go` |
+| Shared service wrapper | `backend/internal/app/app.go` |
+| Client API modules | `client/src/api/*.ts` |
+| Client stores | `client/src/store/*Store.ts` |
+| Root env | Single `.env` at repo root |
 
-### Writing Tests
+Additional notes:
 
-```typescript
-import { describe, expect, it } from 'vitest';
+- `CONTRIBUTING.md` still contains useful process guidance, but its old Express/server architecture examples are historical and should not be used as the runtime reference.
+- The current CI configuration verifies PRs targeting `develop`, `staging`, and `main`. In practice, short-lived branches should be merged with those gates in mind.
+- The docs, route files, and CLI should move together whenever API behavior changes.
 
-describe('example', () => {
-  it('keeps behavior explicit', () => {
-    expect(true).toBe(true);
-  });
-});
-```
+## 🔍 Security and Static Analysis During Development
 
-## 🔍 Code Quality
+`scripts/security-scan.sh` supports three modes:
 
-### TypeScript
+| Mode | What it runs |
+|------|---------------|
+| `--quick` | `npm audit` plus ESLint security rules |
+| default | quick checks plus Trivy filesystem scan |
+| `--docker` | default checks plus image builds and image vulnerability scans |
 
-- **Strict mode** enabled in all active TypeScript workspaces
-- Client: ES2022, ESNext modules (Vite handles bundling)
-
-```bash
-npm run typecheck         # Check all workspaces
-```
-
-### ESLint
-
-Flat config format (`eslint.config.mjs`):
-- TypeScript strict rules + security plugin
-- Client: React hooks rules, refresh detection
-- Tests: relaxed rules
-
-```bash
-npm run lint              # Check all
-npm run lint:fix          # Auto-fix
-```
-
-### Security Scanning
-
-```bash
-npm run sast              # npm audit (critical severity)
-npm run codeql            # CodeQL static analysis
-```
-
-### Full Quality Gate
-
-```bash
-npm run verify            # typecheck -> lint -> audit -> test -> build
-```
-
-This must pass before closing any task.
-
-## 📐 File Naming Conventions
-
-| Layer | Pattern | Example |
-|-------|---------|---------|
-| Go packages | directory by responsibility | `backend/internal/authservice` |
-| Client stores | `*Store.ts` | `authStore.ts` |
-| Client API | `*.api.ts` | `connections.api.ts` |
-| Client hooks | `use*.ts` | `useAuth.ts` |
-| Tests | `*.test.ts` / `*.test.tsx` | `ip.test.ts` |
-
-## 🧱 Architecture Patterns
-
-### Backend: Routes -> Services -> Stores / SQL
-
-```
-backend/cmd/control-plane-api/routes_*.go  # HTTP binding
-backend/internal/*                          # Service logic by domain
-backend/internal/*/store.go                 # SQL-backed persistence
-```
-
-### Client: Pages -> Components -> Stores -> API
-
-```
-pages/DashboardPage.tsx        # Page-level component
-components/Sidebar/            # UI components
-store/connectionsStore.ts      # Zustand state management
-api/connections.api.ts          # Axios HTTP calls
-```
-
-### API Error Handling
-
-Client-side: use `extractApiError(err, fallbackMessage)` from `client/src/utils/apiError.ts`.
-For dialog forms: use `useAsyncAction` hook from `client/src/hooks/useAsyncAction.ts`.
-
-### Full-Screen Dialogs
-
-Features overlaying the workspace must use full-screen MUI `Dialog` from `MainLayout` (not page routes) to preserve active SSH/RDP sessions.
-
-```typescript
-import { SlideUp } from '../common/SlideUp';
-
-<Dialog fullScreen TransitionComponent={SlideUp} open={open} onClose={onClose}>
-  <AppBar position="static">
-    <Toolbar variant="dense">...</Toolbar>
-  </AppBar>
-  {/* Content */}
-</Dialog>
-```
-
-### UI Preferences
-
-All UI layout state uses `uiPreferencesStore` (Zustand + `arsenale-ui-preferences` localStorage key). Never use raw `localStorage`. Namespace by userId.
-
-### Configuration Pattern
-
-```
-Env var set    -> used as-is, UI field read-only
-Env var unset  -> UI setting editable, persisted to DB
-New features   -> define env var in the active Go config or settings registry first
-```
-
-## 🗄 Database
-
-### Schema migrations
-
-The database schema now lives under `backend/migrations/*.sql`, and Go query generation is configured via `backend/sqlc.yaml`. Key commands:
-
-```bash
-npm run db:migrate        # Apply pending migrations
-npm run db:status         # Show applied/pending migrations
-npm run db:bootstrap      # Compatibility alias
-npm run backend:generate  # Regenerate sqlc code
-```
-
-## 🐳 Container Standards
-
-All Dockerfiles must be:
-- **Rootless**: Non-root user, no privileged operations
-- **Podman-compatible**: Test with `podman build` / `podman run`
-- **High ports only**: > 1024 (no binding to privileged ports)
-- **Multi-stage**: Separate build and runtime stages
-
-## 🔒 Security Standards
-
-### Logging
-
-Never log sensitive data in clear text.
-
-```typescript
-// Correct
-logger.error(`Auth failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-
-// Incorrect - never do this
-logger.error('Login failed', { password, token });
-```
-
-### Vault and Encryption
-
-- Credentials encrypted at rest with AES-256-GCM
-- Per-user master key derived from password via Argon2
-- Vault lock requires re-auth to decrypt
-
-## 📦 Client Build
-
-### Vite Configuration
-
-- **PWA support**: Service worker with offline caching
-- **Code splitting**: Vendor chunks for React, MUI, XTerm, Guacamole, network libraries
-- **Chunk limit**: 700 KB warning threshold
-
-### Dev Server Proxies
-
-| Path | Target | Protocol |
-|------|--------|----------|
-| `/api` | `http://localhost:18080` | HTTP |
-| `/ws/terminal` | `http://localhost:18090` | WSS |
-| `/guacamole` | `http://localhost:18091` | WSS |
-
-## 📱 Browser Extension
-
-Located at `extra-clients/browser-extensions/`:
-
-- **Chrome Manifest V3** with service worker
-- **Multi-account support**: Connect to multiple Arsenale instances
-- **Autofill**: Form detection + credential injection
-- **Keychain integration**: Browse and copy secrets
-
-```bash
-cd extra-clients/browser-extensions
-npm run dev           # Watch build
-npm run build         # Production build
-```
-
-Load unpacked extension from the `dist/` directory in Chrome.
-
-## 🔧 Gateway Development
-
-### Tunnel Agent
-
-```bash
-cd gateways/tunnel-agent
-npm run dev           # Watch mode (tsx)
-npm run test          # Vitest
-npm run build         # TypeScript compile
-```
-
-### Gateway Go Modules
-
-```bash
-cd gateways/guacenc && go test ./...
-cd gateways/db-proxy && go test ./...
-cd gateways/rdgw && go test ./...
-```
-
-## 📐 Version Bumping
-
-When releasing, update version in all locations:
-
-| File | Field |
-|------|-------|
-| `package.json` (root, client, tunnel-agent, browser-extension) | `"version"` |
-| `extra-clients/browser-extensions/manifest.json` | `"version"` |
-| `backend/cmd/control-plane-api/main.go` | `ARSENALE_VERSION` default / release wiring |
-| `LICENSE` | `Licensed Work: Arsenale X.Y.Z` |
-| `docs/index.md` | `Version:` line |
-
-Then run `npm install --package-lock-only` to sync the lockfile.
+This is useful when changing containers, auth, gateway code, or anything that touches secrets and networking.
