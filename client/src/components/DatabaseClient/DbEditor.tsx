@@ -60,7 +60,8 @@ import DbConnectionStatus, { DbConnectionState } from './DbConnectionStatus';
 import DbResultsTable from './DbResultsTable';
 import DbSchemaBrowser from './DbSchemaBrowser';
 import QueryVisualizer from './QueryVisualizer';
-import DbQueryHistory, { addSavedQuery, deriveQueryLabel } from './DbQueryHistory';
+import DbQueryHistory from './DbQueryHistory';
+import { addSavedQuery, deriveQueryLabel } from './dbQueryHistoryUtils';
 import DbSessionConfigPopover from './DbSessionConfigPopover';
 import { format as formatSql } from 'sql-formatter';
 import { createSqlCompletionProvider } from './sqlCompletionProvider';
@@ -129,6 +130,55 @@ function classifyQueryType(sql: string): string {
   if (/^MERGE\b/i.test(t)) return 'UPDATE';
   if (/^(CALL|EXEC|EXECUTE)\b/i.test(t)) return 'EXEC';
   return 'OTHER';
+}
+
+function defaultSessionConfigForProtocol(protocol: string, databaseName?: string): DbSessionConfig {
+  const normalized = protocol.toLowerCase();
+  const defaults: DbSessionConfig = {};
+
+  switch (normalized) {
+    case 'postgresql':
+      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (databaseName) {
+        defaults.activeDatabase = databaseName;
+        defaults.searchPath = 'public';
+      }
+      return defaults;
+    case 'mysql':
+      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (databaseName) {
+        defaults.activeDatabase = databaseName;
+      }
+      return defaults;
+    case 'mssql':
+      if (databaseName) {
+        defaults.activeDatabase = databaseName;
+      }
+      return defaults;
+    case 'oracle':
+      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      return defaults;
+    default:
+      return defaults;
+  }
+}
+
+function formatMongoQuery(raw: string): string {
+  const parsed = JSON.parse(raw);
+  return `${JSON.stringify(parsed, null, 2)}\n`;
+}
+
+function mongoCollectionQuery(collectionName: string, databaseName?: string): string {
+  const payload: Record<string, unknown> = {
+    operation: 'find',
+    collection: collectionName,
+    filter: {},
+    limit: 100,
+  };
+  if (databaseName) {
+    payload.database = databaseName;
+  }
+  return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 export default function DbEditor({
@@ -329,16 +379,13 @@ export default function DbEditor({
     wasConnectedRef.current = true;
 
     // Apply sensible defaults when no stored session config exists
-    if (Object.keys(currentSessionConfig).length === 0 && result.protocol !== 'mongodb') {
-      const defaults: DbSessionConfig = {};
-      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (result.databaseName) {
-        defaults.activeDatabase = result.databaseName;
-        defaults.searchPath = result.databaseName;
+    if (Object.keys(currentSessionConfig).length === 0) {
+      const defaults = defaultSessionConfigForProtocol(result.protocol, result.databaseName);
+      if (Object.keys(defaults).length > 0) {
+        setCurrentSessionConfig(defaults);
+        // Apply defaults to the live session
+        updateDbSessionConfig(result.sessionId, defaults).catch(() => {});
       }
-      setCurrentSessionConfig(defaults);
-      // Apply defaults to the live session
-      updateDbSessionConfig(result.sessionId, defaults).catch(() => {});
     }
 
     // Start heartbeat
@@ -359,7 +406,7 @@ export default function DbEditor({
         });
       }
     }, 15_000);
-  }, [connectionId, credentials]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [connectionId, credentials, currentSessionConfig]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Auto-reconnect hook ---
   const {
@@ -522,7 +569,7 @@ export default function DbEditor({
     // but handleRunQueryRef always points to the latest handleRunQuery.
     editor.addAction({
       id: 'run-sql-query',
-      label: 'Run SQL Query',
+      label: 'Run Query',
       keybindings: [
         monaco.KeyMod.CtrlCmd | monaco.KeyCode.Enter,
       ],
@@ -532,7 +579,7 @@ export default function DbEditor({
     // Register F5 keybinding for query execution
     editor.addAction({
       id: 'run-sql-query-f5',
-      label: 'Run SQL Query (F5)',
+      label: 'Run Query (F5)',
       keybindings: [
         monaco.KeyCode.F5,
       ],
@@ -585,6 +632,10 @@ export default function DbEditor({
   const handleEditorChange = useCallback((value: string | undefined) => {
     updateTab(activeQueryTabIdRef.current, { sql: value ?? '' });
 
+    if (protocol === 'mongodb') {
+      return;
+    }
+
     // Debounced validation (300ms)
     if (validationTimerRef.current) {
       clearTimeout(validationTimerRef.current);
@@ -597,7 +648,7 @@ export default function DbEditor({
         if (model) validateSql(monaco, model);
       }
     }, 300);
-  }, [updateTab]);
+  }, [protocol, updateTab]);
 
   // Cleanup validation timer and completion provider on unmount
   useEffect(() => {
@@ -610,6 +661,13 @@ export default function DbEditor({
 
   // Handle table click from schema browser — insert SELECT query
   const handleTableClick = useCallback((tableName: string, schemaName: string) => {
+    if (protocol === 'mongodb') {
+      updateTab(activeQueryTabId, {
+        sql: activeTab.sql.trim() ? activeTab.sql : mongoCollectionQuery(tableName, databaseName ?? schemaName),
+      });
+      return;
+    }
+
     const qualifiedName = schemaName === 'public' ? tableName : `${schemaName}.${tableName}`;
     const limit = protocol === 'oracle' ? 'FETCH FIRST 100 ROWS ONLY'
       : protocol === 'mssql' ? '-- use SELECT TOP 100'
@@ -621,7 +679,7 @@ export default function DbEditor({
           ? `SELECT TOP 100 * FROM ${qualifiedName};`
           : `SELECT * FROM ${qualifiedName}\n${limit};`,
     });
-  }, [protocol, activeQueryTabId, activeTab, updateTab]);
+  }, [protocol, databaseName, activeQueryTabId, activeTab, updateTab]);
 
   // Handle generated SQL from schema browser context menu
   const handleInsertSql = useCallback((sql: string) => {
@@ -645,6 +703,15 @@ export default function DbEditor({
 
   // Format SQL using sql-formatter (toolbar button or Monaco Shift+Alt+F)
   const handleFormatSql = useCallback(() => {
+    if (protocol === 'mongodb') {
+      try {
+        updateTab(activeQueryTabId, { sql: formatMongoQuery(activeTab.sql) });
+      } catch {
+        // Leave invalid JSON unchanged.
+      }
+      return;
+    }
+
     const editor = monacoEditorRef.current;
     if (editor) {
       // Trigger Monaco's format action — our registered provider will handle it
@@ -657,7 +724,7 @@ export default function DbEditor({
     // Fallback: format directly via sql-formatter and update state
     const formatted = formatSql(activeTab.sql, { language: 'sql', tabWidth: 2, keywordCase: 'upper' });
     updateTab(activeQueryTabId, { sql: formatted });
-  }, [activeTab, activeQueryTabId, updateTab]);
+  }, [protocol, activeTab, activeQueryTabId, updateTab]);
 
   // Export results as CSV
   const handleExportCsv = useCallback(() => {
@@ -785,7 +852,7 @@ export default function DbEditor({
     {
       id: 'format-sql',
       icon: <FormatIcon />,
-      tooltip: 'Format SQL',
+      tooltip: protocol === 'mongodb' ? 'Format JSON query' : 'Format SQL',
       onClick: handleFormatSql,
       disabled: connectionState !== 'connected',
     },
@@ -1211,7 +1278,7 @@ export default function DbEditor({
       <Box sx={{ flex: 1, display: 'flex', overflow: 'hidden', minWidth: 0, minHeight: 0 }}>
         {/* Editor + Results (resizable split) */}
         <Box ref={splitContainerRef} sx={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
-          {/* SQL editor area */}
+          {/* Query editor area */}
           <Box
             ref={editorPaneRef}
             sx={{
@@ -1223,7 +1290,7 @@ export default function DbEditor({
             }}
           >
             <Editor
-              language="sql"
+              language={protocol === 'mongodb' ? 'json' : 'sql'}
               theme={resolvedMonacoTheme}
               value={activeTab.sql}
               onChange={handleEditorChange}
@@ -1243,7 +1310,9 @@ export default function DbEditor({
                 fixedOverflowWidgets: true,
                 scrollbar: { verticalScrollbarSize: 8, horizontalScrollbarSize: 8 },
                 padding: { top: 8, bottom: 8 },
-                placeholder: 'Enter SQL query here... (Ctrl+Enter to execute)',
+                placeholder: protocol === 'mongodb'
+                  ? 'Enter a MongoDB JSON query spec here... (Ctrl+Enter to execute)'
+                  : 'Enter SQL query here... (Ctrl+Enter to execute)',
               }}
               loading={
                 <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', flex: 1 }}>
@@ -1290,7 +1359,9 @@ export default function DbEditor({
             {!activeTab.executing && !activeTab.result && connectionState === 'connected' && (
               <Box sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Typography variant="body2" color="text.secondary">
-                  Write a SQL query and press Ctrl+Enter to execute
+                  {protocol === 'mongodb'
+                    ? 'Write a MongoDB JSON query spec and press Ctrl+Enter to execute'
+                    : 'Write a SQL query and press Ctrl+Enter to execute'}
                 </Typography>
               </Box>
             )}

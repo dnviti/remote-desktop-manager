@@ -110,44 +110,108 @@ var reservedTableWords = map[string]struct{}{
 	"dual": {}, "information_schema": {},
 }
 
+type compiledRegexCacheEntry struct {
+	re *regexp.Regexp
+	ok bool
+}
+
+var (
+	dbQueryTypeDDLPattern     = regexp.MustCompile(`(?i)^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME|COMMENT)\b`)
+	dbQueryTypeSelectPattern  = regexp.MustCompile(`(?i)^\s*SELECT\b`)
+	dbQueryTypeInsertPattern  = regexp.MustCompile(`(?i)^\s*INSERT\b`)
+	dbQueryTypeUpdatePattern  = regexp.MustCompile(`(?i)^\s*UPDATE\b`)
+	dbQueryTypeDeletePattern  = regexp.MustCompile(`(?i)^\s*DELETE\b`)
+	dbQueryTypeWithPattern    = regexp.MustCompile(`(?i)^\s*WITH\b`)
+	dbCteSelectPattern        = regexp.MustCompile(`(?i)\)\s*SELECT\b`)
+	dbCteInsertPattern        = regexp.MustCompile(`(?i)\)\s*INSERT\b`)
+	dbCteUpdatePattern        = regexp.MustCompile(`(?i)\)\s*UPDATE\b`)
+	dbCteDeletePattern        = regexp.MustCompile(`(?i)\)\s*DELETE\b`)
+	dbQueryTypeExplainPattern = regexp.MustCompile(`(?i)^\s*(EXPLAIN|DESCRIBE|DESC)\b`)
+	dbQueryTypeShowPattern    = regexp.MustCompile(`(?i)^\s*SHOW\b`)
+	dbQueryTypeSetPattern     = regexp.MustCompile(`(?i)^\s*SET\b`)
+	dbQueryTypeGrantPattern   = regexp.MustCompile(`(?i)^\s*(GRANT|REVOKE)\b`)
+	dbQueryTypeMergePattern   = regexp.MustCompile(`(?i)^\s*MERGE\b`)
+	dbQueryTypeCallPattern    = regexp.MustCompile(`(?i)^\s*(CALL|EXEC|EXECUTE)\b`)
+
+	dbTableAccessPatterns = []*regexp.Regexp{
+		regexp.MustCompile("(?i)\\bFROM\\s+([\"\\x60]?[\\w]+[\"\\x60]?(?:\\s*\\.\\s*[\"\\x60]?[\\w]+[\"\\x60]?)?)"),
+		regexp.MustCompile("(?i)\\bJOIN\\s+([\"\\x60]?[\\w]+[\"\\x60]?(?:\\s*\\.\\s*[\"\\x60]?[\\w]+[\"\\x60]?)?)"),
+		regexp.MustCompile("(?i)\\bINTO\\s+([\"\\x60]?[\\w]+[\"\\x60]?(?:\\s*\\.\\s*[\"\\x60]?[\\w]+[\"\\x60]?)?)"),
+		regexp.MustCompile("(?i)\\bUPDATE\\s+([\"\\x60]?[\\w]+[\"\\x60]?(?:\\s*\\.\\s*[\"\\x60]?[\\w]+[\"\\x60]?)?)"),
+		regexp.MustCompile("(?i)\\bTABLE\\s+(?:IF\\s+(?:NOT\\s+)?EXISTS\\s+)?([\"\\x60]?[\\w]+[\"\\x60]?(?:\\s*\\.\\s*[\"\\x60]?[\\w]+[\"\\x60]?)?)"),
+		regexp.MustCompile("(?i)\\bTRUNCATE\\s+(?:TABLE\\s+)?([\"\\x60]?[\\w]+[\"\\x60]?(?:\\s*\\.\\s*[\"\\x60]?[\\w]+[\"\\x60]?)?)"),
+	}
+
+	compiledPatternCache sync.Map
+)
+
+func compileCaseInsensitiveRegex(pattern string) (*regexp.Regexp, bool) {
+	cacheKey := "(?i)" + pattern
+	if value, ok := compiledPatternCache.Load(cacheKey); ok {
+		entry := value.(compiledRegexCacheEntry)
+		return entry.re, entry.ok
+	}
+
+	re, err := regexp.Compile(cacheKey)
+	entry := compiledRegexCacheEntry{re: re, ok: err == nil}
+	actual, _ := compiledPatternCache.LoadOrStore(cacheKey, entry)
+	cached := actual.(compiledRegexCacheEntry)
+	return cached.re, cached.ok
+}
+
 func classifyDBQuery(queryText string) dbQueryType {
+	if operation, ok := parseMongoOperation(queryText); ok {
+		switch operation {
+		case "find", "aggregate", "count", "distinct", "runcmd", "runcommand":
+			return dbQueryTypeSelect
+		case "insertone", "insertmany":
+			return dbQueryTypeInsert
+		case "updateone", "updatemany":
+			return dbQueryTypeUpdate
+		case "deleteone", "deletemany":
+			return dbQueryTypeDelete
+		default:
+			return dbQueryTypeOther
+		}
+	}
+
 	trimmed := stripLeadingSQLComments(queryText)
 
 	switch {
-	case regexp.MustCompile(`(?i)^\s*(CREATE|ALTER|DROP|TRUNCATE|RENAME|COMMENT)\b`).MatchString(trimmed):
+	case dbQueryTypeDDLPattern.MatchString(trimmed):
 		return dbQueryTypeDDL
-	case regexp.MustCompile(`(?i)^\s*SELECT\b`).MatchString(trimmed):
+	case dbQueryTypeSelectPattern.MatchString(trimmed):
 		return dbQueryTypeSelect
-	case regexp.MustCompile(`(?i)^\s*INSERT\b`).MatchString(trimmed):
+	case dbQueryTypeInsertPattern.MatchString(trimmed):
 		return dbQueryTypeInsert
-	case regexp.MustCompile(`(?i)^\s*UPDATE\b`).MatchString(trimmed):
+	case dbQueryTypeUpdatePattern.MatchString(trimmed):
 		return dbQueryTypeUpdate
-	case regexp.MustCompile(`(?i)^\s*DELETE\b`).MatchString(trimmed):
+	case dbQueryTypeDeletePattern.MatchString(trimmed):
 		return dbQueryTypeDelete
-	case regexp.MustCompile(`(?i)^\s*WITH\b`).MatchString(trimmed):
+	case dbQueryTypeWithPattern.MatchString(trimmed):
 		switch {
-		case regexp.MustCompile(`(?i)\)\s*SELECT\b`).MatchString(trimmed):
+		case dbCteSelectPattern.MatchString(trimmed):
 			return dbQueryTypeSelect
-		case regexp.MustCompile(`(?i)\)\s*INSERT\b`).MatchString(trimmed):
+		case dbCteInsertPattern.MatchString(trimmed):
 			return dbQueryTypeInsert
-		case regexp.MustCompile(`(?i)\)\s*UPDATE\b`).MatchString(trimmed):
+		case dbCteUpdatePattern.MatchString(trimmed):
 			return dbQueryTypeUpdate
-		case regexp.MustCompile(`(?i)\)\s*DELETE\b`).MatchString(trimmed):
+		case dbCteDeletePattern.MatchString(trimmed):
 			return dbQueryTypeDelete
 		default:
 			return dbQueryTypeSelect
 		}
-	case regexp.MustCompile(`(?i)^\s*(EXPLAIN|DESCRIBE|DESC)\b`).MatchString(trimmed):
+	case dbQueryTypeExplainPattern.MatchString(trimmed):
 		return dbQueryTypeSelect
-	case regexp.MustCompile(`(?i)^\s*SHOW\b`).MatchString(trimmed):
+	case dbQueryTypeShowPattern.MatchString(trimmed):
 		return dbQueryTypeSelect
-	case regexp.MustCompile(`(?i)^\s*SET\b`).MatchString(trimmed):
+	case dbQueryTypeSetPattern.MatchString(trimmed):
 		return dbQueryTypeDDL
-	case regexp.MustCompile(`(?i)^\s*(GRANT|REVOKE)\b`).MatchString(trimmed):
+	case dbQueryTypeGrantPattern.MatchString(trimmed):
 		return dbQueryTypeDDL
-	case regexp.MustCompile(`(?i)^\s*MERGE\b`).MatchString(trimmed):
+	case dbQueryTypeMergePattern.MatchString(trimmed):
 		return dbQueryTypeUpdate
-	case regexp.MustCompile(`(?i)^\s*(CALL|EXEC|EXECUTE)\b`).MatchString(trimmed):
+	case dbQueryTypeCallPattern.MatchString(trimmed):
 		return dbQueryTypeOther
 	default:
 		return dbQueryTypeOther
@@ -188,18 +252,13 @@ func stripLeadingSQLComments(sqlText string) string {
 }
 
 func extractTablesAccessed(queryText string) []string {
-	patterns := []*regexp.Regexp{
-		regexp.MustCompile("(?i)\\bFROM\\s+([\"`]?[\\w]+[\"`]?(?:\\s*\\.\\s*[\"`]?[\\w]+[\"`]?)?)"),
-		regexp.MustCompile("(?i)\\bJOIN\\s+([\"`]?[\\w]+[\"`]?(?:\\s*\\.\\s*[\"`]?[\\w]+[\"`]?)?)"),
-		regexp.MustCompile("(?i)\\bINTO\\s+([\"`]?[\\w]+[\"`]?(?:\\s*\\.\\s*[\"`]?[\\w]+[\"`]?)?)"),
-		regexp.MustCompile("(?i)\\bUPDATE\\s+([\"`]?[\\w]+[\"`]?(?:\\s*\\.\\s*[\"`]?[\\w]+[\"`]?)?)"),
-		regexp.MustCompile("(?i)\\bTABLE\\s+(?:IF\\s+(?:NOT\\s+)?EXISTS\\s+)?([\"`]?[\\w]+[\"`]?(?:\\s*\\.\\s*[\"`]?[\\w]+[\"`]?)?)"),
-		regexp.MustCompile("(?i)\\bTRUNCATE\\s+(?:TABLE\\s+)?([\"`]?[\\w]+[\"`]?(?:\\s*\\.\\s*[\"`]?[\\w]+[\"`]?)?)"),
+	if collection, ok := parseMongoCollection(queryText); ok {
+		return []string{collection}
 	}
 
 	seen := map[string]struct{}{}
 	items := make([]string, 0)
-	for _, pattern := range patterns {
+	for _, pattern := range dbTableAccessPatterns {
 		matches := pattern.FindAllStringSubmatch(queryText, -1)
 		for _, match := range matches {
 			if len(match) < 2 {
@@ -220,6 +279,34 @@ func extractTablesAccessed(queryText string) []string {
 		}
 	}
 	return items
+}
+
+func parseMongoOperation(queryText string) (string, bool) {
+	var payload struct {
+		Operation string `json:"operation"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(queryText)), &payload); err != nil {
+		return "", false
+	}
+	operation := strings.ToLower(strings.TrimSpace(payload.Operation))
+	if operation == "" {
+		return "", false
+	}
+	return operation, true
+}
+
+func parseMongoCollection(queryText string) (string, bool) {
+	var payload struct {
+		Collection string `json:"collection"`
+	}
+	if err := json.Unmarshal([]byte(strings.TrimSpace(queryText)), &payload); err != nil {
+		return "", false
+	}
+	collection := strings.ToLower(strings.TrimSpace(payload.Collection))
+	if collection == "" {
+		return "", false
+	}
+	return collection, true
 }
 
 func (s Service) evaluateFirewall(ctx context.Context, tenantID, queryText, database, table string) firewallEvaluation {
@@ -254,8 +341,8 @@ ORDER BY priority DESC, "createdAt" DESC
 	}
 
 	for _, builtin := range builtinDBFirewallPatterns {
-		re, compileErr := regexp.Compile("(?i)" + builtin.Pattern)
-		if compileErr != nil {
+		re, ok := compileCaseInsensitiveRegex(builtin.Pattern)
+		if !ok {
 			continue
 		}
 		if re.MatchString(queryText) {
@@ -280,8 +367,8 @@ func matchesScopedRegex(pattern, scope, queryText, database, table string) bool 
 		}
 	}
 
-	re, err := regexp.Compile("(?i)" + pattern)
-	if err != nil {
+	re, ok := compileCaseInsensitiveRegex(pattern)
+	if !ok {
 		return false
 	}
 	return re.MatchString(queryText)
@@ -333,8 +420,8 @@ func findMaskedColumns(policies []maskingPolicyRecord, columns []string, userRol
 			if roleExempt(policy.ExemptRoles, userRole) {
 				continue
 			}
-			re, err := regexp.Compile("(?i)" + policy.ColumnPattern)
-			if err != nil {
+			re, ok := compileCaseInsensitiveRegex(policy.ColumnPattern)
+			if !ok {
 				continue
 			}
 			if re.MatchString(column) {

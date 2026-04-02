@@ -80,6 +80,13 @@ admin_password="${ARSENALE_ADMIN_PASSWORD:-DevAdmin123!}"
 rotated_admin_password="${ARSENALE_ROTATED_ADMIN_PASSWORD:-ArsenaleTemp91Qx}"
 db_user="${ARSENALE_DB_USER:-arsenale}"
 db_name="${ARSENALE_DB_NAME:-arsenale}"
+sample_postgres_host="${ARSENALE_SAMPLE_POSTGRES_HOST:-dev-demo-postgres}"
+sample_postgres_port="${ARSENALE_SAMPLE_POSTGRES_PORT:-5432}"
+sample_postgres_user="${ARSENALE_SAMPLE_POSTGRES_USER:-demo_pg_user}"
+sample_postgres_password="${ARSENALE_SAMPLE_POSTGRES_PASSWORD:-DemoPgPass123!}"
+sample_postgres_db_name="${ARSENALE_SAMPLE_POSTGRES_DB_NAME:-arsenale_demo}"
+sample_postgres_ssl_mode="${ARSENALE_SAMPLE_POSTGRES_SSL_MODE:-disable}"
+sample_postgres_table="${ARSENALE_SAMPLE_POSTGRES_TABLE:-demo_customers}"
 connection_name="Acceptance DB $(date +%s)"
 ssh_connection_name="Acceptance SSH $(date +%s)"
 ssh_tunnel_connection_name="Acceptance SSH Tunnel $(date +%s)"
@@ -3707,55 +3714,55 @@ echo '4. Go query-runner'
 query_write_table="query_runner_write_$(date +%s)"
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d '{"sql":"select current_database() as database_name","maxRows":1}' \
+  -d "{\"sql\":\"select current_database() as database_name\",\"maxRows\":1,\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/query-runs:execute" \
-  | jq -e '.rowCount == 1' >/dev/null
+  | jq -e ".rowCount == 1 and .rows[0].database_name == \"${sample_postgres_db_name}\"" >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d '{"sql":"select current_database() as database_name"}' \
+  -d "{\"sql\":\"select current_database() as database_name\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/query-plans:explain" \
   | jq -e '.supported == true and .format == "json"' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"type\":\"database_version\",\"db\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}" \
+  -d "{\"type\":\"database_version\",\"db\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/introspection:run" \
   | jq -e '.supported == true and (.data.version | type == "string")' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}" \
+  -d "{\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/schema:fetch" \
   | jq -e '.tables | length > 0' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"sql\":\"select current_setting('TIMEZONE') as timezone, current_setting('search_path') as search_path\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\",\"sessionConfig\":{\"timezone\":\"Europe/Rome\",\"searchPath\":\"public\"}}}" \
+  -d "{\"sql\":\"select current_setting('TIMEZONE') as timezone, current_setting('search_path') as search_path\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\",\"sessionConfig\":{\"timezone\":\"Europe/Rome\",\"searchPath\":\"public\"}}}" \
   "${query_base}/v1/query-runs:execute" \
   | jq -e '.rowCount == 1 and .rows[0].timezone == "Europe/Rome" and (.rows[0].search_path | tostring | contains("public"))' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"sql\":\"create table if not exists public.${query_write_table} (id integer primary key, note text not null)\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}" \
+  -d "{\"sql\":\"create table if not exists public.${query_write_table} (id integer primary key, note text not null)\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/query-runs:execute-any" \
   | jq -e '.rowCount == 0' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"sql\":\"insert into public.${query_write_table} (id, note) values (1, 'go-write') on conflict (id) do update set note = excluded.note\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}" \
+  -d "{\"sql\":\"insert into public.${query_write_table} (id, note) values (1, 'go-write') on conflict (id) do update set note = excluded.note\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/query-runs:execute-any" \
   | jq -e '.rowCount >= 1' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"sql\":\"select note from public.${query_write_table} where id = 1\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}" \
+  -d "{\"sql\":\"select note from public.${query_write_table} where id = 1\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/query-runs:execute-any" \
   | jq -e '.rowCount == 1 and .rows[0].note == "go-write"' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"sql\":\"drop table if exists public.${query_write_table}\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}" \
+  -d "{\"sql\":\"drop table if exists public.${query_write_table}\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}" \
   "${query_base}/v1/query-runs:execute-any" \
   | jq -e '.rowCount == 0' >/dev/null
 
@@ -3765,19 +3772,19 @@ curl --silent --show-error --fail "${tool_base}/v1/capabilities" \
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d '{"capability":"db.query.execute.readonly","authz":{"subject":{"type":"system","id":"acceptance"},"resource":{"type":"database","id":"control-plane"}},"input":{"sql":"select current_database() as database_name","maxRows":1}}' \
+  -d "{\"capability\":\"db.query.execute.readonly\",\"authz\":{\"subject\":{\"type\":\"system\",\"id\":\"acceptance\"},\"resource\":{\"type\":\"database\",\"id\":\"dev-postgres\"}},\"input\":{\"sql\":\"select current_database() as database_name\",\"maxRows\":1,\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}}" \
   "${tool_base}/v1/tool-calls:execute" \
-  | jq -e '.decision.effect == "allow" and .output.rowCount == 1' >/dev/null
+  | jq -e ".decision.effect == \"allow\" and .output.rowCount == 1 and .output.rows[0].database_name == \"${sample_postgres_db_name}\"" >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"capability\":\"db.schema.read\",\"authz\":{\"subject\":{\"type\":\"system\",\"id\":\"acceptance\"},\"resource\":{\"type\":\"database\",\"id\":\"dev-postgres\"}},\"input\":{\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}}" \
+  -d "{\"capability\":\"db.schema.read\",\"authz\":{\"subject\":{\"type\":\"system\",\"id\":\"acceptance\"},\"resource\":{\"type\":\"database\",\"id\":\"dev-postgres\"}},\"input\":{\"target\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}}" \
   "${tool_base}/v1/tool-calls:execute" \
   | jq -e '.decision.effect == "allow" and (.output.tables | length > 0)' >/dev/null
 
 curl --silent --show-error --fail \
   -H 'content-type: application/json' \
-  -d "{\"capability\":\"db.introspection.read\",\"authz\":{\"subject\":{\"type\":\"system\",\"id\":\"acceptance\"},\"resource\":{\"type\":\"database\",\"id\":\"dev-postgres\"}},\"input\":{\"type\":\"database_version\",\"db\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"${db_name}\",\"sslMode\":\"require\",\"username\":\"${db_user}\",\"password\":\"${postgres_password}\"}}}" \
+  -d "{\"capability\":\"db.introspection.read\",\"authz\":{\"subject\":{\"type\":\"system\",\"id\":\"acceptance\"},\"resource\":{\"type\":\"database\",\"id\":\"dev-postgres\"}},\"input\":{\"type\":\"database_version\",\"db\":{\"protocol\":\"postgresql\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"database\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\",\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\"}}}" \
   "${tool_base}/v1/tool-calls:execute" \
   | jq -e '.decision.effect == "allow" and (.output.data.version | type == "string")' >/dev/null
 
@@ -4242,7 +4249,7 @@ create_connection_json="$(curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
   -H 'content-type: application/json' \
-  -d "{\"name\":\"${connection_name}\",\"type\":\"DATABASE\",\"host\":\"postgres\",\"port\":5432,\"username\":\"${db_user}\",\"password\":\"${postgres_password}\",\"dbSettings\":{\"protocol\":\"postgresql\",\"databaseName\":\"${db_name}\",\"sslMode\":\"require\"}}" \
+  -d "{\"name\":\"${connection_name}\",\"type\":\"DATABASE\",\"host\":\"${sample_postgres_host}\",\"port\":${sample_postgres_port},\"username\":\"${sample_postgres_user}\",\"password\":\"${sample_postgres_password}\",\"dbSettings\":{\"protocol\":\"postgresql\",\"databaseName\":\"${sample_postgres_db_name}\",\"sslMode\":\"${sample_postgres_ssl_mode}\"}}" \
   "${api_base}/connections")"
 connection_id="$(printf '%s' "${create_connection_json}" | jq -r '.id')"
 [[ -n "${connection_id}" && "${connection_id}" != "null" ]]
@@ -4293,7 +4300,7 @@ curl --silent --show-error --fail \
   -H 'content-type: application/json' \
   -d '{"sql":"select current_database() as database_name"}' \
   "${api_base}/sessions/database/${session_id}/query" \
-  | jq -e ".rowCount == 1 and .rows[0].database_name == \"${db_name}\"" >/dev/null
+  | jq -e ".rowCount == 1 and .rows[0].database_name == \"${sample_postgres_db_name}\"" >/dev/null
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
@@ -4321,7 +4328,7 @@ curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
   -H 'content-type: application/json' \
-  -d '{"type":"table_schema","target":"orchestrator_connections"}' \
+  -d "{\"type\":\"table_schema\",\"target\":\"${sample_postgres_table}\"}" \
   "${api_base}/sessions/database/${session_id}/introspect" \
   | jq -e '.supported == true and (.data | length > 0)' >/dev/null
 

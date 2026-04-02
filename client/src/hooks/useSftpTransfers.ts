@@ -2,9 +2,9 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 
 export interface SftpSocket {
   connected: boolean;
-  on(event: string, handler: (...args: any[]) => void): void;
-  off(event: string, handler: (...args: any[]) => void): void;
-  emit(event: string, payload?: unknown, callback?: (...args: any[]) => void): void;
+  on<TArgs extends unknown[]>(event: string, handler: (...args: TArgs) => void): void;
+  off<TArgs extends unknown[]>(event: string, handler: (...args: TArgs) => void): void;
+  emit<TArgs extends unknown[]>(event: string, payload?: unknown, callback?: (...args: TArgs) => void): void;
 }
 
 export interface TransferItem {

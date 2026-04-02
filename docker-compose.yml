@@ -254,6 +254,32 @@ services:
       DEV_BOOTSTRAP_ADMIN_PASSWORD: "DevAdmin123!"
       DEV_BOOTSTRAP_TENANT_NAME: "Development Environment"
       DEV_TUNNEL_CERT_DIR: "/certs"
+      DEV_SAMPLE_POSTGRES_HOST: "dev-demo-postgres"
+      DEV_SAMPLE_POSTGRES_PORT: "5432"
+      DEV_SAMPLE_POSTGRES_DATABASE: "arsenale_demo"
+      DEV_SAMPLE_POSTGRES_USER: "demo_pg_user"
+      DEV_SAMPLE_POSTGRES_PASSWORD: "DemoPgPass123!"
+      DEV_SAMPLE_POSTGRES_SSL_MODE: "disable"
+      DEV_SAMPLE_MYSQL_HOST: "dev-demo-mysql"
+      DEV_SAMPLE_MYSQL_PORT: "3306"
+      DEV_SAMPLE_MYSQL_DATABASE: "arsenale_demo"
+      DEV_SAMPLE_MYSQL_USER: "demo_mysql_user"
+      DEV_SAMPLE_MYSQL_PASSWORD: "DemoMySqlPass123!"
+      DEV_SAMPLE_MONGODB_HOST: "dev-demo-mongodb"
+      DEV_SAMPLE_MONGODB_PORT: "27017"
+      DEV_SAMPLE_MONGODB_DATABASE: "arsenale_demo"
+      DEV_SAMPLE_MONGODB_USER: "demo_mongo_user"
+      DEV_SAMPLE_MONGODB_PASSWORD: "DemoMongoPass123!"
+      DEV_SAMPLE_ORACLE_HOST: "dev-demo-oracle"
+      DEV_SAMPLE_ORACLE_PORT: "1521"
+      DEV_SAMPLE_ORACLE_SERVICE_NAME: "FREEPDB1"
+      DEV_SAMPLE_ORACLE_USER: "demo_oracle_user"
+      DEV_SAMPLE_ORACLE_PASSWORD: "DemoOraclePass123!"
+      DEV_SAMPLE_MSSQL_HOST: "dev-demo-mssql"
+      DEV_SAMPLE_MSSQL_PORT: "1433"
+      DEV_SAMPLE_MSSQL_DATABASE: "ArsenaleDemo"
+      DEV_SAMPLE_MSSQL_USER: "demo_mssql_user"
+      DEV_SAMPLE_MSSQL_PASSWORD: "DemoMssqlPass123!"
       DRIVE_BASE_PATH: "/guacd-drive"
       FILE_UPLOAD_MAX_SIZE: "10485760"
       USER_DRIVE_QUOTA: "104857600"
@@ -831,6 +857,147 @@ services:
           - dev-debian-target
           - dev-debian-ssh-target
 
+  dev-demo-postgres:
+    image: docker.io/library/postgres:16-alpine
+    container_name: arsenale-dev-demo-postgres
+    cpus: "0.5"
+    mem_limit: "512m"
+    pids_limit: 256
+    environment:
+      POSTGRES_DB: "arsenale_demo"
+      POSTGRES_USER: "demo_pg_user"
+      POSTGRES_PASSWORD: "DemoPgPass123!"
+    volumes:
+      - dev_demo_postgres_data:/var/lib/postgresql/data
+      - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/dev/demo-postgres:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U demo_pg_user -d arsenale_demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    restart: always
+    networks:
+      net-db:
+        aliases:
+          - dev-demo-postgres
+      net-gateway:
+        aliases:
+          - dev-demo-postgres
+
+  dev-demo-mysql:
+    image: docker.io/library/mysql:8.4
+    container_name: arsenale-dev-demo-mysql
+    cpus: "0.5"
+    mem_limit: "768m"
+    pids_limit: 256
+    environment:
+      MYSQL_DATABASE: "arsenale_demo"
+      MYSQL_USER: "demo_mysql_user"
+      MYSQL_PASSWORD: "DemoMySqlPass123!"
+      MYSQL_ROOT_PASSWORD: "DemoMySqlRoot123!"
+    volumes:
+      - dev_demo_mysql_data:/var/lib/mysql
+      - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/dev/demo-mysql:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -udemo_mysql_user -pDemoMySqlPass123! --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: always
+    networks:
+      net-db:
+        aliases:
+          - dev-demo-mysql
+      net-gateway:
+        aliases:
+          - dev-demo-mysql
+
+  dev-demo-mongodb:
+    image: docker.io/library/mongo:7.0
+    container_name: arsenale-dev-demo-mongodb
+    cpus: "0.5"
+    mem_limit: "512m"
+    pids_limit: 256
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: "demo_mongo_root"
+      MONGO_INITDB_ROOT_PASSWORD: "DemoMongoRoot123!"
+      MONGO_INITDB_DATABASE: "arsenale_demo"
+    volumes:
+      - dev_demo_mongodb_data:/data/db
+      - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/dev/demo-mongodb:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --host 127.0.0.1 --port 27017 -u demo_mongo_root -p DemoMongoRoot123! --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep -q 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    restart: always
+    networks:
+      net-db:
+        aliases:
+          - dev-demo-mongodb
+      net-gateway:
+        aliases:
+          - dev-demo-mongodb
+
+  dev-demo-oracle:
+    image: docker.io/gvenzl/oracle-free:23-slim
+    container_name: arsenale-dev-demo-oracle
+    cpus: "1.0"
+    mem_limit: "4g"
+    pids_limit: 512
+    environment:
+      ORACLE_PASSWORD: "DemoOracleSys123!"
+      APP_USER: "demo_oracle_user"
+      APP_USER_PASSWORD: "DemoOraclePass123!"
+    volumes:
+      - dev_demo_oracle_data:/opt/oracle/oradata
+      - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/dev/demo-oracle:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'echo > /dev/tcp/127.0.0.1/1521'"]
+      interval: 15s
+      timeout: 10s
+      retries: 30
+      start_period: 180s
+    restart: always
+    networks:
+      net-db:
+        aliases:
+          - dev-demo-oracle
+      net-gateway:
+        aliases:
+          - dev-demo-oracle
+
+  dev-demo-mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: arsenale-dev-demo-mssql
+    cpus: "1.0"
+    mem_limit: "2g"
+    pids_limit: 512
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_PID: "Developer"
+      MSSQL_SA_PASSWORD: "DemoMssqlSa123!"
+    volumes:
+      - dev_demo_mssql_data:/var/opt/mssql
+      - /home/debian/repos/arsenale/deployment/ansible/playbooks/../../../infrastructure/dev/demo-mssql:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "bash -lc 'echo > /dev/tcp/127.0.0.1/1433'"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 45s
+    restart: always
+    networks:
+      net-db:
+        aliases:
+          - dev-demo-mssql
+      net-gateway:
+        aliases:
+          - dev-demo-mssql
+
   # ---------------------------------------------------------------------------
   # Client — React SPA served by Nginx
   # ---------------------------------------------------------------------------
@@ -1042,7 +1209,7 @@ services:
       tunnel-broker:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "node -e \"const net=require('net');const socket=net.connect({host:'127.0.0.1',port:5432});socket.on('connect',()=>{socket.end();process.exit(0);});socket.on('error',()=>process.exit(1));setTimeout(()=>process.exit(1),2000);\""]
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5432/healthz >/dev/null || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 3
@@ -1051,6 +1218,7 @@ services:
       - "192.168.254.1"
       - "192.168.254.3"
     networks:
+      - net-db
       - net-egress
       - net-gateway
 
@@ -1108,6 +1276,11 @@ volumes:
   arsenale_redis:
   arsenale_drive:
   arsenale_recordings:
+  dev_demo_postgres_data:
+  dev_demo_mysql_data:
+  dev_demo_mongodb_data:
+  dev_demo_oracle_data:
+  dev_demo_mssql_data:
 
 # =============================================================================
 # Networks — Zero-trust segmented container networks

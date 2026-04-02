@@ -1,22 +1,36 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Box, LinearProgress, Typography } from '@mui/material';
 import { zxcvbnAsync, zxcvbnOptions } from '@zxcvbn-ts/core';
-import * as zxcvbnCommonPackage from '@zxcvbn-ts/language-common';
-import * as zxcvbnEnPackage from '@zxcvbn-ts/language-en';
 
 let optionsLoaded = false;
+let optionsPromise: Promise<void> | null = null;
 
-function ensureOptions() {
+async function ensureOptionsLoaded() {
   if (optionsLoaded) return;
-  zxcvbnOptions.setOptions({
-    translations: zxcvbnEnPackage.translations,
-    graphs: zxcvbnCommonPackage.adjacencyGraphs,
-    dictionary: {
-      ...zxcvbnCommonPackage.dictionary,
-      ...zxcvbnEnPackage.dictionary,
-    },
-  });
-  optionsLoaded = true;
+  if (!optionsPromise) {
+    optionsPromise = Promise.all([
+      import('@zxcvbn-ts/language-common'),
+      import('@zxcvbn-ts/language-en'),
+    ])
+      .then(([zxcvbnCommonPackage, zxcvbnEnPackage]) => {
+        zxcvbnOptions.setOptions({
+          translations: zxcvbnEnPackage.translations,
+          graphs: zxcvbnCommonPackage.adjacencyGraphs,
+          dictionary: {
+            ...zxcvbnCommonPackage.dictionary,
+            ...zxcvbnEnPackage.dictionary,
+          },
+        });
+        optionsLoaded = true;
+      })
+      .finally(() => {
+        if (!optionsLoaded) {
+          optionsPromise = null;
+        }
+      });
+  }
+
+  await optionsPromise;
 }
 
 interface PasswordStrengthMeterProps {
@@ -39,23 +53,33 @@ export default function PasswordStrengthMeter({ password, onScoreChange }: Passw
   const onScoreChangeRef = useRef(onScoreChange);
   useEffect(() => { onScoreChangeRef.current = onScoreChange; });
 
-  const evaluate = useCallback((pwd: string) => {
-    clearTimeout(timerRef.current);
-    if (!pwd) return;
-    timerRef.current = setTimeout(async () => {
-      ensureOptions();
-      const result = await zxcvbnAsync(pwd);
-      setScore(result.score);
-      const msg = result.feedback.warning || result.feedback.suggestions[0] || '';
-      setFeedback(msg);
-      onScoreChangeRef.current?.(result.score);
-    }, 300);
-  }, []);
-
   useEffect(() => {
-    evaluate(password);
+    clearTimeout(timerRef.current);
+
+    timerRef.current = setTimeout(async () => {
+      if (!password) {
+        setScore(0);
+        setFeedback('');
+        onScoreChangeRef.current?.(0);
+        return;
+      }
+
+      try {
+        await ensureOptionsLoaded();
+        const result = await zxcvbnAsync(password);
+        setScore(result.score);
+        const msg = result.feedback.warning || result.feedback.suggestions[0] || '';
+        setFeedback(msg);
+        onScoreChangeRef.current?.(result.score);
+      } catch {
+        setScore(0);
+        setFeedback('');
+        onScoreChangeRef.current?.(0);
+      }
+    }, 300);
+
     return () => clearTimeout(timerRef.current);
-  }, [password, evaluate]);
+  }, [password]);
 
   if (!password) return null;
 

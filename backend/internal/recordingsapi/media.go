@@ -315,8 +315,8 @@ func (s Service) ConvertToVideo(ctx context.Context, item recordingResponse) (st
 		}
 
 		statusResp, err := client.Do(statusReq)
-		cancelStatus()
 		if err != nil {
+			cancelStatus()
 			return "", 0, s.mapFetchError(err)
 		}
 
@@ -328,6 +328,7 @@ func (s Service) ConvertToVideo(ctx context.Context, item recordingResponse) (st
 		}
 		decodeErr := json.NewDecoder(statusResp.Body).Decode(&job)
 		statusResp.Body.Close()
+		cancelStatus()
 		if decodeErr != nil {
 			return "", 0, fmt.Errorf("decode status response: %w", decodeErr)
 		}

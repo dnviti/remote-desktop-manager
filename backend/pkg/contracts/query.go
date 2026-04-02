@@ -3,14 +3,23 @@ package contracts
 import "encoding/json"
 
 type DatabaseTarget struct {
-	Protocol      string                 `json:"protocol,omitempty"`
-	Host          string                 `json:"host,omitempty"`
-	Port          int                    `json:"port,omitempty"`
-	Database      string                 `json:"database,omitempty"`
-	SSLMode       string                 `json:"sslMode,omitempty"`
-	Username      string                 `json:"username,omitempty"`
-	Password      string                 `json:"password,omitempty"`
-	SessionConfig *DatabaseSessionConfig `json:"sessionConfig,omitempty"`
+	Protocol             string                 `json:"protocol,omitempty"`
+	Host                 string                 `json:"host,omitempty"`
+	Port                 int                    `json:"port,omitempty"`
+	Database             string                 `json:"database,omitempty"`
+	SSLMode              string                 `json:"sslMode,omitempty"`
+	Username             string                 `json:"username,omitempty"`
+	Password             string                 `json:"password,omitempty"`
+	OracleConnectionType string                 `json:"oracleConnectionType,omitempty"`
+	OracleSID            string                 `json:"oracleSid,omitempty"`
+	OracleServiceName    string                 `json:"oracleServiceName,omitempty"`
+	OracleRole           string                 `json:"oracleRole,omitempty"`
+	OracleTNSAlias       string                 `json:"oracleTnsAlias,omitempty"`
+	OracleTNSDescriptor  string                 `json:"oracleTnsDescriptor,omitempty"`
+	OracleConnectString  string                 `json:"oracleConnectString,omitempty"`
+	MSSQLInstanceName    string                 `json:"mssqlInstanceName,omitempty"`
+	MSSQLAuthMode        string                 `json:"mssqlAuthMode,omitempty"`
+	SessionConfig        *DatabaseSessionConfig `json:"sessionConfig,omitempty"`
 }
 
 type DatabaseSessionConfig struct {
@@ -25,6 +34,14 @@ type QueryExecutionRequest struct {
 	SQL     string          `json:"sql"`
 	MaxRows int             `json:"maxRows,omitempty"`
 	Target  *DatabaseTarget `json:"target,omitempty"`
+}
+
+type DatabaseConnectivityRequest struct {
+	Target *DatabaseTarget `json:"target,omitempty"`
+}
+
+type DatabaseConnectivityResponse struct {
+	OK bool `json:"ok"`
 }
 
 type QueryExecutionResponse struct {

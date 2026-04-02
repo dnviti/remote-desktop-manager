@@ -8,6 +8,13 @@ import (
 )
 
 func FetchSchema(ctx context.Context, defaultPool poolLike, req contracts.SchemaFetchRequest) (contracts.SchemaInfo, error) {
+	switch targetProtocol(req.Target) {
+	case protocolMySQL, protocolMSSQL, protocolOracle:
+		return fetchSQLSchema(ctx, req.Target)
+	case protocolMongoDB:
+		return fetchMongoSchema(ctx, req.Target)
+	}
+
 	queryPool, cleanup, err := resolveSchemaPool(ctx, defaultPool, req)
 	if err != nil {
 		return contracts.SchemaInfo{}, err

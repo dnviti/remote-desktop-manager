@@ -11,6 +11,8 @@ import path from 'path';
 function getPackageVersion(): string {
   try {
     const pkgPath = path.resolve(__dirname, '..', 'package.json');
+    // The path is constructed from the agent's fixed package root.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
     return pkg.version ?? '0.0.0';
   } catch {
@@ -57,6 +59,8 @@ function readOptionalPem(inlineValue: string | undefined, filePathValue: string 
   }
 
   try {
+    // File paths come from the explicitly named *_FILE environment variables.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     const contents = fs.readFileSync(filePath, 'utf8').trim();
     return contents || undefined;
   } catch (err) {

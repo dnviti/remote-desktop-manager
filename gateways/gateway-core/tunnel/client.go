@@ -2,10 +2,11 @@ package tunnel
 
 import (
 	"context"
+	cryptorand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
+	"math/big"
 	"net"
 	"sync"
 	"time"
@@ -365,7 +366,11 @@ func (tc *TunnelClient) waitReconnect(ctx context.Context) bool {
 		tc.reconnectDelay = tc.cfg.ReconnectMax
 	}
 	if tc.reconnectDelay > 0 {
-		jitter := time.Duration(rand.Int63n(int64(tc.reconnectDelay / 4)))
+		jitter, err := secureJitterDuration(tc.reconnectDelay / 4)
+		if err != nil {
+			log.Printf("[tunnel] Failed to generate reconnect jitter: %v", err)
+			jitter = 0
+		}
 		tc.reconnectDelay += jitter
 		if tc.reconnectDelay > tc.cfg.ReconnectMax {
 			tc.reconnectDelay = tc.cfg.ReconnectMax
@@ -380,6 +385,17 @@ func (tc *TunnelClient) waitReconnect(ctx context.Context) bool {
 	case <-timer.C:
 		return true
 	}
+}
+
+func secureJitterDuration(max time.Duration) (time.Duration, error) {
+	if max <= 0 {
+		return 0, nil
+	}
+	n, err := cryptorand.Int(cryptorand.Reader, big.NewInt(int64(max)))
+	if err != nil {
+		return 0, err
+	}
+	return time.Duration(n.Int64()), nil
 }
 
 // closeAllStreams closes and removes all active streams.

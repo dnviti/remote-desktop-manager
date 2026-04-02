@@ -69,7 +69,7 @@ export default function ContainerLogDialog({
     if (open && instance && !live) {
       void fetchLogs();
     }
-  }, [open, instance, fetchLogs]);
+  }, [open, instance, live, fetchLogs]);
 
   useEffect(() => {
     if (!live || !open || !instance || !accessToken) return undefined;

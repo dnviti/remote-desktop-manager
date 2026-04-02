@@ -33,23 +33,46 @@ func TestStoreAndResolveOverrideCredentials(t *testing.T) {
 	}
 }
 
-func TestShouldUseGoDatabaseSessionRuntimeAllowsOverrideCredentials(t *testing.T) {
-	if !shouldUseGoDatabaseSessionRuntime("postgresql", true) {
-		t.Fatal("shouldUseGoDatabaseSessionRuntime() = false, want true for PostgreSQL override credentials")
+func TestShouldUseOwnedDatabaseSessionRuntimeAllowsOverrideCredentials(t *testing.T) {
+	if !shouldUseOwnedDatabaseSessionRuntime("postgresql", true) {
+		t.Fatal("shouldUseOwnedDatabaseSessionRuntime() = false, want true for PostgreSQL override credentials")
 	}
 }
 
-func TestShouldUseGoDatabaseSessionRuntimeAllowsPostgresByDefault(t *testing.T) {
+func TestShouldUseOwnedDatabaseSessionRuntimeAllowsPostgresByDefault(t *testing.T) {
 	t.Setenv("GO_QUERY_RUNNER_ENABLED", "")
-	if !shouldUseGoDatabaseSessionRuntime("postgresql", false) {
-		t.Fatal("shouldUseGoDatabaseSessionRuntime() = false, want true for PostgreSQL by default")
+	if !shouldUseOwnedDatabaseSessionRuntime("postgresql", false) {
+		t.Fatal("shouldUseOwnedDatabaseSessionRuntime() = false, want true for PostgreSQL by default")
 	}
 }
 
-func TestShouldUseGoDatabaseSessionRuntimeHonorsExplicitDisable(t *testing.T) {
+func TestShouldUseOwnedDatabaseSessionRuntimeHonorsExplicitDisable(t *testing.T) {
 	t.Setenv("GO_QUERY_RUNNER_ENABLED", "false")
-	if shouldUseGoDatabaseSessionRuntime("postgresql", true) {
-		t.Fatal("shouldUseGoDatabaseSessionRuntime() = true, want false when explicitly disabled")
+	if shouldUseOwnedDatabaseSessionRuntime("postgresql", true) {
+		t.Fatal("shouldUseOwnedDatabaseSessionRuntime() = true, want false when explicitly disabled")
+	}
+}
+
+func TestShouldCaptureExecutionPlan(t *testing.T) {
+	testCases := []struct {
+		name     string
+		protocol string
+		want     bool
+	}{
+		{name: "postgres", protocol: "postgresql", want: true},
+		{name: "mysql", protocol: "mysql", want: true},
+		{name: "mariadb alias", protocol: "mariadb", want: true},
+		{name: "mongodb", protocol: "mongodb", want: false},
+		{name: "oracle", protocol: "oracle", want: false},
+		{name: "mssql", protocol: "mssql", want: false},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := shouldCaptureExecutionPlan(tc.protocol); got != tc.want {
+				t.Fatalf("shouldCaptureExecutionPlan(%q) = %v, want %v", tc.protocol, got, tc.want)
+			}
+		})
 	}
 }
 

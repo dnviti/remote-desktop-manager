@@ -12,13 +12,12 @@ import (
 	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/app"
-	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
 	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 )
 
-var ErrQueryRuntimeUnsupported = errors.New("go query runtime is unsupported for this session")
+var ErrQueryRuntimeUnsupported = errors.New("database session runtime is unsupported for this session")
 
 type ownedQueryRequest struct {
 	SQL string `json:"sql"`
@@ -44,6 +43,8 @@ type ownedQueryRuntime struct {
 	SessionConfig           *contracts.DatabaseSessionConfig
 	UsesOverrideCredentials bool
 	DatabaseName            string
+	GatewayID               string
+	InstanceID              string
 }
 
 func (s Service) ShouldHandleOwnedQueryRuntime(ctx context.Context, userID, tenantID, sessionID string) (bool, error) {
@@ -189,7 +190,7 @@ func (s Service) executeOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		}, ipAddress)
 	}
 
-	result, err := queryrunner.ExecuteQuery(ctx, nil, contracts.QueryExecutionRequest{
+	result, err := s.executeViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryExecutionRequest{
 		SQL:     sqlText,
 		MaxRows: queryMaxRows(),
 		Target:  runtime.Target,
@@ -199,11 +200,13 @@ func (s Service) executeOwnedQuery(ctx context.Context, userID, tenantID, tenant
 	}
 
 	var executionPlan any
-	if plan, planErr := queryrunner.ExplainQuery(ctx, nil, contracts.QueryPlanRequest{
-		SQL:    sqlText,
-		Target: runtime.Target,
-	}); planErr == nil && plan.Supported {
-		executionPlan = plan
+	if shouldCaptureExecutionPlan(runtime.Protocol) {
+		if plan, planErr := s.explainViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryPlanRequest{
+			SQL:    sqlText,
+			Target: runtime.Target,
+		}); planErr == nil && plan.Supported {
+			executionPlan = plan
+		}
 	}
 
 	policies := s.loadMaskingPolicies(ctx, tenantID)
@@ -239,7 +242,7 @@ func (s Service) fetchOwnedSchema(ctx context.Context, userID, tenantID, session
 	if err != nil {
 		return contracts.SchemaInfo{}, err
 	}
-	result, err := queryrunner.FetchSchema(ctx, nil, contracts.SchemaFetchRequest{Target: runtime.Target})
+	result, err := s.fetchSchemaViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.SchemaFetchRequest{Target: runtime.Target})
 	if err != nil {
 		return contracts.SchemaInfo{}, classifyQueryOperationError(err)
 	}
@@ -287,7 +290,7 @@ func (s Service) explainOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		return contracts.QueryPlanResponse{}, &requestError{status: http.StatusForbidden, message: blockReason}
 	}
 
-	result, err := queryrunner.ExplainQuery(ctx, nil, contracts.QueryPlanRequest{
+	result, err := s.explainViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryPlanRequest{
 		SQL:    sqlText,
 		Target: runtime.Target,
 	})
@@ -304,7 +307,7 @@ func (s Service) introspectOwnedQuery(ctx context.Context, userID, tenantID, ses
 		return contracts.QueryIntrospectionResponse{}, err
 	}
 
-	result, err := queryrunner.IntrospectQuery(ctx, nil, contracts.QueryIntrospectionRequest{
+	result, err := s.introspectViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryIntrospectionRequest{
 		Type:   introspectionType,
 		Target: target,
 		DB:     runtime.Target,
@@ -345,7 +348,7 @@ WHERE id = $1
 	dbProtocol := normalizeDatabaseProtocol(settings.Protocol)
 	sessionConfig := sessionConfigFromMetadata(state.Metadata)
 	usesOverrideCredentials := metadataBool(state.Metadata, "usesOverrideCredentials")
-	if !shouldUseGoDatabaseSessionRuntime(dbProtocol, usesOverrideCredentials) {
+	if !shouldUseOwnedDatabaseSessionRuntime(dbProtocol, usesOverrideCredentials) {
 		return nil, ErrQueryRuntimeUnsupported
 	}
 
@@ -364,10 +367,9 @@ WHERE id = $1
 		return nil, err
 	}
 
-	targetHost, targetPort := resolveAITarget(state.Metadata, connection.Host, connection.Port)
 	target := buildDatabaseTarget(
-		targetHost,
-		targetPort,
+		connection.Host,
+		connection.Port,
 		dbProtocol,
 		strings.TrimSpace(settings.DatabaseName),
 		resolution.Credentials,
@@ -378,6 +380,15 @@ WHERE id = $1
 		return nil, &requestError{status: http.StatusBadGateway, message: "database target is unavailable"}
 	}
 
+	gatewayID := ""
+	if state.Record.GatewayID != nil {
+		gatewayID = strings.TrimSpace(*state.Record.GatewayID)
+	}
+	instanceID := ""
+	if state.Record.InstanceID != nil {
+		instanceID = strings.TrimSpace(*state.Record.InstanceID)
+	}
+
 	return &ownedQueryRuntime{
 		State:                   state,
 		Connection:              connection,
@@ -386,6 +397,8 @@ WHERE id = $1
 		SessionConfig:           sessionConfig,
 		UsesOverrideCredentials: usesOverrideCredentials,
 		DatabaseName:            target.Database,
+		GatewayID:               gatewayID,
+		InstanceID:              instanceID,
 	}, nil
 }
 
@@ -405,13 +418,22 @@ func validateWritableQueryAccess(queryType dbQueryType, tenantRole string, expla
 	return &requestError{status: http.StatusForbidden, message: string(queryType) + " queries require OPERATOR role or above"}
 }
 
+func shouldCaptureExecutionPlan(protocol string) bool {
+	switch normalizeDatabaseProtocol(protocol) {
+	case "postgresql", "mysql":
+		return true
+	default:
+		return false
+	}
+}
+
 func classifyQueryOperationError(err error) error {
 	var reqErr *requestError
 	if errors.As(err, &reqErr) {
 		return err
 	}
 	if errors.Is(err, ErrQueryRuntimeUnsupported) {
-		return &requestError{status: http.StatusNotImplemented, message: "Go query runtime is unsupported for this session"}
+		return &requestError{status: http.StatusNotImplemented, message: "Database session runtime is unsupported for this session"}
 	}
 
 	lowered := strings.ToLower(err.Error())
@@ -446,7 +468,7 @@ func writeOwnedQueryError(w http.ResponseWriter, err error) {
 	case errors.As(err, &reqErr):
 		app.ErrorJSON(w, reqErr.status, reqErr.message)
 	case errors.Is(err, ErrQueryRuntimeUnsupported):
-		app.ErrorJSON(w, http.StatusNotImplemented, "Go query runtime is unsupported for this session")
+		app.ErrorJSON(w, http.StatusNotImplemented, "Database session runtime is unsupported for this session")
 	case errors.Is(err, sessions.ErrSessionNotFound):
 		app.ErrorJSON(w, http.StatusNotFound, "session not found")
 	case errors.Is(err, sessions.ErrSessionClosed):
@@ -479,4 +501,19 @@ func queryMaxRows() int {
 		return defaultMaxRows
 	}
 	return parsed
+}
+
+func (s Service) FetchOwnedSchemaTables(ctx context.Context, userID, tenantID, sessionID string) ([]contracts.SchemaTable, string, error) {
+	runtime, err := s.resolveOwnedQueryRuntime(ctx, userID, tenantID, sessionID)
+	if err != nil {
+		return nil, "", err
+	}
+
+	result, err := s.fetchSchemaViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.SchemaFetchRequest{
+		Target: runtime.Target,
+	})
+	if err != nil {
+		return nil, runtime.Protocol, classifyQueryOperationError(err)
+	}
+	return result.Tables, runtime.Protocol, nil
 }

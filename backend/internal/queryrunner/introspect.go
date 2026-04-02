@@ -37,6 +37,13 @@ func IntrospectQuery(ctx context.Context, defaultPool poolLike, req contracts.Qu
 		return contracts.QueryIntrospectionResponse{}, err
 	}
 
+	switch targetProtocol(req.DB) {
+	case protocolMySQL, protocolMSSQL, protocolOracle:
+		return introspectSQLQuery(ctx, req.DB, req)
+	case protocolMongoDB:
+		return introspectMongoQuery(ctx, req.DB, req)
+	}
+
 	queryPool, cleanup, err := resolvePool(ctx, defaultPool, contracts.QueryExecutionRequest{
 		SQL:    "SELECT 1",
 		Target: req.DB,

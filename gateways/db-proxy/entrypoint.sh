@@ -1,38 +1,45 @@
 #!/bin/sh
 set -e
 
-# Start tunnel agent in background if configured
+export PORT="${DB_LISTEN_PORT:-5432}"
+
+db_proxy_pid=""
 tunnel_pid=""
+
+shutdown() {
+  if [ -n "$tunnel_pid" ] && kill -0 "$tunnel_pid" 2>/dev/null; then
+    kill "$tunnel_pid" 2>/dev/null || true
+  fi
+  if [ -n "$db_proxy_pid" ] && kill -0 "$db_proxy_pid" 2>/dev/null; then
+    kill "$db_proxy_pid" 2>/dev/null || true
+  fi
+  wait "$tunnel_pid" 2>/dev/null || true
+  wait "$db_proxy_pid" 2>/dev/null || true
+  exit 0
+}
+
+trap shutdown INT TERM
+
+echo "[db-proxy] Starting middleware service on port ${PORT}..."
+/usr/local/bin/db-proxy &
+db_proxy_pid=$!
+
 if [ -n "$TUNNEL_SERVER_URL" ] && [ -n "$TUNNEL_TOKEN" ]; then
   echo "[db-proxy] Starting tunnel agent..."
   node /opt/tunnel-agent/dist/index.js &
   tunnel_pid=$!
 fi
 
-# Start a lightweight TCP listener so the tunnel agent has a healthy local target.
-# This is a development placeholder until the full protocol-aware proxy is wired in.
-node -e '
-  const net = require("net");
-  const port = Number(process.env.DB_LISTEN_PORT || "5432");
-  net.createServer((socket) => {
-    socket.end();
-  }).listen(port, "0.0.0.0", () => {
-    console.log(`[db-proxy] TCP listener ready on port ${port}`);
-  });
-' &
-listener_pid=$!
+echo "[db-proxy] Database proxy gateway ready on port ${PORT}"
 
-echo "[db-proxy] Database proxy gateway ready on port ${DB_LISTEN_PORT:-5432}"
-
-# Keep the container running while both background processes are healthy.
 while :; do
-  if [ -n "$tunnel_pid" ] && ! kill -0 "$tunnel_pid" 2>/dev/null; then
-    wait "$tunnel_pid" || true
+  if ! kill -0 "$db_proxy_pid" 2>/dev/null; then
+    wait "$db_proxy_pid" || true
     exit 1
   fi
 
-  if ! kill -0 "$listener_pid" 2>/dev/null; then
-    wait "$listener_pid" || true
+  if [ -n "$tunnel_pid" ] && ! kill -0 "$tunnel_pid" 2>/dev/null; then
+    wait "$tunnel_pid" || true
     exit 1
   fi
 

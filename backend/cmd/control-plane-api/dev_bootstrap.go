@@ -17,9 +17,11 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/authn"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 	"github.com/google/uuid"
 )
@@ -51,6 +53,16 @@ type devGatewaySpec struct {
 	Token       string
 	CertDir     string
 	Description string
+}
+
+type devDemoDatabaseSpec struct {
+	Name        string
+	Host        string
+	Port        int
+	Username    string
+	Password    string
+	Description string
+	DBSettings  map[string]any
 }
 
 type encryptedValue struct {
@@ -94,6 +106,9 @@ func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 		}
 	}
 	if err := ensureBootstrapOrchestratorConnection(ctx, deps, options); err != nil {
+		return err
+	}
+	if err := ensureDemoDatabaseConnections(ctx, deps, tenantID, userID); err != nil {
 		return err
 	}
 
@@ -147,6 +162,18 @@ func requiredEnv(name, fallback string) string {
 	return value
 }
 
+func requiredEnvInt(name string, fallback int) int {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
+}
+
 func buildDevGatewaySpecs(certDir string) []devGatewaySpec {
 	return []devGatewaySpec{
 		{
@@ -179,6 +206,75 @@ func buildDevGatewaySpecs(certDir string) []devGatewaySpec {
 			Token:       requiredEnv("DEV_TUNNEL_DB_PROXY_TOKEN", "dev-tunnel-db-proxy-token"),
 			CertDir:     filepath.Join(certDir, "tunnel-db-proxy"),
 			Description: "Development database proxy gateway registered through the zero-trust tunnel",
+		},
+	}
+}
+
+func buildDevDemoDatabaseSpecs() []devDemoDatabaseSpec {
+	return []devDemoDatabaseSpec{
+		{
+			Name:        requiredEnv("DEV_SAMPLE_POSTGRES_CONNECTION_NAME", "Dev Demo PostgreSQL"),
+			Host:        requiredEnv("DEV_SAMPLE_POSTGRES_HOST", "dev-demo-postgres"),
+			Port:        requiredEnvInt("DEV_SAMPLE_POSTGRES_PORT", 5432),
+			Username:    requiredEnv("DEV_SAMPLE_POSTGRES_USER", "demo_pg_user"),
+			Password:    requiredEnv("DEV_SAMPLE_POSTGRES_PASSWORD", "DemoPgPass123!"),
+			Description: "Seeded development PostgreSQL fixture used for database session smoke tests.",
+			DBSettings: map[string]any{
+				"protocol":     "postgresql",
+				"databaseName": requiredEnv("DEV_SAMPLE_POSTGRES_DATABASE", "arsenale_demo"),
+				"sslMode":      requiredEnv("DEV_SAMPLE_POSTGRES_SSL_MODE", "disable"),
+			},
+		},
+		{
+			Name:        requiredEnv("DEV_SAMPLE_MYSQL_CONNECTION_NAME", "Dev Demo MySQL"),
+			Host:        requiredEnv("DEV_SAMPLE_MYSQL_HOST", "dev-demo-mysql"),
+			Port:        requiredEnvInt("DEV_SAMPLE_MYSQL_PORT", 3306),
+			Username:    requiredEnv("DEV_SAMPLE_MYSQL_USER", "demo_mysql_user"),
+			Password:    requiredEnv("DEV_SAMPLE_MYSQL_PASSWORD", "DemoMySqlPass123!"),
+			Description: "Seeded development MySQL fixture used for direct smoke tests.",
+			DBSettings: map[string]any{
+				"protocol":     "mysql",
+				"databaseName": requiredEnv("DEV_SAMPLE_MYSQL_DATABASE", "arsenale_demo"),
+			},
+		},
+		{
+			Name:        requiredEnv("DEV_SAMPLE_MONGODB_CONNECTION_NAME", "Dev Demo MongoDB"),
+			Host:        requiredEnv("DEV_SAMPLE_MONGODB_HOST", "dev-demo-mongodb"),
+			Port:        requiredEnvInt("DEV_SAMPLE_MONGODB_PORT", 27017),
+			Username:    requiredEnv("DEV_SAMPLE_MONGODB_USER", "demo_mongo_user"),
+			Password:    requiredEnv("DEV_SAMPLE_MONGODB_PASSWORD", "DemoMongoPass123!"),
+			Description: "Seeded development MongoDB fixture used for direct smoke tests.",
+			DBSettings: map[string]any{
+				"protocol":     "mongodb",
+				"databaseName": requiredEnv("DEV_SAMPLE_MONGODB_DATABASE", "arsenale_demo"),
+			},
+		},
+		{
+			Name:        requiredEnv("DEV_SAMPLE_ORACLE_CONNECTION_NAME", "Dev Demo Oracle"),
+			Host:        requiredEnv("DEV_SAMPLE_ORACLE_HOST", "dev-demo-oracle"),
+			Port:        requiredEnvInt("DEV_SAMPLE_ORACLE_PORT", 1521),
+			Username:    requiredEnv("DEV_SAMPLE_ORACLE_USER", "demo_oracle_user"),
+			Password:    requiredEnv("DEV_SAMPLE_ORACLE_PASSWORD", "DemoOraclePass123!"),
+			Description: "Seeded development Oracle fixture used for direct smoke tests.",
+			DBSettings: map[string]any{
+				"protocol":             "oracle",
+				"databaseName":         requiredEnv("DEV_SAMPLE_ORACLE_SERVICE_NAME", "FREEPDB1"),
+				"oracleConnectionType": "basic",
+				"oracleServiceName":    requiredEnv("DEV_SAMPLE_ORACLE_SERVICE_NAME", "FREEPDB1"),
+			},
+		},
+		{
+			Name:        requiredEnv("DEV_SAMPLE_MSSQL_CONNECTION_NAME", "Dev Demo SQL Server"),
+			Host:        requiredEnv("DEV_SAMPLE_MSSQL_HOST", "dev-demo-mssql"),
+			Port:        requiredEnvInt("DEV_SAMPLE_MSSQL_PORT", 1433),
+			Username:    requiredEnv("DEV_SAMPLE_MSSQL_USER", "demo_mssql_user"),
+			Password:    requiredEnv("DEV_SAMPLE_MSSQL_PASSWORD", "DemoMssqlPass123!"),
+			Description: "Seeded development SQL Server fixture used for direct smoke tests.",
+			DBSettings: map[string]any{
+				"protocol":      "mssql",
+				"databaseName":  requiredEnv("DEV_SAMPLE_MSSQL_DATABASE", "ArsenaleDemo"),
+				"mssqlAuthMode": "sql",
+			},
 		},
 	}
 }
@@ -358,6 +454,107 @@ func ensureBootstrapOrchestratorConnection(ctx context.Context, deps *apiDepende
 		return fmt.Errorf("upsert development orchestrator connection: %w", err)
 	}
 	return nil
+}
+
+func ensureDemoDatabaseConnections(ctx context.Context, deps *apiDependencies, tenantID, userID string) error {
+	if deps == nil || deps.connectionService.DB == nil {
+		return fmt.Errorf("connection service is unavailable")
+	}
+
+	claims := authn.Claims{
+		UserID:     userID,
+		TenantID:   tenantID,
+		TenantRole: "OWNER",
+		Type:       "access",
+	}
+
+	for _, spec := range buildDevDemoDatabaseSpecs() {
+		if err := upsertDemoDatabaseConnection(ctx, deps, claims, spec); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func upsertDemoDatabaseConnection(ctx context.Context, deps *apiDependencies, claims authn.Claims, spec devDemoDatabaseSpec) error {
+	settingsJSON, err := json.Marshal(spec.DBSettings)
+	if err != nil {
+		return fmt.Errorf("encode demo database settings for %s: %w", spec.Name, err)
+	}
+
+	payload := map[string]any{
+		"name":        spec.Name,
+		"type":        "DATABASE",
+		"host":        spec.Host,
+		"port":        spec.Port,
+		"username":    spec.Username,
+		"password":    spec.Password,
+		"description": spec.Description,
+		"dbSettings":  json.RawMessage(settingsJSON),
+	}
+
+	existingID, err := findOwnedDemoConnectionID(ctx, deps, claims.UserID, spec.Name)
+	if err != nil {
+		return err
+	}
+
+	method := http.MethodPost
+	urlPath := "https://localhost/api/connections"
+	expectedStatus := http.StatusCreated
+	if existingID != "" {
+		method = http.MethodPut
+		urlPath = "https://localhost/api/connections/" + existingID
+		expectedStatus = http.StatusOK
+	}
+
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode demo connection payload for %s: %w", spec.Name, err)
+	}
+
+	req := httptest.NewRequest(method, urlPath, bytes.NewReader(body)).WithContext(ctx)
+	req.RemoteAddr = devBootstrapIP + ":0"
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("User-Agent", devBootstrapUserAgent)
+	if existingID != "" {
+		req.SetPathValue("id", existingID)
+	}
+
+	recorder := httptest.NewRecorder()
+	if existingID != "" {
+		if err := deps.connectionService.HandleUpdate(recorder, req, claims); err != nil {
+			return fmt.Errorf("update demo connection %s: %w", spec.Name, err)
+		}
+	} else {
+		if err := deps.connectionService.HandleCreate(recorder, req, claims); err != nil {
+			return fmt.Errorf("create demo connection %s: %w", spec.Name, err)
+		}
+	}
+
+	if recorder.Code != expectedStatus {
+		return fmt.Errorf("%s demo connection %s failed: %s", strings.ToLower(method), spec.Name, strings.TrimSpace(recorder.Body.String()))
+	}
+	return nil
+}
+
+func findOwnedDemoConnectionID(ctx context.Context, deps *apiDependencies, userID, name string) (string, error) {
+	var connectionID string
+	err := deps.db.QueryRow(ctx, `
+SELECT id
+FROM "Connection"
+WHERE "userId" = $1
+  AND type = 'DATABASE'::"ConnectionType"
+  AND name = $2
+ORDER BY "updatedAt" DESC
+LIMIT 1
+`, userID, name).Scan(&connectionID)
+	if err == nil {
+		return connectionID, nil
+	}
+	if strings.Contains(strings.ToLower(err.Error()), "no rows") {
+		return "", nil
+	}
+	return "", fmt.Errorf("find demo connection %s: %w", name, err)
 }
 
 func upsertDevGateway(ctx context.Context, deps *apiDependencies, tenantID, userID string, spec devGatewaySpec) error {

@@ -18,7 +18,6 @@ import (
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/authn"
 	"github.com/dnviti/arsenale/backend/internal/modelgateway"
-	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 	"github.com/google/uuid"
 )
@@ -797,16 +796,11 @@ func (s Service) fetchSchemaForAI(ctx context.Context, userID, tenantID, session
 		return nil, ""
 	}
 
-	target, dbProtocol, err := s.DatabaseSessions.ResolveOwnedAITarget(ctx, userID, tenantID, sessionID)
-	if err != nil || target == nil {
-		return nil, dbProtocol
-	}
-
-	info, err := queryrunner.FetchSchema(ctx, nil, contracts.SchemaFetchRequest{Target: target})
+	tables, dbProtocol, err := s.DatabaseSessions.FetchOwnedSchemaTables(ctx, userID, tenantID, sessionID)
 	if err != nil {
 		return nil, dbProtocol
 	}
-	return info.Tables, dbProtocol
+	return tables, dbProtocol
 }
 
 func (s Service) loadTenantRuntimeConfig(ctx context.Context, tenantID string) (tenantRuntimeConfig, error) {

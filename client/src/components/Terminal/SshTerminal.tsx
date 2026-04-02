@@ -493,7 +493,6 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
       cleanupTransport({ endSession: true });
       terminal.dispose();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- credentials intentionally excluded; reconnect uses refs
   }, [connectionId, connectSession, cleanupTransport, cancelReconnect, isTransportConnected, sendInitialResize, sendTerminalMessage]);
 
   return (

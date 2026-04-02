@@ -37,6 +37,9 @@ interface RuleTemplate {
   category: string;
 }
 
+const MAX_REGEX_LENGTH = 500;
+const NESTED_QUANTIFIER_RE = /(\+|\*|\{[^}]+\})\s*\)?\s*(\+|\*|\?|\{[^}]+\})/;
+
 const RULE_TEMPLATES: RuleTemplate[] = [
   // --- Destructive DDL ---
   {
@@ -155,9 +158,15 @@ const RULE_TEMPLATES: RuleTemplate[] = [
 // ---------------------------------------------------------------------------
 
 function validateRegex(pattern: string): string | null {
-  if (!pattern.trim()) return 'Pattern is required';
+  const trimmed = pattern.trim();
+  if (!trimmed) return 'Pattern is required';
+  if (trimmed.length > MAX_REGEX_LENGTH || NESTED_QUANTIFIER_RE.test(trimmed)) {
+    return 'Pattern is too complex or too long';
+  }
   try {
-    new RegExp(pattern, 'i');
+    // Intentional validation of user-authored regex before it is sent to the API.
+    // eslint-disable-next-line security/detect-non-literal-regexp
+    new RegExp(trimmed, 'i');
     return null;
   } catch (err) {
     return err instanceof SyntaxError ? err.message : 'Invalid regular expression';

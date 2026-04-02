@@ -2,7 +2,6 @@ package queryrunner
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -23,6 +22,13 @@ func ValidateExplainSQL(sql string) error {
 func ExplainQuery(ctx context.Context, defaultPool poolLike, req contracts.QueryPlanRequest) (contracts.QueryPlanResponse, error) {
 	if err := ValidateExplainSQL(req.SQL); err != nil {
 		return contracts.QueryPlanResponse{}, err
+	}
+
+	switch targetProtocol(req.Target) {
+	case protocolMySQL, protocolMSSQL, protocolOracle:
+		return explainSQLQuery(ctx, req.Target, req)
+	case protocolMongoDB:
+		return explainMongoQuery(ctx, req.Target, req)
 	}
 
 	queryPool, cleanup, err := resolvePool(ctx, defaultPool, contracts.QueryExecutionRequest{
@@ -69,26 +75,4 @@ func ExplainQuery(ctx context.Context, defaultPool poolLike, req contracts.Query
 		Format:    "json",
 		Raw:       raw,
 	}, nil
-}
-
-func normalizePlanValue(value any) (any, string, error) {
-	normalized := normalizeValue(value)
-	switch typed := normalized.(type) {
-	case string:
-		var decoded any
-		if err := json.Unmarshal([]byte(typed), &decoded); err != nil {
-			return normalized, typed, nil
-		}
-		pretty, err := json.MarshalIndent(decoded, "", "  ")
-		if err != nil {
-			return decoded, typed, nil
-		}
-		return decoded, string(pretty), nil
-	default:
-		pretty, err := json.MarshalIndent(normalized, "", "  ")
-		if err != nil {
-			return normalized, fmt.Sprintf("%v", normalized), nil
-		}
-		return normalized, string(pretty), nil
-	}
 }

@@ -81,11 +81,11 @@ export default function TunnelConfigSection() {
   useEffect(() => {
     if (tde == null) return;
     setTunnelDefaultEnabled(tde);
-    setTunnelRequireForRemote(trfr!);
-    setTunnelAutoTokenRotation(tatr!);
-    setTunnelTokenRotationDays(ttrd!);
-    setTunnelTokenMaxLifetimeDays(ttmld!);
-    setTunnelAgentAllowedCidrs(JSON.parse(taacKey));
+    setTunnelRequireForRemote(Boolean(trfr));
+    setTunnelAutoTokenRotation(Boolean(tatr));
+    setTunnelTokenRotationDays(ttrd ?? 90);
+    setTunnelTokenMaxLifetimeDays(ttmld ?? null);
+    setTunnelAgentAllowedCidrs(JSON.parse(taacKey) as string[]);
   }, [tde, trfr, tatr, ttrd, ttmld, taacKey]);
 
   // Fetch tunnel overview on mount

@@ -36,6 +36,37 @@
     _dev_client_url: "{{ 'https://localhost:' ~ (arsenale_client_port | string) }}"
     _build: "{{ true if _is_dev | bool else (arsenale_build_images | default(true)) }}"
     arsenale_cert_dir: "{{ (_home + '/dev-certs') if _is_dev | bool else (_home + '/certs') }}"
+    dev_sample_postgres_host: "dev-demo-postgres"
+    dev_sample_postgres_port: 5432
+    dev_sample_postgres_database: "arsenale_demo"
+    dev_sample_postgres_user: "demo_pg_user"
+    dev_sample_postgres_password: "DemoPgPass123!"
+    dev_sample_postgres_ssl_mode: "disable"
+    dev_sample_mysql_host: "dev-demo-mysql"
+    dev_sample_mysql_port: 3306
+    dev_sample_mysql_database: "arsenale_demo"
+    dev_sample_mysql_user: "demo_mysql_user"
+    dev_sample_mysql_password: "DemoMySqlPass123!"
+    dev_sample_mysql_root_password: "DemoMySqlRoot123!"
+    dev_sample_mongodb_host: "dev-demo-mongodb"
+    dev_sample_mongodb_port: 27017
+    dev_sample_mongodb_database: "arsenale_demo"
+    dev_sample_mongodb_root_user: "demo_mongo_root"
+    dev_sample_mongodb_root_password: "DemoMongoRoot123!"
+    dev_sample_mongodb_user: "demo_mongo_user"
+    dev_sample_mongodb_password: "DemoMongoPass123!"
+    dev_sample_oracle_host: "dev-demo-oracle"
+    dev_sample_oracle_port: 1521
+    dev_sample_oracle_service_name: "FREEPDB1"
+    dev_sample_oracle_user: "demo_oracle_user"
+    dev_sample_oracle_password: "DemoOraclePass123!"
+    dev_sample_oracle_system_password: "DemoOracleSys123!"
+    dev_sample_mssql_host: "dev-demo-mssql"
+    dev_sample_mssql_port: 1433
+    dev_sample_mssql_database: "ArsenaleDemo"
+    dev_sample_mssql_user: "demo_mssql_user"
+    dev_sample_mssql_password: "DemoMssqlPass123!"
+    dev_sample_mssql_sa_password: "DemoMssqlSa123!"
 
   pre_tasks:
     - name: Validate required vault secrets
@@ -144,6 +175,185 @@
         name: healthcheck
       when: _is_dev | bool and _state == 'present'
 
+    - name: Seed development demo PostgreSQL dataset
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec \
+          -e PGPASSWORD='{{ dev_sample_postgres_password }}' \
+          arsenale-dev-demo-postgres \
+          psql -h 127.0.0.1 -U '{{ dev_sample_postgres_user }}' -d '{{ dev_sample_postgres_database }}' -v ON_ERROR_STOP=1 -f /seed/seed.sql
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: demo_postgres_seed
+      until: demo_postgres_seed.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Seed development demo MySQL dataset
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mysql sh -lc \
+          'mysql -h 127.0.0.1 -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DATABASE}" < /seed/seed.sql'
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: demo_mysql_seed
+      until: demo_mysql_seed.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Seed development demo MongoDB dataset
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mongodb \
+          mongosh --quiet --host 127.0.0.1 --port {{ dev_sample_mongodb_port }} \
+          -u '{{ dev_sample_mongodb_root_user }}' \
+          -p '{{ dev_sample_mongodb_root_password }}' \
+          --authenticationDatabase admin \
+          /seed/seed.js
+      args:
+        executable: /bin/bash
+      retries: 24
+      delay: 5
+      register: demo_mongodb_seed
+      until: demo_mongodb_seed.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Seed development demo Oracle dataset
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec arsenale-dev-demo-oracle bash -lc \
+          "sqlplus -L -s '{{ dev_sample_oracle_user }}/{{ dev_sample_oracle_password }}@//127.0.0.1:{{ dev_sample_oracle_port }}/{{ dev_sample_oracle_service_name }}' @/seed/seed.sql"
+      args:
+        executable: /bin/bash
+      retries: 48
+      delay: 10
+      register: demo_oracle_seed
+      until: demo_oracle_seed.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Seed development demo MSSQL dataset
+      shell: |
+        set -euo pipefail
+        {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mssql bash -lc '
+          sqlcmd_path="/opt/mssql-tools18/bin/sqlcmd"
+          if [ ! -x "${sqlcmd_path}" ]; then
+            sqlcmd_path="/opt/mssql-tools/bin/sqlcmd"
+          fi
+          "${sqlcmd_path}" -S 127.0.0.1,{{ dev_sample_mssql_port }} -U sa -P "{{ dev_sample_mssql_sa_password }}" -C -i /seed/seed.sql
+        '
+      args:
+        executable: /bin/bash
+      retries: 48
+      delay: 10
+      register: demo_mssql_seed
+      until: demo_mssql_seed.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify seeded development demo PostgreSQL dataset
+      shell: |
+        set -euo pipefail
+        count="$(
+          {{ container_runtime | default('podman') }} exec \
+            -e PGPASSWORD='{{ dev_sample_postgres_password }}' \
+            arsenale-dev-demo-postgres \
+            psql -h 127.0.0.1 -U '{{ dev_sample_postgres_user }}' -d '{{ dev_sample_postgres_database }}' -Atqc 'SELECT COUNT(*) FROM public.demo_customers'
+        )"
+        [[ "${count}" == "2" ]]
+      args:
+        executable: /bin/bash
+      retries: 12
+      delay: 5
+      register: demo_postgres_smoke
+      until: demo_postgres_smoke.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify seeded development demo MySQL dataset
+      shell: |
+        set -euo pipefail
+        count="$(
+          {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mysql sh -lc \
+            'mysql -N -B -h 127.0.0.1 -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DATABASE}" -e "SELECT COUNT(*) FROM demo_customers"'
+        )"
+        [[ "${count}" == "2" ]]
+      args:
+        executable: /bin/bash
+      retries: 12
+      delay: 5
+      register: demo_mysql_smoke
+      until: demo_mysql_smoke.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify seeded development demo MongoDB dataset
+      shell: |
+        set -euo pipefail
+        count="$(
+          {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mongodb \
+            mongosh --quiet --host 127.0.0.1 --port {{ dev_sample_mongodb_port }} \
+            -u '{{ dev_sample_mongodb_user }}' \
+            -p '{{ dev_sample_mongodb_password }}' \
+            --authenticationDatabase '{{ dev_sample_mongodb_database }}' \
+            --eval 'db = db.getSiblingDB("{{ dev_sample_mongodb_database }}"); print(db.demo_customers.countDocuments())'
+        )"
+        [[ "${count}" == "2" ]]
+      args:
+        executable: /bin/bash
+      retries: 12
+      delay: 5
+      register: demo_mongodb_smoke
+      until: demo_mongodb_smoke.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify seeded development demo Oracle dataset
+      shell: |
+        set -euo pipefail
+        count="$(
+          {{ container_runtime | default('podman') }} exec arsenale-dev-demo-oracle bash -lc \
+            "printf 'SET HEADING OFF FEEDBACK OFF PAGESIZE 0 VERIFY OFF TERMOUT OFF\nSELECT COUNT(*) FROM demo_customers;\nEXIT;\n' | sqlplus -L -s '{{ dev_sample_oracle_user }}/{{ dev_sample_oracle_password }}@//127.0.0.1:{{ dev_sample_oracle_port }}/{{ dev_sample_oracle_service_name }}'"
+        )"
+        count="$(printf '%s' "${count}" | tr -d '\r[:space:]')"
+        [[ "${count}" == "2" ]]
+      args:
+        executable: /bin/bash
+      retries: 12
+      delay: 10
+      register: demo_oracle_smoke
+      until: demo_oracle_smoke.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
+    - name: Verify seeded development demo MSSQL dataset
+      shell: |
+        set -euo pipefail
+        count="$(
+          {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mssql bash -lc '
+            sqlcmd_path="/opt/mssql-tools18/bin/sqlcmd"
+            if [ ! -x "${sqlcmd_path}" ]; then
+              sqlcmd_path="/opt/mssql-tools/bin/sqlcmd"
+            fi
+            "${sqlcmd_path}" -S 127.0.0.1,{{ dev_sample_mssql_port }} -U {{ dev_sample_mssql_user }} -P "{{ dev_sample_mssql_password }}" -C -d {{ dev_sample_mssql_database }} -h -1 -W -Q "SET NOCOUNT ON; SELECT COUNT(*) FROM dbo.demo_customers;"
+          '
+        )"
+        count="$(printf '%s' "${count}" | tr -d '\r[:space:]')"
+        [[ "${count}" == "2" ]]
+      args:
+        executable: /bin/bash
+      retries: 12
+      delay: 10
+      register: demo_mssql_smoke
+      until: demo_mssql_smoke.rc == 0
+      changed_when: false
+      when: _is_dev | bool and _state == 'present'
+
     - name: Verify Go foundation services in development
       uri:
         url: "http://127.0.0.1:{{ item.port }}{{ item.path }}"
@@ -208,6 +418,12 @@
         {{ container_runtime | default('podman') }} exec arsenale-redis sh -lc 'keys=$(redis-cli --scan --pattern "rl:*"); if [ -n "$keys" ]; then redis-cli DEL $keys >/dev/null; fi'
         {{ container_runtime | default('podman') }} exec arsenale-postgres sh -lc "printf '%s\n' \"UPDATE \\\"User\\\" SET \\\"failedLoginAttempts\\\" = 0, \\\"lockedUntil\\\" = NULL WHERE email = '{{ arsenale_dev_bootstrap_admin_email }}';\" | PGPASSWORD='{{ vault_postgres_password }}' psql -U '{{ arsenale_db_user }}' -d '{{ arsenale_db_name }}' >/dev/null"
         rm -f /tmp/arsenale-dev-access-token /tmp/arsenale-dev-tenant-id
+        ARSENALE_SAMPLE_POSTGRES_HOST='{{ dev_sample_postgres_host }}' \
+        ARSENALE_SAMPLE_POSTGRES_PORT='{{ dev_sample_postgres_port }}' \
+        ARSENALE_SAMPLE_POSTGRES_DB_NAME='{{ dev_sample_postgres_database }}' \
+        ARSENALE_SAMPLE_POSTGRES_USER='{{ dev_sample_postgres_user }}' \
+        ARSENALE_SAMPLE_POSTGRES_PASSWORD='{{ dev_sample_postgres_password }}' \
+        ARSENALE_SAMPLE_POSTGRES_SSL_MODE='{{ dev_sample_postgres_ssl_mode }}' \
         {{ playbook_dir }}/../../../scripts/dev-api-acceptance.sh >/tmp/arsenale-ansible-acceptance.log
       args:
         executable: /bin/bash
@@ -222,7 +438,7 @@
       command: >
         curl --silent --show-error --fail
         -H "content-type: application/json"
-        -d '{"sql":"select current_database() as database_name","maxRows":1}'
+        -d '{"sql":"select current_database() as database_name","maxRows":1,"target":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}'
         http://127.0.0.1:18093/v1/query-runs:execute
       retries: 24
       delay: 5
@@ -236,7 +452,7 @@
         set -euo pipefail
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d '{"sql":"select current_database() as database_name"}' \
+          -d '{"sql":"select current_database() as database_name","target":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}' \
           http://127.0.0.1:18093/v1/query-plans:explain \
           | jq -e '.supported == true and .format == "json"' >/dev/null
       args:
@@ -253,7 +469,7 @@
         set -euo pipefail
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d '{"type":"database_version","db":{"protocol":"postgresql","host":"postgres","port":5432,"database":"{{ arsenale_db_name }}","sslMode":"require","username":"{{ arsenale_db_user }}","password":"{{ vault_postgres_password }}"}}' \
+          -d '{"type":"database_version","db":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}' \
           http://127.0.0.1:18093/v1/introspection:run \
           | jq -e '.supported == true and (.data.version | type == "string")' >/dev/null
       args:
@@ -270,7 +486,7 @@
         set -euo pipefail
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d '{"target":{"protocol":"postgresql","host":"postgres","port":5432,"database":"{{ arsenale_db_name }}","sslMode":"require","username":"{{ arsenale_db_user }}","password":"{{ vault_postgres_password }}"}}' \
+          -d '{"target":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}' \
           http://127.0.0.1:18093/v1/schema:fetch \
           | jq -e '.tables | length > 0' >/dev/null
       args:
@@ -287,7 +503,7 @@
         set -euo pipefail
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d '{"sql":"select current_setting('"'"'TIMEZONE'"'"') as timezone, current_setting('"'"'search_path'"'"') as search_path","target":{"protocol":"postgresql","host":"postgres","port":5432,"database":"{{ arsenale_db_name }}","sslMode":"require","username":"{{ arsenale_db_user }}","password":"{{ vault_postgres_password }}","sessionConfig":{"timezone":"Europe/Rome","searchPath":"public"}}}' \
+          -d '{"sql":"select current_setting('"'"'TIMEZONE'"'"') as timezone, current_setting('"'"'search_path'"'"') as search_path","target":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}","sessionConfig":{"timezone":"Europe/Rome","searchPath":"public"}}}' \
           http://127.0.0.1:18093/v1/query-runs:execute \
           | jq -e '.rowCount == 1 and .rows[0].timezone == "Europe/Rome" and (.rows[0].search_path | tostring | contains("public"))' >/dev/null
       args:
@@ -306,25 +522,25 @@
 
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d "{\"sql\":\"create table if not exists public.${write_probe_table} (id integer primary key, note text not null)\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          -d "{\"sql\":\"create table if not exists public.${write_probe_table} (id integer primary key, note text not null)\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"{{ dev_sample_postgres_host }}\",\"port\":{{ dev_sample_postgres_port }},\"database\":\"{{ dev_sample_postgres_database }}\",\"sslMode\":\"{{ dev_sample_postgres_ssl_mode }}\",\"username\":\"{{ dev_sample_postgres_user }}\",\"password\":\"{{ dev_sample_postgres_password }}\"}}" \
           http://127.0.0.1:18093/v1/query-runs:execute-any \
           | jq -e '.rowCount == 0' >/dev/null
 
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d "{\"sql\":\"insert into public.${write_probe_table} (id, note) values (1, 'go-write') on conflict (id) do update set note = excluded.note\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          -d "{\"sql\":\"insert into public.${write_probe_table} (id, note) values (1, 'go-write') on conflict (id) do update set note = excluded.note\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"{{ dev_sample_postgres_host }}\",\"port\":{{ dev_sample_postgres_port }},\"database\":\"{{ dev_sample_postgres_database }}\",\"sslMode\":\"{{ dev_sample_postgres_ssl_mode }}\",\"username\":\"{{ dev_sample_postgres_user }}\",\"password\":\"{{ dev_sample_postgres_password }}\"}}" \
           http://127.0.0.1:18093/v1/query-runs:execute-any \
           | jq -e '.rowCount >= 1' >/dev/null
 
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d "{\"sql\":\"select note from public.${write_probe_table} where id = 1\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          -d "{\"sql\":\"select note from public.${write_probe_table} where id = 1\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"{{ dev_sample_postgres_host }}\",\"port\":{{ dev_sample_postgres_port }},\"database\":\"{{ dev_sample_postgres_database }}\",\"sslMode\":\"{{ dev_sample_postgres_ssl_mode }}\",\"username\":\"{{ dev_sample_postgres_user }}\",\"password\":\"{{ dev_sample_postgres_password }}\"}}" \
           http://127.0.0.1:18093/v1/query-runs:execute-any \
           | jq -e '.rowCount == 1 and .rows[0].note == "go-write"' >/dev/null
 
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d "{\"sql\":\"drop table if exists public.${write_probe_table}\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"postgres\",\"port\":5432,\"database\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\",\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\"}}" \
+          -d "{\"sql\":\"drop table if exists public.${write_probe_table}\",\"target\":{\"protocol\":\"postgresql\",\"host\":\"{{ dev_sample_postgres_host }}\",\"port\":{{ dev_sample_postgres_port }},\"database\":\"{{ dev_sample_postgres_database }}\",\"sslMode\":\"{{ dev_sample_postgres_ssl_mode }}\",\"username\":\"{{ dev_sample_postgres_user }}\",\"password\":\"{{ dev_sample_postgres_password }}\"}}" \
           http://127.0.0.1:18093/v1/query-runs:execute-any \
           | jq -e '.rowCount == 0' >/dev/null
       args:
@@ -340,7 +556,7 @@
       command: >
         curl --silent --show-error --fail
         -H "content-type: application/json"
-        -d '{"capability":"db.query.execute.readonly","authz":{"subject":{"type":"system","id":"dev-bootstrap"},"resource":{"type":"database","id":"control-plane"}},"input":{"sql":"select current_database() as database_name","maxRows":1}}'
+        -d '{"capability":"db.query.execute.readonly","authz":{"subject":{"type":"system","id":"dev-bootstrap"},"resource":{"type":"database","id":"dev-postgres"}},"input":{"sql":"select current_database() as database_name","maxRows":1,"target":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}}'
         http://127.0.0.1:18084/v1/tool-calls:execute
       retries: 24
       delay: 5
@@ -354,7 +570,7 @@
         set -euo pipefail
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d '{"capability":"db.schema.read","authz":{"subject":{"type":"system","id":"dev-bootstrap"},"resource":{"type":"database","id":"dev-postgres"}},"input":{"target":{"protocol":"postgresql","host":"postgres","port":5432,"database":"{{ arsenale_db_name }}","sslMode":"require","username":"{{ arsenale_db_user }}","password":"{{ vault_postgres_password }}"}}}' \
+          -d '{"capability":"db.schema.read","authz":{"subject":{"type":"system","id":"dev-bootstrap"},"resource":{"type":"database","id":"dev-postgres"}},"input":{"target":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}}' \
           http://127.0.0.1:18084/v1/tool-calls:execute \
           | jq -e '.decision.effect == "allow" and (.output.tables | length > 0)' >/dev/null
       args:
@@ -371,7 +587,7 @@
         set -euo pipefail
         curl --silent --show-error --fail \
           -H "content-type: application/json" \
-          -d '{"capability":"db.introspection.read","authz":{"subject":{"type":"system","id":"dev-bootstrap"},"resource":{"type":"database","id":"dev-postgres"}},"input":{"type":"database_version","db":{"protocol":"postgresql","host":"postgres","port":5432,"database":"{{ arsenale_db_name }}","sslMode":"require","username":"{{ arsenale_db_user }}","password":"{{ vault_postgres_password }}"}}}' \
+          -d '{"capability":"db.introspection.read","authz":{"subject":{"type":"system","id":"dev-bootstrap"},"resource":{"type":"database","id":"dev-postgres"}},"input":{"type":"database_version","db":{"protocol":"postgresql","host":"{{ dev_sample_postgres_host }}","port":{{ dev_sample_postgres_port }},"database":"{{ dev_sample_postgres_database }}","sslMode":"{{ dev_sample_postgres_ssl_mode }}","username":"{{ dev_sample_postgres_user }}","password":"{{ dev_sample_postgres_password }}"}}}' \
           http://127.0.0.1:18084/v1/tool-calls:execute \
           | jq -e '.decision.effect == "allow" and (.output.data.version | type == "string")' >/dev/null
       args:
@@ -698,7 +914,7 @@
           --cacert "${ca_cert}" \
           -H "authorization: Bearer ${access_token}" \
           -H 'content-type: application/json' \
-          -d "{\"name\":\"${connection_name}\",\"type\":\"DATABASE\",\"host\":\"postgres\",\"port\":5432,\"username\":\"{{ arsenale_db_user }}\",\"password\":\"{{ vault_postgres_password }}\",\"dbSettings\":{\"protocol\":\"postgresql\",\"databaseName\":\"{{ arsenale_db_name }}\",\"sslMode\":\"require\"}}" \
+          -d "{\"name\":\"${connection_name}\",\"type\":\"DATABASE\",\"host\":\"{{ dev_sample_postgres_host }}\",\"port\":{{ dev_sample_postgres_port }},\"username\":\"{{ dev_sample_postgres_user }}\",\"password\":\"{{ dev_sample_postgres_password }}\",\"dbSettings\":{\"protocol\":\"postgresql\",\"databaseName\":\"{{ dev_sample_postgres_database }}\",\"sslMode\":\"{{ dev_sample_postgres_ssl_mode }}\"}}" \
           "${api_base}/connections")"
 
         connection_id="$(printf '%s' "${create_connection_json}" | jq -r '.id')"
@@ -762,7 +978,7 @@
           -d '{"sql":"select current_database() as database_name"}' \
           "${api_base}/sessions/database/${session_id}/query")"
 
-        printf '%s' "${query_json}" | jq -e '.rowCount == 1 and .rows[0].database_name == "{{ arsenale_db_name }}"' >/dev/null
+        printf '%s' "${query_json}" | jq -e '.rowCount == 1 and .rows[0].database_name == "{{ dev_sample_postgres_database }}"' >/dev/null
 
         explain_json="$(curl --silent --show-error --fail \
           --cacert "${ca_cert}" \
@@ -786,7 +1002,7 @@
           --cacert "${ca_cert}" \
           -H "authorization: Bearer ${access_token}" \
           -H 'content-type: application/json' \
-          -d '{"type":"table_schema","target":"orchestrator_connections"}' \
+          -d '{"type":"table_schema","target":"demo_customers"}' \
           "${api_base}/sessions/database/${session_id}/introspect")"
 
         printf '%s' "${introspect_schema_json}" | jq -e '.supported == true and (.data | length > 0)' >/dev/null

@@ -15,7 +15,6 @@ import (
 
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/authn"
-	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
 	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 	"github.com/dnviti/arsenale/backend/internal/tenantauth"
@@ -158,7 +157,7 @@ func (s Service) createSession(ctx context.Context, claims authn.Claims, payload
 	}
 
 	usesOverrideCredentials := hasOverrideCredentials(payload.Username, payload.Password)
-	route, err := s.resolveDatabaseRoute(ctx, claims.TenantID, resolution.Connection.GatewayID, resolution.Connection.Host, resolution.Connection.Port, dbProtocol, usesOverrideCredentials)
+	route, err := s.resolveDatabaseRoute(ctx, claims.TenantID, resolution.Connection.GatewayID)
 	if err != nil {
 		return SessionIssueResponse{}, err
 	}
@@ -169,10 +168,7 @@ func (s Service) createSession(ctx context.Context, claims authn.Claims, payload
 			return SessionIssueResponse{}, fmt.Errorf("store override credentials: %w", err)
 		}
 	}
-	target := buildDatabaseTarget(route.ProxyHost, route.ProxyPort, dbProtocol, databaseName, resolution.Credentials, settings, payload.SessionConfig)
-	if shouldUseGoDatabaseSessionRuntime(dbProtocol, usesOverrideCredentials) {
-		target = buildDatabaseTarget(resolution.Connection.Host, resolution.Connection.Port, dbProtocol, databaseName, resolution.Credentials, settings, payload.SessionConfig)
-	}
+	target := buildDatabaseTarget(resolution.Connection.Host, resolution.Connection.Port, dbProtocol, databaseName, resolution.Credentials, settings, payload.SessionConfig)
 
 	result, err := s.issueSession(ctx, SessionIssueRequest{
 		UserID:          claims.UserID,
@@ -188,7 +184,7 @@ func (s Service) createSession(ctx context.Context, claims authn.Claims, payload
 		SessionMetadata: sessionMetadata,
 		RoutingDecision: route.RoutingDecision,
 		Target:          target,
-	}, shouldUseGoDatabaseSessionRuntime(dbProtocol, usesOverrideCredentials))
+	}, shouldUseOwnedDatabaseSessionRuntime(dbProtocol, usesOverrideCredentials))
 	if err != nil {
 		return SessionIssueResponse{}, err
 	}
@@ -203,7 +199,7 @@ func (s Service) issueSession(ctx context.Context, req SessionIssueRequest, vali
 	}
 
 	if validateTarget {
-		if err := queryrunner.ValidateConnectivity(ctx, nil, req.Target); err != nil {
+		if err := s.validateTargetViaDBProxy(ctx, req.GatewayID, req.InstanceID, req.Target); err != nil {
 			return SessionIssueResponse{}, &requestError{status: classifyConnectivityStatus(err), message: err.Error()}
 		}
 	}
@@ -258,22 +254,38 @@ func parseDatabaseSettings(raw json.RawMessage) databaseSettings {
 
 func normalizeDatabaseProtocol(protocol string) string {
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
-	if protocol == "" {
+	switch protocol {
+	case "", "postgres", "postgresql":
 		return "postgresql"
+	case "mariadb":
+		return "mysql"
+	case "sqlserver":
+		return "mssql"
+	case "mongo":
+		return "mongodb"
+	default:
+		return protocol
 	}
-	return protocol
 }
 
 func hasOverrideCredentials(username, password string) bool {
 	return strings.TrimSpace(username) != "" && strings.TrimSpace(password) != ""
 }
 
-func shouldUseGoDatabaseSessionRuntime(dbProtocol string, usesOverrideCredentials bool) bool {
+func shouldUseOwnedDatabaseSessionRuntime(dbProtocol string, usesOverrideCredentials bool) bool {
 	_ = usesOverrideCredentials
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("DB_PROXY_QUERY_RUNTIME_ENABLED")), "false") {
+		return false
+	}
 	if strings.EqualFold(strings.TrimSpace(os.Getenv("GO_QUERY_RUNNER_ENABLED")), "false") {
 		return false
 	}
-	return normalizeDatabaseProtocol(dbProtocol) == "postgresql"
+	switch normalizeDatabaseProtocol(dbProtocol) {
+	case "postgresql", "mysql", "mssql", "oracle", "mongodb":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildSessionMetadata(connectionHost string, connectionPort int, resolvedHost string, resolvedPort int, dbProtocol string, databaseName string, username string, settings databaseSettings, sessionConfig *contracts.DatabaseSessionConfig, usesOverrideCredentials bool) map[string]any {
@@ -319,22 +331,31 @@ func buildDatabaseTarget(host string, port int, dbProtocol string, databaseName 
 		return nil
 	}
 	target := &contracts.DatabaseTarget{
-		Protocol:      normalizeDatabaseProtocol(dbProtocol),
-		Host:          strings.TrimSpace(host),
-		Port:          port,
-		Database:      strings.TrimSpace(databaseName),
-		SSLMode:       strings.TrimSpace(settings.SSLMode),
-		Username:      strings.TrimSpace(credentials.Username),
-		Password:      credentials.Password,
-		SessionConfig: sessionConfig,
+		Protocol:             normalizeDatabaseProtocol(dbProtocol),
+		Host:                 strings.TrimSpace(host),
+		Port:                 port,
+		Database:             strings.TrimSpace(databaseName),
+		SSLMode:              strings.TrimSpace(settings.SSLMode),
+		Username:             strings.TrimSpace(credentials.Username),
+		Password:             credentials.Password,
+		OracleConnectionType: strings.TrimSpace(settings.OracleConnectionType),
+		OracleSID:            strings.TrimSpace(settings.OracleSID),
+		OracleServiceName:    strings.TrimSpace(settings.OracleServiceName),
+		OracleRole:           strings.TrimSpace(settings.OracleRole),
+		OracleTNSAlias:       strings.TrimSpace(settings.OracleTNSAlias),
+		OracleTNSDescriptor:  strings.TrimSpace(settings.OracleTNSDescriptor),
+		OracleConnectString:  strings.TrimSpace(settings.OracleConnectString),
+		MSSQLInstanceName:    strings.TrimSpace(settings.MSSQLInstanceName),
+		MSSQLAuthMode:        strings.TrimSpace(settings.MSSQLAuthMode),
+		SessionConfig:        sessionConfig,
 	}
-	if target.Database == "" && sessionConfig != nil {
+	if sessionConfig != nil && strings.TrimSpace(sessionConfig.ActiveDatabase) != "" {
 		target.Database = strings.TrimSpace(sessionConfig.ActiveDatabase)
 	}
 	return target
 }
 
-func (s Service) resolveDatabaseRoute(ctx context.Context, tenantID string, explicitGatewayID *string, connectionHost string, connectionPort int, dbProtocol string, usesOverrideCredentials bool) (databaseRoute, error) {
+func (s Service) resolveDatabaseRoute(ctx context.Context, tenantID string, explicitGatewayID *string) (databaseRoute, error) {
 	gateway, err := s.loadRoutingGateway(ctx, tenantID, explicitGatewayID)
 	if err != nil {
 		return databaseRoute{}, err
@@ -379,12 +400,6 @@ func (s Service) resolveDatabaseRoute(ctx context.Context, tenantID string, expl
 				route.RoutingDecision.CandidateCount = 1
 			}
 		}
-	}
-
-	if shouldUseGoDatabaseSessionRuntime(dbProtocol, usesOverrideCredentials) {
-		route.ProxyHost = strings.TrimSpace(connectionHost)
-		route.ProxyPort = connectionPort
-		return route, nil
 	}
 
 	if gateway.TunnelEnabled {

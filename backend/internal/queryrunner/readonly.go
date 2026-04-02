@@ -54,6 +54,13 @@ func ValidateReadOnlySQL(sql string) error {
 }
 
 func ExecuteReadOnly(ctx context.Context, pool poolLike, req contracts.QueryExecutionRequest) (contracts.QueryExecutionResponse, error) {
+	switch targetProtocol(req.Target) {
+	case protocolMySQL, protocolMSSQL, protocolOracle:
+		return executeSQLReadOnly(ctx, req.Target, req)
+	case protocolMongoDB:
+		return executeMongoReadOnly(ctx, req.Target, req)
+	}
+
 	if err := ValidateReadOnlySQL(req.SQL); err != nil {
 		return contracts.QueryExecutionResponse{}, err
 	}
@@ -179,7 +186,7 @@ func resolvePool(
 		return nil, nil, fmt.Errorf("parse target postgres config: %w", err)
 	}
 
-	if initStatements := buildSessionInitStatements(target.SessionConfig); len(initStatements) > 0 {
+	if initStatements := buildSessionInitStatements(protocolPostgreSQL, target.SessionConfig); len(initStatements) > 0 {
 		cfg.AfterConnect = func(ctx context.Context, conn *pgx.Conn) error {
 			for _, statement := range initStatements {
 				if _, err := conn.Exec(ctx, statement); err != nil {

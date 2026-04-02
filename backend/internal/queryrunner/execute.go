@@ -17,6 +17,13 @@ func ValidateExecutableSQL(sql string) error {
 }
 
 func ExecuteQuery(ctx context.Context, defaultPool poolLike, req contracts.QueryExecutionRequest) (contracts.QueryExecutionResponse, error) {
+	switch targetProtocol(req.Target) {
+	case protocolMySQL, protocolMSSQL, protocolOracle:
+		return executeSQLAny(ctx, req.Target, req)
+	case protocolMongoDB:
+		return executeMongoAny(ctx, req.Target, req)
+	}
+
 	if err := ValidateExecutableSQL(req.SQL); err != nil {
 		return contracts.QueryExecutionResponse{}, err
 	}
@@ -187,6 +194,23 @@ func splitStatements(sql string) []string {
 func ValidateConnectivity(ctx context.Context, defaultPool poolLike, target *contracts.DatabaseTarget) error {
 	if target == nil {
 		return fmt.Errorf("target is required")
+	}
+
+	switch targetProtocol(target) {
+	case protocolMySQL, protocolMSSQL, protocolOracle:
+		sqlConn, err := openSQLTargetConn(ctx, target)
+		if err != nil {
+			return err
+		}
+		sqlConn.Close()
+		return nil
+	case protocolMongoDB:
+		mongoConn, err := openMongoTarget(ctx, target)
+		if err != nil {
+			return err
+		}
+		mongoConn.Close()
+		return nil
 	}
 
 	queryPool, cleanup, err := resolvePool(ctx, defaultPool, contracts.QueryExecutionRequest{

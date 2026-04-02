@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/app"
-	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
 	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 	"github.com/dnviti/arsenale/backend/internal/tenantauth"
@@ -208,7 +207,15 @@ func (s Service) applyOwnedSessionConfig(w http.ResponseWriter, r *http.Request,
 	}
 
 	if target != nil {
-		if err := queryrunner.ValidateConnectivity(r.Context(), nil, target); err != nil {
+		gatewayID := ""
+		if state.Record.GatewayID != nil {
+			gatewayID = strings.TrimSpace(*state.Record.GatewayID)
+		}
+		instanceID := ""
+		if state.Record.InstanceID != nil {
+			instanceID = strings.TrimSpace(*state.Record.InstanceID)
+		}
+		if err := s.validateTargetViaDBProxy(r.Context(), gatewayID, instanceID, target); err != nil {
 			app.ErrorJSON(w, classifyConnectivityStatus(err), err.Error())
 			return
 		}

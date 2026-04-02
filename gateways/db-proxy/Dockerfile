@@ -1,18 +1,6 @@
-# Database Protocol Gateway — protocol-aware proxy for PostgreSQL, MySQL, and MongoDB.
-# Build context: monorepo root
-#
-# Usage:
-#   docker build -t arsenale-db-proxy -f gateways/db-proxy/Dockerfile .
-#
-# The container acts as a protocol-aware intermediary between users and target
-# databases. Credentials are injected per-session from the Arsenale vault.
-#
-# Environment variables:
-#   DB_LISTEN_PORT      — port the proxy listens on (default: 5432)
-#   TUNNEL_SERVER_URL   — (optional) zero-trust tunnel server URL
-#   TUNNEL_TOKEN        — (optional) tunnel authentication token
-#   TUNNEL_GATEWAY_ID   — (optional) gateway ID for tunnel registration
-#   TUNNEL_LOCAL_PORT   — (optional) local port for tunnel (default: 5432)
+# syntax=docker/dockerfile:1.7
+
+ARG GO_VERSION=1.25.8
 
 # ── Tunnel agent build stage ─────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM docker.io/library/node:22-alpine AS tunnel-builder
@@ -27,50 +15,44 @@ COPY gateways/tunnel-agent/src/ ./src/
 
 RUN npm run build && npm prune --omit=dev
 
+# ── DB proxy service build stage ─────────────────────────────────────────────
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_VERSION}-alpine AS proxy-builder
+
+WORKDIR /src/backend
+
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+
+COPY backend/. ./
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/db-proxy ./cmd/db-proxy
+
 # ── DB proxy runtime ─────────────────────────────────────────────────────────
 FROM docker.io/library/node:22-alpine
 
 LABEL org.opencontainers.image.title="Arsenale DB Proxy"
-LABEL org.opencontainers.image.description="Database protocol gateway with zero-trust tunnel support"
+LABEL org.opencontainers.image.description="Database proxy middleware with bundled database drivers and zero-trust tunnel support"
 LABEL org.opencontainers.image.source="https://github.com/dnviti/arsenale"
 LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
-# Enterprise database driver dependencies:
-#   - libaio, libnsl: Oracle Instant Client runtime requirements
-#   - unixodbc:       ODBC driver manager for MSSQL (FreeTDS/msodbcsql)
-#   - freetds:        Open-source TDS protocol library for MSSQL connections
-#   - libxml2:        Required by DB2 DRDA client libraries
-# These are lightweight runtime-only packages; the actual protocol handling
-# is done by the Go adapters in gateways/db-proxy/adapters/.
-RUN apk add --no-cache \
-  libaio \
-  libnsl \
-  unixodbc \
-  freetds \
-  libxml2
+RUN apk add --no-cache ca-certificates && \
+    addgroup -S dbproxy && adduser -S dbproxy -G dbproxy
 
-# Embed pre-built tunnel agent
+COPY --from=proxy-builder /out/db-proxy /usr/local/bin/db-proxy
+
 COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist
 COPY --from=tunnel-builder /tunnel-agent/node_modules /opt/tunnel-agent/node_modules
 COPY --from=tunnel-builder /tunnel-agent/package.json /opt/tunnel-agent/package.json
 
-# Copy Go protocol adapters source (built externally or by CI)
-COPY gateways/db-proxy/adapters/ /opt/db-proxy/adapters/
-
 COPY gateways/db-proxy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
-# Run as non-root
-RUN addgroup -S dbproxy && adduser -S dbproxy -G dbproxy
 USER dbproxy
 
 ENV DB_LISTEN_PORT=5432
 
 EXPOSE 5432
 
-# Health check: verifies the entrypoint process is alive. Once the protocol-aware
-# proxy binary is implemented, upgrade this to probe DB_LISTEN_PORT directly.
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
-  CMD test -f /proc/1/status || exit 1
+  CMD wget -qO- http://127.0.0.1:${DB_LISTEN_PORT}/healthz >/dev/null || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]

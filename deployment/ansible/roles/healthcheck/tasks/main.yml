@@ -21,7 +21,7 @@
   command: >
     {{ _hc_compose_cmd }} ps --format json
   register: compose_status
-  retries: 24
+  retries: "{{ 72 if (_is_dev | default(false) | bool) else 24 }}"
   delay: 5
   until: >
     (compose_status.stdout | from_json | list | length) >= (compose_services.stdout_lines | reject('equalto', 'migrate') | list | length)

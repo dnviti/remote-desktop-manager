@@ -120,8 +120,7 @@ import { TunnelAgent } from './tunnel';
 // ---------------------------------------------------------------------------
 
 /** Get an event handler from the mock WS instance */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function getWsHandler<T extends (...args: any[]) => void>(event: string): T {
+function getWsHandler<T>(event: string): T {
   const call = mockWsInstance.on.mock.calls.find(
     (c: unknown[]) => c[0] === event,
   );

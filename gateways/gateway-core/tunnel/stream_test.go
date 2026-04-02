@@ -211,11 +211,18 @@ func TestStreamDeliverDefensiveCopy(t *testing.T) {
 func TestStreamConcurrentReadWrite(t *testing.T) {
 	var writeCount int64
 	var mu sync.Mutex
+	var firstWrite sync.Once
+
+	start := make(chan struct{})
+	firstWriteDone := make(chan struct{})
 
 	s := newStream(1, func(_ uint16, data []byte) error {
 		mu.Lock()
 		writeCount++
 		mu.Unlock()
+		firstWrite.Do(func() {
+			close(firstWriteDone)
+		})
 		return nil
 	})
 
@@ -229,6 +236,7 @@ func TestStreamConcurrentReadWrite(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			for i := 0; i < iterations; i++ {
 				_, _ = s.Write([]byte("w"))
 			}
@@ -240,6 +248,7 @@ func TestStreamConcurrentReadWrite(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			<-start
 			for i := 0; i < iterations; i++ {
 				s.deliver([]byte("r"))
 			}
@@ -250,9 +259,12 @@ func TestStreamConcurrentReadWrite(t *testing.T) {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		<-start
+		<-firstWriteDone
 		_ = s.Close()
 	}()
 
+	close(start)
 	wg.Wait()
 
 	// Drain any remaining buffered data so reads don't block.

@@ -139,7 +139,7 @@ func TestBrokerAcceptsNodeCompatibleTokenAndFlushesBufferedClientMessages(t *tes
 	if err != nil {
 		t.Fatalf("read ready message: %v", err)
 	}
-	if string(payload) != EncodeInstruction("", "abc123") {
+	if string(payload) != EncodeInstruction("ready", "abc123") {
 		t.Fatalf("unexpected ready payload: %q", string(payload))
 	}
 

@@ -99,8 +99,12 @@ describe('loadConfig', () => {
     const certPath = path.join(tempDir, 'client.pem');
     const keyPath = path.join(tempDir, 'client.key');
 
+    // Controlled temp files created by the test harness.
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     fs.writeFileSync(caPath, 'ca-pem\n');
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     fs.writeFileSync(certPath, 'client-pem\n');
+    // eslint-disable-next-line security/detect-non-literal-fs-filename
     fs.writeFileSync(keyPath, 'key-pem\n');
 
     process.env.TUNNEL_SERVER_URL = 'wss://example.com/tunnel';
