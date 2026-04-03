@@ -55,7 +55,7 @@
     "codeql": "./scripts/codeql-scan.sh",
     "codeql:full": "./scripts/codeql-scan.sh --full",
     "test:watch": "npm run test:watch -w client",
-    "verify": "npm run backend:generate && npm run go:test && npm run typecheck && npm run lint && npm run sast && npm run test -w client && npm run test -w gateways/tunnel-agent && npm run build"
+    "verify": "npm run backend:generate && npm run go:test && npm run typecheck && npm run lint && npm run sast && npm run test -w client && npm run test -w gateways/tunnel-agent && npm run test -w browser-extensions && npm run build"
   },
   "overrides": {
     "hono": "4.12.8",

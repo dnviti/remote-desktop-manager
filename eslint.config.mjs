@@ -7,6 +7,12 @@ export default tseslint.config(
   // ── Global ignores ─────────────────────────────────────────────
   {
     ignores: [
+      ".codex-venv/**",
+      ".docker-prod-nightly/**",
+      ".installer-tmp/**",
+      ".installer-workspace/**",
+      ".podman-prod-home/**",
+      "install-docker-nightly/**",
       "**/dist/**",
       "**/node_modules/**",
       "server/**",

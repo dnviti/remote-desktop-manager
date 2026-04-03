@@ -268,6 +268,38 @@
   gap: 12px;
 }
 
+.add-account-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.auth-method-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-method-btn {
+  width: 100%;
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+}
+
+.auth-info-block {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.auth-info-text {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
 .form-group {
   display: flex;
   flex-direction: column;
@@ -312,6 +344,74 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tenant-select-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tenant-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tenant-list-item {
+  margin: 0;
+}
+
+.tenant-option {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tenant-option.selected {
+  border-color: var(--accent);
+  background: rgba(0, 229, 160, 0.08);
+}
+
+.tenant-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0, 229, 160, 0.12);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.tenant-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.tenant-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tenant-role {
+  font-size: 11px;
+  color: var(--text-secondary);
 }
 
 /* ── Autofill Settings ─── */

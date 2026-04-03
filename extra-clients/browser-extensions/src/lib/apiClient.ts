@@ -1,4 +1,4 @@
-import type { BackgroundMessage, BackgroundResponse } from '../types';
+import type { BackgroundMessage, BackgroundResponse, LoginResponse } from '../types';
 
 /**
  * Send a message to the background service worker and return the typed response.
@@ -55,6 +55,6 @@ export function login(
   serverUrl: string,
   email: string,
   password: string,
-): Promise<BackgroundResponse<{ accountId: string }>> {
+): Promise<BackgroundResponse<LoginResponse>> {
   return sendMessage({ type: 'LOGIN', serverUrl, email, password });
 }

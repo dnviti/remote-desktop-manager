@@ -1,8 +1,12 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import type { Account, TenantMembership } from '../types';
+import type { Account, LoginResult, TenantMembership } from '../types';
 import { sendMessage } from '../lib/apiClient';
 import { fetchAccounts } from '../lib/fetchAccounts';
 import { logoutAccount } from '../lib/auth';
+import {
+  getAcceptedTenantMemberships,
+  getPreferredTenantMembership,
+} from '../lib/authFlow';
 import { AccountSwitcher } from './AccountSwitcher';
 import { VaultStatus } from './VaultStatus';
 import { TabPanel } from './TabPanel';
@@ -63,8 +67,20 @@ export function PopupApp(): React.ReactElement {
     setView({ page: 'main' });
   }, [reloadAccounts]);
 
-  const handleLoginComplete = useCallback(async () => {
+  const handleLoginComplete = useCallback(async (result: LoginResult) => {
     await reloadAccounts();
+    const memberships = getAcceptedTenantMemberships(result.tenantMemberships);
+    const preferredMembership = getPreferredTenantMembership(memberships);
+
+    if (result.accountId && memberships.length >= 2 && preferredMembership) {
+      setView({
+        page: 'tenant-picker',
+        accountId: result.accountId,
+        memberships,
+      });
+      return;
+    }
+
     setView({ page: 'main' });
   }, [reloadAccounts]);
 
@@ -80,7 +96,8 @@ export function PopupApp(): React.ReactElement {
 
   const handleMfaSetupRequired = useCallback((serverUrl: string) => {
     // Open the Arsenale web UI in a new tab for MFA setup
-    chrome.tabs.create({ url: `${serverUrl}/login` });
+    const normalized = serverUrl.includes('://') ? serverUrl : `https://${serverUrl}`;
+    chrome.tabs.create({ url: `${normalized.replace(/\/+$/, '')}/login` });
     // Stay on main view
   }, []);
 
@@ -131,7 +148,10 @@ export function PopupApp(): React.ReactElement {
         <TenantPickerPage
           accountId={view.accountId}
           memberships={view.memberships}
-          onSelect={handleLoginComplete}
+          onSelect={async () => {
+            await reloadAccounts();
+            setView({ page: 'main' });
+          }}
           onSkip={() => setView({ page: 'main' })}
         />
       </div>

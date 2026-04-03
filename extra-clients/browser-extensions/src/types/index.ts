@@ -43,7 +43,7 @@ export type BackgroundMessage =
   | { type: 'REQUEST_SMS_CODE'; serverUrl: string; tempToken: string }
   | { type: 'VERIFY_SMS'; serverUrl: string; tempToken: string; code: string; pendingAccount: PendingAccount }
   | { type: 'REQUEST_WEBAUTHN_OPTIONS'; serverUrl: string; tempToken: string }
-  | { type: 'VERIFY_WEBAUTHN'; serverUrl: string; tempToken: string; credential: Record<string, unknown>; pendingAccount: PendingAccount }
+  | { type: 'VERIFY_WEBAUTHN'; serverUrl: string; tempToken: string; credential: Record<string, unknown>; pendingAccount: PendingAccount; expectedChallenge?: string }
   | { type: 'SWITCH_TENANT'; accountId: string; tenantId: string }
   | { type: 'LOGOUT_ACCOUNT'; accountId: string }
   | { type: 'REFRESH_TOKEN'; accountId: string }
@@ -86,6 +86,8 @@ export interface TenantMembership {
   name: string;
   slug: string;
   role: string;
+  status?: 'PENDING' | 'ACCEPTED';
+  pending?: boolean;
   isActive: boolean;
 }
 
@@ -94,6 +96,7 @@ export interface LoginResult {
   accessToken: string;
   refreshToken: string;
   csrfToken?: string;
+  accountId?: string;
   user: {
     id: string;
     email: string;

@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import type { Account } from '../types';
-import { sendMessage, healthCheck, login } from '../lib/apiClient';
+import { sendMessage } from '../lib/apiClient';
 import { fetchAccounts } from '../lib/fetchAccounts';
 import { AccountList } from './AccountList';
 import { AddAccountForm } from './AddAccountForm';
@@ -50,27 +50,9 @@ export function OptionsApp(): React.ReactElement {
     await reloadAccounts();
   }, [reloadAccounts]);
 
-  const handleAddAccount = useCallback(async (
-    serverUrl: string,
-    email: string,
-    password: string,
-  ): Promise<{ success: boolean; error?: string }> => {
-    // 1. Health check
-    const health = await healthCheck(serverUrl);
-    if (!health.success) {
-      return { success: false, error: health.error ?? 'Could not reach server' };
-    }
-
-    // 2. Login
-    const loginResult = await login(serverUrl, email, password);
-    if (!loginResult.success) {
-      return { success: false, error: loginResult.error ?? 'Login failed' };
-    }
-
-    // 3. Reload
+  const handleAccountAdded = useCallback(async () => {
     await reloadAccounts();
     setShowAddForm(false);
-    return { success: true };
   }, [reloadAccounts]);
 
   return (
@@ -93,7 +75,10 @@ export function OptionsApp(): React.ReactElement {
           </div>
 
           {showAddForm && (
-            <AddAccountForm onSubmit={handleAddAccount} />
+            <AddAccountForm
+              onComplete={handleAccountAdded}
+              onCancel={() => setShowAddForm(false)}
+            />
           )}
 
           {loading ? (

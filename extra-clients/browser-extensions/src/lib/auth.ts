@@ -99,6 +99,7 @@ export function verifyWebAuthn(
   tempToken: string,
   credential: Record<string, unknown>,
   pendingAccount: PendingAccount,
+  expectedChallenge?: string,
 ): Promise<BackgroundResponse<LoginResult>> {
   return sendMessage<LoginResult>({
     type: 'VERIFY_WEBAUTHN',
@@ -106,6 +107,7 @@ export function verifyWebAuthn(
     tempToken,
     credential,
     pendingAccount,
+    expectedChallenge,
   });
 }
 

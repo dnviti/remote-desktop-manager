@@ -1,11 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import type { VaultStatusResponse } from '../../types';
 import {
+  requestVaultWebAuthnOptions,
+  unlockVaultWithWebAuthn,
   unlockVault,
   unlockVaultWithTotp,
   unlockVaultWithSms,
   requestVaultSmsCode,
 } from '../../lib/vaultApi';
+import {
+  formatWebAuthnError,
+  getExpectedChallenge,
+  startWebAuthnAuthentication,
+} from '../../lib/webauthn';
 
 interface VaultUnlockFormProps {
   accountId: string;
@@ -14,6 +21,7 @@ interface VaultUnlockFormProps {
 }
 
 type UnlockMethod = 'password' | 'totp' | 'sms';
+type ExtendedUnlockMethod = UnlockMethod | 'webauthn';
 
 export function VaultUnlockForm({
   accountId,
@@ -23,11 +31,12 @@ export function VaultUnlockForm({
   const mfaMethods = vaultStatus.mfaUnlockMethods;
   const hasMfa = vaultStatus.mfaUnlockAvailable && mfaMethods.length > 0;
 
-  const availableMethods: UnlockMethod[] = ['password'];
+  const availableMethods: ExtendedUnlockMethod[] = ['password'];
   if (hasMfa && mfaMethods.includes('totp')) availableMethods.push('totp');
   if (hasMfa && mfaMethods.includes('sms')) availableMethods.push('sms');
+  if (hasMfa && mfaMethods.includes('webauthn')) availableMethods.push('webauthn');
 
-  const [method, setMethod] = useState<UnlockMethod>('password');
+  const [method, setMethod] = useState<ExtendedUnlockMethod>('password');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -73,12 +82,15 @@ export function VaultUnlockForm({
         return;
       }
       result = await unlockVaultWithTotp(accountId, code.trim());
-    } else {
+    } else if (method === 'sms') {
       if (code.length !== 6) {
         setLoading(false);
         return;
       }
       result = await unlockVaultWithSms(accountId, code.trim());
+    } else {
+      setLoading(false);
+      return;
     }
 
     setLoading(false);
@@ -92,10 +104,41 @@ export function VaultUnlockForm({
     }
   };
 
-  const methodLabels: Record<UnlockMethod, string> = {
+  const handleWebAuthn = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const optionsResult = await requestVaultWebAuthnOptions(accountId);
+      if (!optionsResult.success || !optionsResult.data) {
+        setError(optionsResult.error ?? 'Failed to get WebAuthn options');
+        return;
+      }
+
+      const credential = await startWebAuthnAuthentication(optionsResult.data);
+      const result = await unlockVaultWithWebAuthn(
+        accountId,
+        credential,
+        getExpectedChallenge(optionsResult.data),
+      );
+
+      if (result.success && result.data?.unlocked) {
+        onUnlocked();
+      } else {
+        setError(result.error ?? 'Unlock failed');
+      }
+    } catch (err) {
+      setError(formatWebAuthnError(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const methodLabels: Record<ExtendedUnlockMethod, string> = {
     password: 'Password',
     totp: 'Authenticator',
     sms: 'SMS Code',
+    webauthn: 'Security Key',
   };
 
   return (
@@ -175,6 +218,22 @@ export function VaultUnlockForm({
           </div>
         )}
 
+        {method === 'webauthn' && (
+          <div className="mfa-webauthn">
+            <p className="mfa-webauthn-info">
+              Use your security key or passkey to unlock the vault.
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary btn-full"
+              onClick={handleWebAuthn}
+              disabled={loading}
+            >
+              {loading ? 'Waiting...' : 'Use Security Key'}
+            </button>
+          </div>
+        )}
+
         {method === 'sms' && smsSent && (
           <button
             type="button"
@@ -188,17 +247,19 @@ export function VaultUnlockForm({
 
         {error && <p className="form-error">{error}</p>}
 
-        <button
-          type="submit"
-          className="btn btn-primary btn-full"
-          disabled={
-            loading ||
-            (method === 'password' && !password.trim()) ||
-            (method !== 'password' && code.length !== 6)
-          }
-        >
-          {loading ? 'Unlocking...' : 'Unlock'}
-        </button>
+        {method !== 'webauthn' && (
+          <button
+            type="submit"
+            className="btn btn-primary btn-full"
+            disabled={
+              loading ||
+              (method === 'password' && !password.trim()) ||
+              ((method === 'totp' || method === 'sms') && code.length !== 6)
+            }
+          >
+            {loading ? 'Unlocking...' : 'Unlock'}
+          </button>
+        )}
       </form>
     </div>
   );

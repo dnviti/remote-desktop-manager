@@ -29,8 +29,18 @@ import type {
   VaultStatusResponse,
 } from './types';
 
+type AutofillRuntimeMessage =
+  | { type: 'AUTOFILL_VAULT_STATE_CHANGED'; vaultLocked: boolean }
+  | { type: 'AUTOFILL_MATCHES_UPDATED'; matches: CredentialIndexEntry[] };
+
+type InternalRuntimeMessage =
+  | { type: 'OFFSCREEN_CLIPBOARD_CLEARED' }
+  | { type: 'OFFSCREEN_CLIPBOARD_ERROR'; error?: string };
+
 // ── Clipboard auto-clear alarm ────────────────────────────────────────
 const CLIPBOARD_CLEAR_ALARM = 'clipboard-clear';
+const OFFSCREEN_CLIPBOARD_PATH = 'offscreen.html';
+let offscreenClipboardOpen = false;
 
 // ── Token refresh alarm ────────────────────────────────────────────────
 const REFRESH_ALARM = 'token-refresh';
@@ -123,6 +133,8 @@ async function refreshAllCredentialIndexes(): Promise<void> {
       await refreshCredentialIndex(account.id);
     }
   }
+  await broadcastAutofillMatchesUpdated();
+  await refreshBadgesForOpenTabs();
 }
 
 /** Update the extension badge with matching credential count for the active tab. */
@@ -189,14 +201,7 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
   // Clipboard auto-clear: write empty string to clipboard
   if (alarm.name === CLIPBOARD_CLEAR_ALARM) {
-    try {
-      // In service worker context, clipboard API may not be available.
-      // Use offscreen document or simply let it pass — the popup handler
-      // will clear on its own if still open. The alarm mainly serves as
-      // a fallback signal.
-    } catch {
-      // Clipboard clear is best-effort
-    }
+    await triggerClipboardAutoClear();
     return;
   }
 
@@ -228,14 +233,23 @@ chrome.alarms.onAlarm.addListener(async (alarm) => {
 
 // ── Message handler ────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener(
-  (message: BackgroundMessage, _sender, sendResponse: (response: BackgroundResponse) => void) => {
+  (
+    message: BackgroundMessage | InternalRuntimeMessage,
+    _sender,
+    sendResponse: (response: BackgroundResponse) => void,
+  ) => {
+    if (isInternalRuntimeMessage(message)) {
+      handleInternalRuntimeMessage(message).then(sendResponse);
+      return true;
+    }
+
     handleMessage(message).then(sendResponse);
     // Return true to indicate we will respond asynchronously
     return true;
   },
 );
 
-async function handleMessage(message: BackgroundMessage): Promise<BackgroundResponse> {
+export async function handleMessage(message: BackgroundMessage): Promise<BackgroundResponse> {
   switch (message.type) {
     case 'HEALTH_CHECK':
       return handleHealthCheck(message.serverUrl);
@@ -250,7 +264,13 @@ async function handleMessage(message: BackgroundMessage): Promise<BackgroundResp
     case 'REQUEST_WEBAUTHN_OPTIONS':
       return handleRequestWebAuthnOptions(message.serverUrl, message.tempToken);
     case 'VERIFY_WEBAUTHN':
-      return handleVerifyWebAuthn(message.serverUrl, message.tempToken, message.credential, message.pendingAccount);
+      return handleVerifyWebAuthn(
+        message.serverUrl,
+        message.tempToken,
+        message.credential,
+        message.pendingAccount,
+        message.expectedChallenge,
+      );
     case 'SWITCH_TENANT':
       return handleSwitchTenant(message.accountId, message.tenantId);
     case 'LOGOUT_ACCOUNT':
@@ -350,7 +370,10 @@ async function handleLogin(
     scheduleRefreshAlarm(account.id, loginData.accessToken);
 
     // Clear any session expired badge
-    clearBadgeIfNoExpired();
+    await clearBadgeIfNoExpired();
+    await broadcastCurrentAutofillState();
+    await broadcastAutofillMatchesUpdated();
+    await refreshBadgesForOpenTabs();
 
     return { success: true, data: { ...loginData, accountId: account.id } as unknown as LoginResponse };
   } catch (err) {
@@ -469,13 +492,14 @@ async function handleVerifyWebAuthn(
   tempToken: string,
   credential: Record<string, unknown>,
   pendingAccount: PendingAccount,
+  expectedChallenge?: string,
 ): Promise<BackgroundResponse<LoginResult>> {
   try {
     const url = normalizeUrl(serverUrl);
     const res = await fetch(`${url}/api/auth/verify-webauthn`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ tempToken, credential }),
+      body: JSON.stringify({ tempToken, credential, expectedChallenge }),
     });
     if (!res.ok) {
       const body = await res.text();
@@ -527,6 +551,13 @@ async function handleSwitchTenant(
     });
 
     scheduleRefreshAlarm(accountId, data.accessToken);
+    credentialIndex.delete(accountId);
+    if (account.vaultUnlocked) {
+      await refreshCredentialIndex(accountId);
+    }
+    await broadcastCurrentAutofillState();
+    await broadcastAutofillMatchesUpdated();
+    await refreshBadgesForOpenTabs();
     return { success: true, data };
   } catch (err) {
     return { success: false, error: formatError(err) };
@@ -558,7 +589,11 @@ async function handleLogoutAccount(accountId: string): Promise<BackgroundRespons
     chrome.alarms.clear(`token-refresh-${accountId}`);
 
     await removeAccount(accountId);
-    clearBadgeIfNoExpired();
+    credentialIndex.delete(accountId);
+    await clearBadgeIfNoExpired();
+    await broadcastCurrentAutofillState();
+    await broadcastAutofillMatchesUpdated();
+    await refreshBadgesForOpenTabs();
     return { success: true };
   } catch (err) {
     return { success: false, error: formatError(err) };
@@ -575,8 +610,9 @@ async function handleApiRequest(
     const accounts = await getAccounts();
     const account = accounts.find((a) => a.id === accountId);
     if (!account) return { success: false, error: 'Account not found' };
+    const normalizedPath = path.startsWith('/') ? path : `/${path}`;
 
-    const url = `${account.serverUrl}${path.startsWith('/') ? path : `/${path}`}`;
+    const url = `${account.serverUrl}${normalizedPath}`;
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${account.accessToken}`,
@@ -602,6 +638,9 @@ async function handleApiRequest(
       const retryRes = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined });
       const retryData: unknown = await retryRes.json().catch(() => null);
       await touchAccount(accountId);
+      if (retryRes.ok) {
+        await applySuccessfulApiSideEffects(accountId, normalizedPath);
+      }
       return retryRes.ok
         ? { success: true, data: retryData }
         : { success: false, error: `Request failed with ${String(retryRes.status)}` };
@@ -609,6 +648,9 @@ async function handleApiRequest(
 
     const data: unknown = await res.json().catch(() => null);
     await touchAccount(accountId);
+    if (res.ok) {
+      await applySuccessfulApiSideEffects(accountId, normalizedPath);
+    }
     return res.ok
       ? { success: true, data }
       : { success: false, error: `Request failed with ${String(res.status)}` };
@@ -664,12 +706,19 @@ async function handleGetAccounts(): Promise<BackgroundResponse> {
 async function handleSetActiveAccount(accountId: string): Promise<BackgroundResponse> {
   await setActiveAccountId(accountId);
   await touchAccount(accountId);
+  await broadcastCurrentAutofillState();
+  await broadcastAutofillMatchesUpdated();
+  await refreshBadgesForOpenTabs();
   return { success: true };
 }
 
 async function handleRemoveAccount(accountId: string): Promise<BackgroundResponse> {
   chrome.alarms.clear(`token-refresh-${accountId}`);
   await removeAccount(accountId);
+  credentialIndex.delete(accountId);
+  await broadcastCurrentAutofillState();
+  await broadcastAutofillMatchesUpdated();
+  await refreshBadgesForOpenTabs();
   return { success: true };
 }
 
@@ -677,6 +726,16 @@ async function handleUpdateAccount(
   partial: { id: string } & Record<string, unknown>,
 ): Promise<BackgroundResponse> {
   const result = await updateAccount(partial as Parameters<typeof updateAccount>[0]);
+  if (result && partial.vaultUnlocked !== undefined) {
+    if (partial.vaultUnlocked) {
+      await refreshCredentialIndex(partial.id);
+    } else {
+      credentialIndex.delete(partial.id);
+    }
+    await broadcastCurrentAutofillState();
+    await broadcastAutofillMatchesUpdated();
+    await refreshBadgesForOpenTabs();
+  }
   return result ? { success: true, data: result } : { success: false, error: 'Account not found' };
 }
 
@@ -827,6 +886,7 @@ async function handleAutofillSetDisabledSites(
   const prefs = await getAutofillPrefs();
   prefs.disabledSites = sites;
   await setAutofillPrefs(prefs);
+  await refreshBadgesForOpenTabs();
   return { success: true };
 }
 
@@ -843,6 +903,7 @@ async function handleAutofillSetGlobalEnabled(
   const prefs = await getAutofillPrefs();
   prefs.globalEnabled = enabled;
   await setAutofillPrefs(prefs);
+  await refreshBadgesForOpenTabs();
   return { success: true };
 }
 
@@ -872,7 +933,10 @@ async function createAccountFromMfa(
   });
 
   scheduleRefreshAlarm(account.id, data.accessToken);
-  clearBadgeIfNoExpired();
+  await clearBadgeIfNoExpired();
+  await broadcastCurrentAutofillState();
+  await broadcastAutofillMatchesUpdated();
+  await refreshBadgesForOpenTabs();
 
   return { success: true, data: { ...data, accountId: account.id } as unknown as LoginResult };
 }
@@ -905,6 +969,126 @@ async function clearBadgeIfNoExpired(): Promise<void> {
   const hasExpired = accounts.some((a) => a.sessionExpired);
   if (!hasExpired) {
     chrome.action.setBadgeText({ text: '' });
+  }
+}
+
+function isInternalRuntimeMessage(
+  message: BackgroundMessage | InternalRuntimeMessage,
+): message is InternalRuntimeMessage {
+  return (
+    message.type === 'OFFSCREEN_CLIPBOARD_CLEARED' ||
+    message.type === 'OFFSCREEN_CLIPBOARD_ERROR'
+  );
+}
+
+async function handleInternalRuntimeMessage(
+  message: InternalRuntimeMessage,
+): Promise<BackgroundResponse> {
+  offscreenClipboardOpen = false;
+  await chrome.offscreen?.closeDocument?.();
+
+  if (message.type === 'OFFSCREEN_CLIPBOARD_ERROR') {
+    return { success: false, error: message.error ?? 'Clipboard clear failed' };
+  }
+
+  return { success: true };
+}
+
+async function applySuccessfulApiSideEffects(
+  accountId: string,
+  normalizedPath: string,
+): Promise<void> {
+  if (normalizedPath === '/api/vault/lock') {
+    credentialIndex.delete(accountId);
+    await updateAccount({ id: accountId, vaultUnlocked: false });
+    await broadcastCurrentAutofillState();
+    await broadcastAutofillMatchesUpdated();
+    await refreshBadgesForOpenTabs();
+    return;
+  }
+
+  if (
+    normalizedPath === '/api/vault/unlock' ||
+    normalizedPath === '/api/vault/unlock-mfa/totp' ||
+    normalizedPath === '/api/vault/unlock-mfa/sms' ||
+    normalizedPath === '/api/vault/unlock-mfa/webauthn'
+  ) {
+    await updateAccount({ id: accountId, vaultUnlocked: true });
+    await refreshCredentialIndex(accountId);
+    await broadcastCurrentAutofillState();
+    await broadcastAutofillMatchesUpdated();
+    await refreshBadgesForOpenTabs();
+  }
+}
+
+async function broadcastCurrentAutofillState(): Promise<void> {
+  const activeAccount = await getActiveAccount();
+  const vaultLocked =
+    !activeAccount || activeAccount.sessionExpired || !activeAccount.vaultUnlocked;
+
+  await sendAutofillMessageToTabs(() => ({
+    type: 'AUTOFILL_VAULT_STATE_CHANGED',
+    vaultLocked,
+  }));
+}
+
+async function broadcastAutofillMatchesUpdated(): Promise<void> {
+  const activeAccount = await getActiveAccount();
+  const canUseMatches =
+    !!activeAccount && !activeAccount.sessionExpired && activeAccount.vaultUnlocked;
+  const entries = canUseMatches ? credentialIndex.get(activeAccount.id) ?? [] : [];
+
+  await sendAutofillMessageToTabs((tab) => ({
+    type: 'AUTOFILL_MATCHES_UPDATED',
+    matches: canUseMatches ? findMatchingCredentials(entries, tab.url) : [],
+  }));
+}
+
+async function refreshBadgesForOpenTabs(): Promise<void> {
+  const tabs = await getAddressableTabs();
+  await Promise.all(tabs.map((tab) => updateBadgeForTab(tab.id, tab.url)));
+}
+
+async function sendAutofillMessageToTabs(
+  buildMessage: (
+    tab: chrome.tabs.Tab & { id: number; url: string },
+  ) => AutofillRuntimeMessage,
+): Promise<void> {
+  const tabs = await getAddressableTabs();
+  await Promise.all(tabs.map(async (tab) => {
+    try {
+      await chrome.tabs.sendMessage(tab.id, buildMessage(tab));
+    } catch {
+      // Ignore tabs without an injected content script.
+    }
+  }));
+}
+
+async function getAddressableTabs(): Promise<Array<chrome.tabs.Tab & { id: number; url: string }>> {
+  const tabs = await chrome.tabs.query({});
+  return tabs.filter(
+    (tab): tab is chrome.tabs.Tab & { id: number; url: string } =>
+      typeof tab.id === 'number' &&
+      typeof tab.url === 'string' &&
+      (tab.url.startsWith('https://') || tab.url.startsWith('http://')),
+  );
+}
+
+async function triggerClipboardAutoClear(): Promise<void> {
+  if (!chrome.offscreen?.createDocument || !chrome.runtime.getURL || offscreenClipboardOpen) {
+    return;
+  }
+
+  offscreenClipboardOpen = true;
+
+  try {
+    await chrome.offscreen.createDocument({
+      url: chrome.runtime.getURL(OFFSCREEN_CLIPBOARD_PATH),
+      reasons: [chrome.offscreen.Reason.CLIPBOARD],
+      justification: 'Clear copied secrets from the clipboard after the timeout expires.',
+    });
+  } catch {
+    offscreenClipboardOpen = false;
   }
 }
 

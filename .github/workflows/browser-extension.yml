@@ -1,0 +1,70 @@
+name: Browser Extension
+
+on:
+  push:
+    branches: [develop, staging, main]
+    paths:
+      - "extra-clients/browser-extensions/**"
+      - ".github/workflows/browser-extension.yml"
+      - ".github/workflows/verify.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.config.js"
+      - "eslint.config.mjs"
+  pull_request:
+    branches: [develop, staging, main]
+    paths:
+      - "extra-clients/browser-extensions/**"
+      - ".github/workflows/browser-extension.yml"
+      - ".github/workflows/verify.yml"
+      - "package.json"
+      - "package-lock.json"
+      - "eslint.config.js"
+      - "eslint.config.mjs"
+  workflow_dispatch:
+
+concurrency:
+  group: browser-extension-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+    with:
+      workspace: extra-clients/browser-extensions
+    permissions:
+      contents: read
+
+  build-artifact:
+    name: Build Extension Artifact
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build browser extension
+        run: npm run build -w browser-extensions
+
+      - name: Upload unpacked extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-extension-dist
+          path: extra-clients/browser-extensions/dist
+          if-no-files-found: error

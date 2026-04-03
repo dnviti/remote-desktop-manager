@@ -1,6 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { sendMessage } from '../../lib/apiClient';
 import type { BackgroundResponse, LoginResult, PendingAccount } from '../../types';
+import {
+  formatWebAuthnError,
+  getExpectedChallenge,
+  startWebAuthnAuthentication,
+} from '../../lib/webauthn';
 
 interface MfaPageProps {
   serverUrl: string;
@@ -8,7 +13,7 @@ interface MfaPageProps {
   tempToken: string;
   methods: string[];
   requiresTOTP: boolean;
-  onSuccess: () => void;
+  onSuccess: (result: LoginResult) => void;
   onCancel: () => void;
 }
 
@@ -84,8 +89,8 @@ export function MfaPage({
 
     setLoading(false);
 
-    if (result.success) {
-      onSuccess();
+    if (result.success && result.data) {
+      onSuccess(result.data);
     } else {
       setError(result.error ?? 'Verification failed');
       setCode('');
@@ -109,13 +114,27 @@ export function MfaPage({
       return;
     }
 
-    // Step 2: WebAuthn is not available in extension popups — inform user
-    // The navigator.credentials API is not accessible from extension contexts.
-    setError(
-      'WebAuthn is not supported in extension popups. ' +
-      'Please use the Arsenale web UI or choose another verification method.',
-    );
-    setLoading(false);
+    try {
+      const credential = await startWebAuthnAuthentication(optionsResult.data);
+      const verifyResult = await sendMessage<LoginResult>({
+        type: 'VERIFY_WEBAUTHN',
+        serverUrl,
+        tempToken,
+        credential,
+        pendingAccount,
+        expectedChallenge: getExpectedChallenge(optionsResult.data),
+      });
+
+      if (verifyResult.success && verifyResult.data) {
+        onSuccess(verifyResult.data);
+      } else {
+        setError(verifyResult.error ?? 'WebAuthn authentication failed.');
+      }
+    } catch (err) {
+      setError(formatWebAuthnError(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const methodLabels: Record<MfaMethod, string> = {

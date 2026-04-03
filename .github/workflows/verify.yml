@@ -48,5 +48,8 @@ jobs:
       - name: Dependency audit
         run: npm audit --audit-level=critical
 
+      - name: Test
+        run: npm run test -w ${{ inputs.workspace }}
+
       - name: Build
         run: npm run build -w ${{ inputs.workspace }}

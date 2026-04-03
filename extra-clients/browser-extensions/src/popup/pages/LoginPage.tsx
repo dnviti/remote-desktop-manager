@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { sendMessage } from '../../lib/apiClient';
-import type { BackgroundResponse, LoginResponse } from '../../types';
+import type { BackgroundResponse, LoginResponse, LoginResult } from '../../types';
 
 // ── Rate-limiting constants ──────────────────────────────────────────
 const MAX_ATTEMPTS_BEFORE_LOCKOUT = 3;
@@ -56,7 +56,7 @@ interface LoginPageProps {
   /** Called when MFA setup is required (opens web UI). */
   onMfaSetupRequired: (serverUrl: string) => void;
   /** Called after successful login (no MFA). */
-  onSuccess: () => void;
+  onSuccess: (result: LoginResult) => void;
 }
 
 export function LoginPage({
@@ -213,8 +213,14 @@ export function LoginPage({
       }
 
       // Full success
+      if (!('accessToken' in data)) {
+        recordFailedAttempt();
+        setError('Unexpected login response');
+        return;
+      }
+
       resetRateLimit();
-      onSuccess();
+      onSuccess(data);
     } finally {
       setLoading(false);
     }
