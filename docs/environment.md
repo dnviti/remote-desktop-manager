@@ -34,6 +34,7 @@ In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 | `JWT_EXPIRES_IN` | string | `15m` | No | Both | Access token lifetime (e.g., `15m`, `1h`) | |
 | `JWT_REFRESH_EXPIRES_IN` | string | `7d` | No | Both | Refresh token lifetime (e.g., `7d`, `30d`) | |
 | `TOKEN_BINDING_ENABLED` | boolean | `true` | No | Both | Bind JWT tokens to client IP + User-Agent. Set `false` for environments with dynamic IPs. | |
+| `TOKEN_BINDING_ENFORCEMENT_TIMESTAMP` | string | control-plane startup time | No | Both | Reject access tokens without `ipUaHash` when their `iat` is after this cutoff. Accepts Unix seconds or RFC3339. | |
 
 ### Guacamole
 
@@ -219,7 +220,7 @@ Leave `LDAP_ENABLED=false` to disable. Compatible with FreeIPA, OpenLDAP, 389 Di
 | `ACCOUNT_LOCKOUT_DURATION_MS` | number | `1800000` (30 min) | Lockout duration |
 | `VAULT_RATE_LIMIT_WINDOW_MS` | number | `60000` (1 min) | Vault unlock rate limit window |
 | `VAULT_RATE_LIMIT_MAX_ATTEMPTS` | number | `5` | Max vault unlock attempts per user per window |
-| `VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS` | number | `10` | Max vault MFA unlock attempts per user per window |
+| `VAULT_MFA_RATE_LIMIT_MAX_ATTEMPTS` | number | `5` | Max vault MFA unlock attempts per user per window |
 | `SESSION_RATE_LIMIT_WINDOW_MS` | number | `60000` (1 min) | Session endpoint rate limit window |
 | `SESSION_RATE_LIMIT_MAX_ATTEMPTS` | number | `20` | Max session requests per user per window |
 | `OAUTH_FLOW_RATE_LIMIT_WINDOW_MS` | number | `900000` (15 min) | OAuth flow initiation rate limit window |

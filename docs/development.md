@@ -60,6 +60,11 @@ Recommended day-to-day loop:
 
 Podman is required for installer-aware development deploys because `make dev` delegates to `deployment/ansible/playbooks/install.yml`.
 
+For headless local reruns, put the technician password in `install/password.txt`.
+The repo `Makefile` auto-detects that file and passes `-e install_password_file=...`
+to installer-backed targets such as `make dev`, `make install`, `make deploy`,
+and `make status`.
+
 ## ✅ Quality Gates
 
 Top-level scripts from `package.json`:

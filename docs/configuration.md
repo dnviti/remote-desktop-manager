@@ -141,6 +141,7 @@ Production and local containers prefer secret files over inline env values. Comm
 | `SERVER_ENCRYPTION_KEY` / `SERVER_ENCRYPTION_KEY_FILE` | Encrypt tenant SSH keys and other server-held sensitive material |
 | `VAULT_TTL_MINUTES` | Personal vault lock timeout |
 | `TOKEN_BINDING_ENABLED` | Bind tokens to client IP and User-Agent |
+| `TOKEN_BINDING_ENFORCEMENT_TIMESTAMP` | Cutoff for rejecting bindingless access tokens |
 | `HOST_VALIDATION_ENABLED` | Reject invalid Host headers |
 | `COOKIE_SECURE` | Force secure cookies in HTTPS deployments |
 | `SELF_SIGNUP_ENABLED` | Public registration toggle |

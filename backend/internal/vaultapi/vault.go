@@ -59,6 +59,10 @@ func (s Service) SoftLock(ctx context.Context, userID, ipAddress string) error {
 }
 
 func (s Service) Unlock(ctx context.Context, userID, password, ipAddress string) (map[string]any, error) {
+	if err := s.enforceVaultUnlockRateLimit(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	creds, err := s.loadVaultCredentials(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -98,6 +102,10 @@ func (s Service) Unlock(ctx context.Context, userID, password, ipAddress string)
 }
 
 func (s Service) RecoverWithKey(ctx context.Context, userID, recoveryKey, currentPassword, ipAddress string) (map[string]any, error) {
+	if err := s.enforceVaultRecoveryRateLimit(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	creds, err := s.loadVaultCredentials(ctx, userID)
 	if err != nil {
 		return nil, err

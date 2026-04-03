@@ -14,6 +14,7 @@ ANSIBLE_DIR := deployment/ansible
 PLAYBOOK := cd $(ANSIBLE_DIR) && ansible-playbook
 VAULT_FILE := $(ANSIBLE_DIR)/inventory/group_vars/all/vault.yml
 LOCAL_VAULT_PASS_FILE := $(ANSIBLE_DIR)/.vault-pass
+DEFAULT_INSTALL_PASSWORD_FILE := $(abspath install/password.txt)
 VAULT_FLAG ?= $(shell \
 	if [ -n "$$ANSIBLE_VAULT_PASSWORD_FILE" ]; then \
 		printf -- '--vault-password-file %s' "$$ANSIBLE_VAULT_PASSWORD_FILE"; \
@@ -22,6 +23,8 @@ VAULT_FLAG ?= $(shell \
 	elif [ -f "$(VAULT_FILE)" ] && head -1 "$(VAULT_FILE)" | grep -q '^\$$ANSIBLE_VAULT'; then \
 		printf '%s' '--ask-vault-pass'; \
 	fi)
+INSTALL_PASSWORD_FILE ?= $(if $(wildcard $(DEFAULT_INSTALL_PASSWORD_FILE)),$(DEFAULT_INSTALL_PASSWORD_FILE),)
+INSTALL_PASSWORD_FLAG := $(if $(INSTALL_PASSWORD_FILE),-e install_password_file=$(INSTALL_PASSWORD_FILE),)
 
 .DEFAULT_GOAL := help
 
@@ -63,35 +66,35 @@ setup: _check-ansible  ## First-time setup: install collections, generate vault 
 
 .PHONY: dev
 dev: _check-ansible  ## Deploy full dev stack via installer-aware flow
-	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=development
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) -e installer_mode=development
 
 .PHONY: dev-down
 dev-down: _check-ansible  ## Stop dev stack
-	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_env=development -e arsenale_state=absent
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) -e arsenale_env=development -e arsenale_state=absent
 
 # ── Production ──────────────────────────────────────────────────────────────
 
 .PHONY: install
 install: _check-ansible  ## Run interactive installer
-	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG)
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG)
 
 .PHONY: configure
 configure: _check-ansible  ## Reconfigure an existing production install
-	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=production
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) -e installer_mode=production
 
 .PHONY: deploy
 deploy: _check-ansible  ## Deploy or update production stack via installer
-	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=production
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) -e installer_mode=production
 
 # ── Operations ──────────────────────────────────────────────────────────────
 
 .PHONY: status
 status: _check-ansible  ## Show encrypted installer status
-	$(PLAYBOOK) playbooks/status.yml $(VAULT_FLAG)
+	$(PLAYBOOK) playbooks/status.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG)
 
 .PHONY: recover
 recover: _check-ansible  ## Re-run installer recovery flow in production mode
-	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=production
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) -e installer_mode=production
 
 .PHONY: logs
 logs:  ## Follow service logs (pass SVC= for specific service)
@@ -99,11 +102,11 @@ logs:  ## Follow service logs (pass SVC= for specific service)
 
 .PHONY: backup
 backup: _check-ansible  ## Create database backup
-	$(PLAYBOOK) playbooks/backup.yml $(VAULT_FLAG)
+	$(PLAYBOOK) playbooks/backup.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG)
 
 .PHONY: rotate
 rotate: _check-ansible  ## Rotate system secrets
-	$(PLAYBOOK) playbooks/rotate-secrets.yml $(VAULT_FLAG)
+	$(PLAYBOOK) playbooks/rotate-secrets.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG)
 
 # ── Secrets & Certificates ──────────────────────────────────────────────────
 
@@ -117,13 +120,13 @@ vault: _check-ansible  ## Generate or edit Ansible Vault
 
 .PHONY: certs
 certs: _check-ansible  ## Regenerate TLS certificates
-	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) --tags certificates
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) --tags certificates
 
 # ── Cleanup ─────────────────────────────────────────────────────────────────
 
 .PHONY: clean
 clean: _check-ansible  ## Stop and remove all containers and volumes
-	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_state=absent
+	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) -e arsenale_state=absent
 
 # ── Help ────────────────────────────────────────────────────────────────────
 

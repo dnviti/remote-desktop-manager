@@ -70,6 +70,7 @@ web_modules/
 .env.*
 !.env.example
 !.env.production.example
+install/password.txt
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache
@@ -191,6 +192,8 @@ eggs/
 .eggs/
 lib/
 !extra-clients/browser-extensions/src/lib/
+!client/src/lib/
+!client/src/lib/*.ts
 lib64/
 parts/
 sdist/
@@ -399,6 +402,11 @@ __marimo__/
 .mcp.json
 
 *.sql
+!backend/migrations/*.sql
+!backend/internal/agents/queries/*.sql
+!backend/internal/memory/queries/*.sql
+!backend/internal/orchestration/queries/*.sql
+!backend/internal/modelgateway/queries/*.sql
 
 recordings/
 

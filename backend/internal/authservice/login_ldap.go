@@ -44,6 +44,10 @@ func (s Service) tryLDAPLogin(ctx context.Context, email, password, ipAddress, u
 	if !user.Enabled {
 		return nil, &requestError{status: 403, message: "Your account has been disabled. Contact your administrator."}
 	}
+	allowlistDecision := evaluateIPAllowlist(user.ActiveTenant, ipAddress)
+	if allowlistDecision.Blocked {
+		return nil, s.rejectBlockedIPAllowlist(ctx, user.ID, ipAddress)
+	}
 	if err := s.storeVaultSession(ctx, user.ID, password, user); err != nil {
 		return nil, err
 	}
@@ -63,7 +67,7 @@ func (s Service) tryLDAPLogin(ctx context.Context, email, password, ipAddress, u
 		if err != nil {
 			return nil, err
 		}
-		_ = s.insertStandaloneAuditLog(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress)
+		_ = s.insertStandaloneAuditLogWithFlags(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
 		return &loginFlow{
 			requiresMFA:  true,
 			requiresTOTP: user.TOTPEnabled,
@@ -77,16 +81,11 @@ func (s Service) tryLDAPLogin(ctx context.Context, email, password, ipAddress, u
 		if err != nil {
 			return nil, err
 		}
-		_ = s.insertStandaloneAuditLog(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress)
+		_ = s.insertStandaloneAuditLogWithFlags(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
 		return &loginFlow{
 			mfaSetupRequired: true,
 			tempToken:        tempToken,
 		}, nil
-	}
-
-	allowlistDecision := evaluateIPAllowlist(user.ActiveTenant, ipAddress)
-	if allowlistDecision.Blocked {
-		return nil, s.rejectBlockedIPAllowlist(ctx, user.ID, ipAddress)
 	}
 
 	result, err := s.issueTokens(ctx, user, ipAddress, userAgent)

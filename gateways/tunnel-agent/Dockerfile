@@ -12,7 +12,7 @@ COPY src/ ./src/
 RUN npm run build && npm prune --omit=dev
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM docker.io/library/node:22-alpine
+FROM docker.io/library/alpine:3.22
 
 LABEL org.opencontainers.image.title="Arsenale Tunnel Agent"
 LABEL org.opencontainers.image.description="Zero-trust tunnel agent for non-managed gateways"
@@ -20,6 +20,9 @@ LABEL org.opencontainers.image.source="https://github.com/dnviti/arsenale"
 LABEL org.opencontainers.image.licenses="BUSL-1.1"
 
 WORKDIR /app
+
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates nodejs
 
 COPY --from=builder /app/package.json ./
 COPY --from=builder /app/node_modules ./node_modules

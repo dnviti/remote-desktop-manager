@@ -14,6 +14,10 @@ import (
 )
 
 func (s Service) UnlockWithTOTP(ctx context.Context, userID, code, ipAddress string) (map[string]any, error) {
+	if err := s.enforceVaultMFARateLimit(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	masterKey, err := s.loadVaultRecovery(ctx, userID)
 	if err != nil {
 		return nil, err

@@ -108,6 +108,10 @@ npm run dev:client
 
 If you want the repo root to orchestrate both steps, `npm run dev` runs `make dev` in `predev`, waits for the Go services to become healthy, and then starts Vite on `https://localhost:3005`.
 
+For headless local reruns, store the technician password in `install/password.txt`.
+The repo wrapper auto-detects that file and passes it to installer-backed `make`
+targets as `install_password_file`.
+
 Primary local URLs:
 
 | URL | Purpose |

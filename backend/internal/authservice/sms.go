@@ -44,6 +44,9 @@ func (s Service) VerifySMSCode(ctx context.Context, tempToken, code, ipAddress, 
 	if purpose != "mfa-verify" {
 		return issuedLogin{}, &requestError{status: 401, message: "Invalid token purpose"}
 	}
+	if err := s.enforceLoginMFARateLimit(ctx, userID, ipAddress); err != nil {
+		return issuedLogin{}, err
+	}
 	if err := validateTOTPCode(code); err != nil {
 		return issuedLogin{}, &requestError{status: 400, message: "Invalid code format"}
 	}

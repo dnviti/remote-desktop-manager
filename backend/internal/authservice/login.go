@@ -181,6 +181,11 @@ func (s Service) Login(ctx context.Context, email, password, ipAddress, userAgen
 		return loginFlow{}, err
 	}
 
+	allowlistDecision := evaluateIPAllowlist(user.ActiveTenant, ipAddress)
+	if allowlistDecision.Blocked {
+		return loginFlow{}, s.rejectBlockedIPAllowlist(ctx, user.ID, ipAddress)
+	}
+
 	if !user.Enabled {
 		_ = s.insertStandaloneAuditLog(ctx, &user.ID, "LOGIN_FAILURE", map[string]any{
 			"reason": "account_disabled",
@@ -267,11 +272,6 @@ func (s Service) Login(ctx context.Context, email, password, ipAddress, userAgen
 			mfaSetupRequired: true,
 			tempToken:        tempToken,
 		}, nil
-	}
-
-	allowlistDecision := evaluateIPAllowlist(user.ActiveTenant, ipAddress)
-	if allowlistDecision.Blocked {
-		return loginFlow{}, s.rejectBlockedIPAllowlist(ctx, user.ID, ipAddress)
 	}
 
 	result, err := s.issueTokens(ctx, user, ipAddress, userAgent)

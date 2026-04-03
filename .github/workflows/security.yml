@@ -26,6 +26,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name != 'workflow_call' }}
 
 env:
+  CODEQL_ACTION_FILE_COVERAGE_ON_PRS: true
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
@@ -68,6 +69,7 @@ jobs:
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@0.35.0
         with:
+          cache: false
           scan-type: fs
           scan-ref: .
           scanners: vuln,misconfig,secret

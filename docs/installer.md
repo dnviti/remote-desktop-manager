@@ -217,6 +217,10 @@ ansible-playbook playbooks/install.yml -e installer_password="secret"
 # Via password file (recommended)
 ansible-playbook playbooks/install.yml -e install_password_file=/path/to/password
 
+# Repo wrapper auto-detect
+# If <repo-root>/install/password.txt exists, make dev/install/deploy/status/... use it automatically.
+make dev
+
 # Via environment variable (with the status helper)
 INSTALLER_PASSWORD=secret python3 scripts/install_status.py \
   --input /opt/arsenale/install/install-status.enc \
@@ -231,6 +235,10 @@ On a target host the canonical installer artifact directory is:
 /opt/arsenale/install/     # Production
 <repo-root>/install/       # Development
 ```
+
+For headless local reruns through the repo wrapper, place the technician password in
+`<repo-root>/install/password.txt`. `make dev`, `make deploy`, `make status`, and the other
+installer-backed Make targets will pass that file as `install_password_file` automatically.
 
 | Artifact | Content |
 |----------|---------|

@@ -68,4 +68,6 @@ EXPOSE 3003
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=5s \
     CMD sh -c 'if [ -n "$GUACENC_TLS_CERT" ] && [ -n "$GUACENC_TLS_KEY" ]; then curl --silent --show-error --fail --insecure https://127.0.0.1:3003/health >/dev/null; else curl --silent --show-error --fail http://127.0.0.1:3003/health >/dev/null; fi' || exit 1
 
+USER guacenc
+
 CMD ["/usr/local/bin/arsenale-guacenc"]

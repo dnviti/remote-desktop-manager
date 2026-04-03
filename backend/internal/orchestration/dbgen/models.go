@@ -1741,6 +1741,7 @@ type DbAuditLog struct {
 	BlockReason     pgtype.Text
 	CreatedAt       time.Time
 	ExecutionPlan   []byte
+	SessionId       pgtype.Text
 }
 
 type DbFirewallRule struct {

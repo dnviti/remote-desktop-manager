@@ -65,6 +65,10 @@ jobs:
       - uses: actions/setup-go@v6
         with:
           go-version-file: backend/go.mod
+          cache-dependency-path: |
+            go.work.sum
+            backend/go.mod
+            backend/go.sum
 
       - name: Verify sqlc generation
         working-directory: backend
@@ -174,6 +178,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
+          cache: false
           image-ref: arsenale-${{ matrix.service.name }}:scan
           format: sarif
           output: trivy-results.sarif

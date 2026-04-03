@@ -16,6 +16,10 @@ import (
 const smsOTPTTL = 5 * time.Minute
 
 func (s Service) RequestSMSCode(ctx context.Context, userID string) error {
+	if err := s.enforceVaultMFARateLimit(ctx, userID); err != nil {
+		return err
+	}
+
 	masterKey, err := s.loadVaultRecovery(ctx, userID)
 	if err != nil {
 		return err
@@ -55,6 +59,10 @@ func (s Service) RequestSMSCode(ctx context.Context, userID string) error {
 }
 
 func (s Service) UnlockWithSMS(ctx context.Context, userID, code, ipAddress string) (map[string]any, error) {
+	if err := s.enforceVaultMFARateLimit(ctx, userID); err != nil {
+		return nil, err
+	}
+
 	masterKey, err := s.loadVaultRecovery(ctx, userID)
 	if err != nil {
 		return nil, err

@@ -100,7 +100,7 @@ All rate limiters are built via a shared `rateLimitFactory` (`server/src/middlew
 | Registration | 5 attempts | 1 hour | IP |
 | Account lockout | 10 consecutive failures | 30 min | User |
 | Vault unlock (password) | 5 attempts | 1 min | User |
-| Vault unlock (MFA) | 10 attempts | 1 min | User |
+| Vault unlock (MFA) | 5 attempts | 1 min | User |
 | Session endpoints | 20 requests | 1 min | User |
 | OAuth flow (initiate/callback) | 20 requests | 15 min | IP |
 | OAuth account management | 15 requests | 1 min | User |
@@ -126,7 +126,8 @@ Token binding ties JWT access tokens and refresh tokens to the originating clien
 - If a refresh token is presented from a different IP or User-Agent, the token is rejected and the entire token family is revoked
 - A `TOKEN_HIJACK_ATTEMPT` audit event is logged for security monitoring
 - Enabled by default; disable via `TOKEN_BINDING_ENABLED=false` for environments with dynamic IPs (e.g., mobile clients, VPNs)
-- Tokens issued before binding was enabled are accepted without verification for backward compatibility
+- Access tokens without the binding claim are only accepted when their `iat` is at or before `TOKEN_BINDING_ENFORCEMENT_TIMESTAMP`
+- `TOKEN_BINDING_ENFORCEMENT_TIMESTAMP` accepts Unix seconds or RFC3339; when unset, the cutoff defaults to control-plane startup time so pre-restart legacy access tokens can expire naturally
 
 <!-- manual-start -->
 <!-- manual-end -->

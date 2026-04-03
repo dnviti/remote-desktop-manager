@@ -32,6 +32,9 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version: "1.25.8"
+          cache-dependency-path: |
+            gateways/**/go.mod
+            gateways/**/go.sum
 
       - name: Run Go tests
         run: |
@@ -121,6 +124,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.35.0
         with:
+          cache: false
           image-ref: ${{ matrix.gateway.name }}:scan
           format: sarif
           output: trivy-results.sarif

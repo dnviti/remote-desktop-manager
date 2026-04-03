@@ -13,6 +13,10 @@ import (
 )
 
 func (s Service) RequestWebAuthnOptions(ctx context.Context, userID string) (webauthnflow.AuthenticationOptions, error) {
+	if err := s.enforceVaultMFARateLimit(ctx, userID); err != nil {
+		return webauthnflow.AuthenticationOptions{}, err
+	}
+
 	masterKey, err := s.loadVaultRecovery(ctx, userID)
 	if err != nil {
 		return webauthnflow.AuthenticationOptions{}, err
@@ -41,6 +45,9 @@ func (s Service) RequestWebAuthnOptions(ctx context.Context, userID string) (web
 func (s Service) UnlockWithWebAuthn(ctx context.Context, userID string, rawCredential json.RawMessage, fallbackChallenge, ipAddress string) (map[string]any, error) {
 	if len(rawCredential) == 0 {
 		return nil, &requestError{status: http.StatusBadRequest, message: "WebAuthn credential is required."}
+	}
+	if err := s.enforceVaultMFARateLimit(ctx, userID); err != nil {
+		return nil, err
 	}
 
 	masterKey, err := s.loadVaultRecovery(ctx, userID)

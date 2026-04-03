@@ -48,6 +48,10 @@ jobs:
         uses: actions/setup-go@v6
         with:
           go-version-file: tools/arsenale-cli/go.mod
+          cache-dependency-path: |
+            go.work.sum
+            tools/arsenale-cli/go.mod
+            tools/arsenale-cli/go.sum
 
       - name: Extract version
         id: version
