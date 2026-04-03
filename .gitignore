@@ -400,6 +400,10 @@ __marimo__/
 .mcp.json
 
 *.sql
+!backend/internal/agents/queries/*.sql
+!backend/internal/memory/queries/*.sql
+!backend/internal/orchestration/queries/*.sql
+!backend/internal/modelgateway/queries/*.sql
 
 recordings/
 
