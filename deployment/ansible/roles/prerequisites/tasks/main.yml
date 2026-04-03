@@ -1,28 +1,69 @@
 ---
-- name: Install Podman (Fedora/RHEL)
+- name: Resolve target container runtime
+  set_fact:
+    _install_container_runtime: "{{ container_runtime | default(installer_backend_value | default('podman')) }}"
+
+- name: Validate supported production compose runtime
+  assert:
+    that:
+      - _install_container_runtime == 'podman'
+    fail_msg: "Docker is no longer a supported production compose runtime. Use podman or the kubernetes installer flow."
+
+- name: Install shared deployment dependencies (Fedora/RHEL)
   become: true
   become_user: root
   dnf:
-    name: [podman, podman-compose, python3-podman, openssl, git]
+    name: [openssl, git]
     state: present
   when: ansible_os_family == 'RedHat'
 
-- name: Install Podman (Debian/Ubuntu)
+- name: Install shared deployment dependencies (Debian/Ubuntu)
   become: true
   become_user: root
   apt:
-    name: [podman, podman-compose, python3-podman, openssl, git]
+    name: [openssl, git]
     state: present
     update_cache: true
   when: ansible_os_family == 'Debian'
 
-- name: Install Podman (Arch)
+- name: Install shared deployment dependencies (Arch)
   become: true
   become_user: root
   pacman:
-    name: [podman, podman-compose, python-podman, openssl, git]
+    name: [openssl, git]
     state: present
   when: ansible_os_family == 'Archlinux'
+
+- name: Install Podman runtime packages (Fedora/RHEL)
+  become: true
+  become_user: root
+  dnf:
+    name: [podman, podman-compose, python3-podman]
+    state: present
+  when:
+    - ansible_os_family == 'RedHat'
+    - _install_container_runtime == 'podman'
+
+- name: Install Podman runtime packages (Debian/Ubuntu)
+  become: true
+  become_user: root
+  apt:
+    name: [podman, podman-compose, python3-podman]
+    state: present
+    update_cache: true
+  when:
+    - ansible_os_family == 'Debian'
+    - _install_container_runtime == 'podman'
+
+- name: Install Podman runtime packages (Arch)
+  become: true
+  become_user: root
+  pacman:
+    name: [podman, podman-compose, python-podman]
+    state: present
+  when:
+    - ansible_os_family == 'Archlinux'
+    - _install_container_runtime == 'podman'
 
 - name: Create arsenale user
   become: true
@@ -34,16 +75,18 @@
     home: "{{ arsenale_home }}"
     shell: /bin/bash
   register: arsenale_user_info
+  when: arsenale_user != ansible_user_id
 
 - name: Store UID for later use
   set_fact:
-    arsenale_uid: "{{ arsenale_user_info.uid }}"
+    arsenale_uid: "{{ arsenale_user_info.uid | default(ansible_user_uid) }}"
 
 - name: Enable lingering for arsenale user (rootless Podman persists after logout)
   become: true
   become_user: root
   command: loginctl enable-linger {{ arsenale_user }}
   changed_when: false
+  when: _install_container_runtime == 'podman'
 
 - name: Start systemd user manager for arsenale
   become: true
@@ -51,11 +94,13 @@
   systemd:
     name: "user@{{ arsenale_uid }}.service"
     state: started
+  when: _install_container_runtime == 'podman'
 
 - name: Enable Podman socket for user
   command: systemctl --user enable --now podman.socket
   environment:
     XDG_RUNTIME_DIR: "/run/user/{{ arsenale_uid }}"
+  when: _install_container_runtime == 'podman'
 
 - name: Create deployment directories
   file:
@@ -83,6 +128,30 @@
   when:
     - _build | default(true) | bool
     - not _arsenale_source_tree.stat.exists
+
+- name: Create empty authorized_keys
+  stat:
+    path: "{{ arsenale_home }}/config/ssh-gateway/authorized_keys"
+  register: _ssh_gateway_authorized_keys_path
+
+- name: Migrate legacy authorized_keys directory to file
+  shell: |
+    set -euo pipefail
+    path="{{ arsenale_home }}/config/ssh-gateway/authorized_keys"
+    backup="${path}.dir-backup-$(date +%s)"
+    tmp="${path}.migrated.$$"
+    if find "$path" -mindepth 1 -type f -print -quit | grep -q .; then
+      find "$path" -type f -print0 | sort -z | xargs -0 cat -- > "$tmp"
+    else
+      : > "$tmp"
+    fi
+    mv "$path" "$backup"
+    mv "$tmp" "$path"
+    chmod 0644 "$path"
+  args:
+    executable: /bin/bash
+  when: _ssh_gateway_authorized_keys_path.stat.isdir | default(false)
+  changed_when: true
 
 - name: Create empty authorized_keys
   file:

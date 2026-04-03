@@ -25,17 +25,65 @@
       - { name: ldap_bind_password, value: "{{ vault_ldap_bind_password }}" }
       - { name: ai_api_key, value: "{{ vault_ai_api_key }}" }
 
-- name: Remove existing Podman secrets (idempotent recreation)
-  containers.podman.podman_secret:
-    name: "{{ item.name }}"
-    state: absent
+- name: Normalize desired Podman secret values
+  set_fact:
+    podman_secret_specs: >-
+      {{
+        (podman_secret_specs | default([]))
+        + [
+            {
+              'name': item.name,
+              'rendered_value': (item.value if (item.value | length > 0) else '\n'),
+              'digest': ((item.value if (item.value | length > 0) else '\n') | hash('sha256'))
+            }
+          ]
+      }}
   loop: "{{ podman_secrets }}"
   no_log: true
 
+- name: Inspect existing Podman secrets
+  command:
+    argv:
+      - podman
+      - secret
+      - inspect
+      - "{{ item.name }}"
+  loop: "{{ podman_secret_specs }}"
+  register: podman_secret_inspect
+  changed_when: false
+  failed_when: false
+  no_log: true
+
+- name: Index existing Podman secret digests
+  set_fact:
+    podman_secret_state: >-
+      {{
+        (podman_secret_state | default({}))
+        | combine(
+            {
+              item.item.name: (
+                (((item.stdout | default('[]')) | from_json | first).Spec.Labels | default({})).get('arsenale-sha256', '')
+              )
+            }
+          )
+      }}
+  loop: "{{ podman_secret_inspect.results }}"
+  when: item.rc == 0
+  no_log: true
+
 - name: Create Podman secrets
-  containers.podman.podman_secret:
-    name: "{{ item.name }}"
-    data: "{{ item.value if (item.value | length > 0) else '\n' }}"
-    state: present
-  loop: "{{ podman_secrets }}"
+  command:
+    argv:
+      - podman
+      - secret
+      - create
+      - --replace
+      - --label
+      - "arsenale-sha256={{ item.digest }}"
+      - "{{ item.name }}"
+      - "-"
+    stdin: "{{ item.rendered_value }}"
+  loop: "{{ podman_secret_specs }}"
+  when: (podman_secret_state | default({})).get(item.name, '') != item.digest
+  changed_when: true
   no_log: true

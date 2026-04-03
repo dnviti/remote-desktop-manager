@@ -4,6 +4,12 @@ set -e
 # Set up authorized_keys in /tmp (writable tmpfs) for read_only containers
 AUTH_KEYS_DIR="/tmp/.ssh"
 AUTH_KEYS_FILE="${AUTH_KEYS_DIR}/authorized_keys"
+CONFIG_AUTH_KEYS_FILE="/config/authorized_keys"
+
+if [ -d "$CONFIG_AUTH_KEYS_FILE" ]; then
+    CONFIG_AUTH_KEYS_FILE="${CONFIG_AUTH_KEYS_FILE}/authorized_keys"
+fi
+
 mkdir -p "$AUTH_KEYS_DIR"
 chmod 700 "$AUTH_KEYS_DIR"
 : > "$AUTH_KEYS_FILE"
@@ -15,9 +21,9 @@ if [ -n "$SSH_AUTHORIZED_KEYS" ]; then
 fi
 
 # Source 2: /config/authorized_keys volume mount
-if [ -f /config/authorized_keys ]; then
-    echo "Loading authorized keys from /config/authorized_keys..."
-    cat /config/authorized_keys >> "$AUTH_KEYS_FILE"
+if [ -f "$CONFIG_AUTH_KEYS_FILE" ]; then
+    echo "Loading authorized keys from ${CONFIG_AUTH_KEYS_FILE}..."
+    cat "$CONFIG_AUTH_KEYS_FILE" >> "$AUTH_KEYS_FILE"
 fi
 
 # Warn if no keys were configured

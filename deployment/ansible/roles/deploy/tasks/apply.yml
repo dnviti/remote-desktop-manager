@@ -1,0 +1,145 @@
+---
+- name: Set compose env file flag
+  set_fact:
+    _compose_env_file_arg: >-
+      {{
+        (
+          ' --env-file ' ~ installer_compose_env_file
+        )
+        if (installer_compose_env_file | default('') | trim)
+        else ''
+      }}
+
+- name: Validate supported compose runtime
+  assert:
+    that:
+      - (container_runtime | default('podman')) == 'podman'
+    fail_msg: "Docker is no longer a supported compose runtime. Use podman."
+
+- name: Set compose base command
+  set_fact:
+    _compose_base_cmd: podman-compose
+
+- name: Set compose command
+  set_fact:
+    _compose_cmd: "{{ _compose_base_cmd }}{{ _compose_env_file_arg }} -f {{ _home }}/docker-compose.yml"
+
+- name: Set compose service runner helper path
+  set_fact:
+    _compose_service_runner_script: >-
+      {{
+        installer_scripts_dir ~ '/run_compose_service.py'
+        if (installer_scripts_dir | default('') | trim)
+        else (
+          (
+            _home ~ '/deployment/ansible/scripts/run_compose_service.py'
+          )
+          if (_is_dev | default(false) | bool)
+          else (
+            _home ~ '/arsenale/deployment/ansible/scripts/run_compose_service.py'
+          )
+        )
+      }}
+
+- name: Set rootless container runtime environment
+  set_fact:
+    _podman_runtime_env:
+      XDG_RUNTIME_DIR: >-
+        {{
+          (
+            lookup('env', 'XDG_RUNTIME_DIR')
+            | default('/run/user/' + ((ansible_user_uid | default('1000')) | string), true)
+          )
+          if (_is_dev | default(false) | bool)
+          else '/run/user/' + ((arsenale_uid | default(ansible_user_uid | default('1000'))) | string)
+        }}
+
+- name: Reset development stack before rebuilding
+  command: >
+    {{ _compose_cmd }} down --remove-orphans
+  when: _state == 'present' and _build | bool and (_is_dev | default(false) | bool)
+  changed_when: true
+  failed_when: false
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Inspect PostgreSQL container state
+  command:
+    argv:
+      - "{{ container_runtime | default('podman') }}"
+      - inspect
+      - arsenale-postgres
+      - --format
+      - "{{ '{{json .State}}' }}"
+  when: _state == 'present'
+  register: postgres_state_probe
+  changed_when: false
+  failed_when: false
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Decode PostgreSQL container state
+  set_fact:
+    postgres_container_state: "{{ postgres_state_probe.stdout | from_json }}"
+    postgres_container_running: "{{ (postgres_state_probe.stdout | from_json).get('Running', false) }}"
+    postgres_container_health: "{{ (postgres_state_probe.stdout | from_json).get('Health', {}).get('Status', 'starting') }}"
+  when:
+    - _state == 'present'
+    - postgres_state_probe.rc == 0
+    - (postgres_state_probe.stdout | trim | length) > 0
+
+- name: Start existing PostgreSQL container for schema bootstrap
+  command:
+    argv:
+      - "{{ container_runtime | default('podman') }}"
+      - start
+      - arsenale-postgres
+  when:
+    - _state == 'present'
+    - postgres_state_probe.rc == 0
+    - not (postgres_container_running | default(false) | bool)
+  changed_when: true
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Create PostgreSQL container for schema bootstrap
+  command: >
+    {{ _compose_cmd }} up -d postgres
+  when:
+    - _state == 'present'
+    - postgres_state_probe.rc != 0
+  changed_when: true
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Run database migrations via Podman service runner
+  shell: |
+    set -euo pipefail
+    python3 {{ _compose_service_runner_script | quote }} \
+      --runtime {{ (container_runtime | default('podman')) | quote }} \
+      --compose-file {{ (_home ~ '/docker-compose.yml') | quote }} \
+      --service migrate \
+      --recreate \
+      -- up
+  args:
+    chdir: "{{ _home }}"
+    executable: /bin/bash
+  when:
+    - _state == 'present'
+    - (container_runtime | default('podman')) == 'podman'
+  register: schema_bootstrap
+  changed_when: "'applied_now=0' not in schema_bootstrap.stdout or 'stamped legacy database' in schema_bootstrap.stdout"
+  retries: 12
+  delay: 5
+  until: schema_bootstrap.rc == 0
+  environment: "{{ _podman_runtime_env | combine({'ARSENALE_DATABASE_URL_OVERRIDE': (vault_database_url | trim)}) }}"
+
+- name: Deploy Arsenale stack
+  command: >
+    {{ _compose_cmd }} up -d --remove-orphans{% if compose_force_recreate | default(false) | bool %} --force-recreate{% endif %}
+  when: _state == 'present'
+  changed_when: true
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Tear down Arsenale stack
+  command: >
+    {{ _compose_cmd }} down --remove-orphans
+  when: _state == 'absent'
+  changed_when: true
+  environment: "{{ _podman_runtime_env }}"

@@ -1,25 +1,83 @@
 ---
+- name: Set compose env file flag for health checks
+  set_fact:
+    _hc_compose_env_file: "{{ installer_compose_env_file | default(_home + '/.env') }}"
+    _hc_compose_env_file_arg: >-
+      {{
+        (
+          ' --env-file ' ~ (installer_compose_env_file | default(_home + '/.env'))
+        )
+        if ((installer_compose_env_file | default(_home + '/.env')) | trim)
+        else ''
+      }}
+
+- name: Validate supported compose runtime for health checks
+  assert:
+    that:
+      - (container_runtime | default('podman')) == 'podman'
+    fail_msg: "Docker is no longer a supported compose runtime. Use podman."
+
+- name: Set compose base command for health checks
+  set_fact:
+    _hc_compose_base_cmd: podman-compose
+
 - name: Set compose command for health checks
   set_fact:
-    _hc_compose_cmd: "{{ container_runtime | default('podman') }} compose -f {{ _home }}/docker-compose.yml"
+    _hc_compose_cmd: "{{ _hc_compose_base_cmd }}{{ _hc_compose_env_file_arg }} -f {{ _home }}/docker-compose.yml"
+
+- name: Set compose status helper path
+  set_fact:
+    _hc_compose_status_script: >-
+      {{
+        installer_scripts_dir ~ '/compose_ps_status.py'
+        if (installer_scripts_dir | default('') | trim)
+        else (
+          (
+            _home ~ '/deployment/ansible/scripts/compose_ps_status.py'
+          )
+          if (_is_dev | default(false) | bool)
+          else (
+            _home ~ '/arsenale/deployment/ansible/scripts/compose_ps_status.py'
+          )
+        )
+      }}
+
+- name: Set rootless container runtime environment for health checks
+  set_fact:
+    _podman_runtime_env:
+      XDG_RUNTIME_DIR: >-
+        {{
+          (
+            lookup('env', 'XDG_RUNTIME_DIR')
+            | default('/run/user/' + ((ansible_user_uid | default('1000')) | string), true)
+          )
+          if (_is_dev | default(false) | bool)
+          else '/run/user/' + ((arsenale_uid | default(ansible_user_uid | default('1000'))) | string)
+        }}
+
+- name: Set compose health endpoint URL
+  set_fact:
+    _compose_health_url: "http://127.0.0.1:{{ arsenale_client_port }}/api/health"
+    _public_ui_url: "{{ arsenale_public_url | default('http://' ~ arsenale_domain ~ ':' ~ (arsenale_client_port | string), true) }}"
 
 - name: Get expected compose service count
   command: >
     {{ _hc_compose_cmd }} config --services
   register: compose_services
   changed_when: false
-  environment: "{{ _hc_env }}"
-  vars:
-    _hc_env: >-
-      {{
-        {}
-        if (_is_dev | default(false) | bool)
-        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
-      }}
+  environment: "{{ _podman_runtime_env }}"
 
 - name: Wait for all containers to be healthy
-  command: >
-    {{ _hc_compose_cmd }} ps --format json
+  command:
+    argv:
+      - python3
+      - "{{ _hc_compose_status_script }}"
+      - --runtime
+      - "{{ container_runtime | default('podman') }}"
+      - --compose-file
+      - "{{ _home }}/docker-compose.yml"
+      - --env-file
+      - "{{ _hc_compose_env_file }}"
   register: compose_status
   retries: "{{ 72 if (_is_dev | default(false) | bool) else 24 }}"
   delay: 5
@@ -29,49 +87,42 @@
     (
       compose_status.stdout
       | from_json
-      | selectattr('Status', 'search', '\\(healthy\\)')
+      | selectattr('health', 'equalto', 'healthy')
       | list
       | length
     ) >= (compose_services.stdout_lines | reject('equalto', 'migrate') | list | length)
   changed_when: false
-  environment: "{{ _hc_env }}"
-  vars:
-    _hc_env: >-
-      {{
-        {}
-        if (_is_dev | default(false) | bool)
-        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
-      }}
+  environment: "{{ _podman_runtime_env }}"
 
 - name: Verify migrate did not fail
-  command: >
-    {{ _hc_compose_cmd }} ps --format json
+  command:
+    argv:
+      - python3
+      - "{{ _hc_compose_status_script }}"
+      - --runtime
+      - "{{ container_runtime | default('podman') }}"
+      - --compose-file
+      - "{{ _home }}/docker-compose.yml"
+      - --env-file
+      - "{{ _hc_compose_env_file }}"
   register: migrate_status
   changed_when: false
   failed_when: >
     (
       migrate_status.stdout
       | from_json
-      | selectattr('Names.0', 'equalto', 'arsenale-migrate')
-      | selectattr('State', 'equalto', 'exited')
-      | rejectattr('ExitCode', 'equalto', 0)
+      | selectattr('name', 'equalto', 'arsenale-migrate')
+      | selectattr('state', 'equalto', 'exited')
+      | rejectattr('exitCode', 'equalto', 0)
       | list
       | length
     ) > 0
-  environment: "{{ _hc_env }}"
-  vars:
-    _hc_env: >-
-      {{
-        {}
-        if (_is_dev | default(false) | bool)
-        else {'XDG_RUNTIME_DIR': '/run/user/' + (arsenale_uid | default('1000') | string)}
-      }}
+  environment: "{{ _podman_runtime_env }}"
 
 - name: Verify API health endpoint
   uri:
-    url: "https://{{ arsenale_domain }}:{{ arsenale_client_port }}/api/health"
-    validate_certs: true
-    ca_path: "{{ arsenale_cert_dir }}/ca.pem"
+    url: "{{ _compose_health_url }}"
+    validate_certs: false
     status_code: 200
   retries: 12
   delay: 5
@@ -89,12 +140,14 @@
     'JWT_SECRET=' in control_plane_env.stdout or
     'GUACAMOLE_SECRET=' in control_plane_env.stdout or
     'SERVER_ENCRYPTION_KEY=' in control_plane_env.stdout
+  environment: "{{ _podman_runtime_env }}"
 
 - name: Verify Podman secrets are mounted in control-plane-api
   command: "{{ container_runtime | default('podman') }} exec arsenale-control-plane-api ls /run/secrets/"
   register: control_plane_secrets
   changed_when: false
   failed_when: "'jwt_secret' not in control_plane_secrets.stdout"
+  environment: "{{ _podman_runtime_env }}"
 
 - name: Verify postgres only has its own secret
   command: "{{ container_runtime | default('podman') }} exec arsenale-postgres ls /run/secrets/"
@@ -103,11 +156,12 @@
   failed_when: >
     'postgres_password' not in postgres_secrets.stdout or
     'jwt_secret' in postgres_secrets.stdout
+  environment: "{{ _podman_runtime_env }}"
 
 - name: Display deployment status
   debug:
     msg: |
       Arsenale deployed successfully!
-      Web UI: https://{{ arsenale_domain }}:{{ arsenale_client_port }}
+      Web UI: {{ _public_ui_url }}
       SSH Gateway: ssh -p {{ arsenale_ssh_port }} tunnel@{{ arsenale_domain }}
       Secrets: Managed via Podman secrets (not in container env)

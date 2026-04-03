@@ -1,8 +1,8 @@
 ---
 title: Development
-description: Local workflow, quality gates, testing strategy, CLI alignment, and contribution conventions for Arsenale
+description: Local workflow, quality gates, testing strategy, feature alignment, and contribution conventions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-02T12:57:10Z
+generated-at: 2026-04-03T11:29:03Z
 source-files:
   - AGENT.md
   - CONTRIBUTING.md
@@ -12,10 +12,15 @@ source-files:
   - client/vite.config.ts
   - client/vitest.config.ts
   - Makefile
+  - backend/internal/runtimefeatures/manifest.go
+  - backend/internal/publicconfig/service.go
+  - client/src/api/auth.api.ts
+  - client/src/store/featureFlagsStore.ts
   - scripts/go-build-all.sh
   - scripts/go-test-all.sh
   - scripts/security-scan.sh
   - scripts/dev-api-acceptance.sh
+  - scripts/db-migrate.sh
   - tools/arsenale-cli/cmd/root.go
 ---
 
@@ -30,6 +35,7 @@ Arsenale is a mixed Go and JavaScript monorepo.
 | Tunnel agent | `gateways/tunnel-agent/` | TypeScript workspace |
 | Browser extension | `extra-clients/browser-extensions/` | Chrome MV3 workspace |
 | CLI | `tools/arsenale-cli/` | Go |
+| Installer and deploy | `deployment/ansible/`, `deployment/helm/` | Ansible, Helm, Python helpers |
 
 One important correction to older contributor material: the active runtime is not a legacy Express `server/`. The live platform is Go-first and the route surface comes from `backend/cmd/control-plane-api`.
 
@@ -37,8 +43,8 @@ One important correction to older contributor material: the active runtime is no
 
 ```mermaid
 flowchart LR
-    A["npm install"] --> B["npm run dev"]
-    B --> C["Edit backend / client / gateways"]
+    A["npm install"] --> B["npm run dev or make dev"]
+    B --> C["Edit backend / client / gateways / installer"]
     C --> D["Focused tests"]
     D --> E["npm run verify"]
     E --> F["CLI smoke via arsenale-cli"]
@@ -46,11 +52,13 @@ flowchart LR
 
 Recommended day-to-day loop:
 
-1. Keep the dev stack running with `npm run dev`.
-2. Use `npm run dev:client` only when frontend-only work does not need backend restarts.
+1. Use `npm run dev` when you want the repo root to deploy the stack and launch Vite for you.
+2. Use `make dev` plus `npm run dev:client` when you want explicit control over deploy and frontend startup.
 3. Run focused Go or Vitest commands while iterating.
 4. Run `npm run verify` before declaring a change complete.
 5. Use the CLI from `tools/arsenale-cli` as an acceptance client for auth, connection, gateway, and session flows.
+
+Podman is required for installer-aware development deploys because `make dev` delegates to `deployment/ansible/playbooks/install.yml`.
 
 ## ✅ Quality Gates
 
@@ -73,8 +81,9 @@ Supporting scripts:
 |--------|---------|
 | `scripts/go-test-all.sh` | Aggregate Go test runner |
 | `scripts/go-build-all.sh` | Aggregate Go build runner |
-| `scripts/security-scan.sh` | npm audit, ESLint security, Trivy filesystem, optional image scans |
+| `scripts/security-scan.sh` | npm audit, ESLint security rules, Trivy filesystem scan, optional image scans |
 | `scripts/dev-api-acceptance.sh` | Full API and runtime acceptance against the dev stack |
+| `scripts/db-migrate.sh` | Runtime-aware migration helper with compose overrides |
 
 ## 🧪 Testing Surfaces
 
@@ -82,7 +91,7 @@ Supporting scripts:
 
 - `client/package.json` uses `vitest run` for tests.
 - `client/vitest.config.ts` defines the test runtime.
-- Vite and the SPA proxy behavior live in `client/vite.config.ts`.
+- `client/vite.config.ts` defines the local proxy behavior and HTTPS setup.
 
 ### Go services
 
@@ -107,6 +116,19 @@ The backend, gateway modules, and CLI are all first-class test targets. `scripts
 - recordings,
 - audit,
 - database sessions and policies.
+
+## 🧩 Capability Alignment Rule
+
+Runtime capabilities now span backend registration, public config, and client UI state. When you change feature availability or installer-owned product shape, update these together:
+
+- `backend/internal/runtimefeatures/manifest.go`
+- `backend/internal/publicconfig/service.go`
+- `backend/cmd/control-plane-api/routes*.go`
+- `client/src/api/auth.api.ts`
+- `client/src/store/featureFlagsStore.ts`
+- any client screens or dialogs gated on those flags
+
+If one layer changes and the others do not, the change is incomplete.
 
 ## 🧰 CLI Alignment Rule
 
@@ -133,20 +155,22 @@ go build -o /tmp/arsenale-cli ./tools/arsenale-cli
 
 | Area | Convention |
 |------|------------|
-| Public routes | `backend/cmd/control-plane-api/routes_*.go` |
+| Public routes | `backend/cmd/control-plane-api/routes*.go` |
 | Service entrypoints | `backend/cmd/<service>/main.go` |
 | Shared service wrapper | `backend/internal/app/app.go` |
+| Runtime feature manifest | `backend/internal/runtimefeatures/manifest.go` |
+| Public config | `backend/internal/publicconfig/service.go` |
 | Client API modules | `client/src/api/*.ts` |
 | Client stores | `client/src/store/*Store.ts` |
 | Root env | Single `.env` at repo root |
 
 Additional notes:
 
-- `CONTRIBUTING.md` still contains useful process guidance, but its old Express/server architecture examples are historical and should not be used as the runtime reference.
-- The current CI configuration verifies PRs targeting `develop`, `staging`, and `main`. In practice, short-lived branches should be merged with those gates in mind.
-- The docs, route files, and CLI should move together whenever API behavior changes.
+- `CONTRIBUTING.md` still contains useful process guidance, but its old Express examples are historical and should not be used as the runtime reference.
+- When changing installer behavior, validate both the interactive playbooks and the emitted compose or Helm artifacts.
+- The docs, route files, feature manifest, and CLI should move together whenever API behavior changes.
 
-## 🔍 Security and Static Analysis During Development
+## 🔍 Security And Static Analysis During Development
 
 `scripts/security-scan.sh` supports three modes:
 
@@ -156,4 +180,4 @@ Additional notes:
 | default | quick checks plus Trivy filesystem scan |
 | `--docker` | default checks plus image builds and image vulnerability scans |
 
-This is useful when changing containers, auth, gateway code, or anything that touches secrets and networking.
+This is especially useful when changing containers, auth, gateway code, installer wiring, or anything that touches secrets and networking.

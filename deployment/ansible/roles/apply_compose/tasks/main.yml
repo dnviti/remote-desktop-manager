@@ -1,0 +1,10 @@
+---
+- name: Build or pull compose images
+  include_role:
+    name: deploy
+    tasks_from: build.yml
+
+- name: Apply compose runtime
+  include_role:
+    name: deploy
+    tasks_from: apply.yml

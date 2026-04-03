@@ -20,6 +20,7 @@
 - name: Set runtime private key mode
   set_fact:
     _runtime_key_mode: "{{ '0644' if (_is_dev | default(false) | bool) else '0600' }}"
+    _guacd_runtime_key_mode: "0644"
     _spiffe_trust_domain: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
 
 - name: Derive development client extra IPv4 SANs
@@ -184,7 +185,7 @@
       - { name: control-plane-api, cn: arsenale-control-plane-api, san: "DNS:arsenale-control-plane-api,DNS:localhost,IP:127.0.0.1", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/control-plane-api", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
       - { name: postgres, cn: arsenale-postgres, san: "DNS:arsenale-postgres,DNS:postgres,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/postgres", eku: ["serverAuth"], key_mode: "0600" }
       - { name: guacenc, cn: arsenale-guacenc, san: "DNS:arsenale-guacenc,DNS:guacenc,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/guacenc", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
-      - { name: guacd, cn: arsenale-guacd, san: "DNS:arsenale-guacd,DNS:guacd,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/guacd", eku: ["serverAuth"], key_mode: "{{ _runtime_key_mode }}" }
+      - { name: guacd, cn: arsenale-guacd, san: "DNS:arsenale-guacd,DNS:guacd,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/guacd", eku: ["serverAuth"], key_mode: "{{ _guacd_runtime_key_mode }}" }
       - { name: ssh-gateway, cn: arsenale-ssh-gateway, san: "DNS:arsenale-ssh-gateway,DNS:ssh-gateway,DNS:dev-tunnel-ssh-gateway,DNS:localhost", spiffe_id: "spiffe://{{ _spiffe_trust_domain }}/service/ssh-gateway", eku: ["serverAuth", "clientAuth"], key_mode: "{{ _runtime_key_mode }}" }
 
 - name: Remove service certificates signed by malformed root CA

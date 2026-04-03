@@ -1,0 +1,110 @@
+---
+- name: Bootstrap development gateways and tunnel fixtures
+  command: >
+    {{ container_runtime | default('podman') }} exec
+    --user 0
+    arsenale-control-plane-api
+    /usr/local/bin/service dev-bootstrap
+  changed_when: true
+  register: dev_bootstrap
+  retries: 12
+  delay: 5
+  until: dev_bootstrap.rc == 0
+
+- name: Seed development demo PostgreSQL dataset
+  shell: |
+    set -euo pipefail
+    {{ container_runtime | default('podman') }} exec \
+      -e PGPASSWORD='{{ dev_sample_postgres_password }}' \
+      arsenale-dev-demo-postgres \
+      psql -h 127.0.0.1 -U '{{ dev_sample_postgres_user }}' -d '{{ dev_sample_postgres_database }}' -v ON_ERROR_STOP=1 -f /seed/seed.sql
+  args:
+    executable: /bin/bash
+  retries: 24
+  delay: 5
+  register: demo_postgres_seed
+  until: demo_postgres_seed.rc == 0
+  changed_when: false
+
+- name: Seed development demo MySQL dataset
+  shell: |
+    set -euo pipefail
+    {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mysql sh -lc \
+      'mysql -h 127.0.0.1 -u"${MYSQL_USER}" -p"${MYSQL_PASSWORD}" "${MYSQL_DATABASE}" < /seed/seed.sql'
+  args:
+    executable: /bin/bash
+  retries: 24
+  delay: 5
+  register: demo_mysql_seed
+  until: demo_mysql_seed.rc == 0
+  changed_when: false
+
+- name: Seed development demo MongoDB dataset
+  shell: |
+    set -euo pipefail
+    {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mongodb \
+      mongosh --quiet --host 127.0.0.1 --port {{ dev_sample_mongodb_port }} \
+      -u '{{ dev_sample_mongodb_root_user }}' \
+      -p '{{ dev_sample_mongodb_root_password }}' \
+      --authenticationDatabase admin \
+      /seed/seed.js
+  args:
+    executable: /bin/bash
+  retries: 24
+  delay: 5
+  register: demo_mongodb_seed
+  until: demo_mongodb_seed.rc == 0
+  changed_when: false
+
+- name: Seed development demo Oracle dataset
+  shell: |
+    set -euo pipefail
+    {{ container_runtime | default('podman') }} exec arsenale-dev-demo-oracle bash -lc \
+      "sqlplus -L -s '{{ dev_sample_oracle_user }}/{{ dev_sample_oracle_password }}@//127.0.0.1:{{ dev_sample_oracle_port }}/{{ dev_sample_oracle_service_name }}' @/seed/seed.sql"
+  args:
+    executable: /bin/bash
+  retries: 48
+  delay: 10
+  register: demo_oracle_seed
+  until: demo_oracle_seed.rc == 0
+  changed_when: false
+
+- name: Seed development demo MSSQL dataset
+  shell: |
+    set -euo pipefail
+    {{ container_runtime | default('podman') }} exec arsenale-dev-demo-mssql bash -lc '
+      sqlcmd_path="/opt/mssql-tools18/bin/sqlcmd"
+      if [ ! -x "${sqlcmd_path}" ]; then
+        sqlcmd_path="/opt/mssql-tools/bin/sqlcmd"
+      fi
+      "${sqlcmd_path}" -S 127.0.0.1,{{ dev_sample_mssql_port }} -U sa -P "{{ dev_sample_mssql_sa_password }}" -C -i /seed/seed.sql
+    '
+  args:
+    executable: /bin/bash
+  retries: 48
+  delay: 10
+  register: demo_mssql_seed
+  until: demo_mssql_seed.rc == 0
+  changed_when: false
+
+- name: Run development acceptance suite
+  shell: |
+    set -euo pipefail
+    {{ container_runtime | default('podman') }} exec arsenale-redis sh -lc 'keys=$(redis-cli --scan --pattern "rl:*"); if [ -n "$keys" ]; then redis-cli DEL $keys >/dev/null; fi'
+    {{ container_runtime | default('podman') }} exec arsenale-postgres sh -lc "printf '%s\n' \"UPDATE \\\"User\\\" SET \\\"failedLoginAttempts\\\" = 0, \\\"lockedUntil\\\" = NULL WHERE email = '{{ arsenale_dev_bootstrap_admin_email }}';\" | PGPASSWORD='{{ vault_postgres_password }}' psql -U '{{ arsenale_db_user }}' -d '{{ arsenale_db_name }}' >/dev/null"
+    rm -f /tmp/arsenale-dev-access-token /tmp/arsenale-dev-tenant-id
+    ARSENALE_SAMPLE_POSTGRES_HOST='{{ dev_sample_postgres_host }}' \
+    ARSENALE_SAMPLE_POSTGRES_PORT='{{ dev_sample_postgres_port }}' \
+    ARSENALE_SAMPLE_POSTGRES_DB_NAME='{{ dev_sample_postgres_database }}' \
+    ARSENALE_SAMPLE_POSTGRES_USER='{{ dev_sample_postgres_user }}' \
+    ARSENALE_SAMPLE_POSTGRES_PASSWORD='{{ dev_sample_postgres_password }}' \
+    ARSENALE_SAMPLE_POSTGRES_SSL_MODE='{{ dev_sample_postgres_ssl_mode }}' \
+    ARSENALE_CONTAINER_RUNTIME='{{ container_runtime | default('podman') }}' \
+    {{ playbook_dir }}/../../../scripts/dev-api-acceptance.sh >/tmp/arsenale-ansible-acceptance.log
+  args:
+    executable: /bin/bash
+  retries: 24
+  delay: 5
+  register: user_profile_check
+  until: user_profile_check.rc == 0
+  changed_when: false

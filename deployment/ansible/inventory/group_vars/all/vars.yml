@@ -4,6 +4,18 @@ arsenale_client_port: 3000
 arsenale_client_bind_host: 127.0.0.1
 arsenale_public_url: https://arsenale.home.arpa.viti
 arsenale_ssh_port: 2222
+arsenale_control_plane_api_port: 18080
+arsenale_control_plane_controller_port: 18081
+arsenale_authz_pdp_port: 18082
+arsenale_model_gateway_port: 18083
+arsenale_tool_gateway_port: 18084
+arsenale_agent_orchestrator_port: 18085
+arsenale_memory_service_port: 18086
+arsenale_terminal_broker_port: 18090
+arsenale_desktop_broker_port: 18091
+arsenale_tunnel_broker_port: 18092
+arsenale_query_runner_port: 18093
+arsenale_runtime_agent_port: 18095
 arsenale_node_env: production
 
 # Database

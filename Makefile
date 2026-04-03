@@ -3,8 +3,9 @@
 # ============================================================================
 # Usage:
 #   make setup      — First-time setup: install Ansible collections, generate vault + certs
-#   make dev        — Start the full development stack
-#   make deploy     — Deploy full production stack
+#   make install    — Run the interactive installer
+#   make dev        — Start the full installer-aware development stack
+#   make deploy     — Run the installer in production mode
 #   make help       — Show all available targets
 # ============================================================================
 
@@ -54,14 +55,15 @@ setup: _check-ansible  ## First-time setup: install collections, generate vault 
 	fi
 	@echo ""
 	@echo "Setup complete. Next steps:"
+	@echo "  make install   — Run interactive installer"
 	@echo "  make dev       — Start development environment"
 	@echo "  make deploy    — Deploy production stack"
 
 # ── Development ─────────────────────────────────────────────────────────────
 
 .PHONY: dev
-dev: _check-ansible  ## Deploy full dev stack (all services, verbose logs)
-	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) -e arsenale_env=development
+dev: _check-ansible  ## Deploy full dev stack via installer-aware flow
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=development
 
 .PHONY: dev-down
 dev-down: _check-ansible  ## Stop dev stack
@@ -69,15 +71,27 @@ dev-down: _check-ansible  ## Stop dev stack
 
 # ── Production ──────────────────────────────────────────────────────────────
 
+.PHONY: install
+install: _check-ansible  ## Run interactive installer
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG)
+
+.PHONY: configure
+configure: _check-ansible  ## Reconfigure an existing production install
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=production
+
 .PHONY: deploy
-deploy: _check-ansible  ## Deploy full production stack
-	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG)
+deploy: _check-ansible  ## Deploy or update production stack via installer
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=production
 
 # ── Operations ──────────────────────────────────────────────────────────────
 
 .PHONY: status
-status: _check-ansible  ## Show service status
-	$(PLAYBOOK) playbooks/deploy.yml $(VAULT_FLAG) --tags status
+status: _check-ansible  ## Show encrypted installer status
+	$(PLAYBOOK) playbooks/status.yml $(VAULT_FLAG)
+
+.PHONY: recover
+recover: _check-ansible  ## Re-run installer recovery flow in production mode
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) -e installer_mode=production
 
 .PHONY: logs
 logs:  ## Follow service logs (pass SVC= for specific service)

@@ -7,23 +7,19 @@ import (
 	"os"
 
 	"github.com/dnviti/arsenale/backend/internal/app"
+	"github.com/dnviti/arsenale/backend/internal/runtimefeatures"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Service struct {
-	DB *pgxpool.Pool
+	DB       *pgxpool.Pool
+	Features runtimefeatures.Manifest
 }
 
 type authConfigResponse struct {
-	SelfSignupEnabled bool              `json:"selfSignupEnabled"`
-	Features          authConfigFeature `json:"features"`
-}
-
-type authConfigFeature struct {
-	DatabaseProxyEnabled bool `json:"databaseProxyEnabled"`
-	ConnectionsEnabled   bool `json:"connectionsEnabled"`
-	KeychainEnabled      bool `json:"keychainEnabled"`
+	SelfSignupEnabled bool                     `json:"selfSignupEnabled"`
+	Features          runtimefeatures.Manifest `json:"features"`
 }
 
 func (s Service) HandleAuthConfig(w http.ResponseWriter, r *http.Request) {
@@ -41,11 +37,7 @@ func (s Service) HandleAuthConfig(w http.ResponseWriter, r *http.Request) {
 
 	app.WriteJSON(w, http.StatusOK, authConfigResponse{
 		SelfSignupEnabled: selfSignupEnabled,
-		Features: authConfigFeature{
-			DatabaseProxyEnabled: featureEnabled("FEATURE_DATABASE_PROXY_ENABLED"),
-			ConnectionsEnabled:   featureEnabled("FEATURE_CONNECTIONS_ENABLED"),
-			KeychainEnabled:      featureEnabled("FEATURE_KEYCHAIN_ENABLED"),
-		},
+		Features:          s.Features,
 	})
 }
 
@@ -66,8 +58,4 @@ func (s Service) getSelfSignupEnabled(ctx context.Context) (bool, error) {
 		return false, fmt.Errorf("query self-signup flag: %w", err)
 	}
 	return value == "true", nil
-}
-
-func featureEnabled(key string) bool {
-	return os.Getenv(key) != "false"
 }

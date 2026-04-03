@@ -102,20 +102,36 @@ interface SettingsDialogProps {
 
 export default function SettingsDialog({ open, onClose, initialTab, linkedProvider, onViewUserProfile, onGeoIpClick, onImport, onExport }: SettingsDialogProps) {
   const user = useAuthStore((s) => s.user);
+  const connectionsEnabled = useFeatureFlagsStore((s) => s.connectionsEnabled);
   const databaseProxyEnabled = useFeatureFlagsStore((s) => s.databaseProxyEnabled);
+  const keychainEnabled = useFeatureFlagsStore((s) => s.keychainEnabled);
+  const zeroTrustEnabled = useFeatureFlagsStore((s) => s.zeroTrustEnabled);
+  const agenticAIEnabled = useFeatureFlagsStore((s) => s.agenticAIEnabled);
+  const enterpriseAuthEnabled = useFeatureFlagsStore((s) => s.enterpriseAuthEnabled);
   const [hasPassword, setHasPassword] = useState(true);
   const [deleteOrgTrigger, setDeleteOrgTrigger] = useState<(() => void) | null>(null);
 
   const hasTenant = Boolean(user?.tenantId);
   const isAdmin = isAdminOrAbove(user?.tenantRole);
   const isOwner = user?.tenantRole === 'OWNER';
+  const anyConnectionFeature = connectionsEnabled || databaseProxyEnabled;
+  const integrationsEnabled = enterpriseAuthEnabled || agenticAIEnabled || databaseProxyEnabled;
 
   const tabs = useMemo(() => {
-    const t = [...BASE_TABS];
-    if (hasTenant) t.push(...TENANT_TABS);
-    if (isAdmin) t.push(TUNNEL_TAB, ADMIN_TAB);
+    const t = BASE_TABS.filter((tab) => tab.id !== 'connections' || anyConnectionFeature);
+    if (hasTenant) {
+      t.push(...TENANT_TABS.filter((tab) => {
+        if (tab.id === 'gateways') return zeroTrustEnabled;
+        if (tab.id === 'integrations') return integrationsEnabled;
+        return true;
+      }));
+    }
+    if (isAdmin) {
+      if (zeroTrustEnabled) t.push(TUNNEL_TAB);
+      t.push(ADMIN_TAB);
+    }
     return t;
-  }, [hasTenant, isAdmin]);
+  }, [anyConnectionFeature, hasTenant, integrationsEnabled, isAdmin, zeroTrustEnabled]);
 
   const validTabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
 
@@ -263,9 +279,9 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
               <TwoFactorSection />
               <SmsMfaSection />
               <WebAuthnSection />
-              <VaultAutoLockSection />
+              {keychainEnabled && <VaultAutoLockSection />}
               <DomainProfileSection />
-              <LinkedAccountsSection hasPassword={hasPassword} />
+              {enterpriseAuthEnabled && <LinkedAccountsSection hasPassword={hasPassword} />}
             </Stack>
           )}
           {resolvedTab === 'organization' && (
@@ -274,7 +290,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
                 onViewUserProfile={onViewUserProfile}
                 onDeleteRequest={(trigger) => setDeleteOrgTrigger(() => trigger)}
               />
-              {isAdmin && <TenantConnectionPolicySection />}
+              {isAdmin && anyConnectionFeature && <TenantConnectionPolicySection />}
               {isOwner && deleteOrgTrigger && (
                 <Card
                   variant="outlined"
@@ -310,7 +326,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
           {resolvedTab === 'integrations' && (
             <Stack spacing={3}>
               <SyncProfileSection />
-              {isOwner && databaseProxyEnabled && <AiQueryConfigSection />}
+              {isOwner && databaseProxyEnabled && agenticAIEnabled && <AiQueryConfigSection />}
             </Stack>
           )}
           {resolvedTab === 'tunnel' && <TunnelConfigSection />}
@@ -318,14 +334,14 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
             <Stack spacing={3}>
               <SelfSignupSection />
               <SystemSettingsSection />
-              <NativeSshSection />
+              {connectionsEnabled && <NativeSshSection />}
               <IpAllowlistSection />
-              <AccessPolicySection />
-              <RdGatewayConfigSection />
-              <OAuthProvidersAdminSection />
+              {connectionsEnabled && <AccessPolicySection />}
+              {connectionsEnabled && <RdGatewayConfigSection />}
+              {enterpriseAuthEnabled && <OAuthProvidersAdminSection />}
               <EmailProviderSection />
-              <LdapConfigSection />
-              <SamlConfigSection />
+              {enterpriseAuthEnabled && <LdapConfigSection />}
+              {enterpriseAuthEnabled && <SamlConfigSection />}
               {databaseProxyEnabled && <DbFirewallSection />}
               {databaseProxyEnabled && <DbMaskingSection />}
               {databaseProxyEnabled && <DbRateLimitSection />}

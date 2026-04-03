@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -41,7 +42,7 @@ func OpenPostgres(ctx context.Context) (*pgxpool.Pool, error) {
 }
 
 func DatabaseURLFromEnv() (string, error) {
-	if value := os.Getenv("DATABASE_URL"); value != "" {
+	if value := strings.TrimSpace(os.Getenv("DATABASE_URL")); value != "" {
 		return value, nil
 	}
 
@@ -55,7 +56,7 @@ func DatabaseURLFromEnv() (string, error) {
 		return "", fmt.Errorf("read DATABASE_URL_FILE: %w", err)
 	}
 
-	return string(payload), nil
+	return strings.TrimSpace(string(payload)), nil
 }
 
 func augmentDatabaseURL(rawURL, sslRootCert string) string {

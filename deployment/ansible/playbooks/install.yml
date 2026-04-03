@@ -1,0 +1,346 @@
+---
+- name: Collect installer inputs
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: Prompt for installer password
+      pause:
+        prompt: "Technician password"
+        echo: false
+      register: installer_password_prompt
+      when:
+        - installer_password is not defined
+        - install_password_file is not defined
+      no_log: true
+
+    - name: Resolve installer password
+      set_fact:
+        installer_password_value: >-
+          {{
+            installer_password
+            | default(
+                (
+                  lookup('file', install_password_file) | trim
+                )
+                if (install_password_file is defined)
+                else installer_password_prompt.user_input
+              )
+          }}
+      no_log: true
+
+    - name: Prompt for installation mode
+      pause:
+        prompt: "Installation mode [development/production]"
+        echo: true
+      register: installer_mode_prompt
+      when: installer_mode is not defined
+
+    - name: Resolve installation mode
+      set_fact:
+        installer_mode_value: "{{ (installer_mode | default(installer_mode_prompt.user_input | default('production'))) | trim | default('production', true) }}"
+
+    - name: Prompt for production backend
+      pause:
+        prompt: "Backend [podman/kubernetes]"
+        echo: true
+      register: installer_backend_prompt
+      when:
+        - installer_mode_value != 'development'
+        - installer_backend is not defined
+
+    - name: Resolve production backend
+      set_fact:
+        installer_backend_value: >-
+          {{
+            (
+              installer_backend
+              | default(installer_backend_prompt.user_input | default('podman'))
+            ) | trim | default('podman', true)
+          }}
+      when: installer_mode_value != 'development'
+
+    - name: Validate requested production backend
+      assert:
+        that:
+          - installer_backend_value in ['podman', 'kubernetes']
+        fail_msg: "Docker is no longer a supported installer backend. Use podman or kubernetes."
+      when: installer_mode_value != 'development'
+
+- name: Install or reconfigure local development Arsenale
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+
+  vars:
+    installer_password: "{{ hostvars['localhost'].installer_password_value }}"
+    installer_backend: podman
+    _is_dev: true
+    _state: present
+    _home: "{{ playbook_dir + '/../../..' }}"
+    arsenale_source_root: "{{ playbook_dir + '/../../..' }}"
+    installer_workspace_dir: "{{ _home }}/.installer-workspace"
+    installer_scripts_dir: "{{ installer_workspace_dir }}/scripts"
+    installer_catalog_dir: "{{ installer_workspace_dir }}/install"
+    installer_tmp_dir: "{{ _home }}/.installer-tmp"
+    installer_artifacts_dir: "{{ _home }}/install"
+    installer_artifact_owner: "{{ lookup('env', 'USER') | default(ansible_user_id, true) }}"
+    installer_artifact_group: "{{ lookup('env', 'USER') | default(ansible_user_id, true) }}"
+    arsenale_node_env: development
+    arsenale_log_level: "info"
+    arsenale_log_http_requests: "false"
+    arsenale_log_guacamole: "false"
+    arsenale_log_timestamps: "true"
+    arsenale_firewall_enabled: false
+    arsenale_trust_proxy_effective: 1
+    _cookie_secure: true
+    _client_bind_host: "{{ arsenale_client_bind_host | default('0.0.0.0') }}"
+    _public_url: "{{ arsenale_public_url | default('https://' ~ arsenale_domain ~ ('' if (arsenale_client_port | int) == 443 else ':' ~ (arsenale_client_port | string))) }}"
+    _dev_client_url: "{{ 'https://localhost:' ~ (arsenale_client_port | string) }}"
+    _build: true
+    arsenale_cert_dir: "{{ _home + '/dev-certs' }}"
+    dev_sample_postgres_host: "dev-demo-postgres"
+    dev_sample_postgres_port: 5432
+    dev_sample_postgres_database: "arsenale_demo"
+    dev_sample_postgres_user: "demo_pg_user"
+    dev_sample_postgres_password: "DemoPgPass123!"
+    dev_sample_postgres_ssl_mode: "disable"
+    dev_sample_mysql_host: "dev-demo-mysql"
+    dev_sample_mysql_port: 3306
+    dev_sample_mysql_database: "arsenale_demo"
+    dev_sample_mysql_user: "demo_mysql_user"
+    dev_sample_mysql_password: "DemoMySqlPass123!"
+    dev_sample_mysql_root_password: "DemoMySqlRoot123!"
+    dev_sample_mongodb_host: "dev-demo-mongodb"
+    dev_sample_mongodb_port: 27017
+    dev_sample_mongodb_database: "arsenale_demo"
+    dev_sample_mongodb_root_user: "demo_mongo_root"
+    dev_sample_mongodb_root_password: "DemoMongoRoot123!"
+    dev_sample_mongodb_user: "demo_mongo_user"
+    dev_sample_mongodb_password: "DemoMongoPass123!"
+    dev_sample_oracle_host: "dev-demo-oracle"
+    dev_sample_oracle_port: 1521
+    dev_sample_oracle_service_name: "FREEPDB1"
+    dev_sample_oracle_user: "demo_oracle_user"
+    dev_sample_oracle_password: "DemoOraclePass123!"
+    dev_sample_oracle_system_password: "DemoOracleSys123!"
+    dev_sample_mssql_host: "dev-demo-mssql"
+    dev_sample_mssql_port: 1433
+    dev_sample_mssql_database: "ArsenaleDemo"
+    dev_sample_mssql_user: "demo_mssql_user"
+    dev_sample_mssql_password: "DemoMssqlPass123!"
+    dev_sample_mssql_sa_password: "DemoMssqlSa123!"
+
+  tasks:
+    - block:
+        - name: Ensure installer temp root exists
+          file:
+            path: "{{ installer_tmp_dir }}"
+            state: directory
+            owner: "{{ installer_artifact_owner }}"
+            group: "{{ installer_artifact_group }}"
+            mode: "0750"
+
+        - name: Find stale installer session temp directories
+          find:
+            paths: "{{ installer_tmp_dir }}"
+            patterns: "run-*"
+            file_type: directory
+            recurse: false
+          register: installer_stale_tmp_sessions
+
+        - name: Remove stale installer session temp directories
+          file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ installer_stale_tmp_sessions.files | default([]) }}"
+
+        - name: Create installer session temp directory
+          tempfile:
+            state: directory
+            path: "{{ installer_tmp_dir }}"
+            prefix: run-
+          register: installer_tmp_session
+
+        - name: Override installer temp dir for this run
+          set_fact:
+            installer_tmp_dir: "{{ installer_tmp_session.path }}"
+
+        - include_tasks: tasks/install_apply.yml
+      when: hostvars['localhost'].installer_mode_value == 'development'
+      always:
+        - name: Remove installer session temp directory
+          file:
+            path: "{{ installer_tmp_session.path }}"
+            state: absent
+          when: installer_tmp_session is defined
+
+- name: Install or reconfigure production Arsenale
+  hosts: arsenale-control-plane
+  connection: ssh
+  become: true
+  become_user: "{{ arsenale_user | default('arsenale') }}"
+  gather_facts: false
+
+  vars:
+    ansible_shell_allow_world_readable_temp: true
+    installer_password: "{{ hostvars['localhost'].installer_password_value }}"
+    installer_backend: "{{ hostvars['localhost'].installer_backend_value | default('podman') }}"
+    _is_dev: false
+    _state: present
+    _home: "{{ arsenale_home | default('/opt/arsenale') }}"
+    arsenale_source_root: "{{ (arsenale_home | default('/opt/arsenale')) + '/arsenale' }}"
+    installer_workspace_dir: "{{ _home }}/.installer-workspace"
+    installer_scripts_dir: "{{ installer_workspace_dir }}/scripts"
+    installer_catalog_dir: "{{ installer_workspace_dir }}/install"
+    installer_tmp_dir: "{{ _home }}/.installer-tmp"
+    installer_artifacts_dir: "{{ _home }}/install"
+    installer_artifact_owner: "{{ arsenale_user | default(ansible_user_id) }}"
+    installer_artifact_group: "{{ arsenale_user | default(ansible_user_id) }}"
+    arsenale_node_env: production
+    arsenale_log_level: "info"
+    arsenale_log_http_requests: "false"
+    arsenale_log_guacamole: "false"
+    arsenale_log_timestamps: "true"
+    arsenale_trust_proxy_effective: "{{ arsenale_trust_proxy | default(false) }}"
+    _cookie_secure: "{{ arsenale_cookie_secure | default(true) }}"
+    _client_bind_host: "{{ arsenale_client_bind_host | default('0.0.0.0') }}"
+    _public_url: "{{ arsenale_public_url | default('https://' ~ arsenale_domain ~ ('' if (arsenale_client_port | int) == 443 else ':' ~ (arsenale_client_port | string))) }}"
+    _dev_client_url: "{{ 'https://localhost:' ~ (arsenale_client_port | string) }}"
+    _build: "{{ arsenale_build_images | default(true) }}"
+    arsenale_cert_dir: "{{ arsenale_home | default('/opt/arsenale') }}/certs"
+
+  tasks:
+    - name: Gather production target facts
+      setup:
+      when:
+        - hostvars['localhost'].installer_mode_value != 'development'
+        - hostvars['localhost'].installer_backend_value | default(installer_backend | default('podman')) != 'kubernetes'
+
+    - block:
+        - name: Ensure installer temp root exists
+          file:
+            path: "{{ installer_tmp_dir }}"
+            state: directory
+            owner: "{{ installer_artifact_owner }}"
+            group: "{{ installer_artifact_group }}"
+            mode: "0750"
+
+        - name: Find stale installer session temp directories
+          find:
+            paths: "{{ installer_tmp_dir }}"
+            patterns: "run-*"
+            file_type: directory
+            recurse: false
+          register: installer_stale_tmp_sessions
+
+        - name: Remove stale installer session temp directories
+          file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ installer_stale_tmp_sessions.files | default([]) }}"
+
+        - name: Create installer session temp directory
+          tempfile:
+            state: directory
+            path: "{{ installer_tmp_dir }}"
+            prefix: run-
+          register: installer_tmp_session
+
+        - name: Override installer temp dir for this run
+          set_fact:
+            installer_tmp_dir: "{{ installer_tmp_session.path }}"
+
+        - include_tasks: tasks/install_apply.yml
+      when:
+        - hostvars['localhost'].installer_mode_value != 'development'
+        - hostvars['localhost'].installer_backend_value | default(installer_backend | default('podman')) != 'kubernetes'
+      always:
+        - name: Remove installer session temp directory
+          file:
+            path: "{{ installer_tmp_session.path }}"
+            state: absent
+          when: installer_tmp_session is defined
+
+- name: Install or reconfigure Kubernetes Arsenale
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: true
+
+  vars:
+    installer_password: "{{ hostvars['localhost'].installer_password_value }}"
+    installer_backend: "{{ hostvars['localhost'].installer_backend_value | default('kubernetes') }}"
+    _is_dev: false
+    _state: present
+    _home: "{{ playbook_dir + '/../../..' }}"
+    arsenale_source_root: "{{ playbook_dir + '/../../..' }}"
+    installer_workspace_dir: "{{ _home }}/.installer-workspace"
+    installer_scripts_dir: "{{ installer_workspace_dir }}/scripts"
+    installer_catalog_dir: "{{ installer_workspace_dir }}/install"
+    installer_tmp_dir: "{{ _home }}/.installer-tmp"
+    installer_artifacts_dir: "{{ _home }}/install"
+    installer_artifact_owner: "{{ lookup('env', 'USER') | default(ansible_user_id, true) }}"
+    installer_artifact_group: "{{ lookup('env', 'USER') | default(ansible_user_id, true) }}"
+    arsenale_node_env: production
+    arsenale_log_level: "info"
+    arsenale_log_http_requests: "false"
+    arsenale_log_guacamole: "false"
+    arsenale_log_timestamps: "true"
+    arsenale_firewall_enabled: false
+    arsenale_trust_proxy_effective: "{{ arsenale_trust_proxy | default(false) }}"
+    _cookie_secure: "{{ arsenale_cookie_secure | default(true) }}"
+    _client_bind_host: "{{ arsenale_client_bind_host | default('0.0.0.0') }}"
+    _public_url: "{{ arsenale_public_url | default('https://' ~ arsenale_domain ~ ('' if (arsenale_client_port | int) == 443 else ':' ~ (arsenale_client_port | string))) }}"
+    _dev_client_url: "{{ 'https://localhost:' ~ (arsenale_client_port | string) }}"
+    _build: "{{ arsenale_build_images | default(false) }}"
+    arsenale_cert_dir: "{{ _home + '/dev-certs' }}"
+
+  tasks:
+    - block:
+        - name: Ensure installer temp root exists
+          file:
+            path: "{{ installer_tmp_dir }}"
+            state: directory
+            owner: "{{ installer_artifact_owner }}"
+            group: "{{ installer_artifact_group }}"
+            mode: "0750"
+
+        - name: Find stale installer session temp directories
+          find:
+            paths: "{{ installer_tmp_dir }}"
+            patterns: "run-*"
+            file_type: directory
+            recurse: false
+          register: installer_stale_tmp_sessions
+
+        - name: Remove stale installer session temp directories
+          file:
+            path: "{{ item.path }}"
+            state: absent
+          loop: "{{ installer_stale_tmp_sessions.files | default([]) }}"
+
+        - name: Create installer session temp directory
+          tempfile:
+            state: directory
+            path: "{{ installer_tmp_dir }}"
+            prefix: run-
+          register: installer_tmp_session
+
+        - name: Override installer temp dir for this run
+          set_fact:
+            installer_tmp_dir: "{{ installer_tmp_session.path }}"
+
+        - include_tasks: tasks/install_apply.yml
+      when:
+        - hostvars['localhost'].installer_mode_value != 'development'
+        - hostvars['localhost'].installer_backend_value | default(installer_backend | default('podman')) == 'kubernetes'
+      always:
+        - name: Remove installer session temp directory
+          file:
+            path: "{{ installer_tmp_session.path }}"
+            state: absent
+          when: installer_tmp_session is defined

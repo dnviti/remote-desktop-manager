@@ -41,6 +41,7 @@ import (
 	"github.com/dnviti/arsenale/backend/internal/publicshareapi"
 	"github.com/dnviti/arsenale/backend/internal/rdgatewayapi"
 	"github.com/dnviti/arsenale/backend/internal/recordingsapi"
+	"github.com/dnviti/arsenale/backend/internal/runtimefeatures"
 	"github.com/dnviti/arsenale/backend/internal/secretsmeta"
 	"github.com/dnviti/arsenale/backend/internal/sessionadmin"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
@@ -130,6 +131,7 @@ type apiDependencies struct {
 	sshProxyService         sshproxyapi.Service
 	modelGatewayService     modelgatewayapi.Service
 	authenticator           *authn.Authenticator
+	features                runtimefeatures.Manifest
 }
 
 func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
@@ -226,6 +228,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 
 	store := orchestration.NewStore(db)
 	modelGatewayStore := modelgateway.NewStore(db)
+	featureManifest := runtimefeatures.FromEnv()
 
 	sessionStore := sessions.NewStore(db)
 	tenantAuthService := tenantauth.Service{DB: db}
@@ -292,7 +295,8 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			TenantVaultService: &tenantVaultService,
 		},
 		publicConfigService: publicconfig.Service{
-			DB: db,
+			DB:       db,
+			Features: featureManifest,
 		},
 		publicShareService: publicshareapi.Service{DB: db},
 		authService:        authService,
@@ -356,6 +360,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			DBProxyImage:          getenv("ORCHESTRATOR_DB_PROXY_IMAGE", "ghcr.io/dnviti/arsenale/db-proxy:latest"),
 			RecordingPath:         getenv("RECORDING_PATH", "/recordings"),
 		},
+		features: featureManifest,
 		notificationService: notifications.Service{
 			DB: db,
 		},

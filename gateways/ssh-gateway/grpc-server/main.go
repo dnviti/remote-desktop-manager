@@ -12,6 +12,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -28,6 +29,14 @@ const (
 // keyManagementServer implements the KeyManagement gRPC service.
 type keyManagementServer struct {
 	UnimplementedKeyManagementServer
+}
+
+func resolveConfigKeysPath() string {
+	info, err := os.Stat(configKeysPath)
+	if err == nil && info.IsDir() {
+		return filepath.Join(configKeysPath, "authorized_keys")
+	}
+	return configKeysPath
 }
 
 func (s *keyManagementServer) PushKey(_ context.Context, req *PushKeyRequest) (*PushKeyResponse, error) {
@@ -48,8 +57,9 @@ func (s *keyManagementServer) PushKey(_ context.Context, req *PushKeyRequest) (*
 	}
 
 	// Also write to /config/authorized_keys for persistence across restarts
-	if err := os.WriteFile(configKeysPath, []byte(content), 0600); err != nil {
-		log.Printf("[key-mgmt] warning: failed to write config authorized_keys: %v", err)
+	configPath := resolveConfigKeysPath()
+	if err := os.WriteFile(configPath, []byte(content), 0600); err != nil {
+		log.Printf("[key-mgmt] warning: failed to write config authorized_keys at %s: %v", configPath, err)
 		// Non-fatal — the primary path succeeded
 	}
 

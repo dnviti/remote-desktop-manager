@@ -79,6 +79,8 @@ export default function MainLayout() {
   const connectionsEnabled = useFeatureFlagsStore((s) => s.connectionsEnabled);
   const databaseProxyEnabled = useFeatureFlagsStore((s) => s.databaseProxyEnabled);
   const keychainEnabled = useFeatureFlagsStore((s) => s.keychainEnabled);
+  const recordingsEnabled = useFeatureFlagsStore((s) => s.recordingsEnabled);
+  const sharingApprovalsEnabled = useFeatureFlagsStore((s) => s.sharingApprovalsEnabled);
   const fetchFeatureFlags = useFeatureFlagsStore((s) => s.fetchFeatureFlags);
   const anyConnectionFeature = connectionsEnabled || databaseProxyEnabled;
 
@@ -173,7 +175,7 @@ export default function MainLayout() {
 
   const navigationActions: NavigationActions = {
     openKeychain: () => setKeychainOpen(true),
-    openRecordings: () => setRecordingsOpen(true),
+    openRecordings: () => { if (recordingsEnabled) setRecordingsOpen(true); },
     openSettings: handleOpenSettings,
     openAuditLog: () => setAuditLogOpen(true),
     selectConnection: (connectionId: string) => {
@@ -318,14 +320,18 @@ export default function MainLayout() {
               <HistoryIcon fontSize="small" sx={{ mr: 1 }} />
               Activity Log
             </MenuItem>
-            <MenuItem onClick={() => { setAnchorEl(null); setRecordingsOpen(true); }} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-              <VideocamIcon fontSize="small" sx={{ mr: 1 }} />
-              Recordings
-            </MenuItem>
-            <MenuItem onClick={() => { setAnchorEl(null); setCheckoutOpen(true); }} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
-              <CheckoutIcon fontSize="small" sx={{ mr: 1 }} />
-              Credential Check-out
-            </MenuItem>
+            {recordingsEnabled && (
+              <MenuItem onClick={() => { setAnchorEl(null); setRecordingsOpen(true); }} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                <VideocamIcon fontSize="small" sx={{ mr: 1 }} />
+                Recordings
+              </MenuItem>
+            )}
+            {sharingApprovalsEnabled && (
+              <MenuItem onClick={() => { setAnchorEl(null); setCheckoutOpen(true); }} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>
+                <CheckoutIcon fontSize="small" sx={{ mr: 1 }} />
+                Credential Check-out
+              </MenuItem>
+            )}
             <MenuItem onClick={handleLogout} sx={{ '&:hover': { bgcolor: 'action.hover' } }}>Logout</MenuItem>
           </Menu>
         </Toolbar>
@@ -516,7 +522,7 @@ export default function MainLayout() {
           />
         </Suspense>
       )}
-      {recordingsDialogMounted && (
+      {recordingsEnabled && recordingsDialogMounted && (
         <Suspense fallback={null}>
           <RecordingsDialog
             open={recordingsOpen}
@@ -549,7 +555,7 @@ export default function MainLayout() {
           />
         </Suspense>
       )}
-      {checkoutDialogMounted && (
+      {sharingApprovalsEnabled && checkoutDialogMounted && (
         <Suspense fallback={null}>
           <CheckoutDialog
             open={checkoutOpen}

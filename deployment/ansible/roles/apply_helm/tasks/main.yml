@@ -1,0 +1,124 @@
+---
+- name: Detect Podman availability for Kubernetes apply path
+  command: podman --version
+  register: installer_kube_podman_check
+  changed_when: false
+  failed_when: false
+
+- name: Resolve local container runtime for Kubernetes apply path
+  set_fact:
+    container_runtime: podman
+
+- name: Ensure a local container runtime exists for Kubernetes apply path
+  assert:
+    that:
+      - installer_kube_podman_check.rc == 0
+    fail_msg: "Kubernetes backend requires podman locally to build images"
+
+- name: Build installer compose images for Kubernetes
+  include_role:
+    name: deploy
+    tasks_from: build.yml
+  when: _build | bool
+
+- name: Load registry-backed images into minikube
+  command:
+    argv:
+      - minikube
+      - image
+      - load
+      - "{{ item }}"
+  loop: "{{ installer_helm_metadata.images | default([]) }}"
+  register: installer_minikube_direct_load
+  retries: 3
+  delay: 5
+  until: installer_minikube_direct_load.rc == 0
+  changed_when: true
+  when:
+    - container_runtime != 'podman' or not (item is match('^localhost/'))
+
+- name: Load Podman-built local images into minikube via archive
+  shell: |
+    set -euo pipefail
+    archive_path="$(mktemp {{ installer_tmp_dir }}/minikube-image-XXXXXX.tar)"
+    cleanup() {
+      rm -f "$archive_path"
+    }
+    trap cleanup EXIT
+    podman save -o "$archive_path" "{{ item }}"
+    minikube image load "$archive_path"
+  args:
+    executable: /bin/bash
+  loop: "{{ installer_helm_metadata.images | default([]) }}"
+  register: installer_minikube_archive_load
+  retries: 3
+  delay: 5
+  until: installer_minikube_archive_load.rc == 0
+  changed_when: true
+  when:
+    - container_runtime == 'podman'
+    - item is match('^localhost/')
+
+- name: Lint rendered Helm chart
+  command:
+    argv:
+      - helm
+      - lint
+      - "{{ installer_helm_chart_dir }}"
+      - "-f"
+      - "{{ installer_helm_values_file }}"
+  changed_when: false
+
+- name: Apply Helm release
+  command:
+    argv:
+      - helm
+      - upgrade
+      - --install
+      - arsenale
+      - "{{ installer_helm_chart_dir }}"
+      - "--namespace"
+      - "{{ installer_profile.kubernetes.namespace | default('arsenale') }}"
+      - "--create-namespace"
+      - "-f"
+      - "{{ installer_helm_values_file }}"
+  changed_when: true
+
+- name: Wait for Kubernetes persistent volume claims to bind
+  command:
+    argv:
+      - kubectl
+      - wait
+      - "--for=jsonpath={.status.phase}=Bound"
+      - "persistentvolumeclaim/{{ item }}"
+      - "--namespace"
+      - "{{ installer_profile.kubernetes.namespace | default('arsenale') }}"
+      - "--timeout=10m"
+  loop: "{{ installer_helm_metadata.persistentVolumeClaims | default([]) }}"
+  changed_when: false
+
+- name: Wait for Kubernetes deployments to roll out
+  command:
+    argv:
+      - kubectl
+      - rollout
+      - status
+      - "deployment/{{ item }}"
+      - "--namespace"
+      - "{{ installer_profile.kubernetes.namespace | default('arsenale') }}"
+      - "--timeout=15m"
+  loop: "{{ installer_helm_metadata.deployments | default([]) }}"
+  changed_when: false
+
+- name: Wait for Kubernetes migration job
+  command:
+    argv:
+      - kubectl
+      - wait
+      - "--for=condition=complete"
+      - "job/migrate"
+      - "--namespace"
+      - "{{ installer_profile.kubernetes.namespace | default('arsenale') }}"
+      - "--timeout=15m"
+  changed_when: false
+  failed_when: false

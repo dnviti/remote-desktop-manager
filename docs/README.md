@@ -1,58 +1,48 @@
 # Arsenale Documentation
 
-> Auto-generated on 2026-03-15. Index of all project documentation.
+> Synced on 2026-04-03 from the current repository state. Core generated docs live in the top-level files below, and deeper hand-authored references remain in subdirectories.
 
-## Architecture & Design
+## Core Docs
 
-- [Architecture](architecture.md) — System overview, Go service/client layers, connection flows, network topology
+- [Index](index.md) — Landing page, runtime summary, and source-of-truth map
+- [Getting Started](getting-started.md) — Prerequisites, dev startup, bootstrap credentials, and verification
+- [Architecture](architecture.md) — Service planes, feature gating, gateway topology, and DB proxy flow
+- [Configuration](configuration.md) — Installer profile, env vars, secrets, public config, and precedence
+- [API Reference](api-reference.md) — Public `/api`, live streams, feature-gated route families, and internal `/v1` contracts
+- [Deployment](deployment.md) — Installer flow, Podman and Kubernetes backends, TLS, fixtures, and CI/CD
+- [Development](development.md) — Local workflow, tests, feature alignment, and CLI rules
+- [Troubleshooting](troubleshooting.md) — Health checks, config drift, bootstrap issues, and debugging commands
+- [LLM Context](llm-context.md) — Single-file condensed context for bots and operators
 
-## API Reference
+## Operations And Environment
 
-- [Overview](api/overview.md) — Endpoint summary table and authentication
-- [Auth & SSO](api/auth.md) — Health, Auth, OAuth, SAML endpoints
-- [Vault](api/vault.md) — Vault lock/unlock, MFA unlock, auto-lock
-- [Connections](api/connections.md) — Connection CRUD, sharing, import/export, folders
-- [Sessions](api/sessions.md) — RDP/VNC/SSH session lifecycle
-- [User & 2FA](api/user.md) — Profile, settings, TOTP/SMS/WebAuthn
-- [Admin & Organization](api/admin.md) — Tenants, teams, admin, gateways
-- [Resources](api/resources.md) — Secrets, files, audit, recordings, notifications, sync
-- [WebSocket](api/websocket.md) — Socket.IO and Guacamole real-time protocols
+- [Installer](installer.md) — Installer artifacts, reruns, recovery, and encrypted status model
+- [Environment Variables](environment.md) — Expanded variable reference
+- [Deployment Handoff](go-refactor-handoff.md) — Transition notes for the Go-first runtime
 
-## Database
+## API And Runtime Deep Dives
 
-- [Overview](database/overview.md) — Provider, ORM, ER summary
-- [Core Models](database/core-models.md) — User, Tenant, Team, Connection, Folder
-- [Gateway Models](database/gateway-models.md) — Gateway, templates, SSH keys
-- [Vault Models](database/vault-models.md) — Secrets, versioning, sharing
-- [Session Models](database/session-models.md) — Active sessions, recordings
-- [Supporting Models](database/supporting-models.md) — Auth tokens, OAuth, notifications, sync
-- [Enums](database/enums.md) — All enumeration types
+- [API Overview](api/overview.md) — Endpoint summary table and auth model
+- [Auth](api/auth.md) — Auth, SSO, and bootstrap APIs
+- [Connections](api/connections.md) — Connection CRUD and sharing flows
+- [Sessions](api/sessions.md) — SSH, RDP, VNC, and database session lifecycle
+- [Resources](api/resources.md) — Files, notifications, sync, and related resource APIs
+- [Admin](api/admin.md) — Admin, gateways, and tenant operations
+- [WebSocket](api/websocket.md) — Real-time transport details
 
-## Client
+## Client, Database, And Security References
 
-- [Overview](components/overview.md) — Tech stack, pages
-- [UI Components](components/ui-components.md) — All 88 components
-- [State Management](components/stores.md) — 14 Zustand stores
-- [Hooks](components/hooks.md) — 13 custom hooks
-- [API Layer](components/api-layer.md) — 29 API modules
+- [Client Overview](components/overview.md) — SPA structure and component map
+- [State Management](components/stores.md) — Zustand stores
+- [API Layer](components/api-layer.md) — Client API modules
+- [Database Overview](database/overview.md) — Model inventory and storage references
+- [Encryption](security/encryption.md) — Vault encryption and key handling
+- [Authentication](security/authentication.md) — JWT, MFA, SSO, and session security
+- [Policies](security/policies.md) — DLP, sharing, and enforcement controls
+- [Production Hardening](security/production.md) — Security headers, runtime hardening, and operator checklist
 
-## Security
+## Guides And Summaries
 
-- [Encryption](security/encryption.md) — Vault encryption, key derivation, recovery
-- [Authentication](security/authentication.md) — JWT, refresh tokens, rate limiting, sessions
-- [Policies](security/policies.md) — Sharing, DLP, IP allowlist, SSRF prevention
-- [Production Hardening](security/production.md) — Security headers, production checklist
-
-## Guides
-
-- [Zero-Trust Tunnel User Guide](guides/zero-trust-tunnel-user-guide.md) — Deploying and configuring tunnels (Docker, systemd, K8s), ABAC policies, monitoring
-- [Tunnel Implementation Guide](guides/tunnel-implementation-guide.md) — Technical deep-dive: binary protocol, TunnelBroker, ABAC engine, security hardening, extending
-
-## Operations
-
-- [Deployment](deployment.md) — Dev setup, production Docker, Nginx, troubleshooting
-- [Environment Variables](environment.md) — Full variable reference
-
-## Reference
-
+- [Zero-Trust Tunnel User Guide](guides/zero-trust-tunnel-user-guide.md) — Tunnel deployment and operations
+- [Tunnel Implementation Guide](guides/tunnel-implementation-guide.md) — Technical tunnel internals
 - [RAG Summary](rag-summary.md) — Condensed feature summary for AI context

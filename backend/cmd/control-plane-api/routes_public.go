@@ -25,7 +25,7 @@ func (d *apiDependencies) registerPublicRoutes(mux *http.ServeMux) {
 			app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
 			return
 		}
-		readiness := checkAPIReadiness(r.Context(), d.db)
+		readiness := checkAPIReadiness(r.Context(), d.db, d.features)
 		statusCode := http.StatusOK
 		if readiness.Status != "ok" {
 			statusCode = http.StatusServiceUnavailable
@@ -33,12 +33,16 @@ func (d *apiDependencies) registerPublicRoutes(mux *http.ServeMux) {
 		app.WriteJSON(w, statusCode, readiness)
 	}))
 
-	mux.HandleFunc("GET /api/share/{token}/info", d.publicShareService.HandleGetInfo)
-	mux.HandleFunc("POST /api/share/{token}", d.publicShareService.HandleAccess)
+	if d.features.PublicShareEnabled() {
+		mux.HandleFunc("GET /api/share/{token}/info", d.publicShareService.HandleGetInfo)
+		mux.HandleFunc("POST /api/share/{token}", d.publicShareService.HandleAccess)
+	}
 	mux.HandleFunc("GET /api/setup/status", d.setupService.HandleStatus)
 	mux.HandleFunc("GET /api/setup/db-status", d.setupService.HandleDBStatus)
 	mux.HandleFunc("POST /api/setup/complete", d.setupService.HandleComplete)
-	mux.HandleFunc("POST /api/cli/auth/device", d.cliService.HandleInitiateDeviceAuth)
-	mux.HandleFunc("POST /api/cli/auth/device/token", d.cliService.HandlePollDeviceToken)
-	mux.HandleFunc("POST /api/cli/auth/device/authorize", d.authenticator.Middleware(d.cliService.HandleAuthorizeDevice))
+	if d.features.CLIEnabled {
+		mux.HandleFunc("POST /api/cli/auth/device", d.cliService.HandleInitiateDeviceAuth)
+		mux.HandleFunc("POST /api/cli/auth/device/token", d.cliService.HandlePollDeviceToken)
+		mux.HandleFunc("POST /api/cli/auth/device/authorize", d.authenticator.Middleware(d.cliService.HandleAuthorizeDevice))
+	}
 }

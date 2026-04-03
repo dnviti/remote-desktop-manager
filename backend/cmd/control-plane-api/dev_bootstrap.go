@@ -85,6 +85,9 @@ func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 	if err != nil {
 		return err
 	}
+	if err := ensureBootstrapVaultUnlocked(ctx, deps, userID, options.adminPassword); err != nil {
+		return err
+	}
 	tenantID, err := ensureBootstrapTenant(ctx, deps, userID, options.tenantName)
 	if err != nil {
 		return err
@@ -112,17 +115,42 @@ func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 		return err
 	}
 
-	pushResults, err := deps.gatewayService.PushSSHKeyToAllManagedGateways(ctx, tenantID)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Managed SSH key push did not complete cleanly: %v\n", err)
-	} else {
-		for _, item := range pushResults {
-			if item.OK {
-				fmt.Printf("managed ssh key push ok: %s (%s)\n", item.Name, item.GatewayID)
-				continue
+	const maxManagedSSHKeyPushAttempts = 15
+	const managedSSHKeyPushRetryDelay = 2 * time.Second
+	keyPushSucceeded := false
+	for attempt := 1; attempt <= maxManagedSSHKeyPushAttempts; attempt++ {
+		pushResults, err := deps.gatewayService.PushSSHKeyToAllManagedGateways(ctx, tenantID)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Managed SSH key push attempt %d/%d failed: %v\n", attempt, maxManagedSSHKeyPushAttempts, err)
+		} else {
+			allOK := len(pushResults) > 0
+			for _, item := range pushResults {
+				if item.OK {
+					fmt.Printf("managed ssh key push ok: %s (%s)\n", item.Name, item.GatewayID)
+					continue
+				}
+				allOK = false
+				fmt.Fprintf(
+					os.Stderr,
+					"managed ssh key push pending: %s (%s): %s (attempt %d/%d)\n",
+					item.Name,
+					item.GatewayID,
+					item.Error,
+					attempt,
+					maxManagedSSHKeyPushAttempts,
+				)
 			}
-			fmt.Printf("managed ssh key push failed: %s (%s): %s\n", item.Name, item.GatewayID, item.Error)
+			if allOK {
+				keyPushSucceeded = true
+				break
+			}
 		}
+		if attempt < maxManagedSSHKeyPushAttempts {
+			time.Sleep(managedSSHKeyPushRetryDelay)
+		}
+	}
+	if !keyPushSucceeded {
+		return fmt.Errorf("managed SSH key push did not complete cleanly after %d attempts", maxManagedSSHKeyPushAttempts)
 	}
 
 	fmt.Printf("development bootstrap complete for tenant %s\n", tenantID)
@@ -340,6 +368,25 @@ func lookupBootstrapUserID(ctx context.Context, deps *apiDependencies, email str
 		return "", fmt.Errorf("resolve bootstrap user: %w", err)
 	}
 	return userID, nil
+}
+
+func ensureBootstrapVaultUnlocked(ctx context.Context, deps *apiDependencies, userID, password string) error {
+	if deps == nil {
+		return fmt.Errorf("bootstrap dependencies are unavailable")
+	}
+
+	status, err := deps.vaultService.GetStatus(ctx, userID)
+	if err != nil {
+		return fmt.Errorf("load bootstrap vault status: %w", err)
+	}
+	if status.Unlocked {
+		return nil
+	}
+
+	if _, err := deps.vaultService.Unlock(ctx, userID, password, devBootstrapIP); err != nil {
+		return fmt.Errorf("unlock bootstrap vault: %w", err)
+	}
+	return nil
 }
 
 func ensureBootstrapTenant(ctx context.Context, deps *apiDependencies, userID, tenantName string) (string, error) {

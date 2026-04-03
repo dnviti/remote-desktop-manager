@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/runtimefeatures"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -25,9 +26,12 @@ type healthCheck struct {
 	Error     string `json:"error,omitempty"`
 }
 
-func checkAPIReadiness(ctx context.Context, db *pgxpool.Pool) readinessResult {
+func checkAPIReadiness(ctx context.Context, db *pgxpool.Pool, features runtimefeatures.Manifest) readinessResult {
 	database := checkDatabase(ctx, db)
-	desktopBroker := checkHTTPService(ctx, getenv("DESKTOP_BROKER_HEALTH_URL", "http://desktop-broker:8091/healthz"))
+	desktopBroker := healthCheck{OK: true}
+	if features.ConnectionsEnabled {
+		desktopBroker = checkHTTPService(ctx, getenv("DESKTOP_BROKER_HEALTH_URL", "http://desktop-broker:8091/healthz"))
+	}
 
 	status := "ok"
 	if !database.OK || !desktopBroker.OK {

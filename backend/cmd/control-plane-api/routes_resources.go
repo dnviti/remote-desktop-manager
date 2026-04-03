@@ -9,81 +9,91 @@ import (
 )
 
 func (d *apiDependencies) registerResourceRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/checkouts", d.authenticator.Middleware(d.checkoutService.HandleList))
-	mux.HandleFunc("POST /api/checkouts", d.authenticator.Middleware(d.checkoutService.HandleCreate))
-	mux.HandleFunc("GET /api/checkouts/{id}", d.authenticator.Middleware(d.checkoutService.HandleGet))
-	mux.HandleFunc("POST /api/checkouts/{id}/approve", d.authenticator.Middleware(d.checkoutService.HandleApprove))
-	mux.HandleFunc("POST /api/checkouts/{id}/reject", d.authenticator.Middleware(d.checkoutService.HandleReject))
-	mux.HandleFunc("POST /api/checkouts/{id}/checkin", d.authenticator.Middleware(d.checkoutService.HandleCheckin))
+	if d.features.SharingApprovalsEnabled {
+		mux.HandleFunc("GET /api/checkouts", d.authenticator.Middleware(d.checkoutService.HandleList))
+		mux.HandleFunc("POST /api/checkouts", d.authenticator.Middleware(d.checkoutService.HandleCreate))
+		mux.HandleFunc("GET /api/checkouts/{id}", d.authenticator.Middleware(d.checkoutService.HandleGet))
+		mux.HandleFunc("POST /api/checkouts/{id}/approve", d.authenticator.Middleware(d.checkoutService.HandleApprove))
+		mux.HandleFunc("POST /api/checkouts/{id}/reject", d.authenticator.Middleware(d.checkoutService.HandleReject))
+		mux.HandleFunc("POST /api/checkouts/{id}/checkin", d.authenticator.Middleware(d.checkoutService.HandleCheckin))
+	}
 
-	mux.HandleFunc("GET /api/connections", d.authenticator.Middleware(d.connectionService.HandleList))
-	mux.HandleFunc("POST /api/connections/export", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-		_ = d.importExportService.HandleExport(w, r, claims)
-	}))
-	mux.HandleFunc("POST /api/connections/import", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-		_ = d.importExportService.HandleImport(w, r, claims)
-	}))
-	mux.HandleFunc("POST /api/connections", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-		_ = d.connectionService.HandleCreate(w, r, claims)
-	}))
-	mux.HandleFunc("GET /api/connections/{id}", d.authenticator.Middleware(d.connectionService.HandleGetOne))
-	mux.HandleFunc("POST /api/connections/batch-share", d.authenticator.Middleware(d.connectionService.HandleBatchShare))
-	mux.HandleFunc("POST /api/connections/{id}/share", d.authenticator.Middleware(d.connectionService.HandleShare))
-	mux.HandleFunc("PUT /api/connections/{id}/share/{userId}", d.authenticator.Middleware(d.connectionService.HandleUpdateSharePermission))
-	mux.HandleFunc("DELETE /api/connections/{id}/share/{userId}", d.authenticator.Middleware(d.connectionService.HandleUnshare))
-	mux.HandleFunc("GET /api/connections/{id}/shares", d.authenticator.Middleware(d.connectionService.HandleListShares))
-	mux.HandleFunc("PUT /api/connections/{id}", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-		_ = d.connectionService.HandleUpdate(w, r, claims)
-	}))
-	mux.HandleFunc("DELETE /api/connections/{id}", d.authenticator.Middleware(d.connectionService.HandleDelete))
-	mux.HandleFunc("PATCH /api/connections/{id}/favorite", d.authenticator.Middleware(d.connectionService.HandleToggleFavorite))
-	mux.HandleFunc("GET /api/cli/connections", d.authenticator.Middleware(d.connectionService.HandleCLIList))
-
-	mux.HandleFunc("GET /api/folders", d.authenticator.Middleware(d.folderService.HandleList))
-	mux.HandleFunc("POST /api/folders", d.authenticator.Middleware(d.folderService.HandleCreate))
-	mux.HandleFunc("PUT /api/folders/{id}", d.authenticator.Middleware(d.folderService.HandleUpdate))
-	mux.HandleFunc("DELETE /api/folders/{id}", d.authenticator.Middleware(d.folderService.HandleDelete))
-
-	mux.HandleFunc("/api/vault-folders", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case http.MethodGet:
-			d.authenticator.Middleware(d.vaultFolderService.HandleList)(w, r)
-		case http.MethodPost:
-			d.authenticator.Middleware(d.vaultFolderService.HandleCreate)(w, r)
-		default:
-			w.Header().Set("Allow", "GET, POST")
-			app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+	if d.features.AnyConnectionFeature() {
+		mux.HandleFunc("GET /api/connections", d.authenticator.Middleware(d.connectionService.HandleList))
+		mux.HandleFunc("POST /api/connections/export", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
+			_ = d.importExportService.HandleExport(w, r, claims)
+		}))
+		mux.HandleFunc("POST /api/connections/import", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
+			_ = d.importExportService.HandleImport(w, r, claims)
+		}))
+		mux.HandleFunc("POST /api/connections", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
+			_ = d.connectionService.HandleCreate(w, r, claims)
+		}))
+		mux.HandleFunc("GET /api/connections/{id}", d.authenticator.Middleware(d.connectionService.HandleGetOne))
+		mux.HandleFunc("PUT /api/connections/{id}", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
+			_ = d.connectionService.HandleUpdate(w, r, claims)
+		}))
+		mux.HandleFunc("DELETE /api/connections/{id}", d.authenticator.Middleware(d.connectionService.HandleDelete))
+		mux.HandleFunc("PATCH /api/connections/{id}/favorite", d.authenticator.Middleware(d.connectionService.HandleToggleFavorite))
+		if d.features.SharingApprovalsEnabled {
+			mux.HandleFunc("POST /api/connections/batch-share", d.authenticator.Middleware(d.connectionService.HandleBatchShare))
+			mux.HandleFunc("POST /api/connections/{id}/share", d.authenticator.Middleware(d.connectionService.HandleShare))
+			mux.HandleFunc("PUT /api/connections/{id}/share/{userId}", d.authenticator.Middleware(d.connectionService.HandleUpdateSharePermission))
+			mux.HandleFunc("DELETE /api/connections/{id}/share/{userId}", d.authenticator.Middleware(d.connectionService.HandleUnshare))
+			mux.HandleFunc("GET /api/connections/{id}/shares", d.authenticator.Middleware(d.connectionService.HandleListShares))
 		}
-	})
-	mux.HandleFunc("/api/vault-folders/", func(w http.ResponseWriter, r *http.Request) {
-		id := strings.TrimPrefix(r.URL.Path, "/api/vault-folders/")
-		if id == "" || strings.Contains(id, "/") {
-			http.NotFound(w, r)
-			return
+		if d.features.CLIEnabled {
+			mux.HandleFunc("GET /api/cli/connections", d.authenticator.Middleware(d.connectionService.HandleCLIList))
 		}
-		r.SetPathValue("id", id)
-		switch r.Method {
-		case http.MethodPut:
-			d.authenticator.Middleware(d.vaultFolderService.HandleUpdate)(w, r)
-		case http.MethodDelete:
-			d.authenticator.Middleware(d.vaultFolderService.HandleDelete)(w, r)
-		default:
-			w.Header().Set("Allow", "PUT, DELETE")
-			app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
-		}
-	})
 
-	mux.HandleFunc("GET /api/files", d.authenticator.Middleware(d.fileService.HandleList))
-	mux.HandleFunc("POST /api/files", d.authenticator.Middleware(d.fileService.HandleUpload))
-	mux.HandleFunc("GET /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDownload))
-	mux.HandleFunc("DELETE /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDelete))
+		mux.HandleFunc("GET /api/folders", d.authenticator.Middleware(d.folderService.HandleList))
+		mux.HandleFunc("POST /api/folders", d.authenticator.Middleware(d.folderService.HandleCreate))
+		mux.HandleFunc("PUT /api/folders/{id}", d.authenticator.Middleware(d.folderService.HandleUpdate))
+		mux.HandleFunc("DELETE /api/folders/{id}", d.authenticator.Middleware(d.folderService.HandleDelete))
+	}
 
-	mux.HandleFunc("GET /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleList))
-	mux.HandleFunc("POST /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleCreate))
-	mux.HandleFunc("GET /api/vault-providers/{providerId}", d.authenticator.Middleware(d.externalVaultService.HandleGet))
-	mux.HandleFunc("PUT /api/vault-providers/{providerId}", d.authenticator.Middleware(d.externalVaultService.HandleUpdate))
-	mux.HandleFunc("DELETE /api/vault-providers/{providerId}", d.authenticator.Middleware(d.externalVaultService.HandleDelete))
-	mux.HandleFunc("POST /api/vault-providers/{providerId}/test", d.authenticator.Middleware(d.externalVaultService.HandleTest))
+	if d.features.KeychainEnabled {
+		mux.HandleFunc("/api/vault-folders", func(w http.ResponseWriter, r *http.Request) {
+			switch r.Method {
+			case http.MethodGet:
+				d.authenticator.Middleware(d.vaultFolderService.HandleList)(w, r)
+			case http.MethodPost:
+				d.authenticator.Middleware(d.vaultFolderService.HandleCreate)(w, r)
+			default:
+				w.Header().Set("Allow", "GET, POST")
+				app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+			}
+		})
+		mux.HandleFunc("/api/vault-folders/", func(w http.ResponseWriter, r *http.Request) {
+			id := strings.TrimPrefix(r.URL.Path, "/api/vault-folders/")
+			if id == "" || strings.Contains(id, "/") {
+				http.NotFound(w, r)
+				return
+			}
+			r.SetPathValue("id", id)
+			switch r.Method {
+			case http.MethodPut:
+				d.authenticator.Middleware(d.vaultFolderService.HandleUpdate)(w, r)
+			case http.MethodDelete:
+				d.authenticator.Middleware(d.vaultFolderService.HandleDelete)(w, r)
+			default:
+				w.Header().Set("Allow", "PUT, DELETE")
+				app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+			}
+		})
+
+		mux.HandleFunc("GET /api/files", d.authenticator.Middleware(d.fileService.HandleList))
+		mux.HandleFunc("POST /api/files", d.authenticator.Middleware(d.fileService.HandleUpload))
+		mux.HandleFunc("GET /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDownload))
+		mux.HandleFunc("DELETE /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDelete))
+
+		mux.HandleFunc("GET /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleList))
+		mux.HandleFunc("POST /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleCreate))
+		mux.HandleFunc("GET /api/vault-providers/{providerId}", d.authenticator.Middleware(d.externalVaultService.HandleGet))
+		mux.HandleFunc("PUT /api/vault-providers/{providerId}", d.authenticator.Middleware(d.externalVaultService.HandleUpdate))
+		mux.HandleFunc("DELETE /api/vault-providers/{providerId}", d.authenticator.Middleware(d.externalVaultService.HandleDelete))
+		mux.HandleFunc("POST /api/vault-providers/{providerId}/test", d.authenticator.Middleware(d.externalVaultService.HandleTest))
+	}
 
 	mux.HandleFunc("GET /api/sync-profiles", d.authenticator.Middleware(d.syncProfileService.HandleList))
 	mux.HandleFunc("POST /api/sync-profiles", d.authenticator.Middleware(func(w http.ResponseWriter, r *http.Request, claims authn.Claims) {

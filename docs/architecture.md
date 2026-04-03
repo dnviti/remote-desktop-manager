@@ -2,10 +2,13 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and design decisions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-02T12:57:10Z
+generated-at: 2026-04-03T11:29:03Z
 source-files:
   - backend/internal/catalog/catalog.go
   - backend/internal/app/app.go
+  - backend/internal/runtimefeatures/manifest.go
+  - backend/internal/publicconfig/service.go
+  - backend/cmd/control-plane-api/routes.go
   - backend/cmd/control-plane-api/runtime.go
   - backend/cmd/control-plane-api/routes_public.go
   - backend/cmd/control-plane-api/routes_sessions.go
@@ -17,15 +20,17 @@ source-files:
   - backend/internal/queryrunnerapi/service.go
   - backend/cmd/db-proxy/main.go
   - client/src/api/client.ts
+  - client/src/api/auth.api.ts
+  - client/src/store/featureFlagsStore.ts
   - client/vite.config.ts
   - docker-compose.yml
 ---
 
 ## 🎯 Why This Architecture Exists
 
-Arsenale is structured around a strict split between **control**, **runtime**, **gateway**, and **operator** concerns. The control plane owns identity, tenancy, policy, audit, routing, and orchestration. Runtime brokers own browser session transport. Gateways own target-network access. This split keeps high-risk protocol handling away from the public edge while still exposing a unified browser and CLI experience.
+Arsenale is structured around a strict split between control, runtime, gateway, and operator concerns. The control plane owns identity, tenancy, policy, audit, routing, and orchestration. Runtime brokers own browser session transport. Gateways own target-network access. The installer owns deployment intent and encrypted rerun state.
 
-The key architectural rule for database access is now explicit: **the backend is an orchestrator and control plane, not the database client of record**. Interactive database queries are issued through `db-proxy` gateways, exactly as SSH and desktop traffic flow through dedicated gateway services.
+The database rule remains deliberate: the control plane is an orchestrator and policy boundary, not the database client of record. Interactive database queries run through `db-proxy` gateways in the same way SSH and desktop traffic flow through dedicated runtime services.
 
 ## 🧭 Service Planes
 
@@ -38,15 +43,15 @@ The key architectural rule for database access is now explicit: **the backend is
 | Agent | `tool-gateway` | `8084` | Typed capability gateway |
 | Agent | `agent-orchestrator` | `8085` | Agent run lifecycle |
 | Agent | `memory-service` | `8086` | Working and semantic memory service |
-| Runtime | `terminal-broker` | `8090` | Browser SSH/WebSocket runtime |
-| Runtime | `desktop-broker` | `8091` | Browser RDP/VNC runtime |
+| Runtime | `terminal-broker` | `8090` | Browser SSH and WebSocket runtime |
+| Runtime | `desktop-broker` | `8091` | Browser RDP and VNC runtime |
 | Runtime | `tunnel-broker` | `8092` | Tunnel registration and TCP proxying |
 | Runtime | `query-runner` | `8093` | Shared query execution service |
 | Runtime | `recording-worker` | `8094` | Recording conversion and retention |
 | Execution | `runtime-agent` | `8095` | Host-local workload validation |
 | Runtime gateway | `db-proxy` | `5432` | Database middleware for connectivity, query, schema, plan, and introspection |
 
-Every Go service uses the same service wrapper in `backend/internal/app/app.go`, which means the following conventions are stable across the fleet:
+Every Go service uses the same wrapper in `backend/internal/app/app.go`, so these endpoints are stable across the fleet:
 
 - `GET /healthz`
 - `GET /readyz`
@@ -66,11 +71,13 @@ flowchart TD
     subgraph edge["Public edge"]
         Client["client / nginx"]
         API["control-plane-api"]
+        PublicConfig["/api/auth/config"]
         Terminal["terminal-broker"]
         Desktop["desktop-broker"]
     end
 
     subgraph control["Control and agent services"]
+        Features["runtimefeatures.Manifest"]
         Controller["control-plane-controller"]
         Authz["authz-pdp"]
         Model["model-gateway"]
@@ -94,13 +101,16 @@ flowchart TD
     end
 
     Browser --> Client
+    Browser --> PublicConfig
     Extension --> Client
     CLI --> API
 
     Client --> API
+    PublicConfig --> API
     Client --> Terminal
     Client --> Desktop
 
+    API --> Features
     API --> Postgres
     API --> Redis
     API --> Controller
@@ -121,6 +131,27 @@ flowchart TD
     API --> Files
 ```
 
+## 🧩 Runtime Capability Model
+
+Feature availability is not hard-coded in the SPA or the control plane separately. The installer and runtime env produce one shared manifest in `backend/internal/runtimefeatures/manifest.go`, and that manifest drives both route registration and UI visibility.
+
+```mermaid
+flowchart LR
+    Installer["Installer profile and env"] --> Manifest["runtimefeatures.Manifest"]
+    Manifest --> Routes["conditional route registration"]
+    Manifest --> PublicConfig["GET /api/auth/config"]
+    PublicConfig --> Store["client featureFlagsStore"]
+    Store --> UI["pages, dialogs, navigation"]
+```
+
+Important architectural consequences:
+
+- `backend/cmd/control-plane-api/routes.go` only registers secrets routes when `KeychainEnabled` is true.
+- Session routes are only registered when `AnyConnectionFeature()` is true.
+- Database session and DB audit surfaces depend on `DatabaseProxyEnabled`.
+- Gateway and tunnel surfaces depend on `ZeroTrustEnabled`.
+- The client starts fail-open with enabled defaults, then narrows to the server-provided manifest after `GET /api/auth/config` succeeds.
+
 ## 🔐 Public Request Pipeline
 
 ```mermaid
@@ -128,17 +159,17 @@ flowchart LR
     A["HTTPS request"] --> B["client / nginx routing"]
     B --> C["control-plane-api handler"]
     C --> D["JWT + tenant resolution"]
-    D --> E["RBAC / policy checks"]
+    D --> E["feature gate + RBAC + policy checks"]
     E --> F["domain service package"]
     F --> G["PostgreSQL / Redis / gateway call"]
     G --> H["audit event + JSON response"]
 ```
 
-This split is intentional:
+That split is intentional:
 
-- The client is only a reverse proxy and static asset host.
-- The control plane terminates auth, tenancy, and audit.
-- Runtime services only handle transport after the control plane has issued a grant or session.
+- the client is only a reverse proxy and static asset host,
+- the control plane terminates auth, tenancy, feature gating, and audit,
+- runtime services only handle transport after the control plane has issued a grant or session.
 
 ## 🗄 Database Session Architecture
 
@@ -153,7 +184,7 @@ sequenceDiagram
     participant DB as Target database
 
     UI->>CP: POST /api/sessions/database
-    CP->>CP: Resolve connection, tenant, permissions, DB settings
+    CP->>CP: Resolve connection, tenant, feature flags, DB settings
     CP->>TB: Optional TCP proxy allocation for tunneled gateways
     CP-->>UI: sessionId + proxyHost + proxyPort + protocol
 
@@ -187,9 +218,9 @@ Supported interactive query protocols come from `backend/internal/queryrunner/pr
 - Oracle
 - MongoDB
 
-`client/src/api/connections.api.ts` already includes DB2 connection metadata fields, but DB2 is not part of the active query protocol switch yet.
+`client/src/api/connections.api.ts` still includes DB2 connection metadata fields, but DB2 is not part of the active query protocol switch.
 
-## 🌉 Gateways and Tunnel Model
+## 🌉 Gateways and Development Bootstrap
 
 Arsenale supports both directly managed gateway containers and tunneled gateway instances.
 
@@ -199,11 +230,13 @@ Arsenale supports both directly managed gateway containers and tunneled gateway 
 - `tunnel-agent` can be embedded into `ssh-gateway`, `guacd`, and `db-proxy` images.
 - `tunnel-broker` allocates and multiplexes TCP proxies for tunneled instances.
 
-The development stack ships sample tunneled fixtures for all three gateway types:
+Development mode now bootstraps all three runtime gateway types automatically through `service dev-bootstrap`:
 
-- `dev-tunnel-ssh-gateway`
-- `dev-tunnel-guacd`
-- `dev-tunnel-db-proxy`
+- `Dev Tunnel Managed SSH`
+- `Dev Tunnel GUACD`
+- `Dev Tunnel DB Proxy`
+
+The bootstrap flow also ensures tenant vault state, tenant SSH key pairs, an orchestrator connection, demo database connections, and a managed SSH key push to all managed gateways.
 
 ## 💾 Data, State, and Persistence
 
@@ -215,6 +248,7 @@ The development stack ships sample tunneled fixtures for all three gateway types
 | `arsenale_recordings` volume | Session recordings and exported artifacts |
 | Podman secrets | Runtime delivery for JWT, database URL, guacamole secret, encryption key, and provider credentials |
 | `dev-certs/` | Shared CA plus service, gateway, and tunnel certificates |
+| `/opt/arsenale/install/*.enc` | Encrypted installer profile, state, status, log, and rendered artifacts |
 
 ## 🧪 Shared Service Patterns
 
@@ -223,10 +257,7 @@ The Go services deliberately use a narrow common shape:
 - `main.go` wires dependencies and registers routes.
 - `app.StaticService` declares metadata and a route registration function.
 - `app.Run` handles listen address, logging, `/healthz`, `/readyz`, and graceful shutdown.
-- Public route registration is consolidated in `backend/cmd/control-plane-api/routes_*.go`.
+- Public route registration is consolidated in `backend/cmd/control-plane-api/routes*.go`.
+- Public readiness at `GET /api/ready` checks PostgreSQL and, when connection features are enabled, `desktop-broker` reachability.
 
-That uniformity matters for operators and LLMs because it makes new services easy to discover:
-
-- service metadata is machine-readable,
-- default ports are declared centrally in `backend/internal/catalog/catalog.go`,
-- and every service exposes the same health and meta endpoints.
+That uniformity matters for operators and LLMs because it makes new services easy to discover, reason about, and validate mechanically.

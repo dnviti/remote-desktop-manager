@@ -2,8 +2,11 @@
 title: API Reference
 description: Public API groups, session flows, live streams, and internal service contracts for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-02T12:57:10Z
+generated-at: 2026-04-03T11:29:03Z
 source-files:
+  - backend/internal/runtimefeatures/manifest.go
+  - backend/internal/publicconfig/service.go
+  - backend/cmd/control-plane-api/routes.go
   - backend/cmd/control-plane-api/routes_public.go
   - backend/cmd/control-plane-api/routes_auth.go
   - backend/cmd/control-plane-api/routes_auth_mfa.go
@@ -19,13 +22,14 @@ source-files:
   - backend/cmd/control-plane-api/routes_live.go
   - backend/cmd/control-plane-api/routes_internal.go
   - client/src/api/client.ts
+  - client/src/api/auth.api.ts
   - client/src/api/database.api.ts
   - client/src/api/dbAudit.api.ts
 ---
 
 ## 🌐 Surface Overview
 
-The public edge is the Go control plane under `https://localhost:3000/api` in development. The route inventory is defined in `backend/cmd/control-plane-api/routes_*.go`.
+The public edge is the Go control plane under `https://localhost:3000/api` in development. The route inventory is defined in `backend/cmd/control-plane-api/routes*.go`.
 
 Authentication behavior is implemented in `client/src/api/client.ts`:
 
@@ -33,14 +37,26 @@ Authentication behavior is implemented in `client/src/api/client.ts`:
 - CSRF token in `X-CSRF-Token` for state-changing requests
 - automatic token refresh via `POST /api/auth/refresh`
 
-The current route files register **at least 318 method-specific endpoints**, plus additional manually dispatched prefixes such as:
+One architectural change matters more than any raw endpoint count: the surface is now feature-gated. `backend/internal/runtimefeatures/manifest.go` decides which route families are registered, and `GET /api/auth/config` exposes that same manifest to the client.
 
-- `/api/vault-folders`
-- `/api/teams`
-- `/api/gateways/...`
-- `/api/notifications/...`
+## 🧩 Runtime Capability Switches
 
-That means the route-file counts below are a minimum, not a full mathematical total of every concrete handler branch.
+| Capability | Public effect |
+|------------|---------------|
+| `connectionsEnabled` | Enables connection CRUD, folders, SSH/RDP/VNC sessions, RDGW, and active-session streaming |
+| `databaseProxyEnabled` | Enables database sessions, DB tunnels, DB audit, and AI SQL helpers |
+| `keychainEnabled` | Enables vault, secrets, files, vault folders, and external vault providers |
+| `recordingsEnabled` | Enables recording list, playback, analysis, and export |
+| `zeroTrustEnabled` | Enables gateways, templates, tunnel overview, instance logs, and tunnel metrics |
+| `enterpriseAuthEnabled` | Enables SAML, OAuth, OIDC, LDAP, and auth-provider admin APIs |
+| `sharingApprovalsEnabled` | Enables public sharing, approvals, checkouts, and connection sharing APIs |
+| `cliEnabled` | Enables CLI device auth and CLI connection list surfaces |
+
+The practical source of truth is:
+
+- `backend/cmd/control-plane-api/routes.go`
+- the feature-gated route files under the same directory
+- `GET /api/auth/config`
 
 ## 📚 Route Groups
 
@@ -54,24 +70,25 @@ That means the route-file counts below are a minimum, not a full mathematical to
 | Sessions | `routes_sessions.go` | SSH, RDP, VNC, database, DB tunnel, proxy grants |
 | Tenants | `routes_tenants.go` | Tenant CRUD, users, invite, membership controls |
 | Operations | `routes_operations.go` | Admin, gateways, recordings, audit, DB audit, AI |
-| Live streams | `routes_live.go` | SSE endpoints for gateways, notifications, sessions, audit |
+| Live streams | `routes_live.go` | SSE endpoints for gateways, notifications, sessions, and audit |
 | Internal contracts | `routes_internal.go` | `/v1` contracts used by runtime services |
 
-## 🔐 Authentication, Setup, and Public Endpoints
+## 🔐 Authentication, Setup, And Public Endpoints
 
 Representative public endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/health` | Public health check through the API edge |
-| `GET` | `/api/ready` | Public readiness check |
+| `GET` | `/api/ready` | Public readiness check with structured dependency status |
 | `GET` | `/api/setup/status` | First-run setup state |
 | `GET` | `/api/setup/db-status` | Database readiness for initial setup |
 | `POST` | `/api/setup/complete` | Finish first-run bootstrap |
-| `POST` | `/api/cli/auth/device` | Start CLI device auth |
+| `GET` | `/api/auth/config` | Read self-signup state and runtime feature manifest |
+| `POST` | `/api/cli/auth/device` | Start CLI device auth when `cliEnabled` is true |
 | `POST` | `/api/cli/auth/device/token` | Poll device auth token |
 | `POST` | `/api/cli/auth/device/authorize` | Approve device auth from a signed-in user |
-| `GET` | `/api/share/{token}/info` | Inspect public share metadata |
+| `GET` | `/api/share/{token}/info` | Inspect public share metadata when sharing and keychain are enabled |
 | `POST` | `/api/share/{token}` | Access a public share |
 
 Authentication and SSO endpoints:
@@ -89,10 +106,18 @@ Authentication and SSO endpoints:
 | `GET` | `/api/auth/session` | Inspect current auth session |
 | `POST` | `/api/auth/logout` | Revoke current login |
 | `POST` | `/api/auth/switch-tenant` | Change active tenant |
-| `GET` | `/api/auth/oauth/providers` | Provider discovery |
-| `GET` | `/api/auth/saml/metadata` | SAML SP metadata |
 
-Recovery endpoints stay under `/api/auth/*` as well:
+Enterprise-auth-only paths remain under `/api/auth/*` as well:
+
+- `/api/auth/saml/*`
+- `/api/auth/oauth/providers`
+- `/api/auth/oauth/{provider}`
+- `/api/auth/oauth/accounts`
+- `/api/auth/oauth/link-code`
+- `/api/auth/oauth/link/{provider}`
+- `/api/auth/oauth/vault-setup`
+
+Recovery endpoints stay under `/api/auth/*`:
 
 - `/api/auth/verify-email`
 - `/api/auth/resend-verification`
@@ -101,7 +126,7 @@ Recovery endpoints stay under `/api/auth/*` as well:
 - `/api/auth/reset-password/request-sms`
 - `/api/auth/reset-password/complete`
 
-## 👤 User, Tenant, Team, and Resource APIs
+## 👤 User, Tenant, Team, And Resource APIs
 
 ### User and MFA
 
@@ -133,20 +158,22 @@ Recovery endpoints stay under `/api/auth/*` as well:
 | `PATCH` | `/api/tenants/{id}/users/{userId}/expiry` | Set membership expiry |
 | `PUT` | `/api/tenants/{id}/ip-allowlist` | Update tenant IP allowlist |
 
-### Connections, folders, files, teams, and checkout flows
+### Connections, folders, files, teams, and sync profiles
 
 | Path prefix | Purpose |
 |-------------|---------|
 | `/api/connections` | CRUD, sharing, import/export, favorites, CLI listing |
 | `/api/folders` | Connection folder CRUD |
 | `/api/vault-folders` | Secret folder CRUD via manual method dispatch |
-| `/api/files` | Upload/download/delete artifacts |
+| `/api/files` | Upload, download, and delete keychain files |
 | `/api/checkouts` | Approval-style credential checkout flow |
-| `/api/teams` | Team CRUD and membership management via manual method dispatch |
+| `/api/teams` | Team CRUD and membership management |
 | `/api/vault-providers` | External vault integration CRUD and test |
-| `/api/sync-profiles` | Directory/provider sync profile CRUD, test, and run |
+| `/api/sync-profiles` | Directory or provider sync profile CRUD, test, run, and logs |
 
-## 🔒 Vault, Secrets, and Tenant Vault
+`/api/connections/*` and `/api/folders/*` require at least one connection-capable feature. `/api/vault-folders`, `/api/files`, and `/api/vault-providers/*` additionally require `keychainEnabled`.
+
+## 🔒 Vault, Secrets, And Tenant Vault
 
 The secrets surface uses plural `/api/secrets` paths. That is the current authoritative path family.
 
@@ -167,7 +194,7 @@ The secrets surface uses plural `/api/secrets` paths. That is the current author
 | `POST` | `/api/secrets/tenant-vault/init` | Initialize tenant vault |
 | `POST` | `/api/secrets/tenant-vault/distribute` | Distribute tenant vault shares |
 
-Password rotation endpoints are also nested under `/api/secrets`:
+Password rotation endpoints remain nested under `/api/secrets`:
 
 - `/api/secrets/{id}/rotation/enable`
 - `/api/secrets/{id}/rotation/disable`
@@ -181,11 +208,11 @@ Session creation endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/sessions/ssh` | Start SSH session |
+| `POST` | `/api/sessions/ssh` | Start SSH session when `connectionsEnabled` is true |
 | `POST` | `/api/sessions/rdp` | Start RDP session |
 | `POST` | `/api/sessions/vnc` | Start VNC session |
-| `POST` | `/api/sessions/database` | Start database session |
-| `POST` | `/api/sessions/db-tunnel` | Start database tunnel session |
+| `POST` | `/api/sessions/database` | Start database session when `databaseProxyEnabled` is true |
+| `POST` | `/api/sessions/db-tunnel` | Start database tunnel session when both connections and DB proxy are enabled |
 
 Operational session endpoints:
 
@@ -196,11 +223,14 @@ Operational session endpoints:
 | `GET` | `/api/sessions/count/gateway` | Session counts by gateway |
 | `POST` | `/api/sessions/{sessionId}/terminate` | Terminate a session centrally |
 | `POST` | `/api/sessions/ssh-proxy/token` | Mint SSH proxy token |
-| `GET` | `/api/sessions/ssh-proxy/status` | SSH proxy health/status |
+| `GET` | `/api/sessions/ssh-proxy/status` | SSH proxy health and status |
+| `GET` | `/api/sessions/db-tunnel` | List active DB tunnels |
+| `POST` | `/api/sessions/db-tunnel/{tunnelId}/heartbeat` | Keep DB tunnel alive |
+| `DELETE` | `/api/sessions/db-tunnel/{tunnelId}` | Close a DB tunnel |
 
-Transport-specific heartbeats and end calls exist for SSH, RDP, VNC, and DB tunnel sessions.
+Transport-specific heartbeats and end calls exist for SSH, RDP, VNC, and database sessions.
 
-## 🗄 Database Query and Audit APIs
+## 🗄 Database Query And Audit APIs
 
 Database sessions are the most gateway-sensitive part of the platform. The public control plane handles auth, tenancy, and audit, but the actual query work is forwarded to a DB proxy gateway.
 
@@ -218,7 +248,7 @@ sequenceDiagram
     Proxy->>DB: execute native driver query
     DB-->>Proxy: results
     Proxy-->>API: rows, columns, duration
-    API-->>UI: masked / audited response
+    API-->>UI: masked and audited response
 ```
 
 Database session endpoints:
@@ -243,8 +273,6 @@ Current protocol support for interactive querying:
 - Oracle
 - SQL Server
 
-The connection schema includes DB2 metadata fields, but DB2 is not part of the active query protocol dispatch yet.
-
 DB audit endpoints:
 
 | Path prefix | Purpose |
@@ -259,23 +287,37 @@ DB audit endpoints:
 
 The persisted execution-plan feature is controlled per connection through `dbSettings.persistExecutionPlan`. When enabled for a supported SQL protocol, the plan is stored in the DB audit log and remains visible after the session closes.
 
-## ⚙️ Gateways, Recordings, Admin, AI, and Misc Operations
+## ⚙️ Gateways, Recordings, Admin, AI, And Misc Operations
 
 Operational domains under `routes_operations.go` include:
 
 | Path prefix | Purpose |
 |-------------|---------|
-| `/api/admin/*` | Email status, app config, system settings |
-| `/api/ai/*` | AI provider config, SQL generation, SQL optimization |
+| `/api/admin/*` | Email status, app config, and system settings |
+| `/api/ai/*` | AI provider config, SQL generation, and optimization |
 | `/api/access-policies` | Access policy CRUD |
 | `/api/keystroke-policies` | Keystroke policy CRUD |
-| `/api/gateways` | Gateway CRUD, tunnel overview, SSH keypair management, template CRUD |
+| `/api/gateways` | Gateway CRUD, tunnel overview, templates, scaling, deploy, and tunnel controls |
 | `/api/rdgw/*` | RD Gateway config and RDP file generation |
-| `/api/recordings/*` | Recording list, metadata, stream, audit trail, video export |
-| `/api/ldap/*` | LDAP status, test, sync |
-| `/api/notifications` | Notification list and sub-actions |
+| `/api/recordings/*` | Recording list, metadata, stream, audit trail, and video export |
+| `/api/ldap/*` | LDAP status, test, and sync |
+| `/api/notifications` | Notification list, preference management, and read state |
 | `/api/audit/*` | Tenant and connection audit search |
 | `/api/tabs` | UI tab state sync |
+
+Notable gateway subpaths:
+
+- `/api/gateways/{id}/deploy`
+- `/api/gateways/{id}/scale`
+- `/api/gateways/{id}/scaling`
+- `/api/gateways/{id}/instances`
+- `/api/gateways/{id}/instances/{instanceId}/restart`
+- `/api/gateways/{id}/instances/{instanceId}/logs`
+- `/api/gateways/{id}/tunnel-token`
+- `/api/gateways/{id}/tunnel-disconnect`
+- `/api/gateways/{id}/tunnel-events`
+- `/api/gateways/{id}/tunnel-metrics`
+- `/api/gateways/templates`
 
 ## 📡 Live Streams
 
@@ -289,7 +331,7 @@ Server-sent event endpoints in `routes_live.go`:
 - `GET /api/audit/stream`
 - `GET /api/db-audit/logs/stream`
 
-These are useful for dashboards, live admin panels, and long-lived operator views.
+These are feature-gated in the same way as their non-stream route families.
 
 ## 🧪 Internal `/v1` Contracts
 
@@ -317,8 +359,8 @@ The DB proxy and query-runner binaries expose the shared query middleware contra
 
 ## 📌 Source Of Truth Reminder
 
-If documentation and runtime ever disagree, trust the route files first:
+If documentation and runtime ever disagree, trust these in order:
 
-- `backend/cmd/control-plane-api/routes_*.go`
-- `backend/internal/queryrunnerapi/service.go`
-- `client/src/api/*.ts`
+1. `backend/internal/runtimefeatures/manifest.go`
+2. `backend/cmd/control-plane-api/routes.go`
+3. the specific `routes_*.go` file for the route family in question

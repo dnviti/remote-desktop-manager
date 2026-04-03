@@ -1,6 +1,6 @@
 # Arsenale — Ansible Deployment
 
-Automated, secure Podman deployment of Arsenale with Ansible Vault for secret management.
+CLI-only, installer-aware deployment of Arsenale for Podman and Kubernetes. The installer keeps its own encrypted profile, state, status, log, and rendered artifacts so reruns and external status reads do not depend on a running Arsenale instance.
 
 ## Quick Start (via Makefile)
 
@@ -13,12 +13,15 @@ The preferred way to interact with Ansible is through the root `Makefile`. All c
 make setup          # Install Ansible collections, generate vault + certs
 
 # Development
-make dev            # Start the full Go-based development stack
+make dev            # Start the full installer-aware development stack
 npm run dev         # Optional: start Vite on https://localhost:3005 against the local Go stack
 
 # Production
-make deploy         # Full stack deployment
-make status         # Check health
+make install        # Interactive installer entrypoint
+make deploy         # Deploy or update production
+make configure      # Reconfigure an existing install
+make recover        # Rerun recovery flow
+make status         # Read encrypted installer status
 
 # Operations
 make backup         # Database backup
@@ -45,15 +48,66 @@ If running playbooks directly instead of via `make`:
 ```bash
 cd deployment/ansible
 
-# 1. Generate and encrypt secrets
-ansible-playbook playbooks/setup-vault.yml
+# Interactive installer
+ansible-playbook playbooks/install.yml --ask-vault-pass
 
-# 2. Deploy Arsenale
-ansible-playbook playbooks/deploy.yml --ask-vault-pass
+# Production installer
+ansible-playbook playbooks/install.yml --ask-vault-pass -e installer_mode=production
 
-# 3. Verify deployment
-ansible-playbook playbooks/deploy.yml --ask-vault-pass --tags healthcheck
+# Encrypted status read
+ansible-playbook playbooks/status.yml --ask-vault-pass
 ```
+
+## Installer Artifacts
+
+The installer owns a second encrypted artifact set in addition to the Ansible vault. On a target host the canonical location is:
+
+```text
+/opt/arsenale/install/
+```
+
+Artifacts:
+
+- `install-profile.enc`
+- `install-state.enc`
+- `install-status.enc`
+- `install-log.enc`
+- `rendered-artifacts.enc`
+
+These are encrypted with the technician password entered at install time. The password is never stored on disk. Every rerun asks for it again before the installer reads state.
+
+## Installer Flow
+
+Fresh install:
+
+1. Prompt for the technician password.
+2. Decrypt any existing artifacts if present.
+3. Ask backend-, mode-, routing-, and capability-specific questions.
+4. Resolve the desired runtime profile.
+5. Classify the run as fresh install, no-op, reconfigure, upgrade, recovery, or drift reconcile.
+6. Apply only the approved delta.
+7. Re-encrypt profile, state, status, log, and rendered artifacts.
+
+Rerun and recovery:
+
+1. Prompt for the technician password again.
+2. Read and decrypt installer state.
+3. Recompute the desired profile and rendered hashes.
+4. Detect no-op, capability changes, backend changes, interrupted runs, or drift.
+5. Re-apply from encrypted canonical state when repair is needed.
+
+## Modes, Backends, and Capabilities
+
+Development mode always deploys the full stack, demo targets, fixtures, and deeper validation.
+
+Production mode deploys only the installer-selected capabilities. Initial capabilities live under `deployment/ansible/install/capabilities.yml` and are installer-owned only; they are not a product-side module system.
+
+Supported backends:
+
+- Podman compose
+- Kubernetes via Helm
+
+Docker is not a supported installer backend. The same installer profile model drives the supported backends.
 
 ## Secret Management
 
@@ -61,8 +115,10 @@ ansible-playbook playbooks/deploy.yml --ask-vault-pass --tags healthcheck
 
 Secrets are managed through a two-layer approach:
 
-1. **Ansible Vault** encrypts secrets at rest in `inventory/group_vars/all/vault.yml`
-2. **Podman secrets** inject them into containers at `/run/secrets/` — never as environment variables
+1. **Ansible Vault** encrypts long-lived deployment secrets at rest in `inventory/group_vars/all/vault.yml`
+2. **Installer artifacts** encrypt installer-owned profile/state/status/render metadata under `/opt/arsenale/install/`
+
+For compose backends, runtime secrets are injected at `/run/secrets/`. Generated runtime config is transient during apply and is not kept as persistent plaintext.
 
 ### Generate Secrets
 
@@ -166,14 +222,11 @@ podman exec -i arsenale-postgres pg_restore \
 ## Updating Arsenale
 
 ```bash
-# Update the version in vars.yml
-# arsenale_version: v1.2.0  (or a branch/tag/commit)
-
-# Re-run deployment
-ansible-playbook playbooks/deploy.yml --ask-vault-pass
+# Re-run the installer with the same artifacts and technician password
+make deploy
 ```
 
-This will pull the new version, rebuild images (if `arsenale_build_images: true`), and restart services.
+The installer will classify the rerun as a no-op, reconfigure, recovery, or upgrade based on the decrypted installer artifacts.
 
 ## Architecture
 
@@ -184,9 +237,10 @@ Control Node                    Target Host
 │ ansible-play │               │ ├── arsenale/  (git repo)        │
 │              │               │ ├── certs/     (TLS, per-service)│
 │              │               │ ├── config/    (ssh-gateway)     │
+│              │               │ ├── install/   (encrypted installer state) │
 │              │               │ ├── backups/   (pg_dump)         │
 │              │               │ ├── docker-compose.yml           │
-│              │               │ └── .env       (non-secret only) │
+│              │               │ └── .env       (transient for compose apply) │
 │              │               │                                   │
 │              │               │ Podman secrets: /run/secrets/*    │
 │              │               │ 7 containers, 5 networks, 4 vols │
@@ -217,7 +271,7 @@ podman compose -f /opt/arsenale/docker-compose.yml ps
 
 ### Secrets not found in container
 ```bash
-# Verify Podman secrets exist:
+# Verify compose backend secrets exist:
 podman secret ls
 
 # Verify secrets are mounted:
@@ -231,3 +285,9 @@ Certificates are generated in `{{ arsenale_cert_dir }}` with EC P-256 keys. To r
 rm -rf /opt/arsenale/certs/*
 ansible-playbook playbooks/deploy.yml --ask-vault-pass --tags certificates
 ```
+
+### Installer status reads fail
+
+- Verify the technician password is correct.
+- Verify the artifact path points to the right install, usually `/opt/arsenale/install/install-status.enc`.
+- If decryption fails with the correct password, treat the artifact as tampered or corrupt and rerun `make recover`.

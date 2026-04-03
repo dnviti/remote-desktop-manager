@@ -12,6 +12,18 @@ export const useFeatureFlagsStore = create<FeatureFlagsState>((set) => ({
   databaseProxyEnabled: true,
   connectionsEnabled: true,
   keychainEnabled: true,
+  recordingsEnabled: true,
+  zeroTrustEnabled: true,
+  agenticAIEnabled: true,
+  enterpriseAuthEnabled: true,
+  sharingApprovalsEnabled: true,
+  cliEnabled: true,
+  mode: 'production',
+  backend: 'podman',
+  routing: {
+    directGateway: true,
+    zeroTrust: true,
+  },
   loaded: false,
 
   fetchFeatureFlags: async () => {

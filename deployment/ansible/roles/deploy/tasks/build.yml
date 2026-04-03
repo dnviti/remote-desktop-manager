@@ -1,0 +1,186 @@
+---
+- name: Set compose env file flag
+  set_fact:
+    _compose_env_file_arg: >-
+      {{
+        (
+          ' --env-file ' ~ installer_compose_env_file
+        )
+        if (installer_compose_env_file | default('') | trim)
+        else ''
+      }}
+
+- name: Validate supported compose runtime
+  assert:
+    that:
+      - (container_runtime | default('podman')) == 'podman'
+    fail_msg: "Docker is no longer a supported compose runtime. Use podman."
+
+- name: Set compose base command
+  set_fact:
+    _compose_base_cmd: podman-compose
+    _repo_root: >-
+      {{
+        arsenale_source_root
+        | default(
+            _home if (_is_dev | default(false) | bool) else (_home + '/arsenale')
+          )
+      }}
+    _compose_project_name: >-
+      {{
+        ((_home | basename | lower | regex_replace('[^a-z0-9]+', '')) or 'compose')
+      }}
+
+- name: Set compose command
+  set_fact:
+    _compose_cmd: "{{ _compose_base_cmd }}{{ _compose_env_file_arg }} -f {{ _home }}/docker-compose.yml"
+
+- name: Set rootless container runtime environment
+  set_fact:
+    _podman_runtime_env:
+      XDG_RUNTIME_DIR: >-
+        {{
+          (
+            lookup('env', 'XDG_RUNTIME_DIR')
+            | default('/run/user/' + ((ansible_user_uid | default('1000')) | string), true)
+          )
+          if (_is_dev | default(false) | bool)
+          else '/run/user/' + ((arsenale_uid | default(ansible_user_uid | default('1000'))) | string)
+        }}
+
+- name: Read rendered compose definition from target host
+  slurp:
+    src: "{{ _home }}/docker-compose.yml"
+  register: compose_definition_file
+  when: _state == 'present' and _build | bool
+
+- name: Load rendered compose definition
+  set_fact:
+    compose_definition: "{{ compose_definition_file.content | b64decode | from_yaml }}"
+  when: _state == 'present' and _build | bool
+
+- name: Select services with build configuration
+  set_fact:
+    compose_services_for_build: >-
+      {{
+        compose_definition.services
+        | dict2items
+        | selectattr('value.build', 'defined')
+        | map(attribute='key')
+        | list
+      }}
+  when: _state == 'present' and _build | bool
+
+- name: Derive parallel build capacity
+  set_fact:
+    _build_parallelism: "{{ arsenale_build_parallelism | default([compose_services_for_build | length, 4] | min) | int }}"
+    _build_total_cpus: "{{ ansible_processor_vcpus | default(ansible_processor_count | default(4)) | int }}"
+    _build_memory_mb_total: "{{ ansible_memtotal_mb | int }}"
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+
+- name: Derive per-build resource limits
+  set_fact:
+    _build_stage_jobs: "{{ arsenale_build_stage_jobs | default([(_build_total_cpus // _build_parallelism), 1] | max) | int }}"
+    _build_memory_limit: "{{ arsenale_build_memory | default(([(((_build_memory_mb_total * 3) // 4) // _build_parallelism), 2048] | max) | string ~ 'm') }}"
+    _build_cpu_quota: "{{ arsenale_build_cpu_quota | default([((_build_total_cpus * 100000) // _build_parallelism), 100000] | max) | int }}"
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+
+- name: Set runtime-specific build arguments
+  set_fact:
+    _runtime_build_args: >-
+      {{
+        (
+          '--jobs ' ~ (_build_stage_jobs | string)
+          ~ ' --memory ' ~ _build_memory_limit
+          ~ ' --cpu-period 100000'
+          ~ ' --cpu-quota ' ~ (_build_cpu_quota | string)
+        )
+        if (container_runtime | default('podman')) == 'podman'
+        else ''
+      }}
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+
+- name: Define build base images
+  set_fact:
+    _build_base_images:
+      - docker.io/library/node:22-alpine
+      - docker.io/library/nginx:1.28-alpine
+      - docker.io/library/golang:1.25-alpine
+      - docker.io/library/golang:1.23-alpine
+      - docker.io/library/alpine:3.18
+      - docker.io/library/alpine:3.21
+      - docker.io/library/alpine:3.22
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+
+- name: Check cached build base images
+  command: >
+    {{ container_runtime | default('podman') }} image exists {{ item }}
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+  changed_when: false
+  failed_when: false
+  loop: "{{ _build_base_images }}"
+  loop_control:
+    label: "{{ item }}"
+  register: build_base_image_checks
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Pre-pull missing build base images
+  command: >
+    {{ container_runtime | default('podman') }} pull {{ item.item }}
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0) and item.rc != 0
+  changed_when: true
+  loop: "{{ build_base_image_checks.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: build_base_pull_result
+  retries: 3
+  delay: 5
+  until: build_base_pull_result.rc == 0
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Launch image builds in parallel
+  command: >-
+    {{ container_runtime | default('podman') }} build
+    {{ _runtime_build_args }}
+    {% for build_arg in (compose_definition.services[item].build.args | default({}) | dict2items) %}
+    --build-arg {{ build_arg.key }}={{ build_arg.value }}
+    {% endfor %}
+    -f {{
+      compose_definition.services[item].build.dockerfile
+      if (compose_definition.services[item].build.dockerfile | regex_search('^/'))
+      else (compose_definition.services[item].build.context ~ '/' ~ compose_definition.services[item].build.dockerfile)
+    }}
+    -t {{
+      compose_definition.services[item].image
+      | default('localhost/' ~ _compose_project_name ~ '_' ~ item ~ ':latest')
+    }}
+    {{ compose_definition.services[item].build.context }}
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+  changed_when: true
+  loop: "{{ compose_services_for_build }}"
+  loop_control:
+    label: "{{ item }}"
+  register: compose_build_jobs
+  async: 7200
+  poll: 0
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Wait for image builds to finish
+  async_status:
+    jid: "{{ item.ansible_job_id }}"
+  when: _state == 'present' and _build | bool and (compose_services_for_build | length > 0)
+  changed_when: true
+  loop: "{{ compose_build_jobs.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  register: compose_build_result
+  until: compose_build_result.finished
+  retries: 720
+  delay: 10
+  environment: "{{ _podman_runtime_env }}"
+
+- name: Pull pre-built images
+  command: >
+    {{ _compose_cmd }} pull
+  when: _state == 'present' and not (_build | bool) and not (_is_dev | default(false) | bool)
+  changed_when: false

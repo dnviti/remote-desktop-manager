@@ -1,0 +1,55 @@
+---
+- name: Read installer status
+  hosts: localhost
+  connection: local
+  become: false
+  gather_facts: false
+
+  tasks:
+    - name: Prompt for installer password
+      pause:
+        prompt: "Technician password"
+        echo: false
+      register: installer_password_prompt
+      when:
+        - installer_password is not defined
+        - install_password_file is not defined
+      no_log: true
+
+    - name: Resolve installer password
+      set_fact:
+        installer_password_value: >-
+          {{
+            installer_password
+            | default(
+                (
+                  lookup('file', install_password_file) | trim
+                )
+                if (install_password_file is defined)
+                else installer_password_prompt.user_input
+              )
+          }}
+      no_log: true
+
+    - name: Read encrypted installer status
+      command:
+        argv:
+          - python3
+          - "{{ playbook_dir }}/../scripts/install_status.py"
+          - --input
+          - "{{ installer_status_file | default('/opt/arsenale/install/install-status.enc') }}"
+          - --password-stdin
+        stdin: "{{ installer_password_value }}"
+      register: installer_status_result
+      failed_when: false
+      become: "{{ (installer_status_file | default('/opt/arsenale/install/install-status.enc')) is match('^/opt/') }}"
+      no_log: true
+
+    - name: Fail when installer status cannot be read
+      fail:
+        msg: "Failed to read installer status. The password is incorrect, the artifact is unreadable, or it was tampered with."
+      when: installer_status_result.rc != 0
+
+    - name: Display installer status
+      debug:
+        msg: "{{ installer_status_result.stdout | from_json }}"

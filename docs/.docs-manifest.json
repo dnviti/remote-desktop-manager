@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-04-02T12:57:10Z",
+  "generated_at": "2026-04-03T11:29:03Z",
   "visual_richness": "tiny",
   "sections": [
     {
@@ -9,7 +9,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "293dd640c3f8b56f7738b1dc7cb52e8a125b96b2d27d103acbedc137ecb495f7"
+          "hash": "796885aaa68277f62eedc55d3e964ed4e690eb83a3b21286579c72098cc3f5d1"
         },
         {
           "path": "AGENT.md",
@@ -26,9 +26,17 @@
         {
           "path": "backend/go.mod",
           "hash": "e2f22eb246e44285682070cfab53667ac34643b9b3796686c17d9466a232a79d"
+        },
+        {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "architecture",
@@ -43,20 +51,32 @@
           "hash": "3e9232f1d68097ce276701966c38d97358d37218afb32f44cc7f414fcb63d0e3"
         },
         {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
+        },
+        {
+          "path": "backend/cmd/control-plane-api/routes.go",
+          "hash": "ee803d62c082e88aefdd547b847dc78ec4ecee30b58c6461e97a3bfc42bcc1c7"
+        },
+        {
           "path": "backend/cmd/control-plane-api/runtime.go",
-          "hash": "3fccb13b5b5e964ccf042638ad234df348ffaeee91923e6a369bf5cc1c0d34fe"
+          "hash": "0a63aadb6b75b8ca273d8eb110e7ba6bb34be92211546fab3194604af8a9eca4"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_public.go",
-          "hash": "d3bcfda705b881c6710c4c15f77472852145dd39afc334b114aec345d1c7d015"
+          "hash": "73e55663a9e120362afeb9bb83be9abaab702f6ab00ec2f04598c2aa86522e5c"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_sessions.go",
-          "hash": "6197041b8fc441eaf0f68f1110c4d4288c7d9e57b0f361a7f37619cb82c18d2b"
+          "hash": "d183dcef762f80f4ceb34a4e891545b7d45131dde8380e91e49fc41200b3c102"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_operations.go",
-          "hash": "ebc363ea43c637cefb292fb6489f49b5cf40aadbad0a064990ab15e8045b0568"
+          "hash": "3a7ec350bc61921d889ebe905c84b73c17b2c89beb7ffda687d68fad0e4139a2"
         },
         {
           "path": "backend/internal/dbsessions/create.go",
@@ -64,7 +84,7 @@
         },
         {
           "path": "backend/internal/dbsessions/query_runtime.go",
-          "hash": "c05a0940208c8b5cf9dd464b23fd6990e4fca952e5e2f7850abd6d6a51061584"
+          "hash": "d4bcc9c63f8a6627dc1469f667592017cf99cad81b99aea43e9280c19d54be64"
         },
         {
           "path": "backend/internal/dbsessions/dbproxy_client.go",
@@ -87,15 +107,23 @@
           "hash": "d563fbb1ea711d2bd8dc8f7f2df3184bdd6837c2a4233165f2b9d354d2bac615"
         },
         {
+          "path": "client/src/api/auth.api.ts",
+          "hash": "0272303b8287adeeada870c6823f3f77eba0999f14e87337765f345aedde90c8"
+        },
+        {
+          "path": "client/src/store/featureFlagsStore.ts",
+          "hash": "0ff8e62b9ac8ec766e66c685a2663da33c8d522a24a451dc4b7ff4d35281870c"
+        },
+        {
           "path": "client/vite.config.ts",
           "hash": "3d12c45ddeb27f92f2bd72d8820617ac162accd260ae14c2e0ebbb1820627bee"
         },
         {
           "path": "docker-compose.yml",
-          "hash": "12fa43c0e4fd627f3ee18cfb09a70e5eaa9aad3339d0d4e76f3cf95a7b143c91"
+          "hash": "5fb85c43832361399b37a14d944667e594c7faef3bf760bc2bad9bbc52980cac"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "getting-started",
@@ -103,7 +131,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "293dd640c3f8b56f7738b1dc7cb52e8a125b96b2d27d103acbedc137ecb495f7"
+          "hash": "796885aaa68277f62eedc55d3e964ed4e690eb83a3b21286579c72098cc3f5d1"
         },
         {
           "path": "AGENT.md",
@@ -119,7 +147,7 @@
         },
         {
           "path": "Makefile",
-          "hash": "31a2255c2bac2d804a87883a0acf8fe0bf0655b397105263638fcd19d171e824"
+          "hash": "6471f4f6b8a60bb032a66acfbace9f79200d9826d74b0a5559ef2cc69381a7e3"
         },
         {
           "path": ".env.example",
@@ -131,18 +159,30 @@
         },
         {
           "path": "scripts/db-migrate.sh",
-          "hash": "7ba0340020c6b6c9794037cb62403939fc8e4f41e791fee3b0ff389c118ba15c"
+          "hash": "354ffcc3b9b7d1be2800ef697979e342234e3fec924060bbfc34f52f06fba7ef"
         },
         {
           "path": "scripts/dev-api-acceptance.sh",
           "hash": "e40cfa86ecd50eca096d2d1202f960279118c713cf1fca6d13a3f94554c07abe"
         },
         {
+          "path": "deployment/ansible/README.md",
+          "hash": "6d72cce908eef7fe04a0badef4d3b82abd7f86ec71ae4215b5709f4a88f38bde"
+        },
+        {
+          "path": "deployment/ansible/playbooks/install.yml",
+          "hash": "2f3ed0a2f2e66294e4c43f431251e94283d039ee057de4763e825488b1c161fa"
+        },
+        {
+          "path": "deployment/ansible/playbooks/status.yml",
+          "hash": "4512b183b4b239be0400fb69ff3150e3966137af1f156deacfb452075ea17a6f"
+        },
+        {
           "path": "deployment/ansible/inventory/group_vars/all/vars.yml",
-          "hash": "2ab60e442c7a902c97cc247fdeca8fa7a70427c8eff22715b9cd662ab7a5acad"
+          "hash": "7dc79c6e2b647b68e9db3d39211fdd1f4bed5fab06becc610cca0f1b7beb0365"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "configuration",
@@ -154,15 +194,35 @@
         },
         {
           "path": "deployment/ansible/inventory/group_vars/all/vars.yml",
-          "hash": "2ab60e442c7a902c97cc247fdeca8fa7a70427c8eff22715b9cd662ab7a5acad"
+          "hash": "7dc79c6e2b647b68e9db3d39211fdd1f4bed5fab06becc610cca0f1b7beb0365"
+        },
+        {
+          "path": "deployment/ansible/install/capabilities.yml",
+          "hash": "016bd16094f53cb73aede0898f299970e72e504e206ab837570c226e8053da70"
+        },
+        {
+          "path": "deployment/ansible/roles/deploy/templates/compose.yml.j2",
+          "hash": "ba5e75d1ee7515641fafdf5c12f76448b0cc8ed4468d62913e2089493bc101c5"
         },
         {
           "path": "backend/internal/app/app.go",
           "hash": "3e9232f1d68097ce276701966c38d97358d37218afb32f44cc7f414fcb63d0e3"
         },
         {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
+        },
+        {
           "path": "backend/cmd/control-plane-api/runtime.go",
-          "hash": "3fccb13b5b5e964ccf042638ad234df348ffaeee91923e6a369bf5cc1c0d34fe"
+          "hash": "0a63aadb6b75b8ca273d8eb110e7ba6bb34be92211546fab3194604af8a9eca4"
+        },
+        {
+          "path": "backend/internal/storage/postgres.go",
+          "hash": "26aa9c5aad275c64e9c0430ea5272db4ba6ba5ca8f8b77cdf0cc7c83fd2c7a88"
         },
         {
           "path": "client/vite.config.ts",
@@ -170,22 +230,42 @@
         },
         {
           "path": "client/nginx.dev.conf",
-          "hash": "cf13a8a741a268ecb19cb773e31db5f25c8c6e628d632d0ffcc695b1dead2222"
+          "hash": "8861c16b999c5442262281689843d2bd21e2f967478880ff9671d5b9d9cf8cc9"
+        },
+        {
+          "path": "client/src/api/auth.api.ts",
+          "hash": "0272303b8287adeeada870c6823f3f77eba0999f14e87337765f345aedde90c8"
+        },
+        {
+          "path": "client/src/store/featureFlagsStore.ts",
+          "hash": "0ff8e62b9ac8ec766e66c685a2663da33c8d522a24a451dc4b7ff4d35281870c"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "api-reference",
       "file": "api-reference.md",
       "source_files": [
         {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
+        },
+        {
+          "path": "backend/cmd/control-plane-api/routes.go",
+          "hash": "ee803d62c082e88aefdd547b847dc78ec4ecee30b58c6461e97a3bfc42bcc1c7"
+        },
+        {
           "path": "backend/cmd/control-plane-api/routes_public.go",
-          "hash": "d3bcfda705b881c6710c4c15f77472852145dd39afc334b114aec345d1c7d015"
+          "hash": "73e55663a9e120362afeb9bb83be9abaab702f6ab00ec2f04598c2aa86522e5c"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_auth.go",
-          "hash": "6b7eb582b00cc116957cb67b53be0550118f740719396760e6cae5ee4a23c141"
+          "hash": "637bec31c05844b90be1f5de80ad56e17b57cdf833daac1a4004fd0e5f0481d3"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_auth_mfa.go",
@@ -209,7 +289,7 @@
         },
         {
           "path": "backend/cmd/control-plane-api/routes_resources.go",
-          "hash": "fdcdfc6e6b0aea7c296fa4b140d894319964dd5a65fd266749eb4211215f5ae4"
+          "hash": "796c4d0f611d82824c3ca1291f3e7757691dfbbed544265cd5e8fc7af4ef4331"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_secrets.go",
@@ -217,7 +297,7 @@
         },
         {
           "path": "backend/cmd/control-plane-api/routes_sessions.go",
-          "hash": "6197041b8fc441eaf0f68f1110c4d4288c7d9e57b0f361a7f37619cb82c18d2b"
+          "hash": "d183dcef762f80f4ceb34a4e891545b7d45131dde8380e91e49fc41200b3c102"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_tenants.go",
@@ -225,11 +305,11 @@
         },
         {
           "path": "backend/cmd/control-plane-api/routes_operations.go",
-          "hash": "ebc363ea43c637cefb292fb6489f49b5cf40aadbad0a064990ab15e8045b0568"
+          "hash": "3a7ec350bc61921d889ebe905c84b73c17b2c89beb7ffda687d68fad0e4139a2"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_live.go",
-          "hash": "20d579e54bb65272ed885dc5650431a5e1ed98fa8120e2d05cf60b61702fd6b5"
+          "hash": "53441b7dc377d80ef31b5787dddbb48fa1585ee3d8e06890e36fde13e836f32c"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_internal.go",
@@ -240,15 +320,19 @@
           "hash": "d563fbb1ea711d2bd8dc8f7f2df3184bdd6837c2a4233165f2b9d354d2bac615"
         },
         {
+          "path": "client/src/api/auth.api.ts",
+          "hash": "0272303b8287adeeada870c6823f3f77eba0999f14e87337765f345aedde90c8"
+        },
+        {
           "path": "client/src/api/database.api.ts",
           "hash": "80a26c5d1203d85a57b9ace03da2b2d26f49d1fe4c271c78762b105549427c5d"
         },
         {
           "path": "client/src/api/dbAudit.api.ts",
-          "hash": "1b7fc0a48d667a1bcdede1337ef82b0150cf87dedb0efeb0a4e77eaace239f4c"
+          "hash": "69f2149956f5e0b4132ead558a5f7cfed6811190f30ac5727c17ea11427933f8"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "deployment",
@@ -256,7 +340,7 @@
       "source_files": [
         {
           "path": "Makefile",
-          "hash": "31a2255c2bac2d804a87883a0acf8fe0bf0655b397105263638fcd19d171e824"
+          "hash": "6471f4f6b8a60bb032a66acfbace9f79200d9826d74b0a5559ef2cc69381a7e3"
         },
         {
           "path": "backend/Dockerfile",
@@ -288,15 +372,31 @@
         },
         {
           "path": "docker-compose.yml",
-          "hash": "12fa43c0e4fd627f3ee18cfb09a70e5eaa9aad3339d0d4e76f3cf95a7b143c91"
+          "hash": "5fb85c43832361399b37a14d944667e594c7faef3bf760bc2bad9bbc52980cac"
+        },
+        {
+          "path": "deployment/ansible/README.md",
+          "hash": "6d72cce908eef7fe04a0badef4d3b82abd7f86ec71ae4215b5709f4a88f38bde"
+        },
+        {
+          "path": "deployment/ansible/install/capabilities.yml",
+          "hash": "016bd16094f53cb73aede0898f299970e72e504e206ab837570c226e8053da70"
+        },
+        {
+          "path": "deployment/ansible/playbooks/install.yml",
+          "hash": "2f3ed0a2f2e66294e4c43f431251e94283d039ee057de4763e825488b1c161fa"
+        },
+        {
+          "path": "deployment/ansible/playbooks/status.yml",
+          "hash": "4512b183b4b239be0400fb69ff3150e3966137af1f156deacfb452075ea17a6f"
         },
         {
           "path": "deployment/ansible/playbooks/deploy.yml",
-          "hash": "fad13b6d61c618d804894d43a10f4d68055efb09a0fc015d526e0d66012412a8"
+          "hash": "0424e4191014c23cb07b1271e5f3a50f513ce2848272308f4b96568578990ded"
         },
         {
           "path": "deployment/ansible/roles/deploy/templates/compose.yml.j2",
-          "hash": "73166ac49cc30e3effc5d6c58d5baccfad67053e6ccd25b2ea8c47eaab87eba3"
+          "hash": "ba5e75d1ee7515641fafdf5c12f76448b0cc8ed4468d62913e2089493bc101c5"
         },
         {
           "path": ".github/workflows/docker-build.yml",
@@ -319,7 +419,7 @@
           "hash": "cedf1f697ed32f891ba360e1a465865b131c3bc205e0fe3d4ca1c6bacfcd3910"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "development",
@@ -355,7 +455,23 @@
         },
         {
           "path": "Makefile",
-          "hash": "31a2255c2bac2d804a87883a0acf8fe0bf0655b397105263638fcd19d171e824"
+          "hash": "6471f4f6b8a60bb032a66acfbace9f79200d9826d74b0a5559ef2cc69381a7e3"
+        },
+        {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
+        },
+        {
+          "path": "client/src/api/auth.api.ts",
+          "hash": "0272303b8287adeeada870c6823f3f77eba0999f14e87337765f345aedde90c8"
+        },
+        {
+          "path": "client/src/store/featureFlagsStore.ts",
+          "hash": "0ff8e62b9ac8ec766e66c685a2663da33c8d522a24a451dc4b7ff4d35281870c"
         },
         {
           "path": "scripts/go-build-all.sh",
@@ -374,11 +490,15 @@
           "hash": "e40cfa86ecd50eca096d2d1202f960279118c713cf1fca6d13a3f94554c07abe"
         },
         {
+          "path": "scripts/db-migrate.sh",
+          "hash": "354ffcc3b9b7d1be2800ef697979e342234e3fec924060bbfc34f52f06fba7ef"
+        },
+        {
           "path": "tools/arsenale-cli/cmd/root.go",
           "hash": "0c7178dfe83b8cce70ae7a23cba9e5f8ec5f6fe797882f64a88da296ef4883e4"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "troubleshooting",
@@ -386,7 +506,7 @@
       "source_files": [
         {
           "path": "Makefile",
-          "hash": "31a2255c2bac2d804a87883a0acf8fe0bf0655b397105263638fcd19d171e824"
+          "hash": "6471f4f6b8a60bb032a66acfbace9f79200d9826d74b0a5559ef2cc69381a7e3"
         },
         {
           "path": "scripts/dev-api-acceptance.sh",
@@ -394,11 +514,19 @@
         },
         {
           "path": "scripts/db-migrate.sh",
-          "hash": "7ba0340020c6b6c9794037cb62403939fc8e4f41e791fee3b0ff389c118ba15c"
+          "hash": "354ffcc3b9b7d1be2800ef697979e342234e3fec924060bbfc34f52f06fba7ef"
         },
         {
           "path": "dev-certs/generate.sh",
           "hash": "ee41f19f437557bfc6e141eda07b9ea22c806bdd1cf26d515a1088d70511265e"
+        },
+        {
+          "path": "deployment/ansible/playbooks/install.yml",
+          "hash": "2f3ed0a2f2e66294e4c43f431251e94283d039ee057de4763e825488b1c161fa"
+        },
+        {
+          "path": "deployment/ansible/playbooks/status.yml",
+          "hash": "4512b183b4b239be0400fb69ff3150e3966137af1f156deacfb452075ea17a6f"
         },
         {
           "path": "client/vite.config.ts",
@@ -406,7 +534,15 @@
         },
         {
           "path": "client/nginx.dev.conf",
-          "hash": "cf13a8a741a268ecb19cb773e31db5f25c8c6e628d632d0ffcc695b1dead2222"
+          "hash": "8861c16b999c5442262281689843d2bd21e2f967478880ff9671d5b9d9cf8cc9"
+        },
+        {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
         },
         {
           "path": "backend/internal/app/app.go",
@@ -414,18 +550,22 @@
         },
         {
           "path": "backend/cmd/control-plane-api/routes_public.go",
-          "hash": "d3bcfda705b881c6710c4c15f77472852145dd39afc334b114aec345d1c7d015"
+          "hash": "73e55663a9e120362afeb9bb83be9abaab702f6ab00ec2f04598c2aa86522e5c"
+        },
+        {
+          "path": "backend/cmd/control-plane-api/readiness.go",
+          "hash": "3b1636f99a1b3f9fe4db2be40cfb3f39763cd57e3c60f221c8a308d72208a1d1"
         },
         {
           "path": "backend/cmd/control-plane-api/dev_bootstrap.go",
-          "hash": "41576191109770b385f00118d35ba7ef295aee3d7f54b51d9157c32173d6af32"
+          "hash": "08e9f6c70c001542a5637e061315fb1bec322273f81cd1f27ed387db96014e01"
         },
         {
           "path": "docker-compose.yml",
-          "hash": "12fa43c0e4fd627f3ee18cfb09a70e5eaa9aad3339d0d4e76f3cf95a7b143c91"
+          "hash": "5fb85c43832361399b37a14d944667e594c7faef3bf760bc2bad9bbc52980cac"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     },
     {
       "name": "llm-context",
@@ -433,7 +573,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "293dd640c3f8b56f7738b1dc7cb52e8a125b96b2d27d103acbedc137ecb495f7"
+          "hash": "796885aaa68277f62eedc55d3e964ed4e690eb83a3b21286579c72098cc3f5d1"
         },
         {
           "path": "AGENT.md",
@@ -452,35 +592,67 @@
           "hash": "3e9232f1d68097ce276701966c38d97358d37218afb32f44cc7f414fcb63d0e3"
         },
         {
+          "path": "backend/internal/runtimefeatures/manifest.go",
+          "hash": "8dd8cc651dd919eae08f915faadcd84322e934111694851ade42afa716826f61"
+        },
+        {
+          "path": "backend/internal/publicconfig/service.go",
+          "hash": "8a2872f182a0fae51ee33e538f5a71c9a9da45ed82a1dc379dc16dadf4bc3546"
+        },
+        {
           "path": "backend/cmd/control-plane-api/runtime.go",
-          "hash": "3fccb13b5b5e964ccf042638ad234df348ffaeee91923e6a369bf5cc1c0d34fe"
+          "hash": "0a63aadb6b75b8ca273d8eb110e7ba6bb34be92211546fab3194604af8a9eca4"
+        },
+        {
+          "path": "backend/cmd/control-plane-api/routes.go",
+          "hash": "ee803d62c082e88aefdd547b847dc78ec4ecee30b58c6461e97a3bfc42bcc1c7"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_public.go",
-          "hash": "d3bcfda705b881c6710c4c15f77472852145dd39afc334b114aec345d1c7d015"
+          "hash": "73e55663a9e120362afeb9bb83be9abaab702f6ab00ec2f04598c2aa86522e5c"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_sessions.go",
-          "hash": "6197041b8fc441eaf0f68f1110c4d4288c7d9e57b0f361a7f37619cb82c18d2b"
+          "hash": "d183dcef762f80f4ceb34a4e891545b7d45131dde8380e91e49fc41200b3c102"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_operations.go",
-          "hash": "ebc363ea43c637cefb292fb6489f49b5cf40aadbad0a064990ab15e8045b0568"
+          "hash": "3a7ec350bc61921d889ebe905c84b73c17b2c89beb7ffda687d68fad0e4139a2"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_secrets.go",
           "hash": "922bd2cadbad504f4e184bca5f7162325bb11fce547b47fdd29aee03a08d9435"
         },
         {
+          "path": "deployment/ansible/playbooks/install.yml",
+          "hash": "2f3ed0a2f2e66294e4c43f431251e94283d039ee057de4763e825488b1c161fa"
+        },
+        {
+          "path": "deployment/ansible/playbooks/status.yml",
+          "hash": "4512b183b4b239be0400fb69ff3150e3966137af1f156deacfb452075ea17a6f"
+        },
+        {
+          "path": "deployment/ansible/install/capabilities.yml",
+          "hash": "016bd16094f53cb73aede0898f299970e72e504e206ab837570c226e8053da70"
+        },
+        {
           "path": "client/vite.config.ts",
           "hash": "3d12c45ddeb27f92f2bd72d8820617ac162accd260ae14c2e0ebbb1820627bee"
+        },
+        {
+          "path": "client/src/api/auth.api.ts",
+          "hash": "0272303b8287adeeada870c6823f3f77eba0999f14e87337765f345aedde90c8"
+        },
+        {
+          "path": "client/src/store/featureFlagsStore.ts",
+          "hash": "0ff8e62b9ac8ec766e66c685a2663da33c8d522a24a451dc4b7ff4d35281870c"
         },
         {
           "path": "tools/arsenale-cli/cmd/root.go",
           "hash": "0c7178dfe83b8cce70ae7a23cba9e5f8ec5f6fe797882f64a88da296ef4883e4"
         }
       ],
-      "generated_at": "2026-04-02T12:57:10Z"
+      "generated_at": "2026-04-03T11:29:03Z"
     }
   ]
 }

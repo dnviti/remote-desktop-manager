@@ -1,0 +1,601 @@
+---
+- name: Ensure installer workspace exists
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ installer_artifact_owner | default(omit) }}"
+    group: "{{ installer_artifact_group | default(omit) }}"
+    mode: "0750"
+  loop:
+    - "{{ installer_workspace_dir }}"
+    - "{{ installer_scripts_dir }}"
+    - "{{ installer_catalog_dir }}"
+    - "{{ installer_tmp_dir }}"
+
+- name: Copy installer helper scripts
+  copy:
+    src: "{{ item.src }}"
+    dest: "{{ item.dest }}"
+    mode: "0755"
+  loop:
+    - { src: "{{ playbook_dir }}/../scripts/install_crypto.py", dest: "{{ installer_scripts_dir }}/install_crypto.py" }
+    - { src: "{{ playbook_dir }}/../scripts/install_model.py", dest: "{{ installer_scripts_dir }}/install_model.py" }
+    - { src: "{{ playbook_dir }}/../scripts/install_status.py", dest: "{{ installer_scripts_dir }}/install_status.py" }
+    - { src: "{{ playbook_dir }}/../scripts/compose_to_k8s.py", dest: "{{ installer_scripts_dir }}/compose_to_k8s.py" }
+    - { src: "{{ playbook_dir }}/../scripts/run_compose_service.py", dest: "{{ installer_scripts_dir }}/run_compose_service.py" }
+    - { src: "{{ playbook_dir }}/../scripts/compose_ps_status.py", dest: "{{ installer_scripts_dir }}/compose_ps_status.py" }
+
+- name: Copy installer catalog files
+  copy:
+    src: "{{ playbook_dir }}/../install/"
+    dest: "{{ installer_catalog_dir }}/"
+    mode: "0644"
+
+- name: Read existing encrypted installer artifacts
+  include_role:
+    name: install_artifacts
+  vars:
+    install_artifacts_action: read
+
+- name: Set backend default from current state
+  set_fact:
+    installer_loaded_profile_backend: "{{ installer_loaded_artifacts.profile.backend | default('') }}"
+    installer_backend_default: "{{ installer_loaded_artifacts.profile.backend | default('podman') }}"
+    installer_previous_backend: "{{ ((installer_loaded_artifacts.state | default({})).get('backendState') or {}).get('backend', '') }}"
+    installer_previous_kubernetes_namespace: "{{ ((installer_loaded_artifacts.profile | default({})).get('kubernetes') or {}).get('namespace', 'arsenale') }}"
+    installer_capabilities_default: >-
+      {{
+        (
+          installer_loaded_artifacts.profile.capabilities
+          | default({
+            'core': true,
+            'keychain': true,
+            'connections': true,
+            'databases': true,
+            'recordings': true,
+            'zero_trust': false,
+            'agentic_ai': true,
+            'enterprise_auth': true,
+            'sharing_approvals': true,
+            'cli': true
+          })
+        )
+      }}
+    installer_routing_default: "{{ installer_loaded_artifacts.profile.routing | default({'directGateway': true, 'zeroTrust': false}) }}"
+
+- name: Prompt for backend
+  pause:
+    prompt: "Backend [podman/kubernetes]"
+    echo: true
+  register: installer_backend_prompt
+  when: installer_backend is not defined
+
+- name: Resolve backend
+  set_fact:
+    installer_backend_value: "{{ (installer_backend | default(installer_backend_prompt.user_input | default(installer_backend_default))) | trim | default(installer_backend_default, true) }}"
+
+- name: Fail for legacy Docker-backed installer state
+  fail:
+    msg: "Existing installer artifacts reference the unsupported docker backend. Remove the legacy Docker deployment manually, then rerun the installer with podman or kubernetes."
+  when:
+    - installer_loaded_profile_backend == 'docker' or installer_previous_backend == 'docker'
+
+- name: Validate supported installer backend
+  assert:
+    that:
+      - installer_backend_value in ['podman', 'kubernetes']
+    fail_msg: "Docker is no longer a supported installer backend. Use podman for compose installs or kubernetes for Helm installs."
+
+- name: Prompt for Kubernetes namespace
+  pause:
+    prompt: "Kubernetes namespace"
+    echo: true
+  register: installer_kube_namespace_prompt
+  when:
+    - installer_backend_value == 'kubernetes'
+    - installer_kube_namespace is not defined
+
+- name: Prompt for Kubernetes ingress class
+  pause:
+    prompt: "Kubernetes ingress class"
+    echo: true
+  register: installer_ingress_class_prompt
+  when:
+    - installer_backend_value == 'kubernetes'
+    - installer_ingress_class is not defined
+
+- name: Prompt for Kubernetes ingress host
+  pause:
+    prompt: "Kubernetes ingress host"
+    echo: true
+  register: installer_ingress_host_prompt
+  when:
+    - installer_backend_value == 'kubernetes'
+    - installer_ingress_host is not defined
+
+- name: Prompt for Kubernetes ingress TLS
+  pause:
+    prompt: "Enable Kubernetes ingress TLS [true/false]"
+    echo: true
+  register: installer_ingress_tls_prompt
+  when:
+    - installer_backend_value == 'kubernetes'
+    - installer_ingress_tls is not defined
+
+- name: Prompt for Kubernetes replicas
+  pause:
+    prompt: "Kubernetes replica count"
+    echo: true
+  register: installer_kube_replicas_prompt
+  when:
+    - installer_backend_value == 'kubernetes'
+    - installer_kube_replicas is not defined
+
+- name: Prompt for direct gateway routing
+  pause:
+    prompt: "Enable direct gateway routing [true/false]"
+    echo: true
+  register: installer_direct_prompt
+  when:
+    - not _is_dev | bool
+    - installer_direct_gateway is not defined
+
+- name: Prompt for zero-trust routing
+  pause:
+    prompt: "Enable zero-trust routing [true/false]"
+    echo: true
+  register: installer_zero_trust_prompt
+  when:
+    - not _is_dev | bool
+    - installer_zero_trust is not defined
+
+- name: Prompt for capabilities
+  pause:
+    prompt: "Enabled capabilities (comma-separated)"
+    echo: true
+  register: installer_capabilities_prompt
+  when:
+    - not _is_dev | bool
+    - installer_capabilities_csv is not defined
+
+- name: Build installer profile
+  set_fact:
+    installer_profile: >-
+      {{
+        {
+          'schemaVersion': '1.0.0',
+          'productVersion': arsenale_image_tag | default('dev'),
+          'mode': ('development' if (_is_dev | bool) else 'production'),
+          'backend': installer_backend_value,
+          'capabilities': (
+            {
+              'core': true,
+              'keychain': true,
+              'connections': true,
+              'databases': true,
+              'recordings': true,
+              'zero_trust': true,
+              'agentic_ai': true,
+              'enterprise_auth': true,
+              'sharing_approvals': true,
+              'cli': true
+            }
+            if (_is_dev | bool)
+            else {
+              'core': true,
+              'keychain': ('keychain' in installer_capability_selection),
+              'connections': ('connections' in installer_capability_selection),
+              'databases': ('databases' in installer_capability_selection),
+              'recordings': ('recordings' in installer_capability_selection),
+              'zero_trust': ('zero_trust' in installer_capability_selection),
+              'agentic_ai': ('agentic_ai' in installer_capability_selection),
+              'enterprise_auth': ('enterprise_auth' in installer_capability_selection),
+              'sharing_approvals': ('sharing_approvals' in installer_capability_selection),
+              'cli': ('cli' in installer_capability_selection)
+            }
+          ),
+          'routing': (
+            {'directGateway': true, 'zeroTrust': true}
+            if (_is_dev | bool)
+            else {
+              'directGateway': (installer_direct_gateway | default(installer_direct_prompt.user_input | default(installer_routing_default.directGateway | string)) | string | lower) == 'true',
+              'zeroTrust': (installer_zero_trust | default(installer_zero_trust_prompt.user_input | default(installer_routing_default.zeroTrust | string)) | string | lower) == 'true'
+            }
+          ),
+          'kubernetes': (
+            {
+              'context': (installer_kube_context | default('')),
+              'namespace': (installer_kube_namespace | default(installer_kube_namespace_prompt.user_input | default('arsenale'))),
+              'ingressClass': (installer_ingress_class | default(installer_ingress_class_prompt.user_input | default('nginx'))),
+              'host': (installer_ingress_host | default(installer_ingress_host_prompt.user_input | default(arsenale_domain))),
+              'tlsEnabled': ((installer_ingress_tls | default(installer_ingress_tls_prompt.user_input | default('true')) | string | lower) == 'true'),
+              'replicas': ((installer_kube_replicas | default(installer_kube_replicas_prompt.user_input | default(1))) | int),
+              'storageClass': (installer_storage_class | default('')),
+              'imagePullSecrets': (installer_image_pull_secrets | default([])),
+              'resources': (installer_kube_resources | default({})),
+              'autoscaling': (installer_kube_autoscaling | default({'enabled': false})),
+              'nodeSelector': (installer_kube_node_selector | default({})),
+              'tolerations': (installer_kube_tolerations | default([]))
+            }
+            if installer_backend_value == 'kubernetes'
+            else {}
+          )
+        }
+      }}
+  vars:
+    installer_capability_selection: >-
+      {{
+        (
+          (installer_capabilities_csv | default(installer_capabilities_prompt.user_input | default('keychain,connections,databases,recordings,agentic_ai,enterprise_auth,sharing_approvals,cli')))
+          .split(',')
+          | map('trim')
+          | reject('equalto', '')
+          | list
+        )
+      }}
+
+- name: Run installer diff
+  include_role:
+    name: install_diff
+
+- name: Show installer execution plan
+  debug:
+    msg: |
+      Run type:  {{ installer_run_diff.runType }}
+      Backend:   {{ installer_resolved.backend }}
+      Mode:      {{ installer_resolved.mode }}
+      Services:  {{ installer_resolved.services | join(', ') }}
+      Added:     {{ installer_run_diff.changes.capabilitiesAdded | join(', ') if installer_run_diff.changes.capabilitiesAdded else 'none' }}
+      Removed:   {{ installer_run_diff.changes.capabilitiesRemoved | join(', ') if installer_run_diff.changes.capabilitiesRemoved else 'none' }}
+
+- name: Apply installer-resolved runtime vars
+  set_fact:
+    installer_services: "{{ installer_resolved.services }}"
+    installer_runtime_env: "{{ installer_resolved.environment }}"
+    container_runtime: "{{ installer_backend_value }}"
+    installer_should_apply: "{{ installer_run_diff.runType != 'no_op' }}"
+    installer_compose_env_file: "{{ installer_tmp_dir }}/runtime.env"
+
+- name: Validate development backend choice
+  assert:
+    that:
+      - installer_backend_value == 'podman'
+    fail_msg: "Development mode requires the podman backend."
+  when: _is_dev | bool
+
+- name: Prepare compose backend context
+  include_tasks: compose_prepare.yml
+  when: installer_backend_value == 'podman'
+
+- name: Validate required vault secrets
+  assert:
+    that:
+      - vault_jwt_secret != 'CHANGE_ME'
+      - vault_guacamole_secret != 'CHANGE_ME'
+      - vault_server_encryption_key != 'CHANGE_ME'
+      - vault_postgres_password != 'CHANGE_ME'
+      - vault_guacenc_auth_token != 'CHANGE_ME'
+    fail_msg: "Run 'make setup' or './scripts/generate-vault.sh' first to generate secrets"
+
+- name: Apply installer plan
+  block:
+    - name: Install prerequisites for compose backends
+      include_role:
+        name: prerequisites
+      when: not (_is_dev | bool) and installer_backend_value == 'podman'
+
+    - name: Install certificates for compose backends
+      include_role:
+        name: certificates
+      when: installer_backend_value == 'podman'
+
+    - name: Install Podman secrets
+      include_role:
+        name: podman_secrets
+      when:
+        - installer_backend_value == 'podman'
+        - installer_should_apply | bool
+
+    - name: Render compose artifacts
+      include_role:
+        name: render_compose
+      when: installer_backend_value == 'podman'
+
+    - name: Render Helm artifacts
+      include_role:
+        name: render_helm
+      when: installer_backend_value == 'kubernetes'
+
+    - name: Capture current rendered artifact hashes
+      set_fact:
+        installer_current_render_hashes:
+          compose: "{{ lookup('file', _home + '/docker-compose.yml') | hash('sha256') if installer_backend_value == 'podman' else '' }}"
+          env: "{{ lookup('file', installer_compose_env_file) | hash('sha256') if installer_backend_value == 'podman' else '' }}"
+          helmManifests: "{{ lookup('file', installer_helm_manifest_file) | hash('sha256') if installer_backend_value == 'kubernetes' else '' }}"
+          helmValues: "{{ lookup('file', installer_helm_values_file) | hash('sha256') if installer_backend_value == 'kubernetes' else '' }}"
+
+    - name: Detect render-hash delta against the last applied state
+      set_fact:
+        installer_render_hash_delta: >-
+          {{
+            (
+              installer_current_render_hashes.compose != (((installer_loaded_artifacts.state | default({})).get('lastAppliedHashes') or {}).get('compose', ''))
+            )
+            or
+            (
+              installer_current_render_hashes.env != (((installer_loaded_artifacts.state | default({})).get('lastAppliedHashes') or {}).get('env', ''))
+            )
+            or
+            (
+              installer_current_render_hashes.helmManifests != (((installer_loaded_artifacts.state | default({})).get('lastAppliedHashes') or {}).get('helmManifests', ''))
+            )
+            or
+            (
+              installer_current_render_hashes.helmValues != (((installer_loaded_artifacts.state | default({})).get('lastAppliedHashes') or {}).get('helmValues', ''))
+            )
+          }}
+
+    - name: Reclassify no-op runs when rendered artifacts changed
+      set_fact:
+        installer_run_diff: "{{ installer_run_diff | combine({'runType': 'reconfigure'}) }}"
+        installer_should_apply: true
+      when:
+        - installer_run_diff.runType == 'no_op'
+        - installer_render_hash_delta | bool
+
+    - name: Report render-hash delta apply
+      debug:
+        msg: "Rendered artifacts changed since the last applied state; forcing a reconfigure apply."
+      when:
+        - installer_run_diff.runType == 'reconfigure'
+        - installer_render_hash_delta | bool
+
+    - name: Tear down previous compose backend during backend switch
+      include_role:
+        name: deploy
+        tasks_from: apply.yml
+      vars:
+        _state: absent
+        container_runtime: "{{ installer_previous_backend }}"
+        installer_compose_env_file: ""
+      when:
+        - installer_should_apply | bool
+        - installer_run_diff.changes.backendChanged | bool
+        - installer_previous_backend == 'podman'
+
+    - name: Tear down previous Kubernetes backend during backend switch
+      command:
+        argv:
+          - helm
+          - uninstall
+          - arsenale
+          - "--namespace"
+          - "{{ installer_previous_kubernetes_namespace }}"
+      register: installer_previous_kube_uninstall
+      changed_when: installer_previous_kube_uninstall.rc == 0
+      failed_when: false
+      when:
+        - installer_should_apply | bool
+        - installer_run_diff.changes.backendChanged | bool
+        - installer_previous_backend == 'kubernetes'
+
+    - name: Apply compose backend
+      include_role:
+        name: apply_compose
+      vars:
+        compose_force_recreate: true
+      when:
+        - installer_backend_value == 'podman'
+        - installer_should_apply | bool
+
+    - name: Apply Helm backend
+      include_role:
+        name: apply_helm
+      when:
+        - installer_backend_value == 'kubernetes'
+        - installer_should_apply | bool
+
+    - name: Report compose no-op
+      debug:
+        msg: "Installer run classified as no-op; apply phase skipped."
+      when:
+        - installer_backend_value in ['podman', 'kubernetes']
+        - not (installer_should_apply | bool)
+
+    - name: Apply firewall configuration
+      include_role:
+        name: firewall
+      when:
+        - installer_backend_value == 'podman'
+        - installer_should_apply | bool
+        - arsenale_firewall_enabled | bool
+
+    - name: Run compose backend health checks
+      include_role:
+        name: healthcheck
+      when: installer_backend_value == 'podman'
+
+    - name: Run development bootstrap and acceptance validation
+      include_tasks: dev_post_apply.yml
+      when:
+        - _is_dev | bool
+        - installer_backend_value == 'podman'
+
+    - name: Capture rendered compose
+      slurp:
+        src: "{{ _home }}/docker-compose.yml"
+      register: installer_compose_render
+      when: installer_backend_value == 'podman'
+
+    - name: Capture transient rendered env
+      slurp:
+        src: "{{ installer_compose_env_file }}"
+      register: installer_env_render
+      when: installer_backend_value == 'podman'
+
+    - name: Capture rendered Kubernetes manifests
+      slurp:
+        src: "{{ installer_helm_manifest_file }}"
+      register: installer_k8s_manifest_render
+      when: installer_backend_value == 'kubernetes'
+
+    - name: Capture generated Helm values
+      slurp:
+        src: "{{ installer_helm_values_file }}"
+      register: installer_helm_values_render
+      when: installer_backend_value == 'kubernetes'
+
+    - name: Build installer state payload
+      set_fact:
+        installer_state_payload:
+          schemaVersion: "1.0.0"
+          desiredProfile: "{{ installer_profile }}"
+          desiredProfileHash: "{{ installer_run_diff.desiredProfileHash }}"
+          lastAppliedVersion: "{{ arsenale_image_tag | default('dev') }}"
+          lastAppliedHashes:
+            compose: "{{ (installer_compose_render.content | b64decode) | hash('sha256') if installer_backend_value == 'podman' else '' }}"
+            env: "{{ (installer_env_render.content | b64decode) | hash('sha256') if installer_backend_value == 'podman' else '' }}"
+            helmManifests: "{{ (installer_k8s_manifest_render.content | b64decode) | hash('sha256') if installer_backend_value == 'kubernetes' else '' }}"
+            helmValues: "{{ (installer_helm_values_render.content | b64decode) | hash('sha256') if installer_backend_value == 'kubernetes' else '' }}"
+          resources:
+            activeServices: "{{ installer_services }}"
+            images: "{{ installer_helm_metadata.images | default([]) if installer_backend_value == 'kubernetes' else [] }}"
+            volumes: []
+            networks: []
+          lastKnownGoodRun:
+            timestamp: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+            result: success
+          backendState:
+            backend: "{{ installer_backend_value }}"
+
+    - name: Build installer render metadata payload
+      set_fact:
+        installer_render_payload:
+          schemaVersion: "1.0.0"
+          backend: "{{ installer_backend_value }}"
+          renderedAt: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+          artifacts:
+            docker-compose.yml:
+              sha256: "{{ (installer_compose_render.content | b64decode) | hash('sha256') if installer_backend_value == 'podman' else '' }}"
+              content: "{{ (installer_compose_render.content | b64decode) if installer_backend_value == 'podman' else '' }}"
+            runtime.env:
+              sha256: "{{ (installer_env_render.content | b64decode) | hash('sha256') if installer_backend_value == 'podman' else '' }}"
+              content: "{{ (installer_env_render.content | b64decode) if installer_backend_value == 'podman' else '' }}"
+            k8s-manifests.yaml:
+              sha256: "{{ (installer_k8s_manifest_render.content | b64decode) | hash('sha256') if installer_backend_value == 'kubernetes' else '' }}"
+              content: "{{ (installer_k8s_manifest_render.content | b64decode) if installer_backend_value == 'kubernetes' else '' }}"
+            values.generated.yaml:
+              sha256: "{{ (installer_helm_values_render.content | b64decode) | hash('sha256') if installer_backend_value == 'kubernetes' else '' }}"
+              content: "{{ (installer_helm_values_render.content | b64decode) if installer_backend_value == 'kubernetes' else '' }}"
+          activeServices: "{{ installer_services }}"
+
+    - name: Capture installer completion timestamp
+      set_fact:
+        installer_completed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Build final installer status payload
+      set_fact:
+        installer_final_status: >-
+          {{
+            installer_pending_status
+            | combine(
+                {
+                  'lastResult': 'success',
+                  'timestamps': {
+                    'startedAt': installer_pending_status.timestamps.startedAt,
+                    'finishedAt': installer_completed_at
+                  },
+                  'healthSummary': {
+                    'status': 'ok',
+                    'services': installer_services
+                  },
+                  'driftSummary': {
+                    'status': 'clean'
+                  }
+                },
+                recursive=True
+              )
+          }}
+
+    - name: Build installer log payload
+      set_fact:
+        installer_log_payload:
+          schemaVersion: "1.0.0"
+          entries:
+            - timestamp: "{{ installer_completed_at }}"
+              runType: "{{ installer_run_diff.runType }}"
+              backend: "{{ installer_backend_value }}"
+              mode: "{{ installer_profile.mode }}"
+              result: success
+
+    - name: Persist encrypted installer artifacts
+      include_role:
+        name: install_artifacts
+      vars:
+        install_artifacts_action: write
+        installer_write_artifacts:
+          profile: "{{ installer_profile }}"
+          state: "{{ installer_state_payload }}"
+          status: "{{ installer_final_status }}"
+          log: "{{ installer_log_payload }}"
+          rendered: "{{ installer_render_payload }}"
+  rescue:
+    - name: Capture installer failure timestamp
+      set_fact:
+        installer_completed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
+
+    - name: Build failure installer status payload
+      set_fact:
+        installer_final_status: >-
+          {{
+            installer_pending_status
+            | combine(
+                {
+                  'lastResult': 'failure',
+                  'timestamps': {
+                    'startedAt': installer_pending_status.timestamps.startedAt,
+                    'finishedAt': installer_completed_at
+                  },
+                  'healthSummary': {
+                    'status': 'failed',
+                    'services': installer_services | default([])
+                  },
+                  'driftSummary': {
+                    'status': 'unknown'
+                  }
+                },
+                recursive=True
+              )
+          }}
+
+    - name: Build failure installer log payload
+      set_fact:
+        installer_log_payload:
+          schemaVersion: "1.0.0"
+          entries:
+            - timestamp: "{{ installer_completed_at }}"
+              runType: "{{ installer_run_diff.runType }}"
+              backend: "{{ installer_backend_value }}"
+              mode: "{{ installer_profile.mode }}"
+              result: failure
+              error: "{{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default('installer apply failed')) }}"
+
+    - name: Persist encrypted failure installer artifacts
+      include_role:
+        name: install_artifacts
+      vars:
+        install_artifacts_action: write
+        installer_write_artifacts:
+          profile: "{{ installer_profile }}"
+          status: "{{ installer_final_status }}"
+          log: "{{ installer_log_payload }}"
+
+    - name: Surface installer failure
+      fail:
+        msg: "{{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default('installer apply failed')) }}"
+  always:
+    - name: Remove transient compose env file
+      file:
+        path: "{{ installer_compose_env_file }}"
+        state: absent
+      when: installer_backend_value == 'podman'

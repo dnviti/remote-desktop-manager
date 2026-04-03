@@ -27,6 +27,7 @@ import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/authStore';
 import { useVaultStatusStream } from './hooks/useVaultStatusStream';
 import { getSetupStatus } from './api/setup.api';
+import { useFeatureFlagsStore } from './store/featureFlagsStore';
 
 function AuthRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading } = useAuth();
@@ -79,6 +80,9 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
+  const recordingsEnabled = useFeatureFlagsStore((s) => s.recordingsEnabled);
+  const sharingApprovalsEnabled = useFeatureFlagsStore((s) => s.sharingApprovalsEnabled);
+
   return (
     <Suspense fallback={<LazyFallback />}>
       <Routes>
@@ -108,11 +112,11 @@ export default function App() {
           path="/recording/:id"
           element={
             <ProtectedRoute>
-              <RecordingPlayerPage />
+              {recordingsEnabled ? <RecordingPlayerPage /> : <Navigate to="/" replace />}
             </ProtectedRoute>
           }
         />
-        <Route path="/share/:token" element={<PublicSharePage />} />
+        <Route path="/share/:token" element={sharingApprovalsEnabled ? <PublicSharePage /> : <Navigate to="/" replace />} />
         <Route
           path="/*"
           element={

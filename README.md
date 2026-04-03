@@ -3,7 +3,7 @@
 </div>
 
 [![License: BSL 1.1](https://img.shields.io/badge/License-BSL_1.1-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/version-1.7.1-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.0-green.svg)](CHANGELOG.md)
 
 A web-based application for managing and accessing remote SSH and RDP connections from your browser. Organize connections in folders, share them with team members, and keep credentials encrypted at rest with a personal vault.
 
@@ -28,7 +28,7 @@ A web-based application for managing and accessing remote SSH and RDP connection
 - **IP Allowlist** — Per-tenant IP/CIDR allowlists with flag (audit) or block enforcement modes
 - **Session Limits** — Max concurrent sessions per user and absolute session timeouts (OWASP A07)
 - **External Vault Integration** — Reference credentials from HashiCorp Vault (KV v2) instead of storing them in Arsenale
-- **SSH Gateway Management** — Deploy, scale, and monitor SSH gateway containers via Docker, Podman, or Kubernetes
+- **SSH Gateway Management** — Deploy, scale, and monitor SSH gateway containers via Podman or Kubernetes
 - **JWT Authentication** — Short-lived access tokens with httpOnly refresh cookies, CSRF protection, and token binding
 
 ## Tech Stack
@@ -38,13 +38,14 @@ A web-based application for managing and accessing remote SSH and RDP connection
 | **Backend** | Go split services under `backend/` (control plane, brokers, orchestration, AI, runtime) |
 | **Client** | React 19, Vite, Material-UI v7, Zustand, XTerm.js, guacamole-common-js |
 | **Database** | PostgreSQL 16 |
-| **Infrastructure** | Docker / Podman / Kubernetes, Nginx, guacd, ssh-gateway |
+| **Infrastructure** | Podman / Kubernetes, Nginx, guacd, ssh-gateway |
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) 22+
 - [Go](https://go.dev/) 1.25+ or a container runtime for the bundled Go fallback
-- [Docker](https://www.docker.com/) or [Podman](https://podman.io/) (required for the local stack)
+- [Podman](https://podman.io/) for compose-backed installs or [minikube](https://minikube.sigs.k8s.io/docs/start/) for Kubernetes validation
+- [Ansible](https://docs.ansible.com/ansible/latest/installation_guide/) for the installer and deployment flow
 - npm 9+
 
 ## Getting Started
@@ -62,25 +63,60 @@ cd arsenale
 npm install
 ```
 
-### 3. Configure environment
+### 3. Prepare the installer
 
 ```bash
-cp .env.example .env
+make setup
 ```
 
-Edit `.env` as needed — see [Environment Variables](#environment-variables) below.
+This installs the required Ansible collections and creates the encrypted Ansible vault used for long-lived deployment secrets.
 
-### 4. Run in development
+### 4. Run the full development stack
 
 ```bash
-# Full setup: starts the local Go stack via Ansible, then runs Vite against it
+make dev
 npm run dev
 ```
 
-This starts:
-- The full local Go stack via `make dev` (PostgreSQL, Redis, guacd, Go control plane, brokers, gateways)
-- The containerized HTTPS app on `https://localhost:3000`
-- A local Vite dev server on `https://localhost:3005` that proxies to the Go services on `:18080`, `:18090`, and `:18091`
+`make dev` runs the installer-aware development flow. Development mode always deploys the full stack, demo targets, demo datasets, bootstrap data, and deeper validation. `npm run dev` is optional when you want the Vite client on `https://localhost:3005` against that stack.
+
+### 5. Run the installer
+
+```bash
+make install
+```
+
+The installer is CLI-only, interactive, password-gated, idempotent, and backend-aware. It can deploy:
+
+- Development via the full local compose stack
+- Production via Podman compose
+- Production via Helm on Kubernetes
+
+Docker is not a supported installer backend.
+
+See [docs/installer.md](docs/installer.md) for the full flow.
+
+## Installer
+
+The installer persists encrypted profile, state, status, log, and rendered-artifact payloads. On a target host the canonical location is:
+
+```text
+/opt/arsenale/install/
+```
+
+Artifacts written there:
+
+- `install-profile.enc`
+- `install-state.enc`
+- `install-status.enc`
+- `install-log.enc`
+- `rendered-artifacts.enc`
+
+Every rerun asks for the technician password before those artifacts are read. External tooling can read the encrypted installer status directly with the supported helper path instead of querying a running Arsenale instance:
+
+```bash
+make status
+```
 
 ## Environment Variables
 
@@ -128,7 +164,8 @@ arsenale/
 │   ├── guacd/                    # Custom guacd with embedded tunnel agent
 │   └── guacenc/                  # Recording-to-video conversion sidecar
 ├── Makefile                       # Ansible deployment UX (make dev/deploy/etc.)
-├── deployment/ansible/            # Ansible playbooks, roles, and templates
+├── deployment/ansible/            # Installer playbooks, roles, schemas, and templates
+├── deployment/helm/               # Helm chart for the Kubernetes backend
 └── .env.example                   # Environment template (121 variables)
 ```
 
@@ -153,9 +190,13 @@ npm run db:push             # Alias of db:migrate
 
 # Infrastructure (via Makefile + Ansible)
 make setup                  # First-time setup (Ansible collections, vault)
-make dev                    # Start dev infrastructure (postgres + redis)
+make install                # Interactive installer entrypoint
+make dev                    # Full installer-aware development environment
 make dev-down               # Stop dev infrastructure
-make deploy                 # Full production deployment
+make deploy                 # Production installer/deploy flow
+make configure              # Reconfigure an existing install
+make recover                # Rerun installer recovery flow
+make status                 # Read encrypted installer status
 
 # Go backend checks
 npm run backend:test        # Run Go backend tests
@@ -163,28 +204,29 @@ npm run backend:test        # Run Go backend tests
 
 ## Production Deployment
 
-Deploy the full stack with Ansible (via Makefile):
+Deploy the full stack with the installer (via Makefile):
 
 ```bash
 # 1. First-time setup (install Ansible collections, generate vault)
 make setup
 
-# 2. Deploy production stack
+# 2. Deploy or reconfigure production stack
 make deploy
+
+# 3. Read encrypted installer status
+make status
 ```
 
-This deploys the full container stack via Ansible:
-- **PostgreSQL 16** — Production database
-- **guacd** — Apache Guacamole daemon for RDP/VNC
-- **guacenc** — Recording-to-video conversion sidecar
-- **control-plane-api-go** — Public API edge
-- **desktop-broker-go / terminal-broker-go / tunnel-broker-go** — Session and transport brokers
-- **query-runner-go / model-gateway-go / control-plane-controller-go** — Query execution, AI, and orchestration services
-- **Client** — Nginx serving the React app with reverse proxy to the API
-- **Redis** — Distributed coordination backend
-- **ssh-gateway** — Optional SSH gateway container (port 2222)
+Production mode uses the same installer profile model across Podman and Kubernetes. Selected capabilities are installer-owned only; disabled capabilities remove their services, APIs, and UI affordances from the rendered runtime.
 
-See [deployment/ansible/README.md](deployment/ansible/README.md) for detailed configuration.
+The installer can render and apply:
+
+- Compose for Podman
+- Helm for Kubernetes
+
+Development mode always deploys the full stack and fixtures. Production mode deploys only the selected capabilities.
+
+See [deployment/ansible/README.md](deployment/ansible/README.md) and [docs/installer.md](docs/installer.md) for the operator flow and artifact model.
 
 ## Architecture
 

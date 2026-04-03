@@ -1,0 +1,18 @@
+---
+- name: Render compose via deploy role
+  include_role:
+    name: deploy
+    tasks_from: render.yml
+
+- name: Prune rendered compose to installer-selected services
+  command:
+    argv:
+      - "{{ installer_scripts_dir }}/install_model.py"
+      - prune-compose
+      - --input
+      - "{{ _home }}/docker-compose.yml"
+      - --services
+      - "{{ (installer_services | default([])) | join(',') }}"
+      - --output
+      - "{{ _home }}/docker-compose.yml"
+  when: (installer_services | default([]) | length) > 0

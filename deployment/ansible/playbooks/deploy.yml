@@ -87,10 +87,22 @@
       failed_when: false
       when: _is_dev | bool
 
+    - name: Ensure Podman is available for development deploys
+      assert:
+        that:
+          - (podman_check.rc | default(1)) == 0
+        fail_msg: "Development deploys require podman on the local host."
+      when: _is_dev | bool
+
     - name: Set container runtime
       set_fact:
-        container_runtime: "{{ 'podman' if (podman_check.rc | default(1)) == 0 else 'docker' }}"
-      when: _is_dev | bool
+        container_runtime: "{{ container_runtime | default('podman') }}"
+
+    - name: Validate supported compose runtime
+      assert:
+        that:
+          - (container_runtime | default('podman')) == 'podman'
+        fail_msg: "Docker is no longer a supported Ansible runtime. Use podman or the kubernetes installer flow."
 
     - name: Detect upstream DNS servers for containers
       shell: |
@@ -149,7 +161,7 @@
     - role: certificates
       when: _state == 'present'
     - role: podman_secrets
-      when: _state == 'present'
+      when: _state == 'present' and (container_runtime | default('podman')) == 'podman'
     - deploy
     - role: firewall
       when: arsenale_firewall_enabled | bool

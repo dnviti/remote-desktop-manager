@@ -5,6 +5,7 @@
 # Environment: {{ arsenale_env | default('production') }}
 # Secrets are managed via Podman secrets (mounted at /run/secrets/).
 # =============================================================================
+{% set _compose_repo_root = arsenale_source_root | default((_home if (_is_dev | default(false) | bool) else (_home + '/arsenale'))) %}
 
 services:
 
@@ -31,9 +32,9 @@ services:
       - postgres_password
     volumes:
       - pgdata:{{ arsenale_postgres_data_dir | default('/var/lib/pgsql/data') }}
-      - {{ _home }}{% if not (_is_dev | default(false) | bool) %}/arsenale{% endif %}/infrastructure/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - {{ _compose_repo_root }}/infrastructure/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - {{ arsenale_cert_dir }}/postgres:/certs:ro
-      - {{ _home }}{% if not (_is_dev | default(false) | bool) %}/arsenale{% endif %}/infrastructure/postgres/entrypoint.sh:/usr/local/bin/arsenale-postgres-entrypoint.sh:ro
+      - {{ _compose_repo_root }}/infrastructure/postgres/entrypoint.sh:/usr/local/bin/arsenale-postgres-entrypoint.sh:ro
     entrypoint: ["/usr/local/bin/arsenale-postgres-entrypoint.sh"]
     restart: always
     cap_drop:
@@ -56,7 +57,7 @@ services:
 
   migrate:
     build:
-      context: {{ (_home if (_is_dev | default(false) | bool) else (_home + '/arsenale')) }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: control-plane-api
@@ -94,10 +95,14 @@ services:
   guacd:
 {% if _build | bool %}
     build:
-      context: {{ (_home if (_is_dev | default(false) | bool) else (_home + '/arsenale')) }}
+      context: {{ _compose_repo_root }}
       dockerfile: gateways/guacd/Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_guacd:latest
+{% else %}
     image: {{ arsenale_guacd_image }}
+{% endif %}
 {% endif %}
     container_name: arsenale-guacd
     read_only: true
@@ -134,10 +139,14 @@ services:
   guacenc:
 {% if _build | bool %}
     build:
-      context: {{ _home }}{% if not (_is_dev | default(false) | bool) %}/arsenale{% endif %}/gateways/guacenc
+      context: {{ _compose_repo_root }}/gateways/guacenc
       dockerfile: Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_guacenc:latest
+{% else %}
     image: {{ arsenale_registry }}/guacenc:{{ arsenale_image_tag }}
+{% endif %}
 {% endif %}
     container_name: arsenale-guacenc
     read_only: true
@@ -208,7 +217,7 @@ services:
   # ---------------------------------------------------------------------------
   control-plane-api:
     build:
-      context: {{ _home }}/arsenale
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: control-plane-api
@@ -245,6 +254,23 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       REDIS_URL: "redis://redis:6379/0"
+      ARSENALE_INSTALLER_ENABLED: "${ARSENALE_INSTALLER_ENABLED:-false}"
+      ARSENALE_INSTALL_MODE: "${ARSENALE_INSTALL_MODE:-production}"
+      ARSENALE_INSTALL_BACKEND: "${ARSENALE_INSTALL_BACKEND:-podman}"
+      ARSENALE_INSTALL_CAPABILITIES: "${ARSENALE_INSTALL_CAPABILITIES:-core,keychain,connections,databases,recordings,zero_trust,agentic_ai,enterprise_auth,sharing_approvals,cli}"
+      ARSENALE_DIRECT_ROUTING_ENABLED: "${ARSENALE_DIRECT_ROUTING_ENABLED:-true}"
+      ARSENALE_ZERO_TRUST_ENABLED: "${ARSENALE_ZERO_TRUST_ENABLED:-true}"
+      FEATURE_CONNECTIONS_ENABLED: "${FEATURE_CONNECTIONS_ENABLED:-true}"
+      FEATURE_DATABASE_PROXY_ENABLED: "${FEATURE_DATABASE_PROXY_ENABLED:-true}"
+      FEATURE_KEYCHAIN_ENABLED: "${FEATURE_KEYCHAIN_ENABLED:-true}"
+      FEATURE_RECORDINGS_ENABLED: "${FEATURE_RECORDINGS_ENABLED:-true}"
+      FEATURE_ZERO_TRUST_ENABLED: "${FEATURE_ZERO_TRUST_ENABLED:-true}"
+      FEATURE_AGENTIC_AI_ENABLED: "${FEATURE_AGENTIC_AI_ENABLED:-true}"
+      FEATURE_ENTERPRISE_AUTH_ENABLED: "${FEATURE_ENTERPRISE_AUTH_ENABLED:-true}"
+      FEATURE_SHARING_APPROVALS_ENABLED: "${FEATURE_SHARING_APPROVALS_ENABLED:-true}"
+      GATEWAY_ROUTING_MODE: "${GATEWAY_ROUTING_MODE:-gateway-mandatory}"
+      ALLOW_EXTERNAL_SHARING: "${ALLOW_EXTERNAL_SHARING:-false}"
+      CLI_ENABLED: "${CLI_ENABLED:-true}"
       RECORDING_ENABLED: "{{ 'true' if arsenale_recording_enabled else 'false' }}"
       RECORDING_PATH: "/recordings"
       GUACAMOLE_SECRET_FILE: /run/secrets/guacamole_secret
@@ -258,7 +284,7 @@ services:
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       SERVER_ENCRYPTION_KEY_FILE: /run/secrets/server_encryption_key
     ports:
-      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:18080:8080"
+      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:{{ arsenale_control_plane_api_port | default(18080) }}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -286,7 +312,7 @@ services:
 
   tunnel-broker:
     build:
-      context: {{ _home }}/arsenale/
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: tunnel-broker
@@ -314,7 +340,7 @@ services:
       TUNNEL_TCP_PROXY_BIND_HOST: "0.0.0.0"
       TUNNEL_TCP_PROXY_ADVERTISE_HOST: "tunnel-broker"
     ports:
-      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:18092:8092"
+      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:{{ arsenale_tunnel_broker_port | default(18092) }}:8092"
     depends_on:
       postgres:
         condition: service_healthy
@@ -334,7 +360,7 @@ services:
 
   query-runner:
     build:
-      context: {{ _home }}/arsenale
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: query-runner
@@ -357,7 +383,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
     ports:
-      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:18093:8093"
+      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:{{ arsenale_query_runner_port | default(18093) }}:8093"
     depends_on:
       postgres:
         condition: service_healthy
@@ -376,7 +402,7 @@ services:
 
   desktop-broker:
     build:
-      context: {{ _home }}/arsenale
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: desktop-broker
@@ -405,7 +431,7 @@ services:
       GUACD_SSL: "true"
       GUACD_CA_CERT: /certs/ca/ca.pem
     ports:
-      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:18091:8091"
+      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:{{ arsenale_desktop_broker_port | default(18091) }}:8091"
     depends_on:
       postgres:
         condition: service_healthy
@@ -426,6 +452,51 @@ services:
       - net-edge
       - net-guacd
       - net-db
+
+  terminal-broker:
+    build:
+      context: {{ _compose_repo_root }}
+      dockerfile: backend/Dockerfile
+      args:
+        SERVICE: terminal-broker
+    container_name: arsenale-terminal-broker
+    read_only: true
+    cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
+    mem_limit: "{{ arsenale_resource_limits.go_service.memory }}"
+    pids_limit: {{ arsenale_resource_limits.go_service.pids }}
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    secrets:
+      - database_url
+      - guacamole_secret
+    environment:
+      PORT: "8090"
+      ARSENALE_VERSION: "{{ arsenale_image_tag }}"
+      DATABASE_URL_FILE: /run/secrets/database_url
+      DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
+      GUACAMOLE_SECRET_FILE: /run/secrets/guacamole_secret
+    ports:
+      - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:{{ arsenale_terminal_broker_port | default(18090) }}:8090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - arsenale_recordings:/recordings
+      - {{ arsenale_cert_dir }}/postgres:/certs/postgres:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8090/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: always
+    networks:
+      - net-edge
+      - net-db
 {% endif %}
 
 {% if _is_dev | default(false) | bool %}
@@ -434,7 +505,7 @@ services:
   # ---------------------------------------------------------------------------
   control-plane-api:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: control-plane-api
@@ -520,6 +591,23 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       REDIS_URL: "redis://redis:6379/0"
+      ARSENALE_INSTALLER_ENABLED: "${ARSENALE_INSTALLER_ENABLED:-false}"
+      ARSENALE_INSTALL_MODE: "${ARSENALE_INSTALL_MODE:-development}"
+      ARSENALE_INSTALL_BACKEND: "${ARSENALE_INSTALL_BACKEND:-podman}"
+      ARSENALE_INSTALL_CAPABILITIES: "${ARSENALE_INSTALL_CAPABILITIES:-core,keychain,connections,databases,recordings,zero_trust,agentic_ai,enterprise_auth,sharing_approvals,cli}"
+      ARSENALE_DIRECT_ROUTING_ENABLED: "${ARSENALE_DIRECT_ROUTING_ENABLED:-true}"
+      ARSENALE_ZERO_TRUST_ENABLED: "${ARSENALE_ZERO_TRUST_ENABLED:-true}"
+      FEATURE_CONNECTIONS_ENABLED: "${FEATURE_CONNECTIONS_ENABLED:-true}"
+      FEATURE_DATABASE_PROXY_ENABLED: "${FEATURE_DATABASE_PROXY_ENABLED:-true}"
+      FEATURE_KEYCHAIN_ENABLED: "${FEATURE_KEYCHAIN_ENABLED:-true}"
+      FEATURE_RECORDINGS_ENABLED: "${FEATURE_RECORDINGS_ENABLED:-true}"
+      FEATURE_ZERO_TRUST_ENABLED: "${FEATURE_ZERO_TRUST_ENABLED:-true}"
+      FEATURE_AGENTIC_AI_ENABLED: "${FEATURE_AGENTIC_AI_ENABLED:-true}"
+      FEATURE_ENTERPRISE_AUTH_ENABLED: "${FEATURE_ENTERPRISE_AUTH_ENABLED:-true}"
+      FEATURE_SHARING_APPROVALS_ENABLED: "${FEATURE_SHARING_APPROVALS_ENABLED:-true}"
+      GATEWAY_ROUTING_MODE: "${GATEWAY_ROUTING_MODE:-gateway-mandatory}"
+      ALLOW_EXTERNAL_SHARING: "${ALLOW_EXTERNAL_SHARING:-false}"
+      CLI_ENABLED: "${CLI_ENABLED:-true}"
       RECORDING_ENABLED: "{{ 'true' if arsenale_recording_enabled else 'false' }}"
       RECORDING_PATH: "/recordings"
       GUACAMOLE_SECRET_FILE: /run/secrets/guacamole_secret
@@ -539,7 +627,7 @@ services:
       GATEWAY_GRPC_SERVER_CERT: /certs/ssh-gateway/server-cert.pem
       GATEWAY_GRPC_SERVER_KEY: /certs/ssh-gateway/server-key.pem
     ports:
-      - "127.0.0.1:18080:8080"
+      - "127.0.0.1:{{ arsenale_control_plane_api_port | default(18080) }}:8080"
     depends_on:
       postgres:
         condition: service_healthy
@@ -578,7 +666,7 @@ services:
 
   control-plane-controller:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: control-plane-controller
@@ -602,7 +690,7 @@ services:
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       RUNTIME_AGENT_URL: "http://runtime-agent:8095"
     ports:
-      - "127.0.0.1:18081:8081"
+      - "127.0.0.1:{{ arsenale_control_plane_controller_port | default(18081) }}:8081"
     depends_on:
       postgres:
         condition: service_healthy
@@ -623,7 +711,7 @@ services:
 
   authz-pdp:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: authz-pdp
@@ -642,7 +730,7 @@ services:
       PORT: "8082"
       ARSENALE_VERSION: "{{ arsenale_image_tag }}"
     ports:
-      - "127.0.0.1:18082:8082"
+      - "127.0.0.1:{{ arsenale_authz_pdp_port | default(18082) }}:8082"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8082/healthz >/dev/null || exit 1"]
       interval: 10s
@@ -655,7 +743,7 @@ services:
 
   model-gateway:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: model-gateway
@@ -680,7 +768,7 @@ services:
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       SERVER_ENCRYPTION_KEY_FILE: /run/secrets/server_encryption_key
     ports:
-      - "127.0.0.1:18083:8083"
+      - "127.0.0.1:{{ arsenale_model_gateway_port | default(18083) }}:8083"
     depends_on:
       postgres:
         condition: service_healthy
@@ -699,7 +787,7 @@ services:
 
   terminal-broker:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: terminal-broker
@@ -724,7 +812,7 @@ services:
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       GUACAMOLE_SECRET_FILE: /run/secrets/guacamole_secret
     ports:
-      - "127.0.0.1:18090:8090"
+      - "127.0.0.1:{{ arsenale_terminal_broker_port | default(18090) }}:8090"
     depends_on:
       postgres:
         condition: service_healthy
@@ -746,7 +834,7 @@ services:
 
   tunnel-broker:
     build:
-      context: {{ _home }}{% if not (_is_dev | default(false) | bool) %}/arsenale{% endif %}/
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: tunnel-broker
@@ -778,7 +866,7 @@ services:
       TUNNEL_TCP_PROXY_BIND_HOST: "0.0.0.0"
       TUNNEL_TCP_PROXY_ADVERTISE_HOST: "tunnel-broker"
     ports:
-      - "127.0.0.1:18092:8092"
+      - "127.0.0.1:{{ arsenale_tunnel_broker_port | default(18092) }}:8092"
     depends_on:
       postgres:
         condition: service_healthy
@@ -798,7 +886,7 @@ services:
 
   tool-gateway:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: tool-gateway
@@ -817,11 +905,11 @@ services:
       PORT: "8084"
       ARSENALE_VERSION: "{{ arsenale_image_tag }}"
       TERMINAL_BROKER_URL: "http://terminal-broker:8090"
-      PUBLIC_TERMINAL_BROKER_URL: "ws://127.0.0.1:18090"
+      PUBLIC_TERMINAL_BROKER_URL: "ws://127.0.0.1:{{ arsenale_terminal_broker_port | default(18090) }}"
       QUERY_RUNNER_URL: "http://query-runner:8093"
       MEMORY_SERVICE_URL: "http://memory-service:8086"
     ports:
-      - "127.0.0.1:18084:8084"
+      - "127.0.0.1:{{ arsenale_tool_gateway_port | default(18084) }}:8084"
     depends_on:
       terminal-broker:
         condition: service_healthy
@@ -841,7 +929,7 @@ services:
 
   query-runner:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: query-runner
@@ -864,7 +952,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
     ports:
-      - "127.0.0.1:18093:8093"
+      - "127.0.0.1:{{ arsenale_query_runner_port | default(18093) }}:8093"
     depends_on:
       postgres:
         condition: service_healthy
@@ -883,7 +971,7 @@ services:
 
   desktop-broker:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: desktop-broker
@@ -912,7 +1000,7 @@ services:
       GUACD_SSL: "true"
       GUACD_CA_CERT: /certs/ca/ca.pem
     ports:
-      - "127.0.0.1:18091:8091"
+      - "127.0.0.1:{{ arsenale_desktop_broker_port | default(18091) }}:8091"
     depends_on:
       postgres:
         condition: service_healthy
@@ -936,7 +1024,7 @@ services:
 
   memory-service:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: memory-service
@@ -959,7 +1047,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
     ports:
-      - "127.0.0.1:18086:8086"
+      - "127.0.0.1:{{ arsenale_memory_service_port | default(18086) }}:8086"
     depends_on:
       postgres:
         condition: service_healthy
@@ -978,7 +1066,7 @@ services:
 
   agent-orchestrator:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: agent-orchestrator
@@ -1001,7 +1089,7 @@ services:
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
     ports:
-      - "127.0.0.1:18085:8085"
+      - "127.0.0.1:{{ arsenale_agent_orchestrator_port | default(18085) }}:8085"
     depends_on:
       postgres:
         condition: service_healthy
@@ -1020,7 +1108,7 @@ services:
 
   runtime-agent:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: backend/Dockerfile
       args:
         SERVICE: runtime-agent
@@ -1039,7 +1127,7 @@ services:
       PORT: "8095"
       ARSENALE_VERSION: "{{ arsenale_image_tag }}"
     ports:
-      - "127.0.0.1:18095:8095"
+      - "127.0.0.1:{{ arsenale_runtime_agent_port | default(18095) }}:8095"
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8095/healthz >/dev/null || exit 1"]
       interval: 10s
@@ -1052,7 +1140,7 @@ services:
 
   terminal-target:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: infrastructure/dev/terminal-target/Dockerfile
     container_name: arsenale-terminal-target
     read_only: true
@@ -1077,7 +1165,7 @@ services:
 
   dev-debian-ssh-target:
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: infrastructure/dev/debian-ssh-target/Dockerfile
     container_name: arsenale-dev-debian-ssh-target
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -1112,7 +1200,7 @@ services:
       POSTGRES_PASSWORD: "{{ dev_sample_postgres_password }}"
     volumes:
       - dev_demo_postgres_data:/var/lib/postgresql/data
-      - {{ _home }}/infrastructure/dev/demo-postgres:/seed:ro
+      - {{ _compose_repo_root }}/infrastructure/dev/demo-postgres:/seed:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U {{ dev_sample_postgres_user }} -d {{ dev_sample_postgres_database }}"]
       interval: 10s
@@ -1141,7 +1229,7 @@ services:
       MYSQL_ROOT_PASSWORD: "{{ dev_sample_mysql_root_password }}"
     volumes:
       - dev_demo_mysql_data:/var/lib/mysql
-      - {{ _home }}/infrastructure/dev/demo-mysql:/seed:ro
+      - {{ _compose_repo_root }}/infrastructure/dev/demo-mysql:/seed:ro
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u{{ dev_sample_mysql_user }} -p{{ dev_sample_mysql_password }} --silent"]
       interval: 10s
@@ -1169,7 +1257,7 @@ services:
       MONGO_INITDB_DATABASE: "{{ dev_sample_mongodb_database }}"
     volumes:
       - dev_demo_mongodb_data:/data/db
-      - {{ _home }}/infrastructure/dev/demo-mongodb:/seed:ro
+      - {{ _compose_repo_root }}/infrastructure/dev/demo-mongodb:/seed:ro
     healthcheck:
       test: ["CMD-SHELL", "mongosh --quiet --host 127.0.0.1 --port 27017 -u {{ dev_sample_mongodb_root_user }} -p {{ dev_sample_mongodb_root_password }} --authenticationDatabase admin --eval 'db.adminCommand({ ping: 1 }).ok' | grep -q 1"]
       interval: 10s
@@ -1197,7 +1285,7 @@ services:
       APP_USER_PASSWORD: "{{ dev_sample_oracle_password }}"
     volumes:
       - dev_demo_oracle_data:/opt/oracle/oradata
-      - {{ _home }}/infrastructure/dev/demo-oracle:/seed:ro
+      - {{ _compose_repo_root }}/infrastructure/dev/demo-oracle:/seed:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -lc 'echo > /dev/tcp/127.0.0.1/1521'"]
       interval: 15s
@@ -1225,7 +1313,7 @@ services:
       MSSQL_SA_PASSWORD: "{{ dev_sample_mssql_sa_password }}"
     volumes:
       - dev_demo_mssql_data:/var/opt/mssql
-      - {{ _home }}/infrastructure/dev/demo-mssql:/seed:ro
+      - {{ _compose_repo_root }}/infrastructure/dev/demo-mssql:/seed:ro
     healthcheck:
       test: ["CMD-SHELL", "bash -lc 'echo > /dev/tcp/127.0.0.1/1433'"]
       interval: 15s
@@ -1248,11 +1336,15 @@ services:
   client:
 {% if _build | bool %}
     build:
-      context: {{ _home }}{% if not (_is_dev | default(false) | bool) %}/arsenale{% endif %}
+      context: {{ _compose_repo_root }}
 
       dockerfile: client/Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_client:latest
+{% else %}
     image: {{ arsenale_registry }}/client:{{ arsenale_image_tag }}
+{% endif %}
 {% endif %}
     container_name: arsenale-client
     read_only: true
@@ -1269,14 +1361,14 @@ services:
       - no-new-privileges:true
     ports:
       - "{{ _client_bind_host }}:{{ arsenale_client_port }}:8080"
-{% if not (_is_dev | default(false) | bool) %}
-    volumes:
-      - {{ arsenale_cert_dir }}/ca.pem:/certs/ca.pem:ro
-{% endif %}
+    environment:
+      API_UPSTREAM_HOST: "${API_UPSTREAM_HOST:-control-plane-api}"
+      DESKTOP_UPSTREAM_HOST: "${DESKTOP_UPSTREAM_HOST:-desktop-broker}"
+      TERMINAL_UPSTREAM_HOST: "${TERMINAL_UPSTREAM_HOST:-terminal-broker}"
 {% if _is_dev | default(false) | bool %}
     volumes:
       - {{ arsenale_cert_dir }}/client:/certs:ro
-      - {{ _home }}/client/nginx.dev.conf:/etc/nginx/templates/default.conf.template:ro
+      - {{ _compose_repo_root }}/client/nginx.dev.conf:/etc/nginx/templates/default.conf.template:ro
 {% endif %}
     healthcheck:
 {% if _is_dev | default(false) | bool %}
@@ -1293,6 +1385,8 @@ services:
         condition: service_healthy
       desktop-broker:
         condition: service_healthy
+      terminal-broker:
+        condition: service_healthy
     restart: always
     networks:
       - net-edge
@@ -1303,11 +1397,15 @@ services:
   ssh-gateway:
 {% if _build | bool %}
     build:
-      context: {{ _home }}{% if not (_is_dev | default(false) | bool) %}/arsenale{% endif %}
+      context: {{ _compose_repo_root }}
 
       dockerfile: gateways/ssh-gateway/Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_ssh-gateway:latest
+{% else %}
     image: {{ arsenale_registry }}/ssh-gateway:{{ arsenale_image_tag }}
+{% endif %}
 {% endif %}
     container_name: arsenale-ssh-gateway
     read_only: true
@@ -1353,10 +1451,14 @@ services:
   dev-tunnel-ssh-gateway:
 {% if _build | bool %}
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: gateways/ssh-gateway/Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_dev-tunnel-ssh-gateway:latest
+{% else %}
     image: {{ arsenale_registry }}/ssh-gateway:{{ arsenale_image_tag }}
+{% endif %}
 {% endif %}
     container_name: arsenale-dev-tunnel-ssh-gateway
     read_only: true
@@ -1410,10 +1512,14 @@ services:
   dev-tunnel-guacd:
 {% if _build | bool %}
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: gateways/guacd/Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_dev-tunnel-guacd:latest
+{% else %}
     image: {{ arsenale_registry }}/guacd:{{ arsenale_image_tag }}
+{% endif %}
 {% endif %}
     container_name: arsenale-dev-tunnel-guacd
     read_only: true
@@ -1465,10 +1571,14 @@ services:
   dev-tunnel-db-proxy:
 {% if _build | bool %}
     build:
-      context: {{ _home }}
+      context: {{ _compose_repo_root }}
       dockerfile: gateways/db-proxy/Dockerfile
 {% else %}
+{% if _is_dev | default(false) | bool %}
+    image: localhost/arsenale_dev-tunnel-db-proxy:latest
+{% else %}
     image: {{ arsenale_registry }}/db-proxy:{{ arsenale_image_tag }}
+{% endif %}
 {% endif %}
     container_name: arsenale-dev-tunnel-db-proxy
     read_only: true

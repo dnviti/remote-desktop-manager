@@ -99,6 +99,18 @@ export interface FeatureFlags {
   databaseProxyEnabled: boolean;
   connectionsEnabled: boolean;
   keychainEnabled: boolean;
+  recordingsEnabled: boolean;
+  zeroTrustEnabled: boolean;
+  agenticAIEnabled: boolean;
+  enterpriseAuthEnabled: boolean;
+  sharingApprovalsEnabled: boolean;
+  cliEnabled: boolean;
+  mode: 'development' | 'production';
+  backend: 'podman' | 'kubernetes';
+  routing: {
+    directGateway: boolean;
+    zeroTrust: boolean;
+  };
 }
 
 export interface PublicConfig {

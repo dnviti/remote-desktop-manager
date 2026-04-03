@@ -1,0 +1,83 @@
+---
+- name: Detect container runtime (dev)
+  command: podman --version
+  register: podman_check
+  changed_when: false
+  failed_when: false
+  when: _is_dev | bool
+
+- name: Set container runtime for development
+  set_fact:
+    container_runtime: podman
+  when:
+    - _is_dev | bool
+    - installer_backend_value == 'podman'
+
+- name: Ensure Podman is available for development installs
+  assert:
+    that:
+      - (podman_check.rc | default(1)) == 0
+    fail_msg: "Development mode requires podman on the local host."
+  when:
+    - _is_dev | bool
+    - installer_backend_value == 'podman'
+
+- name: Detect upstream DNS servers for containers
+  shell: |
+    set -euo pipefail
+    source_file=/etc/resolv.conf
+    if [ -f /run/systemd/resolve/resolv.conf ]; then
+      source_file=/run/systemd/resolve/resolv.conf
+    fi
+    awk '/^nameserver / {print $2}' "$source_file" \
+      | grep -vE '^(127\\.|::1$|0\\.0\\.0\\.0$)' \
+      | awk '!seen[$0]++'
+  args:
+    executable: /bin/bash
+  changed_when: false
+  register: container_dns_servers_raw
+  when:
+    - installer_backend_value == 'podman'
+    - _state == 'present'
+
+- name: Set upstream DNS servers for managed containers
+  set_fact:
+    arsenale_container_dns_servers: "{{ container_dns_servers_raw.stdout_lines | default([]) }}"
+  when:
+    - installer_backend_value == 'podman'
+    - _state == 'present'
+
+- name: Ensure managed container resolver directory exists
+  file:
+    path: "{{ arsenale_cert_dir }}/orchestrator"
+    state: directory
+    mode: "0755"
+  when:
+    - installer_backend_value == 'podman'
+    - _state == 'present'
+
+- name: Write managed container resolv.conf
+  copy:
+    dest: "{{ arsenale_cert_dir }}/orchestrator/resolv.conf"
+    mode: "0644"
+    content: |
+      {% for dns_server in (arsenale_container_dns_servers | default([])) %}
+      nameserver {{ dns_server }}
+      {% endfor %}
+  when:
+    - installer_backend_value == 'podman'
+    - _state == 'present'
+
+- name: Display installer compose environment
+  debug:
+    msg: |
+      Mode:       {{ installer_profile.mode }}
+      Backend:    {{ installer_backend_value }}
+      Runtime:    {{ container_runtime | default(installer_backend_value) }}
+      Build:      {{ _build }}
+      Firewall:   {{ arsenale_firewall_enabled }}
+      Certs:      {{ arsenale_cert_dir }}
+      ResolvConf: {{ arsenale_cert_dir }}/orchestrator/resolv.conf
+      DNS:        {{ (arsenale_container_dns_servers | default([])) | join(', ') }}
+      State:      {{ _state }}
+  when: installer_backend_value == 'podman'

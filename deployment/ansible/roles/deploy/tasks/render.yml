@@ -1,0 +1,12 @@
+---
+- name: Template compose file
+  template:
+    src: compose.yml.j2
+    dest: "{{ _home }}/docker-compose.yml"
+    mode: "0640"
+
+- name: Template environment file (non-secret config only)
+  template:
+    src: env.j2
+    dest: "{{ installer_compose_env_file | default(_home + '/.env') }}"
+    mode: "0640"

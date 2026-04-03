@@ -1,0 +1,141 @@
+---
+- name: Detect Podman availability for Kubernetes image/render path
+  command: podman --version
+  register: installer_kube_podman_check
+  changed_when: false
+  failed_when: false
+
+- name: Resolve local container runtime for Kubernetes backend
+  set_fact:
+    container_runtime: podman
+
+- name: Ensure a local container runtime exists for Kubernetes backend
+  assert:
+    that:
+      - installer_kube_podman_check.rc == 0
+    fail_msg: "Kubernetes backend requires podman locally to render and build images"
+
+- name: Define Helm workspace paths
+  set_fact:
+    installer_helm_chart_dir: "{{ installer_workspace_dir }}/helm/arsenale"
+    installer_helm_manifest_file: "{{ installer_workspace_dir }}/helm/arsenale/rendered/manifests.yaml"
+    installer_helm_values_file: "{{ installer_workspace_dir }}/helm/arsenale/values.generated.yaml"
+    installer_helm_metadata_file: "{{ installer_tmp_dir }}/helm-metadata.json"
+    installer_kube_secret_file: "{{ installer_tmp_dir }}/k8s-secrets.json"
+    installer_kube_options_file: "{{ installer_tmp_dir }}/k8s-options.json"
+
+- name: Ensure Helm workspace exists
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0700"
+  loop:
+    - "{{ installer_workspace_dir }}/helm"
+    - "{{ installer_helm_chart_dir }}"
+    - "{{ installer_helm_chart_dir }}/templates"
+    - "{{ installer_helm_chart_dir }}/rendered"
+
+- name: Copy Helm chart skeleton
+  copy:
+    src: "{{ playbook_dir }}/../../helm/arsenale/"
+    dest: "{{ installer_workspace_dir }}/helm/arsenale/"
+    mode: preserve
+
+- name: Render compose definition for Kubernetes conversion
+  include_role:
+    name: render_compose
+
+- name: Write Kubernetes secret map
+  copy:
+    dest: "{{ installer_kube_secret_file }}"
+    mode: "0600"
+    content: >-
+      {{
+        {
+          'jwt_secret': vault_jwt_secret,
+          'guacamole_secret': vault_guacamole_secret,
+          'server_encryption_key': vault_server_encryption_key,
+          'database_url': vault_database_url,
+          'postgres_password': vault_postgres_password,
+          'guacenc_auth_token': vault_guacenc_auth_token,
+          'smtp_pass': vault_smtp_pass,
+          'sendgrid_api_key': vault_sendgrid_api_key,
+          'ses_secret_access_key': vault_ses_secret_access_key,
+          'resend_api_key': vault_resend_api_key,
+          'mailgun_api_key': vault_mailgun_api_key,
+          'twilio_auth_token': vault_twilio_auth_token,
+          'sns_secret_access_key': vault_sns_secret_access_key,
+          'vonage_api_secret': vault_vonage_api_secret,
+          'google_client_secret': vault_google_client_secret,
+          'microsoft_client_secret': vault_microsoft_client_secret,
+          'github_client_secret': vault_github_client_secret,
+          'oidc_client_secret': vault_oidc_client_secret,
+          'ldap_bind_password': vault_ldap_bind_password,
+          'ai_api_key': vault_ai_api_key
+        } | to_nice_json
+      }}
+  no_log: true
+
+- name: Write Kubernetes render options
+  copy:
+    dest: "{{ installer_kube_options_file }}"
+    mode: "0600"
+    content: >-
+      {{
+        {
+          'replicas': installer_profile.kubernetes.replicas | default(1) | int,
+          'autoscaling': installer_profile.kubernetes.autoscaling | default({'enabled': false}),
+          'storageClass': installer_profile.kubernetes.storageClass | default(''),
+          'imagePullSecrets': installer_profile.kubernetes.imagePullSecrets | default([]),
+          'nodeSelector': installer_profile.kubernetes.nodeSelector | default({}),
+          'tolerations': installer_profile.kubernetes.tolerations | default([]),
+          'resources': installer_profile.kubernetes.resources | default({})
+        } | to_nice_json
+      }}
+
+- name: Convert rendered compose to Kubernetes manifests and Helm values
+  command:
+    argv: >-
+      {{
+        [
+          installer_scripts_dir ~ '/compose_to_k8s.py',
+          '--compose', _home ~ '/docker-compose.yml',
+          '--output', installer_helm_manifest_file,
+          '--values-output', installer_helm_values_file,
+          '--metadata-output', installer_helm_metadata_file,
+          '--namespace', installer_profile.kubernetes.namespace | default('arsenale'),
+          '--secret-file', installer_kube_secret_file,
+          '--kubernetes-config', installer_kube_options_file,
+          '--local-image-prefix', ('localhost/' if container_runtime == 'podman' else '')
+        ]
+        + (
+          ['--env-file', installer_compose_env_file]
+          if (installer_compose_env_file | default('') | trim)
+          else []
+        )
+        + (
+          ['--ingress-host', installer_profile.kubernetes.host]
+          if (installer_profile.kubernetes.host | default('') | length > 0)
+          else []
+        )
+        + (
+          ['--ingress-class', installer_profile.kubernetes.ingressClass]
+          if (installer_profile.kubernetes.ingressClass | default('') | length > 0)
+          else []
+        )
+        + (
+          ['--tls-enabled']
+          if (installer_profile.kubernetes.tlsEnabled | default(false) | bool)
+          else []
+        )
+      }}
+  changed_when: true
+
+- name: Load Helm render metadata
+  slurp:
+    src: "{{ installer_helm_metadata_file }}"
+  register: installer_helm_metadata_raw
+
+- name: Publish Helm render metadata
+  set_fact:
+    installer_helm_metadata: "{{ installer_helm_metadata_raw.content | b64decode | from_json }}"
