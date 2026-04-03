@@ -65,6 +65,9 @@ func (s Service) VerifyMFASetupDuringLogin(ctx context.Context, tempToken, code,
 	if purpose != "mfa-setup" {
 		return issuedLogin{}, &requestError{status: http.StatusUnauthorized, message: "Invalid token purpose"}
 	}
+	if err := s.enforceLoginMFARateLimit(ctx, userID, ipAddress); err != nil {
+		return issuedLogin{}, err
+	}
 	if err := validateTOTPCode(code); err != nil {
 		return issuedLogin{}, err
 	}
@@ -101,12 +104,16 @@ func (s Service) VerifyMFASetupDuringLogin(ctx context.Context, tempToken, code,
 	if err != nil {
 		return issuedLogin{}, err
 	}
+	allowlistDecision := evaluateIPAllowlist(loginUser.ActiveTenant, ipAddress)
+	if allowlistDecision.Blocked {
+		return issuedLogin{}, s.rejectBlockedIPAllowlist(ctx, userID, ipAddress)
+	}
 	result, err := s.issueTokens(ctx, loginUser, ipAddress, userAgent)
 	if err != nil {
 		return issuedLogin{}, err
 	}
 	_ = s.insertStandaloneAuditLog(ctx, &userID, "TOTP_ENABLE", map[string]any{}, ipAddress)
-	_ = s.insertStandaloneAuditLog(ctx, &userID, "LOGIN", map[string]any{}, ipAddress)
+	_ = s.insertStandaloneAuditLogWithFlags(ctx, &userID, "LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
 	return result, nil
 }
 

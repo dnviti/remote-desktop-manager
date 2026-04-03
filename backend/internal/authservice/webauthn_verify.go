@@ -28,6 +28,9 @@ func (s Service) VerifyWebAuthn(ctx context.Context, tempToken string, rawCreden
 	if purpose != "mfa-verify" {
 		return issuedLogin{}, &requestError{status: http.StatusUnauthorized, message: "Invalid token purpose"}
 	}
+	if err := s.enforceLoginMFARateLimit(ctx, userID, ipAddress); err != nil {
+		return issuedLogin{}, err
+	}
 
 	user, err := s.loadLoginUserByID(ctx, userID)
 	if err != nil {

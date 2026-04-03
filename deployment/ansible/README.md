@@ -759,6 +759,10 @@ ansible-playbook playbooks/install.yml --ask-vault-pass \
 ansible-playbook playbooks/install.yml --ask-vault-pass \
   -e install_password_file=/path/to/password-file \
   -e installer_mode=production
+
+# Repo wrapper auto-detect for local development
+printf '%s\n' 'your-technician-password' > ../../install/password.txt
+make dev
 ```
 
 ### deploy.yml -- Unified Apply Engine

@@ -7,7 +7,10 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/desktopbroker"
@@ -25,7 +28,9 @@ type Claims struct {
 }
 
 type Authenticator struct {
-	secret []byte
+	secret                          []byte
+	tokenBinding                    bool
+	tokenBindingEnforcementCutoffAt time.Time
 }
 
 func NewAuthenticator() (*Authenticator, error) {
@@ -33,7 +38,15 @@ func NewAuthenticator() (*Authenticator, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Authenticator{secret: []byte(strings.TrimSpace(secret))}, nil
+	tokenBindingEnforcementCutoffAt, err := resolveTokenBindingEnforcementCutoff(time.Now().UTC(), os.Getenv("TOKEN_BINDING_ENFORCEMENT_TIMESTAMP"))
+	if err != nil {
+		return nil, err
+	}
+	return &Authenticator{
+		secret:                          []byte(strings.TrimSpace(secret)),
+		tokenBinding:                    os.Getenv("TOKEN_BINDING_ENABLED") != "false",
+		tokenBindingEnforcementCutoffAt: tokenBindingEnforcementCutoffAt,
+	}, nil
 }
 
 func (a *Authenticator) Middleware(next func(http.ResponseWriter, *http.Request, Claims)) http.HandlerFunc {
@@ -74,11 +87,41 @@ func (a *Authenticator) Authenticate(r *http.Request) (Claims, error) {
 	if claims.Type != "access" || claims.UserID == "" {
 		return Claims{}, fmt.Errorf("invalid access token")
 	}
-	if claims.IPUAHash != "" && !bindingMatches(r, claims.IPUAHash) {
-		return Claims{}, fmt.Errorf("binding mismatch")
+	if a.tokenBinding {
+		if claims.IPUAHash == "" {
+			if !a.legacyBindinglessTokenAllowed(claims.RegisteredClaims) {
+				return Claims{}, fmt.Errorf("binding missing")
+			}
+		} else if !bindingMatches(r, claims.IPUAHash) {
+			return Claims{}, fmt.Errorf("binding mismatch")
+		}
 	}
 
 	return claims, nil
+}
+
+func (a Authenticator) legacyBindinglessTokenAllowed(claims jwt.RegisteredClaims) bool {
+	if claims.IssuedAt == nil {
+		return false
+	}
+	return !claims.IssuedAt.Time.UTC().After(a.tokenBindingEnforcementCutoffAt)
+}
+
+func resolveTokenBindingEnforcementCutoff(now time.Time, raw string) (time.Time, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return now.UTC(), nil
+	}
+
+	if unixSeconds, err := strconv.ParseInt(raw, 10, 64); err == nil {
+		return time.Unix(unixSeconds, 0).UTC(), nil
+	}
+
+	parsed, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, fmt.Errorf("parse TOKEN_BINDING_ENFORCEMENT_TIMESTAMP: %w", err)
+	}
+	return parsed.UTC(), nil
 }
 
 type contextKey string

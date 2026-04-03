@@ -106,6 +106,10 @@ What actually happens:
 2. The playbook renders and applies the dev stack, runs `service dev-bootstrap`, and seeds demo PostgreSQL, MySQL, MongoDB, Oracle, and SQL Server datasets.
 3. `npm run dev:client` starts Vite after `http://localhost:18080/healthz`, `:18090/healthz`, and `:18091/healthz` are reachable.
 
+If you need a headless rerun, place the technician password in `install/password.txt`
+before calling `make dev`. The repo wrapper will auto-pass that file as
+`install_password_file` to the installer.
+
 ### 4. Open the application
 
 | URL | Use |

@@ -80,6 +80,11 @@ npm run dev
 
 `make dev` runs the installer-aware development flow. Development mode always deploys the full stack, demo targets, demo datasets, bootstrap data, and deeper validation. `npm run dev` is optional when you want the Vite client on `https://localhost:3005` against that stack.
 
+For headless local reruns, place the technician password in `install/password.txt`.
+The repo `Makefile` auto-detects that file and passes it to the installer as
+`install_password_file`, so `make dev`, `make install`, `make deploy`, and
+`make status` can run without an interactive password prompt.
+
 ### 5. Run the installer
 
 ```bash

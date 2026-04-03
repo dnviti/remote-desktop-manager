@@ -43,6 +43,9 @@ func (s Service) VerifyTOTP(ctx context.Context, tempToken, code, ipAddress, use
 	if purpose != "totp-verify" && purpose != "mfa-verify" {
 		return issuedLogin{}, &requestError{status: http.StatusUnauthorized, message: "Invalid token purpose"}
 	}
+	if err := s.enforceLoginMFARateLimit(ctx, userID, ipAddress); err != nil {
+		return issuedLogin{}, err
+	}
 	if err := validateTOTPCode(code); err != nil {
 		return issuedLogin{}, err
 	}
