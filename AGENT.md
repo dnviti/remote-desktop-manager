@@ -46,6 +46,52 @@ For gateway and session debugging, these commands are especially useful:
 /tmp/arsenale-cli --server https://localhost:3000 rdgw status
 ```
 
+## Red/Green On Real Infrastructure
+When the change needs more than isolated unit coverage, run the Red/Green loop against the local stack at `https://localhost:3000` and treat the CLI as the default smoke client:
+
+1. Write or update the narrow regression test first and make it fail locally.
+2. Build the CLI, confirm the stack is up, and refresh auth if needed.
+3. Reproduce the bug against the live stack with `/tmp/arsenale-cli ... -o json` or a narrow API call.
+4. If the change touches frontend behavior, reproduce it in a real browser with Selenium/WebDriver against `https://localhost:3000`.
+5. Implement the fix.
+6. Rerun the focused test until it is green.
+7. Rerun the same live-stack smoke path to confirm the behavior end-to-end.
+8. For frontend changes, rerun the Selenium/WebDriver browser path and the matching `arsenale-cli` smoke.
+9. Finish with `npm run verify`.
+
+Use this baseline sequence:
+
+```bash
+go test ./tools/arsenale-cli/...
+go build -o /tmp/arsenale-cli ./tools/arsenale-cli
+/tmp/arsenale-cli --server https://localhost:3000 health
+/tmp/arsenale-cli --server https://localhost:3000 login
+/tmp/arsenale-cli --server https://localhost:3000 whoami
+npm run verify
+```
+
+Notes:
+
+- The local seeded credentials are `admin@example.com` / `DevAdmin123!` for tenant `Development Environment`.
+- The CLI stores auth in `~/.arsenale/config.yaml`. If that file is stale, refresh it with `arsenale-cli login` instead of hand-editing tokens.
+- If you need non-interactive CLI auth for automation, use the device flow endpoints already exposed by the platform, especially `POST /api/cli/auth/device/authorize`, from an already authenticated browser session.
+- Prefer `-o json` for assertions and keep the live-stack check narrowly scoped to the behavior you changed.
+- Frontend acceptance should use Selenium/WebDriver against the real local stack, not only component-level mocks.
+- Frontend browser checks do not replace platform smoke. Run the matching `arsenale-cli` assertion as well so the UI path and backend contract are both covered.
+
+Example live-stack pattern for an end-to-end change:
+
+```bash
+# Red: focused tests fail first
+npm run test -w client -- dbFirewallPattern.test.ts
+go test ./backend/internal/dbauditapi -run TestValidateSafeRegex -count=1
+
+# Real-stack reproduction and green verification
+/tmp/arsenale-cli --server https://localhost:3000 health
+/tmp/arsenale-cli --server https://localhost:3000 whoami
+/tmp/arsenale-cli --server https://localhost:3000 db-audit firewall-rule list -o json
+```
+
 ## Alignment Rule
 Any change that affects API routes, response fields, auth flows, config defaults, server URLs, tenant selection, or deployment wiring must be reflected in `tools/arsenale-cli` in the same change set.
 

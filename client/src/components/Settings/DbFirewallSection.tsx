@@ -18,6 +18,7 @@ import {
   FirewallRule, FirewallRuleInput, FirewallAction,
 } from '../../api/dbAudit.api';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { validateDbFirewallPattern } from '../../utils/dbFirewallPattern';
 
 const ACTION_COLORS: Record<FirewallAction, 'error' | 'warning' | 'info'> = {
   BLOCK: 'error',
@@ -36,9 +37,6 @@ interface RuleTemplate {
   description: string;
   category: string;
 }
-
-const MAX_REGEX_LENGTH = 500;
-const NESTED_QUANTIFIER_RE = /(\+|\*|\{[^}]+\})\s*\)?\s*(\+|\*|\?|\{[^}]+\})/;
 
 const RULE_TEMPLATES: RuleTemplate[] = [
   // --- Destructive DDL ---
@@ -154,26 +152,6 @@ const RULE_TEMPLATES: RuleTemplate[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Regex validation helper
-// ---------------------------------------------------------------------------
-
-function validateRegex(pattern: string): string | null {
-  const trimmed = pattern.trim();
-  if (!trimmed) return 'Pattern is required';
-  if (trimmed.length > MAX_REGEX_LENGTH || NESTED_QUANTIFIER_RE.test(trimmed)) {
-    return 'Pattern is too complex or too long';
-  }
-  try {
-    // Intentional validation of user-authored regex before it is sent to the API.
-    // eslint-disable-next-line security/detect-non-literal-regexp
-    new RegExp(trimmed, 'i');
-    return null;
-  } catch (err) {
-    return err instanceof SyntaxError ? err.message : 'Invalid regular expression';
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
 
@@ -237,7 +215,7 @@ export default function DbFirewallSection() {
   const handlePatternChange = (value: string) => {
     setFormData({ ...formData, pattern: value });
     if (value.trim()) {
-      setPatternError(validateRegex(value));
+      setPatternError(validateDbFirewallPattern(value));
     } else {
       setPatternError(null);
     }
@@ -253,12 +231,12 @@ export default function DbFirewallSection() {
       action: template.action,
       description: template.description,
     });
-    setPatternError(validateRegex(template.pattern));
+    setPatternError(validateDbFirewallPattern(template.pattern));
   };
 
   const handleSave = async () => {
     // Validate regex before saving
-    const regexErr = validateRegex(formData.pattern);
+    const regexErr = validateDbFirewallPattern(formData.pattern);
     if (regexErr) {
       setPatternError(regexErr);
       return;
@@ -407,7 +385,7 @@ export default function DbFirewallSection() {
               value={formData.pattern}
               onChange={(e) => handlePatternChange(e.target.value)}
               error={!!patternError}
-              helperText={patternError || 'Regular expression pattern to match against SQL queries (case-insensitive)'}
+              helperText={patternError || 'Basic safety checks run locally. Full regex syntax is validated on save by the backend.'}
               slotProps={{ htmlInput: { style: { fontFamily: 'monospace' } } }}
             />
             <FormControl size="small" fullWidth>
