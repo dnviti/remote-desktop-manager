@@ -44,7 +44,8 @@ RUN npm run build
 # ---------------------------------------------------------------------------
 FROM docker.io/library/nginx:1.28-alpine
 
-RUN apk add --no-cache curl
+RUN apk upgrade --no-cache && \
+    apk add --no-cache curl
 RUN rm -f /etc/nginx/conf.d/default.conf
 
 COPY --from=build /app/client/dist /usr/share/nginx/html
