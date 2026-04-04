@@ -28,6 +28,13 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useFeatureFlagsStore } from '../../store/featureFlagsStore';
 import { listVaultProviders, VaultProviderData } from '../../api/externalVault.api';
 import { gatewayEndpointLabel } from '../../utils/gatewayMode';
+import {
+  cloudProviderHint,
+  nextSSLModeForCloudProvider,
+  normalizeCloudProviderSelection,
+  supportsCloudProviderPresets,
+  tlsModeOptions,
+} from '../../utils/dbConnectionSecurity';
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -46,9 +53,13 @@ function normalizeDbSettings(settings: Partial<DbSettings>): DbSettings | null {
     return null;
   }
 
+  const supportsCloudPresets = supportsCloudProviderPresets(settings.protocol);
+
   return {
     ...settings,
     protocol: settings.protocol,
+    cloudProvider: supportsCloudPresets ? settings.cloudProvider : undefined,
+    sslMode: supportsCloudPresets ? settings.sslMode : undefined,
     persistExecutionPlan: supportsPersistedExecutionPlans(settings.protocol)
       ? settings.persistExecutionPlan
       : undefined,
@@ -191,6 +202,10 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     if (type === 'DATABASE') return g.type === 'DB_PROXY';
     return false;
   });
+  const dbTLSOptions = tlsModeOptions(dbSettings.protocol);
+  const currentDbTLSOption = dbTLSOptions.find((option) => option.value === (dbSettings.sslMode ?? ''))
+    ?? dbTLSOptions[0];
+  const dbCloudHint = cloudProviderHint(dbSettings.protocol, dbSettings.cloudProvider);
 
   const handleSubmit = async () => {
     if (!name || !host) {
@@ -618,6 +633,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                         setDbSettings((prev) => ({
                           protocol: proto,
                           databaseName: prev.databaseName,
+                          cloudProvider: supportsCloudProviderPresets(proto) ? prev.cloudProvider : undefined,
+                          sslMode: supportsCloudProviderPresets(proto) ? prev.sslMode : undefined,
                           persistExecutionPlan: supportsPersistedExecutionPlans(proto)
                             ? prev.persistExecutionPlan
                             : undefined,
@@ -642,6 +659,69 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                     fullWidth
                     placeholder="e.g. mydb"
                   />
+                  {supportsCloudProviderPresets(dbSettings.protocol) && (
+                    <>
+                      <FormControl fullWidth>
+                        <InputLabel>Cloud Provider Preset</InputLabel>
+                        <Select
+                          value={dbSettings.cloudProvider ?? 'generic'}
+                          label="Cloud Provider Preset"
+                          onChange={(e) => {
+                            const nextProvider = normalizeCloudProviderSelection(e.target.value);
+                            setDbSettings((prev) => ({
+                              ...prev,
+                              cloudProvider: nextProvider,
+                              sslMode: nextSSLModeForCloudProvider(
+                                prev.protocol,
+                                prev.sslMode,
+                                prev.cloudProvider,
+                                nextProvider,
+                              ),
+                            }));
+                          }}
+                        >
+                          <MenuItem value="generic">Generic / self-hosted</MenuItem>
+                          <MenuItem value="azure">Azure Database</MenuItem>
+                          <MenuItem value="aws">AWS RDS / Aurora</MenuItem>
+                          <MenuItem value="gcp">GCP Cloud SQL</MenuItem>
+                        </Select>
+                      </FormControl>
+                      <FormControl fullWidth>
+                        <InputLabel>TLS Mode</InputLabel>
+                        <Select
+                          value={dbSettings.sslMode ?? ''}
+                          label="TLS Mode"
+                          onChange={(e) => setDbSettings((prev) => ({ ...prev, sslMode: e.target.value || undefined }))}
+                        >
+                          {dbTLSOptions.map((option) => (
+                            <MenuItem key={option.value || 'default'} value={option.value}>
+                              <Box>
+                                <Typography variant="body2">{option.label}</Typography>
+                                <Typography variant="caption" color="text.secondary">
+                                  {option.helperText}
+                                </Typography>
+                              </Box>
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                      {currentDbTLSOption && (
+                        <Typography variant="caption" color="text.secondary">
+                          {currentDbTLSOption.helperText}
+                        </Typography>
+                      )}
+                      {dbCloudHint && (
+                        <Alert severity="info">
+                          {dbCloudHint}
+                        </Alert>
+                      )}
+                      {dbSettings.sslMode === 'skip-verify' && (
+                        <Alert severity="warning">
+                          Skip verification accepts any server certificate. Use it only when you control the network and cannot trust the certificate chain yet.
+                        </Alert>
+                      )}
+                    </>
+                  )}
                   {supportsPersistedExecutionPlans(dbSettings.protocol ?? 'postgresql') && (
                     <Box>
                       <FormControlLabel

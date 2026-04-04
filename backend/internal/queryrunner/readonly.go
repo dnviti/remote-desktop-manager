@@ -176,7 +176,7 @@ func resolvePool(
 	query.Set("pool_max_conns", "3")
 	query.Set("pool_min_conns", "0")
 	query.Set("connect_timeout", "10")
-	if sslMode := strings.TrimSpace(target.SSLMode); sslMode != "" {
+	if sslMode := normalizePostgresSSLMode(target.SSLMode); sslMode != "" {
 		query.Set("sslmode", sslMode)
 	}
 	u.RawQuery = query.Encode()
