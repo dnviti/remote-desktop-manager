@@ -32,7 +32,7 @@ import {
   cloudProviderHint,
   nextSSLModeForCloudProvider,
   normalizeCloudProviderSelection,
-  sanitizeSSLModeForProtocol,
+  remapSSLModeOnProtocolChange,
   supportsCloudProviderPresets,
   tlsModeOptions,
 } from '../../utils/dbConnectionSecurity';
@@ -635,7 +635,8 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
                           protocol: proto,
                           databaseName: prev.databaseName,
                           cloudProvider: supportsCloudProviderPresets(proto) ? prev.cloudProvider : undefined,
-                          sslMode: sanitizeSSLModeForProtocol(
+                          sslMode: remapSSLModeOnProtocolChange(
+                            prev.protocol,
                             proto,
                             prev.sslMode,
                             supportsCloudProviderPresets(proto) ? prev.cloudProvider : undefined,

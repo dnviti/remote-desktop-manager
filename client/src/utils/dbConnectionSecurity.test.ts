@@ -4,6 +4,7 @@ import {
   cloudProviderHint,
   nextSSLModeForCloudProvider,
   recommendedSSLMode,
+  remapSSLModeOnProtocolChange,
   sanitizeSSLModeForProtocol,
   tlsModeOptions,
 } from './dbConnectionSecurity';
@@ -74,6 +75,15 @@ describe('dbConnectionSecurity', () => {
     ).toBe('require');
     expect(
       sanitizeSSLModeForProtocol('mssql', 'require'),
+    ).toBe('require');
+  });
+
+  it('clears hidden TLS state when leaving cloud SQL protocols', () => {
+    expect(
+      remapSSLModeOnProtocolChange('postgresql', 'oracle', 'require'),
+    ).toBeUndefined();
+    expect(
+      remapSSLModeOnProtocolChange('mssql', 'oracle', 'require'),
     ).toBe('require');
   });
 });

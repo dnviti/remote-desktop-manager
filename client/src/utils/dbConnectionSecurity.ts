@@ -79,6 +79,20 @@ export function sanitizeSSLModeForProtocol(
   return recommendedSSLMode(protocol, provider);
 }
 
+export function remapSSLModeOnProtocolChange(
+  previousProtocol: DbProtocol | undefined,
+  nextProtocol: DbProtocol | undefined,
+  currentMode: string | undefined,
+  provider?: DbCloudProvider,
+): string | undefined {
+  const nextSupportsCloudPresets = supportsCloudProviderPresets(nextProtocol);
+  if (!nextSupportsCloudPresets && supportsCloudProviderPresets(previousProtocol)) {
+    return undefined;
+  }
+
+  return sanitizeSSLModeForProtocol(nextProtocol, currentMode, provider);
+}
+
 export function cloudProviderHint(
   protocol?: DbProtocol,
   provider?: DbCloudProvider,
