@@ -38,13 +38,34 @@ arsenale_email_verify_required: false
 arsenale_recording_enabled: true
 arsenale_email_provider: smtp
 
-# Container images (override to use pre-built registry images)
-arsenale_build_images: true  # false = pull from registry
+# Container images
+# Development installs always build from the local checkout.
+# Production and Kubernetes installs pull these images when arsenale_build_images is false.
+arsenale_build_images: false
 arsenale_registry: ghcr.io/dnviti/arsenale
 arsenale_image_tag: latest
 arsenale_postgres_image: "quay.io/sclorg/postgresql-16-c10s"
 arsenale_postgres_data_dir: "/var/lib/pgsql/data"
-arsenale_guacd_image: "docker.io/guacamole/guacd:1.6.0"
+arsenale_guacd_image: "{{ arsenale_registry }}/guacd:{{ arsenale_image_tag }}"
+arsenale_component_images:
+  migrate: "{{ arsenale_registry }}/control-plane-api:{{ arsenale_image_tag }}"
+  control-plane-api: "{{ arsenale_registry }}/control-plane-api:{{ arsenale_image_tag }}"
+  control-plane-controller: "{{ arsenale_registry }}/control-plane-controller:{{ arsenale_image_tag }}"
+  authz-pdp: "{{ arsenale_registry }}/authz-pdp:{{ arsenale_image_tag }}"
+  model-gateway: "{{ arsenale_registry }}/model-gateway:{{ arsenale_image_tag }}"
+  tool-gateway: "{{ arsenale_registry }}/tool-gateway:{{ arsenale_image_tag }}"
+  terminal-broker: "{{ arsenale_registry }}/terminal-broker:{{ arsenale_image_tag }}"
+  desktop-broker: "{{ arsenale_registry }}/desktop-broker:{{ arsenale_image_tag }}"
+  tunnel-broker: "{{ arsenale_registry }}/tunnel-broker-go:{{ arsenale_image_tag }}"
+  query-runner: "{{ arsenale_registry }}/query-runner:{{ arsenale_image_tag }}"
+  memory-service: "{{ arsenale_registry }}/memory-service:{{ arsenale_image_tag }}"
+  agent-orchestrator: "{{ arsenale_registry }}/agent-orchestrator:{{ arsenale_image_tag }}"
+  runtime-agent: "{{ arsenale_registry }}/runtime-agent:{{ arsenale_image_tag }}"
+  client: "{{ arsenale_registry }}/client:{{ arsenale_image_tag }}"
+  guacd: "{{ arsenale_guacd_image }}"
+  guacenc: "{{ arsenale_registry }}/guacenc:{{ arsenale_image_tag }}"
+  ssh-gateway: "{{ arsenale_registry }}/ssh-gateway:{{ arsenale_image_tag }}"
+  db-proxy: "{{ arsenale_registry }}/db-proxy:{{ arsenale_image_tag }}"
 
 # TLS
 arsenale_generate_certs: true

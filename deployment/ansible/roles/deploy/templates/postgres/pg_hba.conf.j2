@@ -1,0 +1,18 @@
+# PostgreSQL Host-Based Authentication (HBA) Configuration
+# ========================================================
+# Enforces SSL-only remote connections. Combined with network
+# segmentation, only Arsenale services on the database network can connect.
+#
+# TYPE  DATABASE  USER  ADDRESS    METHOD
+# ----- --------- ----- ---------- -----------
+
+# Local Unix-domain socket connections (inside container)
+local   all       all              scram-sha-256
+
+# SSL-only TCP connections from any address on the managed network
+hostssl all       all   0.0.0.0/0  scram-sha-256
+hostssl all       all   ::/0       scram-sha-256
+
+# Reject all non-SSL TCP connections
+host    all       all   0.0.0.0/0  reject
+host    all       all   ::/0       reject

@@ -421,9 +421,3 @@ deployment/ansible/SECRETS.env
 docker-compose.yml
 
 *.csr
-
-.codex*/
-install*/
-.install*/
-arsenale/
-.podman*/

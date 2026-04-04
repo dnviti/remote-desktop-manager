@@ -405,7 +405,7 @@ make install
 7. **Certificates**: Generates ECC P-256 TLS certs for all services.
 8. **Secrets**: Creates Podman secrets for runtime injection.
 9. **Render**: Generates `docker-compose.yml` with only selected services.
-10. **Build/Pull**: Builds from source or pulls from `ghcr.io/dnviti/arsenale`.
+10. **Build/Pull**: Pulls published images by default; only clones/builds from source when `arsenale_build_images: true`.
 11. **Apply**: Starts containers via `podman-compose`.
 12. **Firewall**: Configures nftables.
 13. **Health checks**: Validates all containers are healthy, API responds, secrets are mounted.
@@ -426,7 +426,7 @@ make install
 5. **Routing + Capabilities**: Prompted interactively.
 6. **Render**: Generates `docker-compose.yml` then converts to Kubernetes manifests via `compose_to_k8s.py`.
 7. **Helm chart**: Copies chart skeleton, generates `values.generated.yaml`.
-8. **Build**: Builds images via Podman if `arsenale_build_images: true`.
+8. **Build**: Reuses published images by default; only builds via Podman if `arsenale_build_images: true`.
 9. **Lint**: Runs `helm lint` on the chart.
 10. **Install**: Runs `helm upgrade --install arsenale`.
 11. **Wait**: Waits for PVCs to bind, Deployments to roll out, migration Job to complete.
@@ -991,11 +991,12 @@ All non-secret configuration is in `inventory/group_vars/all/vars.yml`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `arsenale_build_images` | `true` | Build from source (`false` = pull from registry) |
+| `arsenale_build_images` | `false` | Production/Kubernetes: build from source when `true`, otherwise pull published images. Development always builds locally. |
 | `arsenale_registry` | `ghcr.io/dnviti/arsenale` | Container image registry |
 | `arsenale_image_tag` | `latest` | Image tag when pulling |
+| `arsenale_component_images` | derived from `arsenale_registry` + `arsenale_image_tag` | Per-service image overrides for standalone installs |
 | `arsenale_postgres_image` | `quay.io/sclorg/postgresql-16-c10s` | PostgreSQL image |
-| `arsenale_guacd_image` | `docker.io/guacamole/guacd:1.6.0` | Guacamole daemon image |
+| `arsenale_guacd_image` | `ghcr.io/dnviti/arsenale/guacd:latest` | Guacamole daemon image |
 
 ### TLS
 
@@ -1059,7 +1060,7 @@ all:
     arsenale_user: arsenale                  # System user for Arsenale
     arsenale_home: /opt/arsenale             # Deployment directory
     arsenale_repo: https://github.com/dnviti/arsenale.git
-    arsenale_version: main                   # Git branch/tag to deploy
+    arsenale_version: main                   # Only used when arsenale_build_images=true
 ```
 
 Or use environment variables:

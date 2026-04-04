@@ -6,6 +6,34 @@
 # Secrets are managed via Podman secrets (mounted at /run/secrets/).
 # =============================================================================
 {% set _compose_repo_root = arsenale_source_root | default((_home if (_is_dev | default(false) | bool) else (_home + '/arsenale'))) %}
+{% set _compose_project_name = (((_home | basename) | lower | regex_replace('[^a-z0-9]+', '')) or 'compose') %}
+{% set _runtime_assets_root = installer_runtime_assets_dir | default(_home + '/config/installer-assets') %}
+{% set _component_images = arsenale_component_images | default({}) %}
+{% macro local_image(service_name) -%}
+localhost/{{ _compose_project_name }}_{{ service_name }}:latest
+{%- endmacro %}
+{% macro remote_image(service_name, fallback_name='') -%}
+{{ _component_images.get(service_name, arsenale_registry ~ '/' ~ (fallback_name if fallback_name else service_name) ~ ':' ~ arsenale_image_tag) }}
+{%- endmacro %}
+{% macro compose_service_source(service_name, dockerfile, image_service_name='', context='', build_args=None) -%}
+{% set _context = context if context else _compose_repo_root %}
+{% if _build | bool %}
+build:
+  context: {{ _context }}
+  dockerfile: {{ dockerfile }}
+{% if build_args %}
+  args:
+{% for key, value in build_args.items() %}
+    {{ key }}: {{ value }}
+{% endfor %}
+{% endif %}
+{% elif _is_dev | default(false) | bool %}
+image: {{ local_image(service_name) }}
+{% else %}
+image: {{ remote_image(service_name, image_service_name) }}
+pull_policy: always
+{% endif %}
+{%- endmacro %}
 
 services:
 
@@ -32,9 +60,9 @@ services:
       - postgres_password
     volumes:
       - pgdata:{{ arsenale_postgres_data_dir | default('/var/lib/pgsql/data') }}
-      - {{ _compose_repo_root }}/infrastructure/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - {{ _runtime_assets_root }}/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
       - {{ arsenale_cert_dir }}/postgres:/certs:ro
-      - {{ _compose_repo_root }}/infrastructure/postgres/entrypoint.sh:/usr/local/bin/arsenale-postgres-entrypoint.sh:ro
+      - {{ _runtime_assets_root }}/postgres/entrypoint.sh:/usr/local/bin/arsenale-postgres-entrypoint.sh:ro
     entrypoint: ["/usr/local/bin/arsenale-postgres-entrypoint.sh"]
     restart: always
     cap_drop:
@@ -56,11 +84,7 @@ services:
       - net-db
 
   migrate:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: control-plane-api
+{{ compose_service_source('migrate', 'backend/Dockerfile', 'control-plane-api', build_args={'SERVICE': 'control-plane-api'}) | indent(4, true) }}
     container_name: arsenale-migrate
     entrypoint: ["/usr/local/bin/migrate"]
     command: ["up"]
@@ -93,17 +117,7 @@ services:
   # Apache Guacamole Daemon (guacd) — RDP/VNC protocol handler
   # ---------------------------------------------------------------------------
   guacd:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: gateways/guacd/Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_guacd:latest
-{% else %}
-    image: {{ arsenale_guacd_image }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('guacd', 'gateways/guacd/Dockerfile') | indent(4, true) }}
     container_name: arsenale-guacd
     read_only: true
     cpus: "{{ arsenale_resource_limits.guacd.cpus }}"
@@ -137,17 +151,7 @@ services:
   # Guacenc — Session recording video converter
   # ---------------------------------------------------------------------------
   guacenc:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}/gateways/guacenc
-      dockerfile: Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_guacenc:latest
-{% else %}
-    image: {{ arsenale_registry }}/guacenc:{{ arsenale_image_tag }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('guacenc', 'Dockerfile', context=_compose_repo_root ~ '/gateways/guacenc') | indent(4, true) }}
     container_name: arsenale-guacenc
     read_only: true
     cpus: "{{ arsenale_resource_limits.guacenc.cpus }}"
@@ -216,11 +220,7 @@ services:
   # Go backend foundation services required in production
   # ---------------------------------------------------------------------------
   control-plane-api:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: control-plane-api
+{{ compose_service_source('control-plane-api', 'backend/Dockerfile', build_args={'SERVICE': 'control-plane-api'}) | indent(4, true) }}
     container_name: arsenale-control-plane-api
     entrypoint:
       - /bin/sh
@@ -311,11 +311,7 @@ services:
       - net-gateway
 
   tunnel-broker:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: tunnel-broker
+{{ compose_service_source('tunnel-broker', 'backend/Dockerfile', build_args={'SERVICE': 'tunnel-broker'}) | indent(4, true) }}
     container_name: arsenale-tunnel-broker
     read_only: true
     cpus: "0.5"
@@ -359,11 +355,7 @@ services:
       - net-gateway
 
   query-runner:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: query-runner
+{{ compose_service_source('query-runner', 'backend/Dockerfile', build_args={'SERVICE': 'query-runner'}) | indent(4, true) }}
     container_name: arsenale-query-runner
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -401,11 +393,7 @@ services:
       - net-db
 
   desktop-broker:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: desktop-broker
+{{ compose_service_source('desktop-broker', 'backend/Dockerfile', build_args={'SERVICE': 'desktop-broker'}) | indent(4, true) }}
     container_name: arsenale-desktop-broker
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -454,11 +442,7 @@ services:
       - net-db
 
   terminal-broker:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: terminal-broker
+{{ compose_service_source('terminal-broker', 'backend/Dockerfile', build_args={'SERVICE': 'terminal-broker'}) | indent(4, true) }}
     container_name: arsenale-terminal-broker
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -504,11 +488,7 @@ services:
   # Go backend foundation services — active public runtime
   # ---------------------------------------------------------------------------
   control-plane-api:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: control-plane-api
+{{ compose_service_source('control-plane-api', 'backend/Dockerfile', build_args={'SERVICE': 'control-plane-api'}) | indent(4, true) }}
     container_name: arsenale-control-plane-api
     entrypoint:
       - /bin/sh
@@ -546,11 +526,11 @@ services:
       ORCHESTRATOR_DB_NETWORK: "arsenale-net-db"
       ORCHESTRATOR_GUACD_NETWORK: "arsenale-net-guacd"
       ORCHESTRATOR_GATEWAY_NETWORK: "arsenale-net-gateway"
-      ORCHESTRATOR_SSH_GATEWAY_IMAGE: "localhost/arsenale_ssh-gateway:latest"
-      ORCHESTRATOR_GUACD_IMAGE: "localhost/arsenale_guacd:latest"
+      ORCHESTRATOR_SSH_GATEWAY_IMAGE: "{{ local_image('ssh-gateway') }}"
+      ORCHESTRATOR_GUACD_IMAGE: "{{ local_image('guacd') }}"
       ORCHESTRATOR_GUACD_TLS_CERT: /certs/guacd/server-cert.pem
       ORCHESTRATOR_GUACD_TLS_KEY: /certs/guacd/server-key.pem
-      ORCHESTRATOR_DB_PROXY_IMAGE: "localhost/arsenale_db-proxy:latest"
+      ORCHESTRATOR_DB_PROXY_IMAGE: "{{ local_image('db-proxy') }}"
       ORCHESTRATOR_DNS_SERVERS: "{{ (arsenale_container_dns_servers | default([])) | join(',') }}"
       ORCHESTRATOR_RESOLV_CONF_PATH: "{{ arsenale_cert_dir }}/orchestrator/resolv.conf"
       SPIFFE_TRUST_DOMAIN: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
@@ -665,11 +645,7 @@ services:
       - net-gateway
 
   control-plane-controller:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: control-plane-controller
+{{ compose_service_source('control-plane-controller', 'backend/Dockerfile', build_args={'SERVICE': 'control-plane-controller'}) | indent(4, true) }}
     container_name: arsenale-control-plane-controller
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -710,11 +686,7 @@ services:
       - net-db
 
   authz-pdp:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: authz-pdp
+{{ compose_service_source('authz-pdp', 'backend/Dockerfile', build_args={'SERVICE': 'authz-pdp'}) | indent(4, true) }}
     container_name: arsenale-authz-pdp
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -742,11 +714,7 @@ services:
       - net-edge
 
   model-gateway:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: model-gateway
+{{ compose_service_source('model-gateway', 'backend/Dockerfile', build_args={'SERVICE': 'model-gateway'}) | indent(4, true) }}
     container_name: arsenale-model-gateway
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -786,11 +754,7 @@ services:
       - net-db
 
   terminal-broker:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: terminal-broker
+{{ compose_service_source('terminal-broker', 'backend/Dockerfile', build_args={'SERVICE': 'terminal-broker'}) | indent(4, true) }}
     container_name: arsenale-terminal-broker
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -833,15 +797,7 @@ services:
       - net-db
 
   tunnel-broker:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: tunnel-broker
-    image: {{ arsenale_registry }}/tunnel-broker-go:{{ arsenale_image_tag }}
-{% if not (_is_dev | default(false) | bool) %}
-    pull_policy: always
-{% endif %}
+{{ compose_service_source('tunnel-broker', 'backend/Dockerfile', build_args={'SERVICE': 'tunnel-broker'}) | indent(4, true) }}
     container_name: arsenale-tunnel-broker
     read_only: true
     cpus: "0.5"
@@ -885,11 +841,7 @@ services:
       - net-gateway
 
   tool-gateway:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: tool-gateway
+{{ compose_service_source('tool-gateway', 'backend/Dockerfile', build_args={'SERVICE': 'tool-gateway'}) | indent(4, true) }}
     container_name: arsenale-tool-gateway
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -928,11 +880,7 @@ services:
       - net-edge
 
   query-runner:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: query-runner
+{{ compose_service_source('query-runner', 'backend/Dockerfile', build_args={'SERVICE': 'query-runner'}) | indent(4, true) }}
     container_name: arsenale-query-runner
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -970,11 +918,7 @@ services:
       - net-db
 
   desktop-broker:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: desktop-broker
+{{ compose_service_source('desktop-broker', 'backend/Dockerfile', build_args={'SERVICE': 'desktop-broker'}) | indent(4, true) }}
     container_name: arsenale-desktop-broker
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -1023,11 +967,7 @@ services:
       - net-db
 
   memory-service:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: memory-service
+{{ compose_service_source('memory-service', 'backend/Dockerfile', build_args={'SERVICE': 'memory-service'}) | indent(4, true) }}
     container_name: arsenale-memory-service
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -1065,11 +1005,7 @@ services:
       - net-db
 
   agent-orchestrator:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: agent-orchestrator
+{{ compose_service_source('agent-orchestrator', 'backend/Dockerfile', build_args={'SERVICE': 'agent-orchestrator'}) | indent(4, true) }}
     container_name: arsenale-agent-orchestrator
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -1107,11 +1043,7 @@ services:
       - net-db
 
   runtime-agent:
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: backend/Dockerfile
-      args:
-        SERVICE: runtime-agent
+{{ compose_service_source('runtime-agent', 'backend/Dockerfile', build_args={'SERVICE': 'runtime-agent'}) | indent(4, true) }}
     container_name: arsenale-runtime-agent
     read_only: true
     cpus: "{{ arsenale_resource_limits.go_service.cpus }}"
@@ -1334,18 +1266,7 @@ services:
   # Client — React SPA served by Nginx
   # ---------------------------------------------------------------------------
   client:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}
-
-      dockerfile: client/Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_client:latest
-{% else %}
-    image: {{ arsenale_registry }}/client:{{ arsenale_image_tag }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('client', 'client/Dockerfile') | indent(4, true) }}
     container_name: arsenale-client
     read_only: true
     cpus: "{{ arsenale_resource_limits.client.cpus }}"
@@ -1395,18 +1316,7 @@ services:
   # SSH Gateway — Managed SSH tunnel for TCP port forwarding
   # ---------------------------------------------------------------------------
   ssh-gateway:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}
-
-      dockerfile: gateways/ssh-gateway/Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_ssh-gateway:latest
-{% else %}
-    image: {{ arsenale_registry }}/ssh-gateway:{{ arsenale_image_tag }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('ssh-gateway', 'gateways/ssh-gateway/Dockerfile') | indent(4, true) }}
     container_name: arsenale-ssh-gateway
     read_only: true
     cpus: "{{ arsenale_resource_limits.ssh_gateway.cpus }}"
@@ -1449,17 +1359,7 @@ services:
   # Development tunnel gateways — end-to-end tunnel registration fixtures
   # ---------------------------------------------------------------------------
   dev-tunnel-ssh-gateway:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: gateways/ssh-gateway/Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_dev-tunnel-ssh-gateway:latest
-{% else %}
-    image: {{ arsenale_registry }}/ssh-gateway:{{ arsenale_image_tag }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('dev-tunnel-ssh-gateway', 'gateways/ssh-gateway/Dockerfile', 'ssh-gateway') | indent(4, true) }}
     container_name: arsenale-dev-tunnel-ssh-gateway
     read_only: true
     cpus: "{{ arsenale_resource_limits.ssh_gateway.cpus }}"
@@ -1510,17 +1410,7 @@ services:
       - net-gateway
 
   dev-tunnel-guacd:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: gateways/guacd/Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_dev-tunnel-guacd:latest
-{% else %}
-    image: {{ arsenale_registry }}/guacd:{{ arsenale_image_tag }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('dev-tunnel-guacd', 'gateways/guacd/Dockerfile', 'guacd') | indent(4, true) }}
     container_name: arsenale-dev-tunnel-guacd
     read_only: true
     cpus: "{{ arsenale_resource_limits.guacd.cpus }}"
@@ -1569,17 +1459,7 @@ services:
       - net-gateway
 
   dev-tunnel-db-proxy:
-{% if _build | bool %}
-    build:
-      context: {{ _compose_repo_root }}
-      dockerfile: gateways/db-proxy/Dockerfile
-{% else %}
-{% if _is_dev | default(false) | bool %}
-    image: localhost/arsenale_dev-tunnel-db-proxy:latest
-{% else %}
-    image: {{ arsenale_registry }}/db-proxy:{{ arsenale_image_tag }}
-{% endif %}
-{% endif %}
+{{ compose_service_source('dev-tunnel-db-proxy', 'gateways/db-proxy/Dockerfile', 'db-proxy') | indent(4, true) }}
     container_name: arsenale-dev-tunnel-db-proxy
     read_only: true
     cpus: "{{ arsenale_resource_limits.db_proxy.cpus }}"

@@ -1,0 +1,17 @@
+namespace: arsenale
+ingress:
+  host: ""
+  className: ""
+  tlsEnabled: false
+kubernetes:
+  replicas: 1
+  autoscaling:
+    enabled: false
+  storageClass: ""
+  imagePullSecrets: []
+  nodeSelector: {}
+  tolerations: []
+  resources: {}
+rendered:
+  resources: []
+  metadata: {}

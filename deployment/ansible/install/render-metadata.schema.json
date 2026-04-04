@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arsenale.dev/installer/render-metadata.schema.json",
+  "title": "Arsenale Installer Render Metadata",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "backend",
+    "renderedAt",
+    "artifacts",
+    "activeServices"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "backend": {
+      "type": "string"
+    },
+    "renderedAt": {
+      "type": "string"
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "sha256"
+        ],
+        "additionalProperties": true,
+        "properties": {
+          "sha256": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "activeServices": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  }
+}

@@ -1,4 +1,25 @@
 ---
+- name: Ensure installer runtime asset directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0750"
+  loop:
+    - "{{ installer_runtime_assets_dir | default(_home + '/config/installer-assets') }}"
+    - "{{ (installer_runtime_assets_dir | default(_home + '/config/installer-assets')) + '/postgres' }}"
+
+- name: Render installer-managed PostgreSQL HBA config
+  template:
+    src: postgres/pg_hba.conf.j2
+    dest: "{{ (installer_runtime_assets_dir | default(_home + '/config/installer-assets')) + '/postgres/pg_hba.conf' }}"
+    mode: "0644"
+
+- name: Render installer-managed PostgreSQL entrypoint helper
+  template:
+    src: postgres/entrypoint.sh.j2
+    dest: "{{ (installer_runtime_assets_dir | default(_home + '/config/installer-assets')) + '/postgres/entrypoint.sh' }}"
+    mode: "0755"
+
 - name: Template compose file
   template:
     src: compose.yml.j2

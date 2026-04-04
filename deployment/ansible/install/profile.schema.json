@@ -1,0 +1,110 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arsenale.dev/installer/profile.schema.json",
+  "title": "Arsenale Installer Profile",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "mode",
+    "backend",
+    "capabilities",
+    "routing"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "productVersion": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string",
+      "enum": [
+        "development",
+        "production"
+      ]
+    },
+    "backend": {
+      "type": "string",
+      "enum": [
+        "podman",
+        "kubernetes"
+      ]
+    },
+    "capabilities": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "core": {
+          "type": "boolean"
+        },
+        "keychain": {
+          "type": "boolean"
+        },
+        "connections": {
+          "type": "boolean"
+        },
+        "databases": {
+          "type": "boolean"
+        },
+        "recordings": {
+          "type": "boolean"
+        },
+        "zero_trust": {
+          "type": "boolean"
+        },
+        "agentic_ai": {
+          "type": "boolean"
+        },
+        "enterprise_auth": {
+          "type": "boolean"
+        },
+        "sharing_approvals": {
+          "type": "boolean"
+        },
+        "cli": {
+          "type": "boolean"
+        }
+      }
+    },
+    "routing": {
+      "type": "object",
+      "required": [
+        "directGateway",
+        "zeroTrust"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "directGateway": {
+          "type": "boolean"
+        },
+        "zeroTrust": {
+          "type": "boolean"
+        }
+      }
+    },
+    "tls": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "storage": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "images": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "kubernetes": {
+      "type": "object",
+      "additionalProperties": true
+    },
+    "compose": {
+      "type": "object",
+      "additionalProperties": true
+    }
+  }
+}

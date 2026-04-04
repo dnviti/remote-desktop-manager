@@ -1,0 +1,96 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arsenale.dev/installer/state.schema.json",
+  "title": "Arsenale Installer State",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "desiredProfile",
+    "desiredProfileHash",
+    "lastAppliedVersion",
+    "lastAppliedHashes",
+    "resources",
+    "lastKnownGoodRun",
+    "backendState"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "desiredProfile": {
+      "$ref": "profile.schema.json"
+    },
+    "desiredProfileHash": {
+      "type": "string"
+    },
+    "lastAppliedVersion": {
+      "type": "string"
+    },
+    "lastAppliedHashes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "resources": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "activeServices": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "images": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "volumes": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "networks": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "lastKnownGoodRun": {
+      "type": "object",
+      "required": [
+        "timestamp",
+        "result"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "timestamp": {
+          "type": "string"
+        },
+        "result": {
+          "type": "string"
+        }
+      }
+    },
+    "backendState": {
+      "type": "object",
+      "required": [
+        "backend"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "backend": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

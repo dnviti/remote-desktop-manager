@@ -1,0 +1,135 @@
+---
+- name: Define installer artifact locations
+  set_fact:
+    _installer_artifacts_dir: "{{ installer_artifacts_dir | default(_home + '/install') }}"
+    _installer_tmp_dir: "{{ installer_tmp_dir | default(_home + '/.installer-tmp') }}"
+    _installer_artifact_paths:
+      profile: "{{ (installer_artifacts_dir | default(_home + '/install')) + '/install-profile.enc' }}"
+      state: "{{ (installer_artifacts_dir | default(_home + '/install')) + '/install-state.enc' }}"
+      status: "{{ (installer_artifacts_dir | default(_home + '/install')) + '/install-status.enc' }}"
+      log: "{{ (installer_artifacts_dir | default(_home + '/install')) + '/install-log.enc' }}"
+      rendered: "{{ (installer_artifacts_dir | default(_home + '/install')) + '/rendered-artifacts.enc' }}"
+
+- name: Ensure installer directories exist
+  file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ installer_artifact_owner | default(omit) }}"
+    group: "{{ installer_artifact_group | default(omit) }}"
+    mode: "0750"
+  loop:
+    - "{{ _installer_artifacts_dir }}"
+    - "{{ _installer_tmp_dir }}"
+
+- name: Process installer artifacts
+  block:
+    - name: Reset loaded installer artifacts
+      set_fact:
+        installer_loaded_artifacts: {}
+      when: (install_artifacts_action | default('read')) == 'read'
+
+    - name: Check installer artifacts
+      stat:
+        path: "{{ item.value }}"
+      loop: "{{ _installer_artifact_paths | dict2items }}"
+      register: installer_artifact_stats
+      when: (install_artifacts_action | default('read')) == 'read'
+
+    - name: Decrypt installer artifacts
+      command:
+        argv:
+          - "{{ installer_scripts_dir }}/install_crypto.py"
+          - decrypt
+          - --input
+          - "{{ item.item.value }}"
+          - --output
+          - "{{ _installer_tmp_dir }}/{{ item.item.key }}.json"
+          - --password-stdin
+        stdin: "{{ installer_password }}"
+      register: installer_artifact_decrypt_results
+      changed_when: false
+      failed_when: false
+      no_log: true
+      loop: "{{ installer_artifact_stats.results }}"
+      when:
+        - (install_artifacts_action | default('read')) == 'read'
+        - item.stat.exists
+
+    - name: Fail when installer artifacts cannot be decrypted
+      fail:
+        msg: "Failed to decrypt installer artifacts. The installer password is incorrect or an artifact was tampered with."
+      when:
+        - (install_artifacts_action | default('read')) == 'read'
+        - (installer_artifact_decrypt_results.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length) > 0
+
+    - name: Load decrypted installer artifacts
+      slurp:
+        src: "{{ _installer_tmp_dir }}/{{ item.item.key }}.json"
+      no_log: true
+      loop: "{{ installer_artifact_stats.results }}"
+      register: installer_artifact_contents
+      when:
+        - (install_artifacts_action | default('read')) == 'read'
+        - item.stat.exists
+
+    - name: Populate installer artifact facts
+      set_fact:
+        installer_loaded_artifacts: "{{ installer_loaded_artifacts | combine({ item.item.item.key: ((item.content | b64decode) | from_json) }, recursive=True) }}"
+      no_log: true
+      loop: "{{ installer_artifact_contents.results | default([]) }}"
+      when:
+        - (install_artifacts_action | default('read')) == 'read'
+        - not item.skipped | default(false)
+
+    - name: Write plaintext installer artifact payloads
+      copy:
+        dest: "{{ _installer_tmp_dir }}/{{ item.key }}.json"
+        content: "{{ item.value | to_nice_json }}"
+        owner: "{{ installer_artifact_owner | default(omit) }}"
+        group: "{{ installer_artifact_group | default(omit) }}"
+        mode: "0600"
+      no_log: true
+      loop: "{{ (installer_write_artifacts | default({})) | dict2items }}"
+      when: (install_artifacts_action | default('read')) == 'write'
+
+    - name: Encrypt installer artifact payloads
+      command:
+        argv:
+          - "{{ installer_scripts_dir }}/install_crypto.py"
+          - encrypt
+          - --input
+          - "{{ _installer_tmp_dir }}/{{ item.key }}.json"
+          - --output
+          - "{{ _installer_artifact_paths[item.key] }}"
+          - --password-stdin
+        stdin: "{{ installer_password }}"
+      register: installer_artifact_encrypt_results
+      failed_when: false
+      no_log: true
+      loop: "{{ (installer_write_artifacts | default({})) | dict2items }}"
+      when: (install_artifacts_action | default('read')) == 'write'
+
+    - name: Fail when installer artifacts cannot be encrypted
+      fail:
+        msg: "Failed to encrypt installer artifacts."
+      when:
+        - (install_artifacts_action | default('read')) == 'write'
+        - (installer_artifact_encrypt_results.results | default([]) | selectattr('rc', 'defined') | selectattr('rc', 'ne', 0) | list | length) > 0
+
+    - name: Normalize encrypted installer artifact permissions
+      file:
+        path: "{{ _installer_artifact_paths[item.key] }}"
+        owner: "{{ installer_artifact_owner | default(omit) }}"
+        group: "{{ installer_artifact_group | default(omit) }}"
+        mode: "0640"
+      no_log: true
+      loop: "{{ _installer_artifact_paths | dict2items }}"
+      when:
+        - (install_artifacts_action | default('read')) == 'write'
+        - item.key in ((installer_write_artifacts | default({})).keys() | list)
+  always:
+    - name: Remove plaintext installer artifact payloads
+      file:
+        path: "{{ _installer_tmp_dir }}/{{ item.key }}.json"
+        state: absent
+      loop: "{{ _installer_artifact_paths | dict2items }}"

@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://arsenale.dev/installer/status.schema.json",
+  "title": "Arsenale Installer Status",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "productVersion",
+    "mode",
+    "backend",
+    "enabledCapabilities",
+    "lastAction",
+    "lastResult",
+    "timestamps",
+    "healthSummary",
+    "driftSummary"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "pattern": "^1\\.\\d+\\.\\d+$"
+    },
+    "productVersion": {
+      "type": "string"
+    },
+    "mode": {
+      "type": "string"
+    },
+    "backend": {
+      "type": "string"
+    },
+    "enabledCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lastAction": {
+      "type": "string"
+    },
+    "lastResult": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "partial",
+        "pending"
+      ]
+    },
+    "timestamps": {
+      "type": "object",
+      "required": [
+        "startedAt",
+        "finishedAt"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "startedAt": {
+          "type": "string"
+        },
+        "finishedAt": {
+          "type": "string"
+        }
+      }
+    },
+    "healthSummary": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      }
+    },
+    "driftSummary": {
+      "type": "object",
+      "required": [
+        "status"
+      ],
+      "additionalProperties": true,
+      "properties": {
+        "status": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

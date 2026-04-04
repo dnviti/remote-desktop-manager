@@ -1,0 +1,81 @@
+---
+- name: Resolve installer diff and runtime manifest
+  block:
+    - name: Write desired installer profile
+      copy:
+        dest: "{{ installer_tmp_dir }}/desired-profile.json"
+        content: "{{ installer_profile | to_nice_json }}"
+        mode: "0600"
+
+    - name: Validate installer profile schema
+      command:
+        argv:
+          - "{{ installer_scripts_dir }}/install_model.py"
+          - validate
+          - --schema
+          - "{{ installer_catalog_dir }}/profile.schema.json"
+          - --input
+          - "{{ installer_tmp_dir }}/desired-profile.json"
+      changed_when: false
+
+    - name: Write existing installer state
+      copy:
+        dest: "{{ installer_tmp_dir }}/existing-state.json"
+        content: "{{ installer_loaded_artifacts.state | to_nice_json }}"
+        mode: "0600"
+      when: installer_loaded_artifacts.state is defined
+
+    - name: Write existing installer status
+      copy:
+        dest: "{{ installer_tmp_dir }}/existing-status.json"
+        content: "{{ installer_loaded_artifacts.status | to_nice_json }}"
+        mode: "0600"
+      when: installer_loaded_artifacts.status is defined
+
+    - name: Resolve installer diff and runtime manifest
+      command:
+        argv: >-
+          {{
+            [
+              installer_scripts_dir ~ '/install_model.py',
+              'diff',
+              '--catalog',
+              installer_catalog_dir ~ '/capabilities.yml',
+              '--profile',
+              installer_tmp_dir ~ '/desired-profile.json'
+            ]
+            + (
+              ['--state', installer_tmp_dir ~ '/existing-state.json']
+              if (installer_loaded_artifacts.state is defined)
+              else []
+            )
+            + (
+              ['--status', installer_tmp_dir ~ '/existing-status.json']
+              if (installer_loaded_artifacts.status is defined)
+              else []
+            )
+            + ['--output', installer_tmp_dir ~ '/diff.json']
+          }}
+      changed_when: false
+
+    - name: Load installer diff payload
+      slurp:
+        src: "{{ installer_tmp_dir }}/diff.json"
+      register: installer_diff_payload
+
+    - name: Publish installer diff facts
+      set_fact:
+        installer_diff_result: "{{ (installer_diff_payload.content | b64decode | from_json) }}"
+        installer_resolved: "{{ (installer_diff_payload.content | b64decode | from_json).resolved }}"
+        installer_run_diff: "{{ (installer_diff_payload.content | b64decode | from_json).diff }}"
+        installer_pending_status: "{{ (installer_diff_payload.content | b64decode | from_json).status }}"
+  always:
+    - name: Remove plaintext installer diff payloads
+      file:
+        path: "{{ installer_tmp_dir }}/{{ item }}"
+        state: absent
+      loop:
+        - desired-profile.json
+        - existing-state.json
+        - existing-status.json
+        - diff.json

@@ -85,6 +85,7 @@
     installer_workspace_dir: "{{ _home }}/.installer-workspace"
     installer_scripts_dir: "{{ installer_workspace_dir }}/scripts"
     installer_catalog_dir: "{{ installer_workspace_dir }}/install"
+    installer_runtime_assets_dir: "{{ _home }}/config/installer-assets"
     installer_tmp_dir: "{{ _home }}/.installer-tmp"
     installer_artifacts_dir: "{{ _home }}/install"
     installer_artifact_owner: "{{ lookup('env', 'USER') | default(ansible_user_id, true) }}"
@@ -196,6 +197,7 @@
     installer_workspace_dir: "{{ _home }}/.installer-workspace"
     installer_scripts_dir: "{{ installer_workspace_dir }}/scripts"
     installer_catalog_dir: "{{ installer_workspace_dir }}/install"
+    installer_runtime_assets_dir: "{{ _home }}/config/installer-assets"
     installer_tmp_dir: "{{ _home }}/.installer-tmp"
     installer_artifacts_dir: "{{ _home }}/install"
     installer_artifact_owner: "{{ arsenale_user | default(ansible_user_id) }}"
@@ -210,7 +212,7 @@
     _client_bind_host: "{{ arsenale_client_bind_host | default('0.0.0.0') }}"
     _public_url: "{{ arsenale_public_url | default('https://' ~ arsenale_domain ~ ('' if (arsenale_client_port | int) == 443 else ':' ~ (arsenale_client_port | string))) }}"
     _dev_client_url: "{{ 'https://localhost:' ~ (arsenale_client_port | string) }}"
-    _build: "{{ arsenale_build_images | default(true) }}"
+    _build: "{{ arsenale_build_images | default(false) }}"
     arsenale_cert_dir: "{{ arsenale_home | default('/opt/arsenale') }}/certs"
 
   tasks:
@@ -281,6 +283,7 @@
     installer_workspace_dir: "{{ _home }}/.installer-workspace"
     installer_scripts_dir: "{{ installer_workspace_dir }}/scripts"
     installer_catalog_dir: "{{ installer_workspace_dir }}/install"
+    installer_runtime_assets_dir: "{{ _home }}/config/installer-assets"
     installer_tmp_dir: "{{ _home }}/.installer-tmp"
     installer_artifacts_dir: "{{ _home }}/install"
     installer_artifact_owner: "{{ lookup('env', 'USER') | default(ansible_user_id, true) }}"

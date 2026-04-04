@@ -119,6 +119,110 @@ The most commonly used CLI entry points are:
 
 Use `arsenale [command] --help` before assuming flag names or subcommand availability.
 
+## Ansible Deployment Workflow
+
+Use the Ansible installer and root `Makefile` targets as the default stack lifecycle interface. Do not replace normal install, deploy, or teardown work with ad hoc `podman compose` commands.
+
+Default rules:
+
+- Docker is not a supported installer backend. Use `podman` or `kubernetes`.
+- For client installs, the installer must remain standalone.
+- Production and Kubernetes installs default to pulling published images because `arsenale_build_images: false`.
+- Development installs still build locally from the source checkout.
+- Do not reintroduce source-tree coupling into client install paths.
+
+Primary commands from the repo root:
+
+```bash
+make setup
+make dev
+make dev-down
+make install
+make deploy
+make configure
+make recover
+make status
+make backup
+make rotate
+make certs
+make clean
+```
+
+Development flow:
+
+```bash
+make dev
+```
+
+- Runs `deployment/ansible/playbooks/install.yml` with `installer_mode=development`
+- Always uses the Podman backend
+- Builds images from the local checkout
+- Brings up the full stack, demo databases, bootstrap data, and acceptance checks
+
+Stop the dev stack with:
+
+```bash
+make dev-down
+```
+
+Production and client install flow:
+
+```bash
+make install
+make deploy
+make configure
+```
+
+- Uses the installer profile plus inventory/group vars
+- Pulls published images by default
+- Does not need the application source tree when `arsenale_build_images: false`
+- Renders installer-owned runtime assets under the target config directory
+
+Only set `arsenale_build_images: true` when you intentionally want a source-based build workflow.
+
+Direct playbook usage from `deployment/ansible/`:
+
+```bash
+ansible-playbook playbooks/install.yml \
+  --vault-password-file .vault-pass \
+  -e install_password_file=/absolute/path/to/install/password.txt \
+  -e installer_mode=production
+```
+
+```bash
+ansible-playbook playbooks/install.yml \
+  --vault-password-file .vault-pass \
+  -e install_password_file=/absolute/path/to/install/password.txt \
+  -e installer_mode=development
+```
+
+```bash
+ansible-playbook playbooks/deploy.yml \
+  --vault-password-file .vault-pass \
+  -e arsenale_env=development \
+  -e arsenale_state=absent
+```
+
+Important deployment files:
+
+- `deployment/ansible/README.md`
+- `deployment/ansible/inventory/hosts.yml`
+- `deployment/ansible/inventory/group_vars/all/vars.yml`
+- `deployment/ansible/inventory/group_vars/all/vault.yml`
+- `deployment/ansible/playbooks/install.yml`
+- `deployment/ansible/playbooks/deploy.yml`
+- `install/password.txt`
+
+Installer-generated paths:
+
+- `install/`
+- `.installer-workspace/`
+- `.installer-tmp/`
+- `config/installer-assets/`
+- `dev-certs/` in development or `certs/` in production
+
+If you change image names, compose rendering, installer defaults, or deployment behavior, update the Ansible docs and workflows in the same change set.
+
 ## Documentation Management
 
 The project documentation lives in `docs/` and covers the full platform: architecture, API reference, configuration, deployment, development workflow, security, database schema, frontend components, and guides.

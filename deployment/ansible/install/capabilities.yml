@@ -1,0 +1,65 @@
+schemaVersion: "1.0.0"
+capabilities:
+  core:
+    title: Core Platform
+    required: true
+    enabledByDefault: true
+    legacyEnv:
+      CLI_ENABLED: "false"
+      FEATURE_CONNECTIONS_ENABLED: "true"
+      FEATURE_DATABASE_PROXY_ENABLED: "true"
+      FEATURE_KEYCHAIN_ENABLED: "true"
+  keychain:
+    title: Keychain
+    enabledByDefault: true
+    description: Tenant vault, secret storage, external vault integration, password rotation.
+    legacyEnv:
+      FEATURE_KEYCHAIN_ENABLED: "true"
+  connections:
+    title: Connections
+    enabledByDefault: true
+    description: SSH, RDP, VNC connections and folders.
+    legacyEnv:
+      FEATURE_CONNECTIONS_ENABLED: "true"
+  databases:
+    title: Databases
+    enabledByDefault: true
+    description: Database proxy and SQL tooling.
+    dependsOn:
+      - connections
+    requires:
+      dbProxySupport: true
+    legacyEnv:
+      FEATURE_DATABASE_PROXY_ENABLED: "true"
+  recordings:
+    title: Recordings
+    enabledByDefault: true
+    description: Session recording and video export.
+    dependsOn:
+      - connections
+    legacyEnv:
+      RECORDING_ENABLED: "true"
+  zero_trust:
+    title: Zero Trust
+    enabledByDefault: false
+    description: Tunnel broker, runtime agent, managed zero-trust gateway path.
+  agentic_ai:
+    title: Agentic AI
+    enabledByDefault: true
+    description: Model gateway, tool gateway, memory service, AI-assisted tooling.
+  enterprise_auth:
+    title: Enterprise Auth
+    enabledByDefault: true
+    description: SAML, OIDC, OAuth provider, LDAP surfaces.
+  sharing_approvals:
+    title: Sharing And Approvals
+    enabledByDefault: true
+    description: External sharing, approvals, check-outs.
+    legacyEnv:
+      ALLOW_EXTERNAL_SHARING: "true"
+  cli:
+    title: CLI
+    enabledByDefault: true
+    description: Device auth and CLI support.
+    legacyEnv:
+      CLI_ENABLED: "true"

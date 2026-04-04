@@ -1,0 +1,14 @@
+{{- $resources := .Values.rendered.resources | default (list) -}}
+{{- if gt (len $resources) 0 -}}
+{{- range $index, $resource := $resources }}
+{{- if gt $index 0 }}
+---
+{{- end }}
+{{ toYaml $resource }}
+{{- end }}
+{{- else -}}
+{{- $rendered := .Values.rendered.manifests | default (.Files.Get "rendered/manifests.yaml") -}}
+{{- if $rendered }}
+{{ $rendered }}
+{{- end }}
+{{- end }}

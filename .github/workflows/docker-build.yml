@@ -112,7 +112,7 @@ jobs:
   build-and-scan:
     needs: [verify-backend, verify-client, security-js, security-client]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write
@@ -127,6 +127,61 @@ jobs:
             context: .
             build_args: |
               SERVICE=control-plane-api
+          - name: control-plane-controller
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=control-plane-controller
+          - name: authz-pdp
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=authz-pdp
+          - name: model-gateway
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=model-gateway
+          - name: tool-gateway
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=tool-gateway
+          - name: agent-orchestrator
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=agent-orchestrator
+          - name: memory-service
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=memory-service
+          - name: terminal-broker
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=terminal-broker
+          - name: desktop-broker
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=desktop-broker
+          - name: tunnel-broker-go
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=tunnel-broker
+          - name: query-runner
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=query-runner
+          - name: runtime-agent
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=runtime-agent
           - name: client
             dockerfile: ./client/Dockerfile
             context: .
