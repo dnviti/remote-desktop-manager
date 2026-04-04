@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -27,15 +26,12 @@ type tokenEnvelope struct {
 }
 
 func LoadSecret() (string, error) {
-	if value := os.Getenv("TERMINAL_BROKER_SECRET"); value != "" {
-		return value, nil
+	secret, err := desktopbroker.LoadSecret("TERMINAL_BROKER_SECRET", "TERMINAL_BROKER_SECRET_FILE")
+	if err == nil {
+		return secret, nil
 	}
-	if filePath := os.Getenv("TERMINAL_BROKER_SECRET_FILE"); filePath != "" {
-		payload, err := os.ReadFile(filePath)
-		if err != nil {
-			return "", fmt.Errorf("read TERMINAL_BROKER_SECRET_FILE: %w", err)
-		}
-		return string(payload), nil
+	if !errors.Is(err, desktopbroker.ErrSecretNotConfigured) {
+		return "", err
 	}
 
 	return desktopbroker.LoadSecret("GUACAMOLE_SECRET", "GUACAMOLE_SECRET_FILE")

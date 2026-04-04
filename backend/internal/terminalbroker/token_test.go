@@ -1,6 +1,8 @@
 package terminalbroker
 
 import (
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -58,5 +60,106 @@ func TestValidateGrantRejectsExpired(t *testing.T) {
 
 	if _, err := ValidateGrant("secret", token, time.Now().UTC()); err == nil {
 		t.Fatal("ValidateGrant() error = nil, want expired grant error")
+	}
+}
+
+func TestLoadSecretUsesTrimmedTerminalBrokerSecret(t *testing.T) {
+	t.Setenv("TERMINAL_BROKER_SECRET", "  terminal-secret \n")
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET_FILE")
+	_ = os.Unsetenv("GUACAMOLE_SECRET")
+	_ = os.Unsetenv("GUACAMOLE_SECRET_FILE")
+
+	secret, err := LoadSecret()
+	if err != nil {
+		t.Fatalf("LoadSecret() error = %v", err)
+	}
+	if secret != "terminal-secret" {
+		t.Fatalf("LoadSecret() = %q, want terminal-secret", secret)
+	}
+}
+
+func TestLoadSecretFallsBackToGuacamoleSecret(t *testing.T) {
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET")
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET_FILE")
+	t.Setenv("GUACAMOLE_SECRET", "  guac-secret \n")
+	_ = os.Unsetenv("GUACAMOLE_SECRET_FILE")
+
+	secret, err := LoadSecret()
+	if err != nil {
+		t.Fatalf("LoadSecret() error = %v", err)
+	}
+	if secret != "guac-secret" {
+		t.Fatalf("LoadSecret() = %q, want guac-secret", secret)
+	}
+}
+
+func TestLoadSecretPrefersTerminalBrokerSecretOverFallback(t *testing.T) {
+	t.Setenv("TERMINAL_BROKER_SECRET", " terminal-secret ")
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET_FILE")
+	t.Setenv("GUACAMOLE_SECRET", "guac-secret")
+	_ = os.Unsetenv("GUACAMOLE_SECRET_FILE")
+
+	secret, err := LoadSecret()
+	if err != nil {
+		t.Fatalf("LoadSecret() error = %v", err)
+	}
+	if secret != "terminal-secret" {
+		t.Fatalf("LoadSecret() = %q, want terminal-secret", secret)
+	}
+}
+
+func TestLoadSecretRejectsWhitespaceOnlyTerminalBrokerSecret(t *testing.T) {
+	t.Setenv("TERMINAL_BROKER_SECRET", " \t\r\n ")
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET_FILE")
+	t.Setenv("GUACAMOLE_SECRET", "guac-secret")
+	_ = os.Unsetenv("GUACAMOLE_SECRET_FILE")
+
+	_, err := LoadSecret()
+	if err == nil {
+		t.Fatal("LoadSecret() error = nil, want invalid terminal secret error")
+	}
+	if !strings.Contains(err.Error(), "TERMINAL_BROKER_SECRET is set but empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadSecretRejectsWhitespaceOnlyTerminalBrokerSecretFile(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "terminal-secret-*")
+	if err != nil {
+		t.Fatalf("CreateTemp() error = %v", err)
+	}
+	if _, err := file.WriteString(" \r\n\t "); err != nil {
+		t.Fatalf("WriteString() error = %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET")
+	t.Setenv("TERMINAL_BROKER_SECRET_FILE", file.Name())
+	t.Setenv("GUACAMOLE_SECRET", "guac-secret")
+	_ = os.Unsetenv("GUACAMOLE_SECRET_FILE")
+
+	_, err = LoadSecret()
+	if err == nil {
+		t.Fatal("LoadSecret() error = nil, want invalid terminal secret file error")
+	}
+	if !strings.Contains(err.Error(), "TERMINAL_BROKER_SECRET_FILE points to an empty secret") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadSecretRejectsWhitespaceOnlyFallbackGuacamoleSecret(t *testing.T) {
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET")
+	_ = os.Unsetenv("TERMINAL_BROKER_SECRET_FILE")
+	t.Setenv("GUACAMOLE_SECRET", " \t\r\n ")
+	_ = os.Unsetenv("GUACAMOLE_SECRET_FILE")
+
+	_, err := LoadSecret()
+	if err == nil {
+		t.Fatal("LoadSecret() error = nil, want invalid fallback secret error")
+	}
+	if !strings.Contains(err.Error(), "GUACAMOLE_SECRET is set but empty") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
