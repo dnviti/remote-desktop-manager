@@ -1,6 +1,11 @@
 package queryrunner
 
-import "strings"
+import (
+	"net/url"
+	"strings"
+
+	mysqlDriver "github.com/go-sql-driver/mysql"
+)
 
 func normalizePostgresSSLMode(raw string) string {
 	value := strings.TrimSpace(raw)
@@ -42,6 +47,17 @@ func normalizeMySQLTLSConfig(raw string) string {
 	case "skip-verify", "skipverify", "insecure":
 		return "skip-verify"
 	default:
-		return value
+		if isRegisteredMySQLTLSProfile(value) {
+			return value
+		}
+		return "preferred"
 	}
+}
+
+func isRegisteredMySQLTLSProfile(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		return false
+	}
+	_, err := mysqlDriver.ParseDSN("user:pass@tcp(localhost:3306)/demo?tls=" + url.QueryEscape(name))
+	return err == nil
 }

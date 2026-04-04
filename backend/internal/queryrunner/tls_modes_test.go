@@ -65,6 +65,8 @@ func TestBuildMySQLDSNNormalizesTLSMode(t *testing.T) {
 		{name: "prefer alias", rawMode: "prefer", want: "preferred"},
 		{name: "required alias", rawMode: "require", want: "true"},
 		{name: "verify skip alias", rawMode: "insecure", want: "skip-verify"},
+		{name: "legacy postgres mode falls back to preferred", rawMode: "verify-full", want: "preferred"},
+		{name: "unknown typo falls back to preferred", rawMode: "requierd", want: "preferred"},
 		{name: "custom tls profile", rawMode: "cloudsql", want: "cloudsql"},
 	}
 

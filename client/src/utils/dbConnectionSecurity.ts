@@ -44,7 +44,7 @@ export function nextSSLModeForCloudProvider(
   previousProvider: DbCloudProvider | undefined,
   nextProvider: DbCloudProvider | undefined,
 ): string | undefined {
-  const normalizedCurrent = normalizeOptionalString(currentMode);
+  const normalizedCurrent = normalizeTLSModeForProtocol(protocol, currentMode);
   const previousRecommended = recommendedSSLMode(protocol, previousProvider);
   const nextRecommended = recommendedSSLMode(protocol, nextProvider);
 
@@ -59,7 +59,7 @@ export function sanitizeSSLModeForProtocol(
   currentMode: string | undefined,
   provider?: DbCloudProvider,
 ): string | undefined {
-  const normalizedCurrent = normalizeOptionalString(currentMode);
+  const normalizedCurrent = normalizeTLSModeForProtocol(protocol, currentMode);
   if (!normalizedCurrent) {
     return undefined;
   }
@@ -188,4 +188,86 @@ function cloudProviderLabel(provider: DbCloudProvider): string {
 function normalizeOptionalString(value?: string): string | undefined {
   const trimmed = value?.trim();
   return trimmed ? trimmed : undefined;
+}
+
+function normalizeTLSModeForProtocol(
+  protocol: DbProtocol | undefined,
+  value: string | undefined,
+): string | undefined {
+  const normalized = normalizeOptionalString(value);
+  if (!normalized) {
+    return undefined;
+  }
+
+  switch (protocol) {
+    case 'postgresql':
+      return normalizePostgresTLSMode(normalized);
+    case 'mysql':
+      return normalizeMySQLTLSMode(normalized);
+    default:
+      return normalized;
+  }
+}
+
+function normalizePostgresTLSMode(value: string): string {
+  switch (value.toLowerCase()) {
+    case 'disable':
+    case 'disabled':
+    case 'false':
+    case 'off':
+    case 'none':
+      return 'disable';
+    case 'prefer':
+    case 'preferred':
+    case 'if-available':
+    case 'optional':
+      return 'prefer';
+    case 'require':
+    case 'required':
+    case 'true':
+    case 'on':
+    case 'enabled':
+    case 'tls':
+    case 'ssl':
+      return 'require';
+    case 'verify-ca':
+    case 'verifyca':
+      return 'verify-ca';
+    case 'verify-full':
+    case 'verifyfull':
+    case 'strict':
+      return 'verify-full';
+    default:
+      return value.toLowerCase();
+  }
+}
+
+function normalizeMySQLTLSMode(value: string): string {
+  switch (value.toLowerCase()) {
+    case 'disable':
+    case 'disabled':
+    case 'false':
+    case 'off':
+    case 'none':
+      return 'disable';
+    case 'prefer':
+    case 'preferred':
+    case 'if-available':
+    case 'optional':
+      return 'prefer';
+    case 'require':
+    case 'required':
+    case 'true':
+    case 'on':
+    case 'enabled':
+    case 'tls':
+    case 'ssl':
+      return 'require';
+    case 'skip-verify':
+    case 'skipverify':
+    case 'insecure':
+      return 'skip-verify';
+    default:
+      return value.toLowerCase();
+  }
 }

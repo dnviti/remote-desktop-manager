@@ -71,6 +71,12 @@ describe('dbConnectionSecurity', () => {
       sanitizeSSLModeForProtocol('mysql', 'verify-full'),
     ).toBeUndefined();
     expect(
+      sanitizeSSLModeForProtocol('mysql', ' TRUE '),
+    ).toBe('require');
+    expect(
+      sanitizeSSLModeForProtocol('postgresql', 'VERIFYFULL'),
+    ).toBe('verify-full');
+    expect(
       sanitizeSSLModeForProtocol('mysql', 'verify-full', 'azure'),
     ).toBe('require');
     expect(
