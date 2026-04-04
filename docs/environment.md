@@ -30,7 +30,7 @@ In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 
 | Variable | Type | Default | Required | Env | Description | Security Notes |
 |----------|------|---------|----------|-----|-------------|---------------|
-| `JWT_SECRET` | string | `dev-secret-change-me` | **Prod** | Both | JWT signing secret | **Must be strong random in production** |
+| `JWT_SECRET` | string | — | **Prod** | Both | JWT signing secret | **Must be provided via `JWT_SECRET` or `JWT_SECRET_FILE` and use a strong random value in production** |
 | `JWT_EXPIRES_IN` | string | `15m` | No | Both | Access token lifetime (e.g., `15m`, `1h`) | |
 | `JWT_REFRESH_EXPIRES_IN` | string | `7d` | No | Both | Refresh token lifetime (e.g., `7d`, `30d`) | |
 | `TOKEN_BINDING_ENABLED` | boolean | `true` | No | Both | Bind JWT tokens to client IP + User-Agent. Set `false` for environments with dynamic IPs. | |
@@ -42,7 +42,7 @@ In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 |----------|------|---------|----------|-----|-------------|---------------|
 | `GUACD_HOST` | string | `localhost` | No | Both | Guacamole daemon hostname | |
 | `GUACD_PORT` | number | `4822` | No | Both | Guacamole daemon port | |
-| `GUACAMOLE_SECRET` | string | `dev-guac-secret` | **Prod** | Both | Token encryption key for guacamole-lite | **Must be strong random in production** |
+| `GUACAMOLE_SECRET` | string | — | **Prod** | Both | Token encryption key for guacamole-lite | **Must be provided via `GUACAMOLE_SECRET` or `GUACAMOLE_SECRET_FILE` and use a strong random value in production** |
 
 ### Vault & Encryption
 
@@ -314,8 +314,7 @@ These flags are converted to a runtime manifest in `backend/internal/runtimefeat
 
 In development (`NODE_ENV=development`):
 
-- `JWT_SECRET` defaults to `dev-secret-change-me`
-- `GUACAMOLE_SECRET` defaults to `dev-guac-secret`
+- `JWT_SECRET` and `GUACAMOLE_SECRET` must still be provisioned via `.env` or the corresponding `_FILE` variables; the Go services do not ship built-in development secrets
 - `SERVER_ENCRYPTION_KEY` is auto-generated (not persisted)
 - Email verification links are logged to console (no SMTP required)
 - SMS OTP codes are logged to console (no SMS provider required)

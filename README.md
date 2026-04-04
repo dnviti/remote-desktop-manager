@@ -130,12 +130,12 @@ Key variables — see [docs/environment.md](docs/environment.md) for the full re
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `DATABASE_URL` | `postgresql://arsenale:arsenale_password@127.0.0.1:5432/arsenale` | PostgreSQL connection string |
-| `JWT_SECRET` | `dev-secret-change-me` | Secret key for signing JWT tokens (**must be strong in production**) |
+| `JWT_SECRET` | — | Secret key for signing JWT tokens. Provide via `JWT_SECRET` or `JWT_SECRET_FILE`. |
 | `JWT_EXPIRES_IN` | `15m` | Access token TTL |
 | `JWT_REFRESH_EXPIRES_IN` | `7d` | Refresh token TTL |
 | `GUACD_HOST` | `localhost` | Guacamole daemon hostname |
 | `GUACD_PORT` | `4822` | Guacamole daemon port |
-| `GUACAMOLE_SECRET` | `dev-guac-secret` | Guacamole token encryption key (**must be strong in production**) |
+| `GUACAMOLE_SECRET` | — | Guacamole token encryption key. Provide via `GUACAMOLE_SECRET` or `GUACAMOLE_SECRET_FILE`. |
 | `SERVER_ENCRYPTION_KEY` | Auto-generated | 32-byte hex key for server-level encryption (**required in production**) |
 | `NODE_ENV` | `development` | Environment mode |
 | `VAULT_TTL_MINUTES` | `30` | Vault session auto-lock timeout (minutes) |

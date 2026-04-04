@@ -18,6 +18,8 @@ import (
 
 const guacamoleSalt = "arsenale-guac-salt"
 
+var ErrSecretNotConfigured = errors.New("secret not configured")
+
 type TokenEnvelope struct {
 	IV    string `json:"iv"`
 	Value string `json:"value"`
@@ -36,21 +38,34 @@ type ConnectionToken struct {
 }
 
 func LoadSecret(envKey, fileEnvKey string) (string, error) {
-	if value := os.Getenv(envKey); value != "" {
+	if rawValue, ok := os.LookupEnv(envKey); ok {
+		value := strings.TrimSpace(rawValue)
+		if value == "" {
+			return "", fmt.Errorf("%s is set but empty", envKey)
+		}
 		return value, nil
 	}
 
-	filePath := os.Getenv(fileEnvKey)
-	if filePath == "" {
-		return "", fmt.Errorf("missing %s or %s", envKey, fileEnvKey)
+	if rawPath, ok := os.LookupEnv(fileEnvKey); ok {
+		filePath := strings.TrimSpace(rawPath)
+		if filePath == "" {
+			return "", fmt.Errorf("%s is set but empty", fileEnvKey)
+		}
+
+		payload, err := os.ReadFile(filePath)
+		if err != nil {
+			return "", fmt.Errorf("read %s: %w", fileEnvKey, err)
+		}
+
+		value := strings.TrimSpace(string(payload))
+		if value == "" {
+			return "", fmt.Errorf("%s points to an empty secret", fileEnvKey)
+		}
+
+		return value, nil
 	}
 
-	payload, err := os.ReadFile(filePath)
-	if err != nil {
-		return "", fmt.Errorf("read %s: %w", fileEnvKey, err)
-	}
-
-	return strings.TrimRight(string(payload), "\r\n"), nil
+	return "", fmt.Errorf("%w: missing %s or %s", ErrSecretNotConfigured, envKey, fileEnvKey)
 }
 
 func EncryptToken(secret string, token ConnectionToken) (string, error) {

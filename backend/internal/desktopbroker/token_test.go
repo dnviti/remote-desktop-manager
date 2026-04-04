@@ -5,6 +5,7 @@ import (
 	"crypto/cipher"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -100,7 +101,7 @@ func TestLoadSecretTrimsTrailingNewlineFromFile(t *testing.T) {
 		t.Fatalf("close temp secret: %v", err)
 	}
 
-	t.Setenv("ARSENALE_TEST_SECRET", "")
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET")
 	t.Setenv("ARSENALE_TEST_SECRET_FILE", file.Name())
 
 	value, err := LoadSecret("ARSENALE_TEST_SECRET", "ARSENALE_TEST_SECRET_FILE")
@@ -109,6 +110,103 @@ func TestLoadSecretTrimsTrailingNewlineFromFile(t *testing.T) {
 	}
 	if value != "integration-secret" {
 		t.Fatalf("unexpected secret value: %q", value)
+	}
+}
+
+func TestLoadSecretTrimsWhitespaceFromEnv(t *testing.T) {
+	t.Setenv("ARSENALE_TEST_SECRET_ENV", "  integration-secret \n")
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET_ENV_FILE")
+
+	value, err := LoadSecret("ARSENALE_TEST_SECRET_ENV", "ARSENALE_TEST_SECRET_ENV_FILE")
+	if err != nil {
+		t.Fatalf("load secret: %v", err)
+	}
+	if value != "integration-secret" {
+		t.Fatalf("unexpected secret value: %q", value)
+	}
+}
+
+func TestLoadSecretPrefersEnvOverFile(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "secret-*")
+	if err != nil {
+		t.Fatalf("create temp secret: %v", err)
+	}
+	if _, err := file.WriteString("file-secret"); err != nil {
+		t.Fatalf("write temp secret: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close temp secret: %v", err)
+	}
+
+	t.Setenv("ARSENALE_TEST_SECRET_ENV_FIRST", " env-secret ")
+	t.Setenv("ARSENALE_TEST_SECRET_ENV_FIRST_FILE", file.Name())
+
+	value, err := LoadSecret("ARSENALE_TEST_SECRET_ENV_FIRST", "ARSENALE_TEST_SECRET_ENV_FIRST_FILE")
+	if err != nil {
+		t.Fatalf("load secret: %v", err)
+	}
+	if value != "env-secret" {
+		t.Fatalf("unexpected secret value: %q", value)
+	}
+}
+
+func TestLoadSecretRejectsWhitespaceOnlyEnv(t *testing.T) {
+	t.Setenv("ARSENALE_TEST_SECRET_ENV", " \t\r\n ")
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET_ENV_FILE")
+
+	_, err := LoadSecret("ARSENALE_TEST_SECRET_ENV", "ARSENALE_TEST_SECRET_ENV_FILE")
+	if err == nil {
+		t.Fatal("load secret: expected error for whitespace-only env secret")
+	}
+	if !strings.Contains(err.Error(), "ARSENALE_TEST_SECRET_ENV is set but empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadSecretRejectsWhitespaceOnlyFile(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "secret-*")
+	if err != nil {
+		t.Fatalf("create temp secret: %v", err)
+	}
+	if _, err := file.WriteString("  \r\n\t"); err != nil {
+		t.Fatalf("write temp secret: %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("close temp secret: %v", err)
+	}
+
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET_FILE_ONLY")
+	t.Setenv("ARSENALE_TEST_SECRET_FILE_ONLY_FILE", file.Name())
+
+	_, err = LoadSecret("ARSENALE_TEST_SECRET_FILE_ONLY", "ARSENALE_TEST_SECRET_FILE_ONLY_FILE")
+	if err == nil {
+		t.Fatal("load secret: expected error for whitespace-only secret file")
+	}
+	if !strings.Contains(err.Error(), "ARSENALE_TEST_SECRET_FILE_ONLY_FILE points to an empty secret") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadSecretRejectsWhitespaceOnlyFilePathEnv(t *testing.T) {
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET_FILE_PATH")
+	t.Setenv("ARSENALE_TEST_SECRET_FILE_PATH_FILE", " \t ")
+
+	_, err := LoadSecret("ARSENALE_TEST_SECRET_FILE_PATH", "ARSENALE_TEST_SECRET_FILE_PATH_FILE")
+	if err == nil {
+		t.Fatal("load secret: expected error for whitespace-only file path env")
+	}
+	if !strings.Contains(err.Error(), "ARSENALE_TEST_SECRET_FILE_PATH_FILE is set but empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadSecretMissingReturnsSentinel(t *testing.T) {
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET_MISSING")
+	_ = os.Unsetenv("ARSENALE_TEST_SECRET_MISSING_FILE")
+
+	_, err := LoadSecret("ARSENALE_TEST_SECRET_MISSING", "ARSENALE_TEST_SECRET_MISSING_FILE")
+	if !errors.Is(err, ErrSecretNotConfigured) {
+		t.Fatalf("expected ErrSecretNotConfigured, got %v", err)
 	}
 }
 

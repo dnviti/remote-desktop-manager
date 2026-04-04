@@ -157,6 +157,44 @@ func TestNewAuthenticatorUsesConfiguredBindingCutoff(t *testing.T) {
 	}
 }
 
+func TestNewAuthenticatorLoadsTrimmedSecretFromFile(t *testing.T) {
+	file, err := os.CreateTemp(t.TempDir(), "jwt-secret-*")
+	if err != nil {
+		t.Fatalf("CreateTemp() error = %v", err)
+	}
+	if _, err := file.WriteString("  file-secret \n"); err != nil {
+		t.Fatalf("WriteString() error = %v", err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatalf("Close() error = %v", err)
+	}
+
+	_ = os.Unsetenv("JWT_SECRET")
+	t.Setenv("JWT_SECRET_FILE", file.Name())
+	_ = os.Unsetenv("TOKEN_BINDING_ENFORCEMENT_TIMESTAMP")
+
+	authenticator, err := NewAuthenticator()
+	if err != nil {
+		t.Fatalf("NewAuthenticator() error = %v", err)
+	}
+	if got := string(authenticator.secret); got != "file-secret" {
+		t.Fatalf("secret = %q, want %q", got, "file-secret")
+	}
+}
+
+func TestNewAuthenticatorRejectsWhitespaceOnlySecret(t *testing.T) {
+	t.Setenv("JWT_SECRET", " \t\r\n ")
+	_ = os.Unsetenv("JWT_SECRET_FILE")
+
+	_, err := NewAuthenticator()
+	if err == nil {
+		t.Fatal("NewAuthenticator() error = nil, want invalid secret error")
+	}
+	if !strings.Contains(err.Error(), "JWT_SECRET is set but empty") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func newAuthenticatedRequest(t *testing.T, secret []byte, claims Claims, remoteAddr, userAgent string) *http.Request {
 	t.Helper()
 
