@@ -25,6 +25,7 @@
   register: demo_postgres_seed
   until: demo_postgres_seed.rc == 0
   changed_when: false
+  when: arsenale_dev_demo_databases_enabled | default(false) | bool
 
 - name: Seed development demo MySQL dataset
   shell: |
@@ -38,6 +39,7 @@
   register: demo_mysql_seed
   until: demo_mysql_seed.rc == 0
   changed_when: false
+  when: arsenale_dev_demo_databases_enabled | default(false) | bool
 
 - name: Seed development demo MongoDB dataset
   shell: |
@@ -55,6 +57,7 @@
   register: demo_mongodb_seed
   until: demo_mongodb_seed.rc == 0
   changed_when: false
+  when: arsenale_dev_demo_databases_enabled | default(false) | bool
 
 - name: Seed development demo Oracle dataset
   shell: |
@@ -68,6 +71,7 @@
   register: demo_oracle_seed
   until: demo_oracle_seed.rc == 0
   changed_when: false
+  when: arsenale_dev_demo_databases_enabled | default(false) | bool
 
 - name: Seed development demo MSSQL dataset
   shell: |
@@ -86,6 +90,7 @@
   register: demo_mssql_seed
   until: demo_mssql_seed.rc == 0
   changed_when: false
+  when: arsenale_dev_demo_databases_enabled | default(false) | bool
 
 - name: Run development acceptance suite
   shell: |
@@ -109,3 +114,4 @@
   register: user_profile_check
   until: user_profile_check.rc == 0
   changed_when: false
+  when: arsenale_dev_acceptance_enabled | default(false) | bool

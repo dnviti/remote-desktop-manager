@@ -22,6 +22,7 @@
     _runtime_key_mode: "{{ '0644' if (_is_dev | default(false) | bool) else '0600' }}"
     _guacd_runtime_key_mode: "0644"
     _spiffe_trust_domain: "{{ arsenale_spiffe_trust_domain | default('arsenale.local') }}"
+    _dev_tunnel_fixtures_enabled: "{{ arsenale_dev_tunnel_fixtures_enabled | default(_is_dev | default(false) | bool) }}"
 
 - name: Derive development client extra IPv4 SANs
   set_fact:
@@ -274,7 +275,7 @@
       - { name: tunnel-managed-ssh, cn: dev-tunnel-managed-ssh, gateway_id: "11111111-1111-4111-8111-111111111111" }
       - { name: tunnel-guacd, cn: dev-tunnel-guacd, gateway_id: "22222222-2222-4222-8222-222222222222" }
       - { name: tunnel-db-proxy, cn: dev-tunnel-db-proxy, gateway_id: "33333333-3333-4333-8333-333333333333" }
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Validate development tunnel gateway certificates against current CA
   shell: |
@@ -290,12 +291,12 @@
   register: _dev_tunnel_cert_verify
   changed_when: false
   failed_when: false
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Collect stale development tunnel gateway certificates
   set_fact:
     _dev_tunnel_gateways_stale: "{{ _dev_tunnel_cert_verify.results | default([]) | rejectattr('rc', 'equalto', 0) | map(attribute='item') | list }}"
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Remove stale development tunnel gateway certificates signed by previous CA
   file:
@@ -303,7 +304,7 @@
     state: absent
   loop: "{{ (_dev_tunnel_gateways_stale | default([])) | product(['client-cert.pem', 'client-key.pem', 'client.csr']) | list }}"
   when:
-    - _is_dev | default(false) | bool
+    - _dev_tunnel_fixtures_enabled | bool
     - (_dev_tunnel_gateways_stale | default([]) | length) > 0
 
 - name: Check which development tunnel gateway certs already exist
@@ -311,12 +312,12 @@
     path: "{{ arsenale_cert_dir }}/{{ item.name }}/client-cert.pem"
   loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
   register: _dev_tunnel_cert_check
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Filter development tunnel gateways needing certs
   set_fact:
     _dev_tunnel_gateways_need_certs: "{{ dev_tunnel_gateway_certs | zip(_dev_tunnel_cert_check.results) | rejectattr('1.stat.exists') | map(attribute='0') | list }}"
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Create development tunnel gateway cert directories
   file:
@@ -324,7 +325,7 @@
     state: directory
     mode: "0755"
   loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
-  when: _is_dev | default(false) | bool and (_dev_tunnel_gateways_need_certs | default([]) | length > 0)
+  when: _dev_tunnel_fixtures_enabled | bool and (_dev_tunnel_gateways_need_certs | default([]) | length > 0)
 
 - name: Ensure development tunnel gateway cert directories are traversable
   file:
@@ -332,7 +333,7 @@
     mode: "0755"
   loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
   failed_when: false
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Generate development tunnel gateway private keys
   community.crypto.openssl_privatekey:
@@ -341,7 +342,7 @@
     curve: secp256r1
     mode: "{{ _runtime_key_mode }}"
   loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Generate development tunnel gateway CSRs
   community.crypto.openssl_csr:
@@ -358,7 +359,7 @@
       - clientAuth
     extended_key_usage_critical: true
   loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Sign development tunnel gateway certificates
   community.crypto.x509_certificate:
@@ -370,7 +371,7 @@
     ownca_not_after: "+{{ arsenale_cert_validity_days }}d"
     mode: "0644"
   loop: "{{ _dev_tunnel_gateways_need_certs | default([]) }}"
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Copy CA cert to development tunnel gateway directories
   copy:
@@ -379,7 +380,7 @@
     remote_src: true
     mode: "0644"
   loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Ensure development tunnel gateway private key permissions
   file:
@@ -387,7 +388,7 @@
     mode: "{{ _runtime_key_mode }}"
   loop: "{{ dev_tunnel_gateway_certs | default([]) }}"
   failed_when: false
-  when: _is_dev | default(false) | bool
+  when: _dev_tunnel_fixtures_enabled | bool
 
 - name: Generate SSH gateway client CA private key
   community.crypto.openssl_privatekey:

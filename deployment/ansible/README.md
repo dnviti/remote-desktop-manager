@@ -138,7 +138,7 @@ The preferred way to interact with Ansible is through the root `Makefile`. All c
 make setup            # Install Ansible collections and prepare the local vault
 
 # Development
-make dev              # Start the full installer-aware development stack
+make dev              # Start the installer-aware development stack
 npm run dev:client    # Optional: start Vite on https://localhost:3005
 
 # Production
@@ -172,7 +172,7 @@ The Makefile automatically detects how to supply the vault password:
 
 ### Development Mode
 
-Development mode deploys the **full stack** with all capabilities enabled, demo targets, fixture databases, and deeper validation. It always uses the Podman backend and runs everything locally.
+Development mode uses the same installer capability model as production, but always runs locally with the Podman backend and builds images from the checked-out source tree.
 
 ```bash
 make dev
@@ -181,25 +181,22 @@ make dev
 What it does:
 
 1. Prompts for the technician password (encrypts installer artifacts).
-2. Renders the full Compose stack with all services enabled.
-3. Builds all container images from source.
-4. Starts the stack via `podman-compose`.
-5. Runs database migrations.
-6. Executes `dev-bootstrap` to seed admin user, tenant, and demo data.
-7. Provisions five demo database containers (PostgreSQL, MySQL, MongoDB, Oracle, SQL Server).
-8. Creates gateway fixtures (direct and tunneled).
-9. Pushes managed tenant SSH keys to all managed gateways.
-10. Runs health checks against all containers.
+2. Resolves the selected capability and routing profile.
+3. Renders the pruned Compose stack for the selected services.
+4. Builds the selected container images from source.
+5. Starts the stack via `podman-compose`.
+6. Runs database migrations.
+7. Executes `dev-bootstrap` to seed the admin user and tenant.
+8. Runs health checks against all containers.
 
 Development-specific behaviors:
 
 - Firewall rules are **not** applied.
-- All capabilities are force-enabled regardless of profile selection.
+- Capability selection and routing use the same resolver as production installs.
 - Installer-managed development state defaults to `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev`.
 - Certificates are generated under `$ARSENALE_DEV_HOME/dev-certs/` by default.
 - The client binds to `0.0.0.0` for external access.
-- Demo databases are seeded with sample data for UI testing.
-- The seeded Oracle demo database uses an `8g` memory cap and `1g` shared-memory segment during first-start initialization.
+- Demo database and tunnel fixture services are not force-enabled by `make dev`.
 
 After `make dev` completes:
 
@@ -326,7 +323,7 @@ This password encrypts all installer artifacts at rest. It is **never stored on 
 Installation mode [development/production]: production
 ```
 
-- `development`: Full stack, all capabilities, local only.
+- `development`: Capability-selected local install with source-built images.
 - `production`: Selective capabilities, remote or local target.
 
 **Step 4: Choose the backend** (production only)
@@ -459,7 +456,7 @@ When a capability is disabled:
 - Backend routes and frontend affordances for that capability are removed.
 - Persistent data is **not** deleted during capability removal or recovery.
 
-In **development mode**, all capabilities are force-enabled regardless of selection.
+In **development mode**, capability selection and routing resolve exactly like production; the development-specific difference is local Podman execution with source-built images.
 
 ---
 
@@ -765,6 +762,9 @@ ansible-playbook playbooks/install.yml --ask-vault-pass \
 # Repo wrapper auto-detect for local development
 printf '%s\n' 'your-technician-password' > "${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/install/password.txt"
 make dev
+
+# Minimal local development install
+make dev DEV_CAPABILITIES=cli DEV_DIRECT_GATEWAY=false DEV_ZERO_TRUST=false
 ```
 
 ### deploy.yml -- Unified Apply Engine

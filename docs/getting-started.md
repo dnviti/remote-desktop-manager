@@ -23,10 +23,8 @@ source-files:
 
 The fastest way to work on Arsenale locally is to let the installer-aware Ansible flow bring up the containerized Go stack and then run the React frontend in local Vite mode. That gives you:
 
-- the full control plane and brokers,
+- the installer-selected control plane and brokers,
 - seeded development credentials,
-- demo database fixtures,
-- managed and tunneled gateway fixtures,
 - local HTTPS,
 - and hot reloading for frontend changes.
 
@@ -106,7 +104,7 @@ npm run dev
 What actually happens:
 
 1. `make dev` runs `deployment/ansible/playbooks/install.yml -e installer_mode=development`.
-2. The playbook renders and applies the dev stack under `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev`, runs `service dev-bootstrap`, and seeds demo PostgreSQL, MySQL, MongoDB, Oracle, and SQL Server datasets.
+2. The playbook renders and applies the dev stack under `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev`, builds the selected images locally, and runs `service dev-bootstrap` to seed the admin user and tenant.
 3. `npm run dev:client` starts Vite after `http://localhost:18080/healthz`, `:18090/healthz`, and `:18091/healthz` are reachable.
 
 If you need a headless rerun, place the technician password in
@@ -138,21 +136,17 @@ Password: DevAdmin123!
 Tenant:   Development Environment
 ```
 
-## 🗄 Demo Databases Included In Dev
+## 🔧 Capability Selection In Dev
 
-Development mode provisions five non-application demo databases. They are seeded during the install flow and bootstrapped into Arsenale as ready-to-query `DATABASE` connections.
+Installer-driven development now uses the same capability model as production. The difference is that development always uses Podman locally and builds images from the current checkout.
 
-| Connection name | Protocol | Seeded database | Seed object |
-|-----------------|----------|-----------------|-------------|
-| `Dev Demo PostgreSQL` | PostgreSQL | `arsenale_demo` | `public.demo_customers` |
-| `Dev Demo MySQL` | MySQL / MariaDB | `arsenale_demo` | `demo_customers` |
-| `Dev Demo MongoDB` | MongoDB | `arsenale_demo` | `demo_customers` |
-| `Dev Demo Oracle` | Oracle | `FREEPDB1` service | `demo_customers` |
-| `Dev Demo SQL Server` | SQL Server | `ArsenaleDemo` | `dbo.demo_customers` |
+Minimal local example:
 
-These fixtures are separate from the application's own PostgreSQL database and are intended for DB proxy testing, UI smoke tests, and audit-policy validation.
+```bash
+make dev DEV_CAPABILITIES=cli DEV_DIRECT_GATEWAY=false DEV_ZERO_TRUST=false
+```
 
-The Oracle fixture is the heaviest of the seeded demo databases and reserves `8g` plus a `1g` shared-memory segment during first-start initialization in the installer-managed dev stack.
+If you do not pass overrides, `make dev` uses the same capability defaults as production and leaves zero trust disabled by default.
 
 ## 🧪 Quick Verification
 
@@ -205,7 +199,7 @@ psql "postgresql://arsenale:arsenale_password@localhost:5432/arsenale?sslmode=ve
 
 | Command | Purpose |
 |---------|---------|
-| `make dev` | Deploy the full local stack via the installer-aware Ansible flow |
+| `make dev` | Deploy the local installer-aware stack via the Ansible flow |
 | `make dev-down` | Tear the local stack down |
 | `make status` | Read encrypted installer status |
 | `make recover` | Rerun the installer recovery path |

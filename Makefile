@@ -4,7 +4,7 @@
 # Usage:
 #   make setup      — First-time setup: install Ansible collections, generate vault + certs
 #   make install    — Run the interactive installer
-#   make dev        — Start the full installer-aware development stack
+#   make dev        — Start the installer-aware development stack
 #   make deploy     — Run the installer in production mode
 #   make help       — Show all available targets
 # ============================================================================
@@ -30,6 +30,12 @@ VAULT_FLAG ?= $(shell \
 	fi)
 INSTALL_PASSWORD_FILE ?= $(if $(wildcard $(DEFAULT_INSTALL_PASSWORD_FILE)),$(DEFAULT_INSTALL_PASSWORD_FILE),)
 INSTALL_PASSWORD_FLAG := $(if $(INSTALL_PASSWORD_FILE),-e install_password_file=$(INSTALL_PASSWORD_FILE),)
+DEV_CAPABILITIES ?=
+DEV_DIRECT_GATEWAY ?=
+DEV_ZERO_TRUST ?=
+DEV_CAPABILITIES_FLAG := $(if $(DEV_CAPABILITIES),-e installer_capabilities_csv=$(DEV_CAPABILITIES),)
+DEV_DIRECT_GATEWAY_FLAG := $(if $(DEV_DIRECT_GATEWAY),-e installer_direct_gateway=$(DEV_DIRECT_GATEWAY),)
+DEV_ZERO_TRUST_FLAG := $(if $(DEV_ZERO_TRUST),-e installer_zero_trust=$(DEV_ZERO_TRUST),)
 
 .DEFAULT_GOAL := help
 
@@ -70,8 +76,8 @@ setup: _check-ansible  ## First-time setup: install collections, generate vault 
 # ── Development ─────────────────────────────────────────────────────────────
 
 .PHONY: dev
-dev: _check-ansible  ## Deploy full dev stack via installer-aware flow
-	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) $(DEV_HOME_FLAG) -e installer_mode=development
+dev: _check-ansible  ## Deploy installer-aware dev stack with local image builds
+	$(PLAYBOOK) playbooks/install.yml $(VAULT_FLAG) $(INSTALL_PASSWORD_FLAG) $(DEV_HOME_FLAG) $(DEV_CAPABILITIES_FLAG) $(DEV_DIRECT_GATEWAY_FLAG) $(DEV_ZERO_TRUST_FLAG) -e installer_mode=development
 
 .PHONY: dev-down
 dev-down: _check-ansible  ## Stop dev stack

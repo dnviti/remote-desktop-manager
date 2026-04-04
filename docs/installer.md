@@ -38,7 +38,7 @@ make configure   # Reconfigure an existing production install
 make deploy      # Deploy or update production stack
 make recover     # Re-apply from last known good encrypted state
 make status      # Read encrypted installer status without deploying
-make dev         # Deploy the full development stack
+make dev         # Deploy the installer-aware development stack
 make dev-down    # Tear down the development stack
 ```
 
@@ -62,15 +62,14 @@ Underlying playbooks:
 make dev
 ```
 
-- Deploys the **full stack** on localhost.
-- All capabilities are force-enabled regardless of selection.
+- Deploys the selected installer-managed stack on localhost.
+- Resolves the same capabilities and routing model as production.
 - Backend is forced to **Podman**.
-- Includes demo targets, demo database fixtures, gateway fixtures, and deeper validation.
-- Runs `dev-bootstrap` to seed an admin user, tenant, and sample data.
-- Provisions five demo database containers (PostgreSQL, MySQL, MongoDB, Oracle, SQL Server).
-- Creates direct and tunneled gateway fixtures.
+- Builds selected images locally from the checked-out repository.
+- Runs `dev-bootstrap` to seed an admin user and tenant.
 - Firewall rules are **not** applied.
 - Certificates are generated under `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/dev-certs/` by default.
+- Demo database and tunnel fixture services are not force-enabled by `make dev`.
 
 After completion:
 
@@ -195,7 +194,7 @@ When a capability is disabled:
 - Backend routes and frontend affordances for that capability are removed.
 - Persistent data (database volumes) is **not** deleted during removal or recovery.
 
-In development mode, all capabilities are force-enabled.
+In development mode, capabilities and routing resolve exactly like production. The development-specific difference is local Podman execution with source-built images.
 
 ## Technician Password
 
@@ -368,6 +367,8 @@ ansible-playbook playbooks/install.yml --ask-vault-pass \
   -e installer_capabilities_csv="keychain,connections,databases,recordings,enterprise_auth,cli" \
   -e installer_direct_gateway=true \
   -e installer_zero_trust=false
+
+make dev DEV_CAPABILITIES=cli DEV_DIRECT_GATEWAY=false DEV_ZERO_TRUST=false
 ```
 
 For Kubernetes:
@@ -396,7 +397,7 @@ ansible-playbook playbooks/install.yml --ask-vault-pass \
 ## Recommended Operator Flow
 
 1. Run `make setup` once per workspace.
-2. Use `make dev` for the full local development environment.
+2. Use `make dev` for the local installer-aware development environment.
 3. Use `make install` or `make deploy` for production installs.
 4. Use `make configure` for intentional production changes.
 5. Use `make status` for password-gated encrypted status reads.

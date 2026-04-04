@@ -209,15 +209,17 @@ go build -o /tmp/arsenale-cli ./tools/arsenale-cli
 /tmp/arsenale-cli --server https://localhost:3000 health
 ```
 
-## 🧪 Development Fixtures
+## 🧪 Development Bootstrap
 
-The development installer flow provisions:
+The installer-driven development flow now resolves the same capability graph as production and builds the selected images locally on Podman.
 
-- seeded admin credentials: `admin@example.com` / `DevAdmin123!`
-- demo PostgreSQL, MySQL, MongoDB, Oracle, and SQL Server containers
-- sample `DATABASE` connections for those fixtures
-- tunneled `ssh-gateway`, `guacd`, and `db-proxy` fixtures
-- tenant vault state, tenant SSH keys, and an orchestrator connection
+It still seeds:
+
+- admin credentials: `admin@example.com` / `DevAdmin123!`
+- a default tenant: `Development Environment`
+- tenant membership and baseline setup state
+
+Demo databases and tunnel gateway fixtures are no longer force-enabled by `make dev`.
 
 ## 📧 Email, SMS, And Security Config
 

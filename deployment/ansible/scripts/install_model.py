@@ -73,8 +73,6 @@ def normalize_capabilities(profile: dict[str, Any], catalog: dict[str, Any]) -> 
     normalized: dict[str, bool] = {}
     for name, config in catalog["capabilities"].items():
         enabled = selected.get(name, bool(config.get("enabledByDefault", False)))
-        if profile.get("mode") == "development":
-            enabled = True
         if config.get("required"):
             enabled = True
         normalized[name] = enabled
@@ -96,9 +94,6 @@ def normalize_capabilities(profile: dict[str, Any], catalog: dict[str, Any]) -> 
 def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[str, Any]:
     capabilities = normalize_capabilities(profile, catalog)
     routing = deepcopy(profile.get("routing", {}))
-    if profile["mode"] == "development":
-        routing["directGateway"] = True
-        routing["zeroTrust"] = True
 
     direct_enabled = bool(routing.get("directGateway", False))
     zero_trust_enabled = bool(routing.get("zeroTrust", False)) and capabilities.get("zero_trust", False)
@@ -113,23 +108,6 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
         service_names.extend(["model-gateway", "tool-gateway", "memory-service"])
     if zero_trust_enabled:
         service_names.extend(["tunnel-broker", "control-plane-controller", "runtime-agent", "agent-orchestrator"])
-
-    if profile["mode"] == "development":
-        service_names.extend(
-            [
-                "dev-tunnel-ssh-gateway",
-                "dev-tunnel-guacd",
-                "dev-tunnel-db-proxy",
-                "terminal-target",
-                "dev-debian-ssh-target",
-                "dev-demo-postgres",
-                "dev-demo-mysql",
-                "dev-demo-mongodb",
-                "dev-demo-oracle",
-                "dev-demo-mssql",
-                "authz-pdp",
-            ]
-        )
 
     env = {
         "ARSENALE_INSTALLER_ENABLED": "true",
@@ -174,7 +152,7 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
         },
         "services": sorted(dict.fromkeys(service_names)),
         "environment": env,
-        "devFullStack": profile["mode"] == "development",
+        "devFullStack": profile["mode"] == "development" and all(capabilities.values()) and direct_enabled and zero_trust_enabled,
     }
 
 

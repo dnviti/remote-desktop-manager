@@ -202,7 +202,7 @@ arsenale/
 ## 🗺 Current Documentation Deltas
 
 - The installer entrypoint is now `playbooks/install.yml`; `playbooks/deploy.yml` is the shared apply engine underneath it.
-- Development mode always deploys the full stack, demo databases, managed gateways, and tunneled gateway fixtures.
+- Development mode now resolves the same capability graph as production and differs mainly by building images locally on Podman.
 - Production mode is installer-profile-driven and can target Podman or Kubernetes; Docker is not a supported installer backend.
 - `make status` reads encrypted installer status and is part of the normal operator workflow.
 - Session recording now supports both SSH (asciicast `.cast`) and desktop (Guacamole `.guac`) formats.

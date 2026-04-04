@@ -9,6 +9,9 @@
 {% set _compose_project_name = (((_compose_repo_root | realpath | basename) | lower | regex_replace('[^a-z0-9]+', '')) or 'compose') %}
 {% set _runtime_assets_root = installer_runtime_assets_dir | default(_home + '/config/installer-assets') %}
 {% set _component_images = arsenale_component_images | default({}) %}
+{% set _dev_fixture_targets_enabled = arsenale_dev_fixture_targets_enabled | default(_is_dev | default(false) | bool) %}
+{% set _dev_demo_databases_enabled = arsenale_dev_demo_databases_enabled | default(_is_dev | default(false) | bool) %}
+{% set _dev_tunnel_fixtures_enabled = arsenale_dev_tunnel_fixtures_enabled | default(_is_dev | default(false) | bool) %}
 {% macro local_image(service_name) -%}
 localhost/{{ _compose_project_name }}_{{ service_name }}:latest
 {%- endmacro %}
@@ -538,7 +541,9 @@ services:
       DEV_BOOTSTRAP_ADMIN_USERNAME: "{{ arsenale_dev_bootstrap_admin_username }}"
       DEV_BOOTSTRAP_ADMIN_PASSWORD: "{{ arsenale_dev_bootstrap_admin_password }}"
       DEV_BOOTSTRAP_TENANT_NAME: "{{ arsenale_dev_bootstrap_tenant_name }}"
-      DEV_TUNNEL_CERT_DIR: "{{ '/certs' if (_is_dev | default(false) | bool) else '' }}"
+      DEV_TUNNEL_CERT_DIR: "{{ '/certs' if _dev_tunnel_fixtures_enabled else '' }}"
+      DEV_BOOTSTRAP_TUNNEL_FIXTURES_ENABLED: "{{ 'true' if _dev_tunnel_fixtures_enabled else 'false' }}"
+      DEV_BOOTSTRAP_DEMO_DATABASES_ENABLED: "{{ 'true' if _dev_demo_databases_enabled else 'false' }}"
       DEV_SAMPLE_POSTGRES_HOST: "{{ dev_sample_postgres_host }}"
       DEV_SAMPLE_POSTGRES_PORT: "{{ dev_sample_postgres_port }}"
       DEV_SAMPLE_POSTGRES_DATABASE: "{{ dev_sample_postgres_database }}"
@@ -625,7 +630,7 @@ services:
 {% endif %}
       - {{ arsenale_cert_dir }}/postgres:/certs/postgres:ro
       - {{ arsenale_cert_dir }}/guacenc:/certs/guacenc:ro
-{% if _is_dev | default(false) | bool %}
+{% if _dev_tunnel_fixtures_enabled %}
       - {{ arsenale_cert_dir }}/tunnel-managed-ssh:/certs/tunnel-managed-ssh:ro
       - {{ arsenale_cert_dir }}/tunnel-guacd:/certs/tunnel-guacd:ro
       - {{ arsenale_cert_dir }}/tunnel-db-proxy:/certs/tunnel-db-proxy:ro
@@ -1070,6 +1075,7 @@ services:
     networks:
       - net-edge
 
+{% if _dev_fixture_targets_enabled %}
   terminal-target:
     build:
       context: {{ _compose_repo_root }}
@@ -1120,6 +1126,8 @@ services:
           - dev-debian-target
           - dev-debian-ssh-target
 
+{% endif %}
+{% if _dev_demo_databases_enabled %}
   dev-demo-postgres:
     image: docker.io/library/postgres:16-alpine
     container_name: arsenale-dev-demo-postgres
@@ -1263,6 +1271,7 @@ services:
           - {{ dev_sample_mssql_host }}
 
 {% endif %}
+{% endif %}
   # ---------------------------------------------------------------------------
   # Client — React SPA served by Nginx
   # ---------------------------------------------------------------------------
@@ -1354,7 +1363,7 @@ services:
     networks:
       - net-gateway
 
-{% if _is_dev | default(false) | bool %}
+{% if _dev_tunnel_fixtures_enabled %}
 
   # ---------------------------------------------------------------------------
   # Development tunnel gateways — end-to-end tunnel registration fixtures

@@ -44,6 +44,10 @@
     _dev_client_url: "{{ 'https://localhost:' ~ (arsenale_client_port | string) }}"
     _build: "{{ true if _is_dev | bool else (arsenale_build_images | default(false)) }}"
     arsenale_cert_dir: "{{ (_home + '/dev-certs') if _is_dev | bool else (_home + '/certs') }}"
+    arsenale_dev_fixture_targets_enabled: "{{ _is_dev | bool }}"
+    arsenale_dev_demo_databases_enabled: "{{ _is_dev | bool }}"
+    arsenale_dev_tunnel_fixtures_enabled: "{{ _is_dev | bool }}"
+    arsenale_dev_acceptance_enabled: "{{ _is_dev | bool }}"
     dev_sample_postgres_host: "dev-demo-postgres"
     dev_sample_postgres_port: 5432
     dev_sample_postgres_database: "arsenale_demo"

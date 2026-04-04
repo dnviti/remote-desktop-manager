@@ -95,7 +95,7 @@ The capability catalog in `deployment/ansible/install/capabilities.yml` lets pro
 - sharing and approvals
 - CLI
 
-Development mode always deploys the full stack and fixture set regardless of production defaults.
+Installer-driven development uses the same capability and routing model as production, but always builds images locally and runs on Podman.
 
 ## 🐳 Image Build Matrix
 
@@ -288,7 +288,7 @@ Useful script-level entry points:
 
 ## 📌 Practical Notes
 
-- Development and production share the same installer model, but not the same runtime scope; development always enables the full fixture set.
+- Development and production now share the same installer capability graph; the development-specific difference is local source builds on Podman.
 - `make status` is part of the deployment contract because installer state is encrypted and persistent outside the app database.
 - Podman is mandatory for installer-aware local development, even though the migration helper can target Docker when used outside the installer flow.
-- The DB proxy and tunnel fixtures are part of the supported dev stack, not ad hoc extras.
+- Legacy demo-database and tunnel-gateway fixtures are no longer force-enabled by `make dev`.

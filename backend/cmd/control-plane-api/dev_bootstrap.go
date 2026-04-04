@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
+	"github.com/dnviti/arsenale/backend/internal/runtimefeatures"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 	"github.com/google/uuid"
 )
@@ -71,12 +72,19 @@ type encryptedValue struct {
 	Tag        string
 }
 
+type devBootstrapRuntime struct {
+	features              runtimefeatures.Manifest
+	tunnelFixturesEnabled bool
+	demoDatabasesEnabled  bool
+}
+
 func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 	if deps == nil || deps.db == nil {
 		return fmt.Errorf("bootstrap dependencies are unavailable")
 	}
 
 	options := loadDevBootstrapOptions()
+	runtime := loadDevBootstrapRuntime()
 	if err := ensureBootstrapSetup(ctx, deps, options); err != nil {
 		return err
 	}
@@ -85,8 +93,10 @@ func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 	if err != nil {
 		return err
 	}
-	if err := ensureBootstrapVaultUnlocked(ctx, deps, userID, options.adminPassword); err != nil {
-		return err
+	if runtime.features.KeychainEnabled {
+		if err := ensureBootstrapVaultUnlocked(ctx, deps, userID, options.adminPassword); err != nil {
+			return err
+		}
 	}
 	tenantID, err := ensureBootstrapTenant(ctx, deps, userID, options.tenantName)
 	if err != nil {
@@ -95,62 +105,71 @@ func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 	if err := ensureBootstrapMembership(ctx, deps, tenantID, userID); err != nil {
 		return err
 	}
-	if err := ensureBootstrapSSHKeyPair(ctx, deps, tenantID, userID); err != nil {
-		return err
-	}
-	if err := syncTenantTunnelCA(ctx, deps, tenantID, options.certDir); err != nil {
-		return err
-	}
-
-	specs := buildDevGatewaySpecs(options.certDir)
-	for _, spec := range specs {
-		if err := upsertDevGateway(ctx, deps, tenantID, userID, spec); err != nil {
+	if runtime.features.ConnectionsEnabled {
+		if err := ensureBootstrapSSHKeyPair(ctx, deps, tenantID, userID); err != nil {
 			return err
 		}
 	}
-	if err := ensureBootstrapOrchestratorConnection(ctx, deps, options); err != nil {
-		return err
-	}
-	if err := ensureDemoDatabaseConnections(ctx, deps, tenantID, userID); err != nil {
-		return err
+
+	specs := buildDevGatewaySpecs(options.certDir, runtime)
+	if runtime.tunnelFixturesEnabled && len(specs) > 0 {
+		if err := syncTenantTunnelCA(ctx, deps, tenantID, options.certDir); err != nil {
+			return err
+		}
+		for _, spec := range specs {
+			if err := upsertDevGateway(ctx, deps, tenantID, userID, spec); err != nil {
+				return err
+			}
+		}
+		if err := ensureBootstrapOrchestratorConnection(ctx, deps, options); err != nil {
+			return err
+		}
 	}
 
-	const maxManagedSSHKeyPushAttempts = 15
-	const managedSSHKeyPushRetryDelay = 2 * time.Second
-	keyPushSucceeded := false
-	for attempt := 1; attempt <= maxManagedSSHKeyPushAttempts; attempt++ {
-		pushResults, err := deps.gatewayService.PushSSHKeyToAllManagedGateways(ctx, tenantID)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Managed SSH key push attempt %d/%d failed: %v\n", attempt, maxManagedSSHKeyPushAttempts, err)
-		} else {
-			allOK := len(pushResults) > 0
-			for _, item := range pushResults {
-				if item.OK {
-					fmt.Printf("managed ssh key push ok: %s (%s)\n", item.Name, item.GatewayID)
-					continue
-				}
-				allOK = false
-				fmt.Fprintf(
-					os.Stderr,
-					"managed ssh key push pending: %s (%s): %s (attempt %d/%d)\n",
-					item.Name,
-					item.GatewayID,
-					item.Error,
-					attempt,
-					maxManagedSSHKeyPushAttempts,
-				)
-			}
-			if allOK {
-				keyPushSucceeded = true
-				break
-			}
-		}
-		if attempt < maxManagedSSHKeyPushAttempts {
-			time.Sleep(managedSSHKeyPushRetryDelay)
+	if runtime.demoDatabasesEnabled && runtime.features.DatabaseProxyEnabled {
+		if err := ensureDemoDatabaseConnections(ctx, deps, tenantID, userID); err != nil {
+			return err
 		}
 	}
-	if !keyPushSucceeded {
-		return fmt.Errorf("managed SSH key push did not complete cleanly after %d attempts", maxManagedSSHKeyPushAttempts)
+
+	if runtime.tunnelFixturesEnabled && hasManagedSSHGateway(specs) {
+		const maxManagedSSHKeyPushAttempts = 15
+		const managedSSHKeyPushRetryDelay = 2 * time.Second
+		keyPushSucceeded := false
+		for attempt := 1; attempt <= maxManagedSSHKeyPushAttempts; attempt++ {
+			pushResults, err := deps.gatewayService.PushSSHKeyToAllManagedGateways(ctx, tenantID)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "Managed SSH key push attempt %d/%d failed: %v\n", attempt, maxManagedSSHKeyPushAttempts, err)
+			} else {
+				allOK := len(pushResults) > 0
+				for _, item := range pushResults {
+					if item.OK {
+						fmt.Printf("managed ssh key push ok: %s (%s)\n", item.Name, item.GatewayID)
+						continue
+					}
+					allOK = false
+					fmt.Fprintf(
+						os.Stderr,
+						"managed ssh key push pending: %s (%s): %s (attempt %d/%d)\n",
+						item.Name,
+						item.GatewayID,
+						item.Error,
+						attempt,
+						maxManagedSSHKeyPushAttempts,
+					)
+				}
+				if allOK {
+					keyPushSucceeded = true
+					break
+				}
+			}
+			if attempt < maxManagedSSHKeyPushAttempts {
+				time.Sleep(managedSSHKeyPushRetryDelay)
+			}
+		}
+		if !keyPushSucceeded {
+			return fmt.Errorf("managed SSH key push did not complete cleanly after %d attempts", maxManagedSSHKeyPushAttempts)
+		}
 	}
 
 	fmt.Printf("development bootstrap complete for tenant %s\n", tenantID)
@@ -158,6 +177,38 @@ func runDevBootstrap(ctx context.Context, deps *apiDependencies) error {
 		fmt.Printf("  %s gateway: %s (%s)\n", spec.Type, spec.Name, spec.ID)
 	}
 	return nil
+}
+
+func loadDevBootstrapRuntime() devBootstrapRuntime {
+	return devBootstrapRuntime{
+		features:              runtimefeatures.FromEnv(),
+		tunnelFixturesEnabled: requiredEnvBool("DEV_BOOTSTRAP_TUNNEL_FIXTURES_ENABLED", false),
+		demoDatabasesEnabled:  requiredEnvBool("DEV_BOOTSTRAP_DEMO_DATABASES_ENABLED", false),
+	}
+}
+
+func requiredEnvBool(name string, fallback bool) bool {
+	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return fallback
+	}
+	switch strings.ToLower(value) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return fallback
+	}
+}
+
+func hasManagedSSHGateway(specs []devGatewaySpec) bool {
+	for _, spec := range specs {
+		if spec.Type == "MANAGED_SSH" {
+			return true
+		}
+	}
+	return false
 }
 
 func loadDevBootstrapOptions() devBootstrapOptions {
@@ -202,30 +253,39 @@ func requiredEnvInt(name string, fallback int) int {
 	return parsed
 }
 
-func buildDevGatewaySpecs(certDir string) []devGatewaySpec {
-	return []devGatewaySpec{
-		{
-			ID:          requiredEnv("DEV_TUNNEL_MANAGED_SSH_GATEWAY_ID", "11111111-1111-4111-8111-111111111111"),
-			Name:        "Dev Tunnel Managed SSH",
-			Type:        "MANAGED_SSH",
-			Host:        "dev-tunnel-ssh-gateway",
-			Port:        2222,
-			APIPort:     intPtr(9022),
-			Token:       requiredEnv("DEV_TUNNEL_MANAGED_SSH_TOKEN", "dev-tunnel-managed-ssh-token"),
-			CertDir:     filepath.Join(certDir, "tunnel-managed-ssh"),
-			Description: "Development managed SSH gateway registered through the zero-trust tunnel",
-		},
-		{
-			ID:          requiredEnv("DEV_TUNNEL_GUACD_GATEWAY_ID", "22222222-2222-4222-8222-222222222222"),
-			Name:        "Dev Tunnel GUACD",
-			Type:        "GUACD",
-			Host:        "dev-tunnel-guacd",
-			Port:        4822,
-			Token:       requiredEnv("DEV_TUNNEL_GUACD_TOKEN", "dev-tunnel-guacd-token"),
-			CertDir:     filepath.Join(certDir, "tunnel-guacd"),
-			Description: "Development guacd gateway registered through the zero-trust tunnel",
-		},
-		{
+func buildDevGatewaySpecs(certDir string, runtime devBootstrapRuntime) []devGatewaySpec {
+	if !runtime.features.ZeroTrustEnabled || !runtime.tunnelFixturesEnabled {
+		return nil
+	}
+
+	specs := make([]devGatewaySpec, 0, 3)
+	if runtime.features.ConnectionsEnabled {
+		specs = append(specs,
+			devGatewaySpec{
+				ID:          requiredEnv("DEV_TUNNEL_MANAGED_SSH_GATEWAY_ID", "11111111-1111-4111-8111-111111111111"),
+				Name:        "Dev Tunnel Managed SSH",
+				Type:        "MANAGED_SSH",
+				Host:        "dev-tunnel-ssh-gateway",
+				Port:        2222,
+				APIPort:     intPtr(9022),
+				Token:       requiredEnv("DEV_TUNNEL_MANAGED_SSH_TOKEN", "dev-tunnel-managed-ssh-token"),
+				CertDir:     filepath.Join(certDir, "tunnel-managed-ssh"),
+				Description: "Development managed SSH gateway registered through the zero-trust tunnel",
+			},
+			devGatewaySpec{
+				ID:          requiredEnv("DEV_TUNNEL_GUACD_GATEWAY_ID", "22222222-2222-4222-8222-222222222222"),
+				Name:        "Dev Tunnel GUACD",
+				Type:        "GUACD",
+				Host:        "dev-tunnel-guacd",
+				Port:        4822,
+				Token:       requiredEnv("DEV_TUNNEL_GUACD_TOKEN", "dev-tunnel-guacd-token"),
+				CertDir:     filepath.Join(certDir, "tunnel-guacd"),
+				Description: "Development guacd gateway registered through the zero-trust tunnel",
+			},
+		)
+	}
+	if runtime.features.DatabaseProxyEnabled {
+		specs = append(specs, devGatewaySpec{
 			ID:          requiredEnv("DEV_TUNNEL_DB_PROXY_GATEWAY_ID", "33333333-3333-4333-8333-333333333333"),
 			Name:        "Dev Tunnel DB Proxy",
 			Type:        "DB_PROXY",
@@ -234,8 +294,9 @@ func buildDevGatewaySpecs(certDir string) []devGatewaySpec {
 			Token:       requiredEnv("DEV_TUNNEL_DB_PROXY_TOKEN", "dev-tunnel-db-proxy-token"),
 			CertDir:     filepath.Join(certDir, "tunnel-db-proxy"),
 			Description: "Development database proxy gateway registered through the zero-trust tunnel",
-		},
+		})
 	}
+	return specs
 }
 
 func buildDevDemoDatabaseSpecs() []devDemoDatabaseSpec {

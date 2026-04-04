@@ -158,6 +158,57 @@
     - not _is_dev | bool
     - installer_capabilities_csv is not defined
 
+- name: Resolve requested installer routing and capability selection
+  set_fact:
+    installer_capability_selection: >-
+      {{
+        (
+          installer_capability_csv_value.split(',')
+          | map('trim')
+          | reject('equalto', '')
+          | list
+        )
+      }}
+    installer_direct_gateway_enabled: "{{ (installer_direct_gateway_value | string | lower) == 'true' }}"
+    installer_zero_trust_enabled: "{{ (installer_zero_trust_value | string | lower) == 'true' }}"
+  vars:
+    installer_default_capabilities_csv: >-
+      {{
+        installer_capabilities_default
+        | dict2items
+        | selectattr('value')
+        | map(attribute='key')
+        | reject('equalto', 'core')
+        | join(',')
+      }}
+    installer_capability_csv_value: >-
+      {{
+        installer_capabilities_csv
+        if installer_capabilities_csv is defined
+        else (
+          installer_capabilities_prompt.user_input
+          | default(installer_default_capabilities_csv, true)
+        )
+      }}
+    installer_direct_gateway_value: >-
+      {{
+        installer_direct_gateway
+        if installer_direct_gateway is defined
+        else (
+          installer_direct_prompt.user_input
+          | default(installer_routing_default.directGateway | string, true)
+        )
+      }}
+    installer_zero_trust_value: >-
+      {{
+        installer_zero_trust
+        if installer_zero_trust is defined
+        else (
+          installer_zero_trust_prompt.user_input
+          | default(installer_routing_default.zeroTrust | string, true)
+        )
+      }}
+
 - name: Build installer profile
   set_fact:
     installer_profile: >-
@@ -167,41 +218,22 @@
           'productVersion': arsenale_image_tag | default('dev'),
           'mode': ('development' if (_is_dev | bool) else 'production'),
           'backend': installer_backend_value,
-          'capabilities': (
-            {
-              'core': true,
-              'keychain': true,
-              'connections': true,
-              'databases': true,
-              'recordings': true,
-              'zero_trust': true,
-              'agentic_ai': true,
-              'enterprise_auth': true,
-              'sharing_approvals': true,
-              'cli': true
-            }
-            if (_is_dev | bool)
-            else {
-              'core': true,
-              'keychain': ('keychain' in installer_capability_selection),
-              'connections': ('connections' in installer_capability_selection),
-              'databases': ('databases' in installer_capability_selection),
-              'recordings': ('recordings' in installer_capability_selection),
-              'zero_trust': ('zero_trust' in installer_capability_selection),
-              'agentic_ai': ('agentic_ai' in installer_capability_selection),
-              'enterprise_auth': ('enterprise_auth' in installer_capability_selection),
-              'sharing_approvals': ('sharing_approvals' in installer_capability_selection),
-              'cli': ('cli' in installer_capability_selection)
-            }
-          ),
-          'routing': (
-            {'directGateway': true, 'zeroTrust': true}
-            if (_is_dev | bool)
-            else {
-              'directGateway': (installer_direct_gateway | default(installer_direct_prompt.user_input | default(installer_routing_default.directGateway | string)) | string | lower) == 'true',
-              'zeroTrust': (installer_zero_trust | default(installer_zero_trust_prompt.user_input | default(installer_routing_default.zeroTrust | string)) | string | lower) == 'true'
-            }
-          ),
+          'capabilities': {
+            'core': true,
+            'keychain': ('keychain' in installer_capability_selection),
+            'connections': ('connections' in installer_capability_selection),
+            'databases': ('databases' in installer_capability_selection),
+            'recordings': ('recordings' in installer_capability_selection),
+            'zero_trust': ('zero_trust' in installer_capability_selection),
+            'agentic_ai': ('agentic_ai' in installer_capability_selection),
+            'enterprise_auth': ('enterprise_auth' in installer_capability_selection),
+            'sharing_approvals': ('sharing_approvals' in installer_capability_selection),
+            'cli': ('cli' in installer_capability_selection)
+          },
+          'routing': {
+            'directGateway': installer_direct_gateway_enabled,
+            'zeroTrust': installer_zero_trust_enabled
+          },
           'kubernetes': (
             {
               'context': (installer_kube_context | default('')),
@@ -221,17 +253,6 @@
             else {}
           )
         }
-      }}
-  vars:
-    installer_capability_selection: >-
-      {{
-        (
-          (installer_capabilities_csv | default(installer_capabilities_prompt.user_input | default('keychain,connections,databases,recordings,agentic_ai,enterprise_auth,sharing_approvals,cli')))
-          .split(',')
-          | map('trim')
-          | reject('equalto', '')
-          | list
-        )
       }}
 
 - name: Run installer diff
@@ -255,6 +276,22 @@
     container_runtime: "{{ installer_backend_value }}"
     installer_should_apply: "{{ installer_run_diff.runType != 'no_op' }}"
     installer_compose_env_file: "{{ installer_tmp_dir }}/runtime.env"
+
+- name: Derive development fixture toggles from installer-selected services
+  set_fact:
+    arsenale_dev_fixture_targets_enabled: "{{ _is_dev | bool and (installer_services | intersect(['terminal-target', 'dev-debian-ssh-target']) | length > 0) }}"
+    arsenale_dev_demo_databases_enabled: "{{ _is_dev | bool and (installer_services | intersect(['dev-demo-postgres', 'dev-demo-mysql', 'dev-demo-mongodb', 'dev-demo-oracle', 'dev-demo-mssql']) | length > 0) }}"
+    arsenale_dev_tunnel_fixtures_enabled: "{{ _is_dev | bool and (installer_services | intersect(['dev-tunnel-ssh-gateway', 'dev-tunnel-guacd', 'dev-tunnel-db-proxy']) | length > 0) }}"
+
+- name: Derive development acceptance toggle
+  set_fact:
+    arsenale_dev_acceptance_enabled: >-
+      {{
+        _is_dev | bool
+        and (arsenale_dev_fixture_targets_enabled | bool)
+        and (arsenale_dev_demo_databases_enabled | bool)
+        and (arsenale_dev_tunnel_fixtures_enabled | bool)
+      }}
 
 - name: Validate development backend choice
   assert:

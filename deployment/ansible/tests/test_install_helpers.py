@@ -69,19 +69,37 @@ class InstallModelTest(unittest.TestCase):
         }
         install_model.validate(profile, self.profile_schema, schema_root=INSTALL_DIR)
 
-    def test_resolve_dev_forces_full_stack(self) -> None:
+    def test_resolve_dev_respects_selected_capabilities_and_routing(self) -> None:
         profile = {
             "schemaVersion": "1.0.0",
             "mode": "development",
             "backend": "podman",
-            "capabilities": {"core": True},
+            "capabilities": {
+                "core": True,
+                "keychain": False,
+                "connections": False,
+                "databases": False,
+                "recordings": False,
+                "zero_trust": False,
+                "agentic_ai": False,
+                "enterprise_auth": False,
+                "sharing_approvals": False,
+                "cli": True,
+            },
             "routing": {"directGateway": False, "zeroTrust": False},
         }
         resolved = install_model.resolve_profile(profile, self.catalog)
-        self.assertTrue(all(resolved["capabilities"].values()))
-        self.assertIn("dev-demo-postgres", resolved["services"])
-        self.assertTrue(resolved["routing"]["zeroTrust"])
-        self.assertTrue(resolved["routing"]["directGateway"])
+        self.assertEqual(
+            {name for name, enabled in resolved["capabilities"].items() if enabled},
+            {"core", "cli"},
+        )
+        self.assertEqual(
+            resolved["services"],
+            ["client", "control-plane-api", "migrate", "postgres", "redis"],
+        )
+        self.assertFalse(resolved["routing"]["zeroTrust"])
+        self.assertFalse(resolved["routing"]["directGateway"])
+        self.assertFalse(resolved["devFullStack"])
 
     def test_capability_dependency_resolution(self) -> None:
         profile = {

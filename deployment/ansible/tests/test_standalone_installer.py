@@ -206,6 +206,27 @@ class StandaloneInstallerTemplateTest(unittest.TestCase):
             "/workspace/arsenale/config/installer-assets/postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro",
         )
 
+    def test_development_compose_can_disable_dev_fixtures(self) -> None:
+        compose = _render_compose(
+            arsenale_env="development",
+            _home="/workspace/arsenale/deployment/ansible/playbooks/../../..",
+            _is_dev=True,
+            _build=True,
+            arsenale_source_root="/workspace/arsenale",
+            installer_runtime_assets_dir="/workspace/arsenale/config/installer-assets",
+            arsenale_cert_dir="/workspace/arsenale/dev-certs",
+            arsenale_dev_fixture_targets_enabled=False,
+            arsenale_dev_demo_databases_enabled=False,
+            arsenale_dev_tunnel_fixtures_enabled=False,
+        )
+        services = compose["services"]
+
+        self.assertNotIn("terminal-target", services)
+        self.assertNotIn("dev-demo-postgres", services)
+        self.assertNotIn("dev-tunnel-ssh-gateway", services)
+        self.assertEqual(services["control-plane-api"]["environment"]["DEV_BOOTSTRAP_TUNNEL_FIXTURES_ENABLED"], "false")
+        self.assertEqual(services["control-plane-api"]["environment"]["DEV_BOOTSTRAP_DEMO_DATABASES_ENABLED"], "false")
+
 
 class StandaloneInstallerConfigTest(unittest.TestCase):
     def test_non_dev_playbooks_default_to_prebuilt_images(self) -> None:
