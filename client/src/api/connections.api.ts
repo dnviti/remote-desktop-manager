@@ -18,12 +18,17 @@ export interface ResolvedDlpPolicy {
 }
 
 export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2';
+export type DbCloudProvider = 'azure' | 'aws' | 'gcp';
 export type OracleConnectionType = 'basic' | 'tns' | 'custom';
 export type OracleRole = 'normal' | 'sysdba' | 'sysoper' | 'sysasm' | 'sysbackup' | 'sysdg' | 'syskm' | 'sysrac';
 
 export interface DbSettings {
   protocol: DbProtocol;
   databaseName?: string;
+  /** Cloud-managed provider preset used to recommend TLS defaults for MySQL/PostgreSQL. */
+  cloudProvider?: DbCloudProvider;
+  /** Connection security mode. Values are interpreted per driver/protocol by the backend. */
+  sslMode?: string;
   /** Persist execution plans in DB audit logs for supported SQL protocols. */
   persistExecutionPlan?: boolean;
   /** Oracle: connection mode (defaults to 'basic' for backward compat). */

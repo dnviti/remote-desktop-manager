@@ -86,6 +86,13 @@ func TestParseDatabaseSettingsPersistExecutionPlan(t *testing.T) {
 	}
 }
 
+func TestParseDatabaseSettingsRetainsSSLMode(t *testing.T) {
+	settings := parseDatabaseSettings([]byte(`{"protocol":"mysql","sslMode":"require"}`))
+	if settings.SSLMode != "require" {
+		t.Fatalf("parseDatabaseSettings() sslMode = %q, want %q", settings.SSLMode, "require")
+	}
+}
+
 func TestWriteOwnedQueryErrorUnsupported(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	writeOwnedQueryError(recorder, ErrQueryRuntimeUnsupported)

@@ -890,6 +890,8 @@ print(uuid.uuid4())
 PY
 )"
 oauth_vault_setup_provider_user_id="oauth-vault-user-$(date +%s)-$$"
+oauth_vault_setup_user_agent="arsenale-dev-acceptance"
+oauth_vault_setup_forwarded_ip="127.0.0.1"
 
 "${container_runtime}" exec \
   -e PGPASSWORD="${postgres_password}" \
@@ -904,6 +906,16 @@ oauth_vault_setup_token="$(
   OAUTH_USER_ID="${oauth_vault_setup_user_id}" \
   OAUTH_EMAIL="${oauth_vault_setup_email}" \
   OAUTH_TENANT_ID="${tenant_id}" \
+  OAUTH_IP_UA_HASH="$(
+    OAUTH_VAULT_SETUP_FORWARDED_IP="${oauth_vault_setup_forwarded_ip}" \
+    OAUTH_VAULT_SETUP_USER_AGENT="${oauth_vault_setup_user_agent}" \
+    python3 - <<'PY'
+import hashlib
+import os
+
+print(hashlib.sha256(f"{os.environ['OAUTH_VAULT_SETUP_FORWARDED_IP']}|{os.environ['OAUTH_VAULT_SETUP_USER_AGENT']}".encode("utf-8")).hexdigest())
+PY
+  )" \
   JWT_SECRET_VALUE="${jwt_secret}" \
   python3 - <<'PY'
 import base64
@@ -923,6 +935,7 @@ payload = {
     "tenantId": os.environ["OAUTH_TENANT_ID"],
     "tenantRole": "MEMBER",
     "type": "access",
+    "ipUaHash": os.environ["OAUTH_IP_UA_HASH"],
     "exp": int(time.time()) + 900,
     "iat": int(time.time()),
 }
@@ -937,6 +950,8 @@ PY
 oauth_vault_setup_json="$(curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${oauth_vault_setup_token}" \
+  -H "user-agent: ${oauth_vault_setup_user_agent}" \
+  -H "x-forwarded-for: ${oauth_vault_setup_forwarded_ip}" \
   -H 'content-type: application/json' \
   -d '{"vaultPassword":"VaultSetup91Qx"}' \
   "${api_base}/auth/oauth/vault-setup")"

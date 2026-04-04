@@ -131,7 +131,7 @@ func buildPostgresDSN(target *contracts.DatabaseTarget) (string, error) {
 	query := u.Query()
 	query.Set("application_name", "arsenale-query-runner")
 	query.Set("connect_timeout", "10")
-	if sslMode := strings.TrimSpace(target.SSLMode); sslMode != "" {
+	if sslMode := normalizePostgresSSLMode(target.SSLMode); sslMode != "" {
 		query.Set("sslmode", sslMode)
 	}
 	u.RawQuery = query.Encode()
@@ -157,11 +157,11 @@ func buildMySQLDSN(target *contracts.DatabaseTarget) (string, error) {
 		"charset": "utf8mb4",
 	}
 
-	switch strings.ToLower(strings.TrimSpace(target.SSLMode)) {
-	case "", "disable", "disabled", "false", "off":
+	switch tlsMode := normalizeMySQLTLSConfig(target.SSLMode); tlsMode {
+	case "":
 		cfg.TLSConfig = "false"
 	default:
-		cfg.TLSConfig = "preferred"
+		cfg.TLSConfig = tlsMode
 	}
 
 	return cfg.FormatDSN(), nil
