@@ -127,7 +127,7 @@ Primary local URLs:
 Default dev bootstrap credentials come from `deployment/ansible/inventory/group_vars/all/vars.yml`:
 
 ```text
-admin@example.com / DevAdmin123!
+admin@example.com / ArsenaleTemp91Qx
 ```
 
 ## 🧩 Technology Stack

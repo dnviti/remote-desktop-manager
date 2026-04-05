@@ -132,7 +132,7 @@ The development install flow seeds an admin and tenant automatically:
 
 ```text
 Email:    admin@example.com
-Password: DevAdmin123!
+Password: ArsenaleTemp91Qx
 Tenant:   Development Environment
 ```
 

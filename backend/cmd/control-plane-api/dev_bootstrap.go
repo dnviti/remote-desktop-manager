@@ -233,7 +233,7 @@ func loadDevBootstrapOptions() devBootstrapOptions {
 	}
 	return devBootstrapOptions{
 		adminEmail:       requiredEnv("DEV_BOOTSTRAP_ADMIN_EMAIL", "admin@example.com"),
-		adminPassword:    requiredEnv("DEV_BOOTSTRAP_ADMIN_PASSWORD", "DevAdmin123!"),
+		adminPassword:    requiredEnv("DEV_BOOTSTRAP_ADMIN_PASSWORD", "ArsenaleTemp91Qx"),
 		adminUsername:    requiredEnv("DEV_BOOTSTRAP_ADMIN_USERNAME", "admin"),
 		tenantName:       requiredEnv("DEV_BOOTSTRAP_TENANT_NAME", "Development Environment"),
 		certDir:          certDir,

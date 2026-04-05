@@ -30,7 +30,7 @@ arsenale_cookie_secure: true
 arsenale_service_bind_host: 0.0.0.0
 arsenale_dev_bootstrap_admin_email: admin@example.com
 arsenale_dev_bootstrap_admin_username: admin
-arsenale_dev_bootstrap_admin_password: DevAdmin123!
+arsenale_dev_bootstrap_admin_password: ArsenaleTemp91Qx
 arsenale_dev_bootstrap_tenant_name: Development Environment
 
 # Features

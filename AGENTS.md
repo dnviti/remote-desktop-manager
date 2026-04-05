@@ -80,7 +80,7 @@ npm run verify
 
 Notes:
 
-- Local seeded credentials: `admin@example.com` / `DevAdmin123!` for tenant `Development Environment`.
+- Local seeded credentials: `admin@example.com` / `ArsenaleTemp91Qx` for tenant `Development Environment`.
 - If `~/.arsenale/config.yaml` is stale, refresh with `arsenale-cli login` instead of hand-editing tokens.
 - For non-interactive CLI auth, use the existing device-flow endpoints, especially `POST /api/cli/auth/device/authorize`, from an already authenticated browser session.
 - Frontend acceptance must use Selenium/WebDriver against the real local stack, not only component mocks.

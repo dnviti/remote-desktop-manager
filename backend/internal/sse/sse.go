@@ -2,9 +2,11 @@ package sse
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type Stream struct {
@@ -16,6 +18,11 @@ func Open(w http.ResponseWriter) (*Stream, error) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return nil, fmt.Errorf("streaming is not supported")
+	}
+
+	controller := http.NewResponseController(w)
+	if err := controller.SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		return nil, err
 	}
 
 	headers := w.Header()

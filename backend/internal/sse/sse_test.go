@@ -4,6 +4,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestOpenDoesNotSetConnectionHeader(t *testing.T) {
@@ -32,4 +33,30 @@ func TestOpenDoesNotSetConnectionHeader(t *testing.T) {
 	if body := recorder.Body.String(); !strings.HasPrefix(body, "retry: 3000\n\n") {
 		t.Fatalf("unexpected initial retry frame: %q", body)
 	}
+}
+
+func TestOpenClearsWriteDeadline(t *testing.T) {
+	recorder := &deadlineRecorder{ResponseRecorder: httptest.NewRecorder()}
+
+	if _, err := Open(recorder); err != nil {
+		t.Fatalf("open stream: %v", err)
+	}
+	if !recorder.called {
+		t.Fatal("expected write deadline to be cleared")
+	}
+	if !recorder.deadline.IsZero() {
+		t.Fatalf("expected zero write deadline, got %v", recorder.deadline)
+	}
+}
+
+type deadlineRecorder struct {
+	*httptest.ResponseRecorder
+	called   bool
+	deadline time.Time
+}
+
+func (r *deadlineRecorder) SetWriteDeadline(deadline time.Time) error {
+	r.called = true
+	r.deadline = deadline
+	return nil
 }

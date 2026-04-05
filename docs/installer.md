@@ -84,7 +84,7 @@ Default dev credentials:
 
 ```
 Email:    admin@example.com
-Password: DevAdmin123!
+Password: ArsenaleTemp91Qx
 Tenant:   Development Environment
 ```
 
