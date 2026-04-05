@@ -9,7 +9,7 @@ import (
 
 var aiCmd = &cobra.Command{
 	Use:   "ai",
-	Short: "Manage AI configuration",
+	Short: "Manage and use AI features",
 }
 
 var aiConfigCmd = &cobra.Command{
@@ -56,7 +56,7 @@ func runAiConfigGet(cmd *cobra.Command, args []string) {
 	checkAPIError(status, body)
 	printer().PrintSingle(body, []Column{
 		{Header: "PROVIDER", Field: "provider"},
-		{Header: "MODEL", Field: "model"},
+		{Header: "MODEL", Field: "modelId"},
 		{Header: "ENABLED", Field: "enabled"},
 	})
 }

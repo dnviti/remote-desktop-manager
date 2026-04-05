@@ -51,6 +51,28 @@ func readResourceFromFileOrStdin(path string) ([]byte, error) {
 	return jsonData, nil
 }
 
+// readTextFromFileOrStdin reads plain text from a file path or stdin.
+// If path is "-", reads from stdin. Leading and trailing whitespace is trimmed.
+func readTextFromFileOrStdin(path string) (string, error) {
+	var data []byte
+	var err error
+
+	if path == "-" {
+		data, err = io.ReadAll(os.Stdin)
+	} else {
+		data, err = os.ReadFile(path)
+	}
+	if err != nil {
+		return "", fmt.Errorf("read input: %w", err)
+	}
+
+	text := strings.TrimSpace(string(data))
+	if text == "" {
+		return "", fmt.Errorf("empty input")
+	}
+	return text, nil
+}
+
 // convertYAMLToJSON recursively converts YAML-parsed types to JSON-compatible types.
 // YAML unmarshal produces map[string]interface{} but sometimes map[interface{}]interface{}.
 func convertYAMLToJSON(v interface{}) interface{} {

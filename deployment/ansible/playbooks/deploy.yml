@@ -676,12 +676,24 @@
           -d "{\"config\":{\"tenantId\":\"${tenant_id}\",\"provider\":\"openai\",\"modelId\":\"gpt-4o\",\"maxTokensPerRequest\":2048,\"dailyRequestLimit\":50,\"enabled\":true},\"apiKeyConfigured\":false}" \
           http://127.0.0.1:18083/v1/provider-configs:validate \
           | jq -e '.valid == false and (.errors | any(. == "provider requires an API key"))' >/dev/null
+        current_config="$(
+          curl --silent --show-error --fail \
+            "http://127.0.0.1:18083/v1/provider-configs/${tenant_id}" \
+            | jq -c '.config'
+        )"
         curl --silent --show-error --fail \
           -X PUT \
           -H "content-type: application/json" \
-          -d '{"provider":"openai","apiKey":"ansible-key","modelId":"gpt-4o-mini","maxTokensPerRequest":2048,"dailyRequestLimit":50,"enabled":true}' \
+          -d "$(jq -c '{provider,modelId,baseUrl,maxTokensPerRequest,dailyRequestLimit,enabled}' <<<"${current_config}")" \
           "http://127.0.0.1:18083/v1/provider-configs/${tenant_id}" \
-          | jq -e '.config.provider == "openai" and .config.hasApiKey == true and .config.modelId == "gpt-4o-mini"' >/dev/null
+          | jq -e --argjson current "${current_config}" '
+              .config.provider == $current.provider
+              and .config.hasApiKey == $current.hasApiKey
+              and .config.modelId == $current.modelId
+              and .config.maxTokensPerRequest == $current.maxTokensPerRequest
+              and .config.dailyRequestLimit == $current.dailyRequestLimit
+              and .config.enabled == $current.enabled
+            ' >/dev/null
       args:
         executable: /bin/bash
       retries: 24

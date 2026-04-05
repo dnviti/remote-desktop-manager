@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -65,6 +67,7 @@ type optimizationConversation struct {
 	Rounds       int
 	ApprovedData map[string]any
 	Messages     []llmMessage
+	Overrides    *llmOverrides
 	CreatedAt    time.Time
 }
 
@@ -374,6 +377,10 @@ func (s Service) HandleOptimizeQuery(w http.ResponseWriter, r *http.Request, cla
 		return
 	}
 	if req.DBProtocol == "" {
+		_, sessionProtocol := s.fetchSchemaForAI(r.Context(), claims.UserID, claims.TenantID, req.SessionID)
+		req.DBProtocol = normalizeKnownDBProtocol(sessionProtocol)
+	}
+	if req.DBProtocol == "" {
 		app.ErrorJSON(w, http.StatusBadRequest, `Unsupported dbProtocol "". Must be one of: postgresql, mysql, mongodb, oracle, mssql, db2`)
 		return
 	}
@@ -453,22 +460,11 @@ func (s Service) analyzeQueryIntent(ctx context.Context, params analyzeQueryInte
 		return aiAnalyzeResult{}, &requestError{status: http.StatusForbidden, message: "AI query generation is not enabled"}
 	}
 
-	var overrides *llmOverrides
-	if tenantCfg.Provider != contracts.AIProviderNone && tenantCfg.APIKey != "" {
-		model := strings.TrimSpace(tenantCfg.ModelID)
-		if model == "" {
-			model = strings.TrimSpace(envCfg.QueryGenerationModel)
-		}
-		overrides = &llmOverrides{
-			Provider:    tenantCfg.Provider,
-			APIKey:      tenantCfg.APIKey,
-			Model:       model,
-			BaseURL:     strings.TrimSpace(tenantCfg.BaseURL),
-			MaxTokens:   tenantCfg.MaxTokensPerRequest,
-			Temperature: envCfg.Temperature,
-			Timeout:     envCfg.Timeout,
-		}
-	} else if strings.TrimSpace(envCfg.QueryGenerationModel) != "" {
+	overrides := tenantLLMOverrides(tenantCfg, envCfg)
+	if overrides != nil && strings.TrimSpace(overrides.Model) == "" {
+		overrides.Model = strings.TrimSpace(envCfg.QueryGenerationModel)
+	}
+	if overrides == nil && strings.TrimSpace(envCfg.QueryGenerationModel) != "" {
 		overrides = &llmOverrides{Model: strings.TrimSpace(envCfg.QueryGenerationModel)}
 	}
 
@@ -491,16 +487,9 @@ func (s Service) analyzeQueryIntent(ctx context.Context, params analyzeQueryInte
 	}
 
 	requests := parsePlanningResponse(raw.Content)
-	schemaLookup := make(map[string]struct{}, len(params.Schema))
-	for _, table := range params.Schema {
-		schemaLookup[strings.ToLower(table.Schema+"."+table.Name)] = struct{}{}
-	}
-
-	filtered := make([]objectRequest, 0, len(requests))
-	for _, item := range requests {
-		if _, ok := schemaLookup[strings.ToLower(item.Schema+"."+item.Name)]; ok {
-			filtered = append(filtered, item)
-		}
+	filtered := resolvePlanningRequests(requests, params.Schema)
+	if len(filtered) == 0 {
+		filtered = heuristicPlanningFallback(params.Prompt, params.Schema)
 	}
 	if len(filtered) == 0 {
 		return aiAnalyzeResult{}, &requestError{status: http.StatusBadRequest, message: "The AI could not identify any relevant tables for your request. Try rephrasing."}
@@ -660,7 +649,12 @@ func (s Service) confirmAndGenerate(ctx context.Context, conversationID string, 
 
 func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, userID, tenantID, ipAddress string) (optimizeQueryResult, error) {
 	envCfg := loadAIEnvConfig()
-	if strings.TrimSpace(string(envCfg.Provider)) == "" {
+	tenantCfg, err := s.loadTenantRuntimeConfig(ctx, tenantID)
+	if err != nil {
+		return optimizeQueryResult{}, err
+	}
+	overrides := tenantLLMOverrides(tenantCfg, envCfg)
+	if overrides == nil && strings.TrimSpace(string(envCfg.Provider)) == "" {
 		return optimizeQueryResult{}, &requestError{
 			status:  http.StatusServiceUnavailable,
 			message: "AI query optimization is not available. An administrator must configure an AI/LLM provider in Settings.",
@@ -673,7 +667,7 @@ func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, us
 		{Role: "user", Content: buildFirstTurnMessage(input)},
 	}
 
-	raw, err := s.completeLLM(ctx, llmCompletionOptions{Messages: messages}, nil)
+	raw, err := s.completeLLM(ctx, llmCompletionOptions{Messages: messages}, overrides)
 	var parsed firstTurnResponse
 	if err != nil {
 		parsed = buildHeuristicDataRequests(input.SQL)
@@ -693,14 +687,17 @@ func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, us
 		Rounds:       0,
 		ApprovedData: map[string]any{},
 		Messages:     append([]llmMessage(nil), messages...),
+		Overrides:    overrides,
 		CreatedAt:    now,
 	}
 	state.mu.Unlock()
 
+	provider, modelID := effectiveLLMProviderAndModel(overrides, envCfg)
 	_ = s.insertAuditLog(ctx, userID, "DB_QUERY_AI_OPTIMIZED", "DatabaseQuery", input.SessionID, map[string]any{
 		"conversationId":   conversationID,
 		"phase":            "initial",
-		"provider":         string(envCfg.Provider),
+		"provider":         provider,
+		"model":            modelID,
 		"dataRequestCount": len(parsed.DataRequests),
 		"dataRequestTypes": collectDataRequestTypes(parsed.DataRequests),
 	}, ipAddress)
@@ -760,21 +757,19 @@ func (s Service) continueOptimization(ctx context.Context, conversationID string
 		llmMessage{Role: "user", Content: buildSecondTurnMessage(approvedData)},
 	)
 
-	raw, err := s.completeLLM(ctx, llmCompletionOptions{Messages: messages}, nil)
-	parsed := secondTurnResponse{
-		OptimizedSQL: conversation.Input.SQL,
-		Explanation:  "AI analysis could not be completed. The original query is returned unchanged.",
-		Changes:      []string{},
+	raw, err := s.completeLLM(ctx, llmCompletionOptions{Messages: messages}, conversation.Overrides)
+	if err != nil {
+		return optimizeQueryResult{}, err
 	}
-	if err == nil {
-		parsed = parseSecondTurnResponse(raw.Content, conversation.Input.SQL)
-	}
+	parsed := parseSecondTurnResponse(raw.Content, conversation.Input.SQL)
 
+	provider, modelID := effectiveLLMProviderAndModel(conversation.Overrides, loadAIEnvConfig())
 	_ = s.insertAuditLog(ctx, userID, "DB_QUERY_AI_OPTIMIZED", "DatabaseQuery", conversation.Input.SessionID, map[string]any{
 		"conversationId":   conversationID,
 		"phase":            "continue",
 		"round":            conversation.Rounds,
-		"provider":         string(loadAIEnvConfig().Provider),
+		"provider":         provider,
+		"model":            modelID,
 		"approvedDataKeys": mapKeys(approvedData),
 	}, ipAddress)
 
@@ -842,6 +837,52 @@ WHERE "tenantId" = $1
 		}
 	}
 	return cfg, nil
+}
+
+func tenantLLMOverrides(tenantCfg tenantRuntimeConfig, envCfg aiEnvConfig) *llmOverrides {
+	if tenantCfg.Provider == contracts.AIProviderNone {
+		return nil
+	}
+
+	providerMeta, ok := modelgateway.LookupProvider(tenantCfg.Provider)
+	if ok {
+		if providerMeta.RequiresAPIKey && strings.TrimSpace(tenantCfg.APIKey) == "" {
+			return nil
+		}
+		if providerMeta.RequiresBaseURL && strings.TrimSpace(tenantCfg.BaseURL) == "" {
+			return nil
+		}
+	}
+
+	return &llmOverrides{
+		Provider:    tenantCfg.Provider,
+		APIKey:      strings.TrimSpace(tenantCfg.APIKey),
+		Model:       strings.TrimSpace(tenantCfg.ModelID),
+		BaseURL:     strings.TrimSpace(tenantCfg.BaseURL),
+		MaxTokens:   tenantCfg.MaxTokensPerRequest,
+		Temperature: envCfg.Temperature,
+		Timeout:     envCfg.Timeout,
+	}
+}
+
+func effectiveLLMProviderAndModel(overrides *llmOverrides, envCfg aiEnvConfig) (string, string) {
+	provider := strings.TrimSpace(string(envCfg.Provider))
+	modelID := strings.TrimSpace(envCfg.Model)
+	if overrides != nil {
+		if value := strings.TrimSpace(string(overrides.Provider)); value != "" {
+			provider = value
+		}
+		if value := strings.TrimSpace(overrides.Model); value != "" {
+			modelID = value
+		}
+	}
+	if modelID == "" && provider != "" {
+		modelID = defaultModelForProvider(contracts.AIProviderID(provider))
+	}
+	if provider == "" {
+		provider = "none"
+	}
+	return provider, modelID
 }
 
 func (s Service) incrementDailyCounter(ctx context.Context, tenantID string, limit int) error {
@@ -1074,7 +1115,8 @@ func (s Service) completeAnthropic(ctx context.Context, messages []llmMessage, m
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return llmCompletionResult{}, &requestError{status: http.StatusBadGateway, message: fmt.Sprintf("AI service returned an error (status %d).", resp.StatusCode)}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return llmCompletionResult{}, &requestError{status: http.StatusBadGateway, message: aiProviderHTTPError(resp.StatusCode, body)}
 	}
 
 	var decoded struct {
@@ -1126,7 +1168,8 @@ func (s Service) completeOpenAICompatible(ctx context.Context, messages []llmMes
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return llmCompletionResult{}, &requestError{status: http.StatusBadGateway, message: fmt.Sprintf("AI service returned an error (status %d).", resp.StatusCode)}
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return llmCompletionResult{}, &requestError{status: http.StatusBadGateway, message: aiProviderHTTPError(resp.StatusCode, body)}
 	}
 
 	var decoded struct {
@@ -1235,12 +1278,302 @@ func parseEnvFloat(name string, fallback float64) float64 {
 	return parsed
 }
 
+func aiProviderHTTPError(status int, body []byte) string {
+	detail := aiProviderErrorDetail(body)
+	if status == http.StatusTooManyRequests {
+		if detail != "" {
+			return fmt.Sprintf("AI provider rate limit or quota exceeded (status %d): %s", status, detail)
+		}
+		return fmt.Sprintf("AI provider rate limit or quota exceeded (status %d). Check the configured API key, model access, and billing/quota.", status)
+	}
+	if detail != "" {
+		return fmt.Sprintf("AI service returned an error (status %d): %s", status, detail)
+	}
+	return fmt.Sprintf("AI service returned an error (status %d).", status)
+}
+
+func aiProviderErrorDetail(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if trimmed == "" {
+		return ""
+	}
+
+	var openAIStyle struct {
+		Error struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+			Code    string `json:"code"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &openAIStyle) == nil {
+		if detail := normalizeAIProviderDetail(openAIStyle.Error.Message, openAIStyle.Error.Code, openAIStyle.Error.Type); detail != "" {
+			return detail
+		}
+	}
+
+	var generic struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Code    string `json:"code"`
+	}
+	if json.Unmarshal(body, &generic) == nil {
+		if detail := normalizeAIProviderDetail(generic.Message, generic.Code, generic.Type); detail != "" {
+			return detail
+		}
+	}
+
+	return normalizeAIProviderDetail(trimmed, "", "")
+}
+
+func normalizeAIProviderDetail(message, code, typ string) string {
+	message = strings.Join(strings.Fields(strings.TrimSpace(message)), " ")
+	code = strings.TrimSpace(code)
+	typ = strings.TrimSpace(typ)
+
+	switch {
+	case message != "" && code != "":
+		message = fmt.Sprintf("%s (%s)", message, code)
+	case message != "" && typ != "":
+		message = fmt.Sprintf("%s (%s)", message, typ)
+	case message == "" && code != "":
+		message = code
+	case message == "" && typ != "":
+		message = typ
+	}
+
+	if len(message) > 240 {
+		message = message[:237] + "..."
+	}
+	return message
+}
+
 func normalizeKnownDBProtocol(protocol string) string {
 	protocol = strings.ToLower(strings.TrimSpace(protocol))
 	if _, ok := knownDBProtocols[protocol]; ok {
 		return protocol
 	}
 	return ""
+}
+
+func normalizePlanningIdentifier(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.Trim(value, "`\"'")
+	value = strings.TrimPrefix(value, "[")
+	value = strings.TrimSuffix(value, "]")
+	return value
+}
+
+func splitQualifiedPlanningName(name string) (string, string) {
+	name = normalizePlanningIdentifier(name)
+	if !strings.Contains(name, ".") {
+		return "", name
+	}
+	parts := strings.SplitN(name, ".", 2)
+	return normalizePlanningIdentifier(parts[0]), normalizePlanningIdentifier(parts[1])
+}
+
+func resolvePlanningRequests(requests []objectRequest, schema []contracts.SchemaTable) []objectRequest {
+	qualified := make(map[string]contracts.SchemaTable, len(schema))
+	byName := make(map[string][]contracts.SchemaTable, len(schema))
+	for _, table := range schema {
+		normalizedSchema := normalizePlanningIdentifier(table.Schema)
+		normalizedName := normalizePlanningIdentifier(table.Name)
+		qualified[strings.ToLower(normalizedSchema+"."+normalizedName)] = table
+		byName[strings.ToLower(normalizedName)] = append(byName[strings.ToLower(normalizedName)], table)
+	}
+
+	resolved := make([]objectRequest, 0, len(requests))
+	seen := make(map[string]struct{}, len(requests))
+	appendResolved := func(table contracts.SchemaTable, reason string) {
+		key := strings.ToLower(normalizePlanningIdentifier(table.Schema) + "." + normalizePlanningIdentifier(table.Name))
+		if _, ok := seen[key]; ok {
+			return
+		}
+		seen[key] = struct{}{}
+		resolved = append(resolved, objectRequest{
+			Name:   strings.TrimSpace(table.Name),
+			Schema: strings.TrimSpace(table.Schema),
+			Reason: strings.TrimSpace(reason),
+		})
+	}
+
+	for _, item := range requests {
+		name := normalizePlanningIdentifier(item.Name)
+		schemaName := normalizePlanningIdentifier(item.Schema)
+		if name == "" {
+			continue
+		}
+		if schemaName == "" && strings.Contains(name, ".") {
+			schemaName, name = splitQualifiedPlanningName(name)
+		}
+		if schemaName != "" {
+			if table, ok := qualified[strings.ToLower(schemaName+"."+name)]; ok {
+				appendResolved(table, item.Reason)
+				continue
+			}
+		}
+		candidates := byName[strings.ToLower(name)]
+		if len(candidates) == 1 {
+			appendResolved(candidates[0], item.Reason)
+			continue
+		}
+		if table, ok := fuzzyResolvePlanningTable(name, schemaName, schema); ok {
+			appendResolved(table, item.Reason)
+		}
+	}
+
+	return resolved
+}
+
+func fuzzyResolvePlanningTable(name, schemaName string, schema []contracts.SchemaTable) (contracts.SchemaTable, bool) {
+	requestTokens := tokenizePlanningText(strings.TrimSpace(schemaName + " " + name))
+	if len(requestTokens) == 0 {
+		return contracts.SchemaTable{}, false
+	}
+
+	bestScore := 0
+	bestIndex := -1
+	ambiguous := false
+	for idx, table := range schema {
+		score := scorePlanningTableTokens(requestTokens, table)
+		if schemaName != "" && strings.EqualFold(strings.TrimSpace(table.Schema), strings.TrimSpace(schemaName)) {
+			score += 2
+		}
+		if score <= 0 {
+			continue
+		}
+		if score > bestScore {
+			bestScore = score
+			bestIndex = idx
+			ambiguous = false
+			continue
+		}
+		if score == bestScore {
+			ambiguous = true
+		}
+	}
+
+	if bestIndex < 0 || ambiguous {
+		return contracts.SchemaTable{}, false
+	}
+	return schema[bestIndex], true
+}
+
+func heuristicPlanningFallback(prompt string, schema []contracts.SchemaTable) []objectRequest {
+	promptTokens := tokenizePlanningText(prompt)
+	if len(promptTokens) == 0 {
+		return nil
+	}
+
+	type candidate struct {
+		table contracts.SchemaTable
+		score int
+	}
+
+	candidates := make([]candidate, 0, len(schema))
+	for _, table := range schema {
+		score := scorePlanningTableTokens(promptTokens, table)
+		if score <= 0 {
+			continue
+		}
+		candidates = append(candidates, candidate{table: table, score: score})
+	}
+	if len(candidates) == 0 {
+		return nil
+	}
+
+	sort.SliceStable(candidates, func(i, j int) bool {
+		if candidates[i].score == candidates[j].score {
+			left := strings.ToLower(candidates[i].table.Schema + "." + candidates[i].table.Name)
+			right := strings.ToLower(candidates[j].table.Schema + "." + candidates[j].table.Name)
+			return left < right
+		}
+		return candidates[i].score > candidates[j].score
+	})
+
+	limit := len(candidates)
+	if limit > 5 {
+		limit = 5
+	}
+
+	resolved := make([]objectRequest, 0, limit)
+	for _, item := range candidates[:limit] {
+		resolved = append(resolved, objectRequest{
+			Name:   strings.TrimSpace(item.table.Name),
+			Schema: strings.TrimSpace(item.table.Schema),
+			Reason: "Matched prompt keywords heuristically after AI planning returned no direct table match.",
+		})
+	}
+	return resolved
+}
+
+func tokenizePlanningText(value string) map[string]struct{} {
+	parts := strings.FieldsFunc(strings.ToLower(value), func(r rune) bool {
+		return (r < 'a' || r > 'z') && (r < '0' || r > '9')
+	})
+	if len(parts) == 0 {
+		return nil
+	}
+
+	stopwords := map[string]struct{}{
+		"a": {}, "an": {}, "and": {}, "all": {}, "by": {}, "for": {}, "from": {},
+		"get": {}, "give": {}, "in": {}, "list": {}, "me": {}, "of": {}, "on": {},
+		"show": {}, "the": {}, "to": {}, "top": {}, "with": {},
+	}
+
+	tokens := make(map[string]struct{}, len(parts))
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if len(part) < 3 {
+			continue
+		}
+		if _, skip := stopwords[part]; skip {
+			continue
+		}
+		tokens[part] = struct{}{}
+		if singular := strings.TrimSuffix(part, "s"); singular != part && len(singular) >= 3 {
+			tokens[singular] = struct{}{}
+		}
+	}
+	return tokens
+}
+
+func scorePlanningTableTokens(promptTokens map[string]struct{}, table contracts.SchemaTable) int {
+	if len(promptTokens) == 0 {
+		return 0
+	}
+
+	tableTokens := tokenizePlanningText(table.Schema + " " + table.Name)
+	score := 0
+	for token := range tableTokens {
+		if isPlanningNoiseToken(token) {
+			continue
+		}
+		if _, ok := promptTokens[token]; ok {
+			score += 3
+		}
+	}
+	for _, column := range table.Columns {
+		columnTokens := tokenizePlanningText(column.Name)
+		for token := range columnTokens {
+			if isPlanningNoiseToken(token) {
+				continue
+			}
+			if _, ok := promptTokens[token]; ok {
+				score++
+			}
+		}
+	}
+	return score
+}
+
+func isPlanningNoiseToken(token string) bool {
+	switch token {
+	case "all", "arsenale", "data", "dbo", "demo", "field", "public", "record", "table", "value":
+		return true
+	default:
+		return false
+	}
 }
 
 func buildPlanningSystemPrompt() string {
@@ -1304,12 +1637,9 @@ func parsePlanningResponse(raw string) []objectRequest {
 		}
 		schema, _ := record["schema"].(string)
 		reason, _ := record["reason"].(string)
-		if strings.TrimSpace(schema) == "" {
-			schema = "public"
-		}
 		result = append(result, objectRequest{
-			Name:   strings.TrimSpace(name),
-			Schema: strings.TrimSpace(schema),
+			Name:   normalizePlanningIdentifier(name),
+			Schema: normalizePlanningIdentifier(schema),
 			Reason: strings.TrimSpace(reason),
 		})
 	}
