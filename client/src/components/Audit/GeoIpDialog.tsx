@@ -15,13 +15,14 @@ import {
   VpnLock as VpnIcon,
   Storage as HostingIcon,
 } from '@mui/icons-material';
-import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import { MapContainer, Marker, Popup } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '../../api/client';
 import { countryFlag } from './IpGeoCell';
 import { SlideUp } from '../common/SlideUp';
 import { extractApiError } from '../../utils/apiError';
 import { ensureLeafletDefaultIcon } from '../../lib/leafletMarkerIcon';
+import { WorldBasemap } from './WorldBasemap';
 
 ensureLeafletDefaultIcon();
 
@@ -213,14 +214,15 @@ export default function GeoIpDialog({ open, onClose, ipAddress }: GeoIpDialogPro
                 <MapContainer
                   center={[data.lat ?? 0, data.lon ?? 0]}
                   zoom={10}
-                  style={{ width: '100%', height: '100%', minHeight: 400 }}
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    minHeight: 400,
+                    background: 'radial-gradient(circle at top, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0.04) 38%, rgba(248, 250, 252, 0.96) 100%)',
+                  }}
                   scrollWheelZoom
                 >
-                  <TileLayer
-                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    subdomains={['a', 'b', 'c']}
-                  />
+                  <WorldBasemap />
                   <Marker position={[data.lat ?? 0, data.lon ?? 0]}>
                     <Popup>
                       <strong>{data.query}</strong><br />

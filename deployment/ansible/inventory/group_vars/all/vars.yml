@@ -16,6 +16,7 @@ arsenale_desktop_broker_port: 18091
 arsenale_tunnel_broker_port: 18092
 arsenale_query_runner_port: 18093
 arsenale_runtime_agent_port: 18095
+arsenale_map_assets_port: 18096
 arsenale_node_env: production
 
 # Database
@@ -58,6 +59,7 @@ arsenale_component_images:
   desktop-broker: "{{ arsenale_registry }}/desktop-broker:{{ arsenale_image_tag }}"
   tunnel-broker: "{{ arsenale_registry }}/tunnel-broker-go:{{ arsenale_image_tag }}"
   query-runner: "{{ arsenale_registry }}/query-runner:{{ arsenale_image_tag }}"
+  map-assets: "{{ arsenale_registry }}/map-assets:{{ arsenale_image_tag }}"
   memory-service: "{{ arsenale_registry }}/memory-service:{{ arsenale_image_tag }}"
   agent-orchestrator: "{{ arsenale_registry }}/agent-orchestrator:{{ arsenale_image_tag }}"
   runtime-agent: "{{ arsenale_registry }}/runtime-agent:{{ arsenale_image_tag }}"

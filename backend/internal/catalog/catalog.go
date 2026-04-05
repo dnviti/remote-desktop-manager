@@ -14,6 +14,7 @@ var services = []contracts.ServiceMetadata{
 	{Name: contracts.ServiceDesktopBroker, Plane: contracts.PlaneRuntime, Description: "Browser RDP/VNC broker", DefaultPort: 8091, Public: true, Stateless: true, Dependencies: []string{"redis", "guacd"}},
 	{Name: contracts.ServiceTunnelBroker, Plane: contracts.PlaneRuntime, Description: "Tunnel registration, ownership, and stream multiplexing", DefaultPort: 8092, Public: false, Stateless: false, Dependencies: []string{"redis"}},
 	{Name: contracts.ServiceQueryRunner, Plane: contracts.PlaneRuntime, Description: "Database session and query execution service", DefaultPort: 8093, Public: false, Stateless: true, Dependencies: []string{"postgres", "redis"}},
+	{Name: contracts.ServiceMapAssets, Plane: contracts.PlaneRuntime, Description: "Raster XYZ tile service for IP geolocation maps", DefaultPort: 8096, Public: true, Stateless: true},
 	{Name: contracts.ServiceRecordingWorker, Plane: contracts.PlaneRuntime, Description: "Recording conversion and retention worker", DefaultPort: 8094, Public: false, Stateless: false, Dependencies: []string{"postgres", "s3"}},
 	{Name: contracts.ServiceRuntimeAgent, Plane: contracts.PlaneExecution, Description: "Host-local Docker/Podman runtime agent", DefaultPort: 8095, Public: false, Stateless: false},
 }

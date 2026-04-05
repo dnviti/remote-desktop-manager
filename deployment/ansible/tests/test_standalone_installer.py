@@ -63,6 +63,7 @@ def _render_compose(**overrides: object) -> dict[str, object]:
         "desktop-broker": "ghcr.io/dnviti/arsenale/desktop-broker:latest",
         "tunnel-broker": "ghcr.io/dnviti/arsenale/tunnel-broker-go:latest",
         "query-runner": "ghcr.io/dnviti/arsenale/query-runner:latest",
+        "map-assets": "ghcr.io/dnviti/arsenale/map-assets:latest",
         "memory-service": "ghcr.io/dnviti/arsenale/memory-service:latest",
         "agent-orchestrator": "ghcr.io/dnviti/arsenale/agent-orchestrator:latest",
         "runtime-agent": "ghcr.io/dnviti/arsenale/runtime-agent:latest",
@@ -106,6 +107,7 @@ def _render_compose(**overrides: object) -> dict[str, object]:
         "arsenale_tunnel_broker_port": 18092,
         "arsenale_query_runner_port": 18093,
         "arsenale_runtime_agent_port": 18095,
+        "arsenale_map_assets_port": 18096,
         "arsenale_dev_bootstrap_admin_email": "admin@example.com",
         "arsenale_dev_bootstrap_admin_username": "admin",
         "arsenale_dev_bootstrap_admin_password": "DevAdmin123!",
@@ -294,6 +296,7 @@ class StandaloneInstallerConfigTest(unittest.TestCase):
                 "desktop-broker",
                 "tunnel-broker-go",
                 "query-runner",
+                "map-assets",
                 "runtime-agent",
                 "client",
             }.issubset(docker_services)

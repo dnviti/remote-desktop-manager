@@ -53,6 +53,7 @@ The database rule remains deliberate: the control plane is an orchestrator and p
 | Runtime | `desktop-broker` | `8091` | Browser RDP and VNC runtime |
 | Runtime | `tunnel-broker` | `8092` | Tunnel registration and TCP proxying |
 | Runtime | `query-runner` | `8093` | Shared query execution service |
+| Runtime | `map-assets` | `8096` | Dedicated raster XYZ tile service for GeoIP-enabled UIs |
 | Runtime | `recording-worker` | `8094` | Recording conversion and retention |
 | Execution | `runtime-agent` | `8095` | Host-local workload validation |
 | Runtime gateway | `db-proxy` | `5432` | Database middleware for connectivity, query, schema, plan, introspection, and tunneled database access |
@@ -80,6 +81,7 @@ flowchart TD
         PublicConfig["/api/auth/config"]
         Terminal["terminal-broker"]
         Desktop["desktop-broker"]
+        MapAssets["map-assets"]
     end
 
     subgraph control["Control and agent services"]
@@ -115,6 +117,7 @@ flowchart TD
     PublicConfig --> API
     Client --> Terminal
     Client --> Desktop
+    Client --> MapAssets
 
     API --> Features
     API --> Postgres
@@ -155,6 +158,7 @@ Important architectural consequences:
 - `backend/cmd/control-plane-api/routes.go` only registers secrets routes when `KeychainEnabled` is true.
 - Session routes are only registered when `AnyConnectionFeature()` is true.
 - Database session and DB audit surfaces depend on `DatabaseProxyEnabled`.
+- GeoIP lookups and audit-map views depend on `IPGeolocationEnabled`.
 - Gateway and tunnel surfaces depend on `ZeroTrustEnabled`.
 - The client starts fail-open with enabled defaults, then narrows to the server-provided manifest after `GET /api/auth/config` succeeds.
 

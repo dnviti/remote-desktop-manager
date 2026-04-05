@@ -55,6 +55,7 @@ class InstallModelTest(unittest.TestCase):
                 "keychain": True,
                 "multi_tenancy": True,
                 "connections": True,
+                "ip_geolocation": True,
                 "databases": True,
                 "recordings": True,
                 "zero_trust": False,
@@ -80,6 +81,7 @@ class InstallModelTest(unittest.TestCase):
                 "keychain": False,
                 "multi_tenancy": False,
                 "connections": False,
+                "ip_geolocation": False,
                 "databases": False,
                 "recordings": False,
                 "zero_trust": False,
@@ -99,6 +101,7 @@ class InstallModelTest(unittest.TestCase):
             resolved["services"],
             ["client", "control-plane-api", "migrate", "postgres", "redis"],
         )
+        self.assertEqual(resolved["environment"]["FEATURE_IP_GEOLOCATION_ENABLED"], "false")
         self.assertEqual(resolved["environment"]["FEATURE_KEYCHAIN_ENABLED"], "true")
         self.assertEqual(resolved["environment"]["FEATURE_MULTI_TENANCY_ENABLED"], "false")
         self.assertFalse(resolved["routing"]["zeroTrust"])
@@ -115,6 +118,7 @@ class InstallModelTest(unittest.TestCase):
                 "keychain": False,
                 "multi_tenancy": False,
                 "connections": False,
+                "ip_geolocation": False,
                 "databases": False,
                 "recordings": False,
                 "zero_trust": False,
@@ -139,6 +143,7 @@ class InstallModelTest(unittest.TestCase):
                 "recordings": True,
                 "multi_tenancy": True,
                 "connections": False,
+                "ip_geolocation": False,
                 "databases": False,
                 "zero_trust": False,
                 "agentic_ai": False,
@@ -163,6 +168,7 @@ class InstallModelTest(unittest.TestCase):
                 "keychain": True,
                 "multi_tenancy": True,
                 "connections": True,
+                "ip_geolocation": True,
                 "databases": False,
                 "recordings": False,
                 "zero_trust": False,
@@ -228,6 +234,7 @@ class InstallModelTest(unittest.TestCase):
                 "keychain": True,
                 "multi_tenancy": True,
                 "connections": True,
+                "ip_geolocation": True,
                 "databases": True,
                 "recordings": True,
                 "zero_trust": False,
@@ -279,6 +286,38 @@ class InstallModelTest(unittest.TestCase):
                 resolved["environment"]["API_UPSTREAM_HOST"],
                 "control-plane-api.arsenale-k8s.svc.cluster.local",
             )
+            self.assertEqual(
+                resolved["environment"]["MAP_ASSETS_UPSTREAM_HOST"],
+                "map-assets.arsenale-k8s.svc.cluster.local",
+            )
+
+    def test_ip_geolocation_capability_adds_map_assets_service(self) -> None:
+        profile = {
+            "schemaVersion": "1.0.0",
+            "mode": "production",
+            "backend": "podman",
+            "capabilities": {
+                "core": True,
+                "keychain": True,
+                "multi_tenancy": False,
+                "connections": False,
+                "ip_geolocation": True,
+                "databases": False,
+                "recordings": False,
+                "zero_trust": False,
+                "agentic_ai": False,
+                "enterprise_auth": False,
+                "sharing_approvals": False,
+                "cli": False,
+            },
+            "routing": {"directGateway": False, "zeroTrust": False},
+        }
+
+        resolved = install_model.resolve_profile(profile, self.catalog)
+
+        self.assertTrue(resolved["capabilities"]["ip_geolocation"])
+        self.assertIn("map-assets", resolved["services"])
+        self.assertEqual(resolved["environment"]["FEATURE_IP_GEOLOCATION_ENABLED"], "true")
 
     def test_prune_compose_removes_disabled_services_and_unused_top_level_objects(self) -> None:
         compose = {

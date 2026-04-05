@@ -251,6 +251,9 @@ func runAuditGeoSummary(cmd *cobra.Command, args []string) {
 	if err := ensureAuthenticated(cfg); err != nil {
 		fatal("%v", err)
 	}
+	if err := ensureIPGeolocationEnabled(cfg); err != nil {
+		fatal("%v", err)
+	}
 
 	body, status, err := apiGet("/api/audit/tenant/geo-summary", cfg)
 	if err != nil {

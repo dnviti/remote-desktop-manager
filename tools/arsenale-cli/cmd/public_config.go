@@ -10,7 +10,8 @@ type publicConfig struct {
 }
 
 type publicConfigFeatures struct {
-	MultiTenancyEnabled bool `json:"multiTenancyEnabled"`
+	IPGeolocationEnabled bool `json:"ipGeolocationEnabled"`
+	MultiTenancyEnabled  bool `json:"multiTenancyEnabled"`
 }
 
 func getPublicConfigFeatures(cfg *CLIConfig) (publicConfigFeatures, error) {
@@ -36,6 +37,17 @@ func ensureMultiTenancyEnabled(cfg *CLIConfig) error {
 	}
 	if !features.MultiTenancyEnabled {
 		return fmt.Errorf("multi-tenancy is disabled on this platform")
+	}
+	return nil
+}
+
+func ensureIPGeolocationEnabled(cfg *CLIConfig) error {
+	features, err := getPublicConfigFeatures(cfg)
+	if err != nil {
+		return err
+	}
+	if !features.IPGeolocationEnabled {
+		return fmt.Errorf("IP geolocation is disabled on this platform")
 	}
 	return nil
 }

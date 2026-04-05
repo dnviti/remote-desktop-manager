@@ -19,6 +19,7 @@ import {
   getTenantAuditLogs, getTenantAuditGateways, getTenantAuditCountries,
   TenantAuditLogEntry, AuditAction, TenantAuditLogParams, AuditGateway,
 } from '../../api/audit.api';
+import { useFeatureFlagsStore } from '../../store/featureFlagsStore';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
 import { useTenantStore } from '../../store/tenantStore';
 import { ACTION_LABELS, getActionColor, formatDetails, ALL_ACTIONS, TARGET_TYPES } from '../Audit/auditConstants';
@@ -66,6 +67,7 @@ export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick 
   const tenantAuditLogSortOrder = useUiPreferencesStore((s) => s.tenantAuditLogSortOrder);
   const tenantAuditLogViewMode = useUiPreferencesStore((s) => s.tenantAuditLogViewMode);
   const setUiPref = useUiPreferencesStore((s) => s.set);
+  const ipGeolocationEnabled = useFeatureFlagsStore((s) => s.ipGeolocationEnabled);
 
   const users = useTenantStore((s) => s.users);
   const fetchUsers = useTenantStore((s) => s.fetchUsers);
@@ -97,6 +99,12 @@ export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick 
     }, 300);
     return () => clearTimeout(timer);
   }, [searchInput, setUiPref]);
+
+  useEffect(() => {
+    if (!ipGeolocationEnabled && tenantAuditLogViewMode === 'map') {
+      setUiPref('tenantAuditLogViewMode', 'table');
+    }
+  }, [ipGeolocationEnabled, tenantAuditLogViewMode, setUiPref]);
 
   const fetchLogs = useCallback(async () => {
     setLoading(true);
@@ -146,7 +154,7 @@ export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick 
   };
 
   const selectedUser = users.find((u) => u.id === tenantAuditLogUserId) ?? null;
-
+  const effectiveViewMode = ipGeolocationEnabled && tenantAuditLogViewMode === 'map' ? 'map' : 'table';
   const hasActiveFilters = tenantAuditLogAction || tenantAuditLogSearch || tenantAuditLogTargetType || tenantAuditLogGatewayId || tenantAuditLogUserId || ipAddress || geoCountry || startDate || endDate || flaggedOnly;
 
   return (
@@ -157,16 +165,18 @@ export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick 
           <Stack direction="row" spacing={1} alignItems="center">
             <ToggleButtonGroup
               size="small"
-              value={tenantAuditLogViewMode || 'table'}
+              value={effectiveViewMode}
               exclusive
               onChange={(_, val) => { if (val) setUiPref('tenantAuditLogViewMode', val); }}
             >
               <ToggleButton value="table">
                 <Tooltip title="Table view"><ListIcon fontSize="small" /></Tooltip>
               </ToggleButton>
-              <ToggleButton value="map">
-                <Tooltip title="Map view"><MapIcon fontSize="small" /></Tooltip>
-              </ToggleButton>
+              {ipGeolocationEnabled && (
+                <ToggleButton value="map">
+                  <Tooltip title="Map view"><MapIcon fontSize="small" /></Tooltip>
+                </ToggleButton>
+              )}
             </ToggleButtonGroup>
             <Button
               size="small"
@@ -317,7 +327,7 @@ export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick 
 
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
 
-        {tenantAuditLogViewMode === 'map' && (
+        {effectiveViewMode === 'map' && (
           <Suspense fallback={
             <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}><CircularProgress /></Box>
           }>
@@ -329,7 +339,7 @@ export default function TenantAuditLogSection({ onViewUserProfile, onGeoIpClick 
           </Suspense>
         )}
 
-        {tenantAuditLogViewMode !== 'map' && (loading ? (
+        {effectiveViewMode !== 'map' && (loading ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
             <CircularProgress />
           </Box>

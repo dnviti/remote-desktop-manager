@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Box, CircularProgress, Typography, Alert, Paper } from '@mui/material';
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet';
+import { MapContainer, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { getTenantGeoSummary, type GeoSummaryPoint } from '../../api/audit.api';
 import { ensureLeafletDefaultIcon } from '../../lib/leafletMarkerIcon';
+import { WorldBasemap } from './WorldBasemap';
 
 ensureLeafletDefaultIcon();
 
@@ -81,14 +82,14 @@ export default function AuditGeoMap({ onSelectCountry }: AuditGeoMapProps) {
       <MapContainer
         center={[20, 0]}
         zoom={2}
-        style={{ width: '100%', height: '100%' }}
+        style={{
+          width: '100%',
+          height: '100%',
+          background: 'radial-gradient(circle at top, rgba(15, 23, 42, 0.16), rgba(15, 23, 42, 0.04) 38%, rgba(248, 250, 252, 0.96) 100%)',
+        }}
         scrollWheelZoom
       >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          subdomains={['a', 'b', 'c']}
-        />
+        <WorldBasemap />
         <FitBounds points={points} />
         {points.map((point, idx) => {
           const radius = getMarkerRadius(point.count, maxCount);
@@ -165,6 +166,9 @@ export default function AuditGeoMap({ onSelectCountry }: AuditGeoMapProps) {
         ))}
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
           Click marker to filter
+        </Typography>
+        <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
+          Tiles served by the IP geolocation module
         </Typography>
       </Paper>
     </Box>

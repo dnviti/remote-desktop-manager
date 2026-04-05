@@ -10,7 +10,8 @@ func TestParsePublicConfigIncludesMultiTenancy(t *testing.T) {
 
 	raw, err := json.Marshal(publicConfig{
 		Features: publicConfigFeatures{
-			MultiTenancyEnabled: false,
+			IPGeolocationEnabled: false,
+			MultiTenancyEnabled:  false,
 		},
 	})
 	if err != nil {
@@ -23,5 +24,8 @@ func TestParsePublicConfigIncludesMultiTenancy(t *testing.T) {
 	}
 	if parsed.Features.MultiTenancyEnabled {
 		t.Fatal("expected multi-tenancy to be disabled")
+	}
+	if parsed.Features.IPGeolocationEnabled {
+		t.Fatal("expected IP geolocation to be disabled")
 	}
 }

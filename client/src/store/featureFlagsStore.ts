@@ -11,6 +11,7 @@ export const useFeatureFlagsStore = create<FeatureFlagsState>((set) => ({
   // Defaults match server defaults (all enabled) — fail-open
   databaseProxyEnabled: true,
   connectionsEnabled: true,
+  ipGeolocationEnabled: true,
   keychainEnabled: true,
   multiTenancyEnabled: true,
   recordingsEnabled: true,

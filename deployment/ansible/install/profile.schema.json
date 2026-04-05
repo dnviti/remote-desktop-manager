@@ -50,6 +50,9 @@
         "connections": {
           "type": "boolean"
         },
+        "ip_geolocation": {
+          "type": "boolean"
+        },
         "databases": {
           "type": "boolean"
         },

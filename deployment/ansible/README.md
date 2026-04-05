@@ -345,7 +345,7 @@ Enable zero-trust routing [true/false]: false
 **Step 6: Select capabilities** (production only)
 
 ```
-Enabled optional capabilities (comma-separated): multi_tenancy,connections,databases,recordings,agentic_ai,enterprise_auth,sharing_approvals,cli
+Enabled optional capabilities (comma-separated): multi_tenancy,connections,ip_geolocation,databases,recordings,agentic_ai,enterprise_auth,sharing_approvals,cli
 ```
 
 **Step 7: Review the execution plan**
@@ -446,6 +446,7 @@ Capabilities control which services are included in the rendered runtime. They a
 | `keychain` | Keychain | **Required** | Tenant vault, secret storage, external vault integration, password rotation | -- |
 | `multi_tenancy` | Multi-Tenancy | Enabled | Multiple organizations per platform with tenant switching and self-service organization creation | -- |
 | `connections` | Connections | Enabled | SSH, RDP, VNC connections and folders | -- |
+| `ip_geolocation` | IP Geolocation | Enabled | External IP lookups, geolocation audit overlays, and the dedicated `map-assets` tile service | -- |
 | `databases` | Databases | Enabled | Database proxy and SQL tooling | `connections` |
 | `recordings` | Recordings | Enabled | Session recording and video export | `connections` |
 | `zero_trust` | Zero Trust | **Disabled** | Tunnel broker, runtime agent, managed zero-trust gateway path | -- |

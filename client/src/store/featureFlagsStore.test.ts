@@ -10,6 +10,7 @@ describe('useFeatureFlagsStore', () => {
     useFeatureFlagsStore.setState({
       databaseProxyEnabled: true,
       connectionsEnabled: true,
+      ipGeolocationEnabled: true,
       keychainEnabled: true,
       multiTenancyEnabled: true,
       recordingsEnabled: true,
@@ -35,6 +36,7 @@ describe('useFeatureFlagsStore', () => {
       features: {
         databaseProxyEnabled: false,
         connectionsEnabled: true,
+        ipGeolocationEnabled: false,
         keychainEnabled: false,
         multiTenancyEnabled: false,
         recordingsEnabled: false,
@@ -57,6 +59,7 @@ describe('useFeatureFlagsStore', () => {
     expect(useFeatureFlagsStore.getState()).toMatchObject({
       databaseProxyEnabled: false,
       connectionsEnabled: true,
+      ipGeolocationEnabled: false,
       keychainEnabled: false,
       multiTenancyEnabled: false,
       recordingsEnabled: false,

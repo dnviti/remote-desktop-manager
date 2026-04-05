@@ -100,6 +100,8 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
     service_names = ["postgres", "migrate", "redis", "control-plane-api", "client"]
     if capabilities.get("connections"):
         service_names.extend(["guacd", "desktop-broker", "terminal-broker", "ssh-gateway"])
+    if capabilities.get("ip_geolocation"):
+        service_names.append("map-assets")
     if capabilities.get("recordings"):
         service_names.append("guacenc")
     if capabilities.get("databases"):
@@ -117,6 +119,7 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
         "ARSENALE_DIRECT_ROUTING_ENABLED": str(direct_enabled).lower(),
         "ARSENALE_ZERO_TRUST_ENABLED": str(zero_trust_enabled).lower(),
         "FEATURE_CONNECTIONS_ENABLED": str(capabilities.get("connections", False)).lower(),
+        "FEATURE_IP_GEOLOCATION_ENABLED": str(capabilities.get("ip_geolocation", False)).lower(),
         "FEATURE_DATABASE_PROXY_ENABLED": str(capabilities.get("databases", False)).lower(),
         "FEATURE_KEYCHAIN_ENABLED": str(capabilities.get("keychain", False)).lower(),
         "FEATURE_MULTI_TENANCY_ENABLED": str(capabilities.get("multi_tenancy", False)).lower(),
@@ -138,6 +141,7 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
             {
                 "API_UPSTREAM_HOST": f"control-plane-api{dns_suffix}",
                 "DESKTOP_UPSTREAM_HOST": f"desktop-broker{dns_suffix}",
+                "MAP_ASSETS_UPSTREAM_HOST": f"map-assets{dns_suffix}",
                 "TERMINAL_UPSTREAM_HOST": f"terminal-broker{dns_suffix}",
             }
         )

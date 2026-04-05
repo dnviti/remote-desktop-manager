@@ -278,7 +278,9 @@ func (d *apiDependencies) registerOperationsRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("DELETE /api/recordings/{id}", d.authenticator.Middleware(d.recordingService.HandleDelete))
 	}
 
-	mux.HandleFunc("GET /api/geoip/{ip}", d.authenticator.Middleware(d.geoIPService.HandleLookup))
+	if d.features.IPGeolocationEnabled {
+		mux.HandleFunc("GET /api/geoip/{ip}", d.authenticator.Middleware(d.geoIPService.HandleLookup))
+	}
 	if d.features.EnterpriseAuthEnabled {
 		mux.HandleFunc("GET /api/ldap/status", d.authenticator.Middleware(d.ldapService.HandleGetStatus))
 		mux.HandleFunc("POST /api/ldap/test", d.authenticator.Middleware(d.ldapService.HandleTestConnection))
@@ -350,7 +352,9 @@ func (d *apiDependencies) registerOperationsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/audit/session/{sessionId}/recording", d.authenticator.Middleware(d.auditService.HandleGetSessionRecording))
 	mux.HandleFunc("GET /api/audit/tenant/gateways", d.authenticator.Middleware(d.auditService.HandleListTenantGateways))
 	mux.HandleFunc("GET /api/audit/tenant/countries", d.authenticator.Middleware(d.auditService.HandleListTenantCountries))
-	mux.HandleFunc("GET /api/audit/tenant/geo-summary", d.authenticator.Middleware(d.auditService.HandleTenantGeoSummary))
+	if d.features.IPGeolocationEnabled {
+		mux.HandleFunc("GET /api/audit/tenant/geo-summary", d.authenticator.Middleware(d.auditService.HandleTenantGeoSummary))
+	}
 
 	if d.features.DatabaseProxyEnabled {
 		mux.HandleFunc("GET /api/db-audit/logs", d.authenticator.Middleware(d.dbAuditService.HandleListLogs))

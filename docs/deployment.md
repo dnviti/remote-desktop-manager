@@ -87,6 +87,7 @@ The capability catalog in `deployment/ansible/install/capabilities.yml` lets pro
 
 - keychain
 - connections
+- IP geolocation
 - databases
 - recordings
 - zero trust
@@ -102,6 +103,7 @@ Installer-driven development uses the same capability and routing model as produ
 | Image | Built from | Notes |
 |-------|------------|-------|
 | `control-plane-api` | `backend/Dockerfile` with `SERVICE=control-plane-api` | Generic Go service image pattern |
+| `map-assets` | `backend/Dockerfile` with `SERVICE=map-assets` | Dedicated raster XYZ tile service for GeoIP-enabled deployments |
 | `client` | `client/Dockerfile` | Multi-stage Node build then nginx runtime |
 | `db-proxy` | `gateways/db-proxy/Dockerfile` | Go `db-proxy` binary plus bundled `tunnel-agent` |
 | `ssh-gateway` | `gateways/ssh-gateway/Dockerfile` | Alpine runtime, SSHD, gRPC key server, tunnel agent |
@@ -136,6 +138,7 @@ Key host-to-container mappings from `docker-compose.yml`:
 | `18093` | `query-runner` | `8093` |
 | `18094` | `recording-worker` | `8094` |
 | `18095` | `runtime-agent` | `8095` |
+| `18096` | `map-assets` | `8096` |
 
 Primary internal networks:
 
@@ -159,6 +162,7 @@ The compose template now emits more deployment intent into the running services:
 - `FEATURE_*`
 - `CLI_ENABLED`
 - `GATEWAY_ROUTING_MODE`
+- `MAP_ASSETS_UPSTREAM_HOST`
 - `ORCHESTRATOR_*`
 - `DEV_BOOTSTRAP_*`
 - `DEV_SAMPLE_*`

@@ -15,6 +15,7 @@ type Manifest struct {
 	Backend                 string  `json:"backend"`
 	DatabaseProxyEnabled    bool    `json:"databaseProxyEnabled"`
 	ConnectionsEnabled      bool    `json:"connectionsEnabled"`
+	IPGeolocationEnabled    bool    `json:"ipGeolocationEnabled"`
 	KeychainEnabled         bool    `json:"keychainEnabled"`
 	MultiTenancyEnabled     bool    `json:"multiTenancyEnabled"`
 	RecordingsEnabled       bool    `json:"recordingsEnabled"`
@@ -37,6 +38,7 @@ func FromEnv() Manifest {
 		Backend:                 resolveBackend(),
 		DatabaseProxyEnabled:    boolEnv("FEATURE_DATABASE_PROXY_ENABLED", true),
 		ConnectionsEnabled:      boolEnv("FEATURE_CONNECTIONS_ENABLED", true),
+		IPGeolocationEnabled:    boolEnv("FEATURE_IP_GEOLOCATION_ENABLED", true),
 		KeychainEnabled:         boolEnv("FEATURE_KEYCHAIN_ENABLED", true),
 		MultiTenancyEnabled:     boolEnv("FEATURE_MULTI_TENANCY_ENABLED", true),
 		RecordingsEnabled:       boolEnv("FEATURE_RECORDINGS_ENABLED", boolEnv("RECORDING_ENABLED", true)),

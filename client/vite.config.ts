@@ -7,10 +7,11 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Defaults target the local Go split services started by `make dev`.
 const apiTarget = process.env.VITE_API_TARGET || 'http://localhost:18080';
 const guacTarget = process.env.VITE_GUAC_TARGET || 'http://localhost:18091';
+const mapAssetsTarget = process.env.VITE_MAP_ASSETS_TARGET || 'http://localhost:18096';
 const terminalTarget = process.env.VITE_TERMINAL_TARGET || 'http://localhost:18090';
 const devPort = Number(process.env.VITE_DEV_PORT || '3005');
 const contentSecurityPolicy =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 export default defineConfig({
   plugins: [
@@ -218,6 +219,12 @@ export default defineConfig({
         ws: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/guacamole/, ''),
+      },
+      '/map-assets': {
+        target: mapAssetsTarget,
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/map-assets/, ''),
       },
       '/ws/terminal': {
         target: terminalTarget,

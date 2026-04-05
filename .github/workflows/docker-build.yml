@@ -177,6 +177,11 @@ jobs:
             context: .
             build_args: |
               SERVICE=query-runner
+          - name: map-assets
+            dockerfile: ./backend/Dockerfile
+            context: .
+            build_args: |
+              SERVICE=map-assets
           - name: runtime-agent
             dockerfile: ./backend/Dockerfile
             context: .

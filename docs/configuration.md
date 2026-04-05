@@ -70,6 +70,7 @@ The installer now passes install profile context directly into the runtime.
 | `ARSENALE_INSTALL_BACKEND` | `podman` or `kubernetes` |
 | `ARSENALE_INSTALL_CAPABILITIES` | Comma-separated enabled capability set |
 | `FEATURE_CONNECTIONS_ENABLED` | Enables SSH, RDP, VNC connections and folders |
+| `FEATURE_IP_GEOLOCATION_ENABLED` | Enables GeoIP lookups, audit map views, and the `map-assets` tile service |
 | `FEATURE_DATABASE_PROXY_ENABLED` | Enables database sessions and DB audit |
 | `FEATURE_KEYCHAIN_ENABLED` | Enables vault, secrets, files, and external vault providers |
 | `FEATURE_MULTI_TENANCY_ENABLED` | Enables multiple organizations, tenant switching, and self-service organization creation |
@@ -87,6 +88,7 @@ The installer now passes install profile context directly into the runtime.
 - `backend`
 - `databaseProxyEnabled`
 - `connectionsEnabled`
+- `ipGeolocationEnabled`
 - `keychainEnabled`
 - `multiTenancyEnabled`
 - `recordingsEnabled`

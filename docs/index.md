@@ -135,8 +135,8 @@ admin@example.com / DevAdmin123!
 | Layer | Technologies |
 |-------|-------------|
 | Frontend | React 19, Vite 8, Material UI 7, Zustand, Monaco, XTerm.js |
-| Control plane | Go 1.25, 17 split services in `backend/cmd/*` |
-| Runtime brokers | `terminal-broker`, `desktop-broker`, `tunnel-broker`, `query-runner` |
+| Control plane | Go 1.25, 18 split services in `backend/cmd/*` |
+| Runtime brokers | `terminal-broker`, `desktop-broker`, `tunnel-broker`, `query-runner`, `map-assets` |
 | Gateways | `ssh-gateway`, `guacd`, `guacenc`, `db-proxy`, bundled `tunnel-agent` |
 | Data | PostgreSQL 16, Redis 7, recordings and drive volumes |
 | Installer and ops | Ansible, Podman Compose, Helm, encrypted installer artifacts |

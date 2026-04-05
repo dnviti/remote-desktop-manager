@@ -68,6 +68,7 @@ import type {
 import { connectSSE } from "../../api/sse";
 import { useUiPreferencesStore } from "../../store/uiPreferencesStore";
 import { useAuthStore } from "../../store/authStore";
+import { useFeatureFlagsStore } from "../../store/featureFlagsStore";
 import {
   ACTION_LABELS,
   getActionColor,
@@ -126,6 +127,9 @@ export default function AuditLogDialog({
 }: AuditLogDialogProps) {
   const user = useAuthStore((s) => s.user);
   const accessToken = useAuthStore((s) => s.accessToken);
+  const databaseProxyEnabled = useFeatureFlagsStore(
+    (s) => s.databaseProxyEnabled,
+  );
   const hasTenant = Boolean(user?.tenantId);
   const auditLogAction = useUiPreferencesStore((s) => s.auditLogAction);
   const auditLogSearch = useUiPreferencesStore((s) => s.auditLogSearch);
@@ -187,7 +191,15 @@ export default function AuditLogDialog({
     null,
   );
 
-  const activeTab = auditLogTab || "general";
+  const sqlAuditVisible = hasTenant && databaseProxyEnabled;
+  const activeTab =
+    sqlAuditVisible && auditLogTab === "sql" ? "sql" : "general";
+
+  useEffect(() => {
+    if (open && auditLogTab === "sql" && !sqlAuditVisible) {
+      setUiPref("auditLogDialogTab", "general");
+    }
+  }, [open, auditLogTab, setUiPref, sqlAuditVisible]);
 
   // Debounce search input -> store
   useEffect(() => {
@@ -563,13 +575,15 @@ export default function AuditLogDialog({
               iconPosition="start"
               sx={{ minHeight: 36, textTransform: "none" }}
             />
-            <Tab
-              value="sql"
-              label="SQL Audit"
-              icon={<StorageIcon />}
-              iconPosition="start"
-              sx={{ minHeight: 36, textTransform: "none" }}
-            />
+            {sqlAuditVisible && (
+              <Tab
+                value="sql"
+                label="SQL Audit"
+                icon={<StorageIcon />}
+                iconPosition="start"
+                sx={{ minHeight: 36, textTransform: "none" }}
+              />
+            )}
           </Tabs>
         )}
       </AppBar>

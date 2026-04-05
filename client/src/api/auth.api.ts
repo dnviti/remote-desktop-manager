@@ -98,6 +98,7 @@ export async function logoutApi() {
 export interface FeatureFlags {
   databaseProxyEnabled: boolean;
   connectionsEnabled: boolean;
+  ipGeolocationEnabled: boolean;
   keychainEnabled: boolean;
   multiTenancyEnabled: boolean;
   recordingsEnabled: boolean;

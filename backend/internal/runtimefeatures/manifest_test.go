@@ -5,6 +5,7 @@ import "testing"
 func TestFromEnvDefaultsAndOverrides(t *testing.T) {
 	t.Setenv("FEATURE_CONNECTIONS_ENABLED", "false")
 	t.Setenv("FEATURE_DATABASE_PROXY_ENABLED", "true")
+	t.Setenv("FEATURE_IP_GEOLOCATION_ENABLED", "false")
 	t.Setenv("FEATURE_KEYCHAIN_ENABLED", "false")
 	t.Setenv("FEATURE_MULTI_TENANCY_ENABLED", "false")
 	t.Setenv("FEATURE_RECORDINGS_ENABLED", "false")
@@ -30,6 +31,9 @@ func TestFromEnvDefaultsAndOverrides(t *testing.T) {
 	}
 	if !manifest.DatabaseProxyEnabled {
 		t.Fatal("expected database proxy to remain enabled")
+	}
+	if manifest.IPGeolocationEnabled {
+		t.Fatal("expected IP geolocation to be disabled")
 	}
 	if manifest.KeychainEnabled {
 		t.Fatal("expected keychain to be disabled")

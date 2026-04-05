@@ -80,6 +80,7 @@ export default function MainLayout() {
 
   const connectionsEnabled = useFeatureFlagsStore((s) => s.connectionsEnabled);
   const databaseProxyEnabled = useFeatureFlagsStore((s) => s.databaseProxyEnabled);
+  const ipGeolocationEnabled = useFeatureFlagsStore((s) => s.ipGeolocationEnabled);
   const keychainEnabled = useFeatureFlagsStore((s) => s.keychainEnabled);
   const multiTenancyEnabled = useFeatureFlagsStore((s) => s.multiTenancyEnabled);
   const featureFlagsLoaded = useFeatureFlagsStore((s) => s.loaded);
@@ -186,6 +187,7 @@ export default function MainLayout() {
   const exportDialogMounted = useLazyMount(exportDialogOpen);
   const geoIpDialogMounted = useLazyMount(geoIpTarget);
   const checkoutDialogMounted = useLazyMount(checkoutOpen);
+  const activeGeoIpTarget = ipGeolocationEnabled ? geoIpTarget : null;
 
   const handleOpenSettings = (tab?: string) => {
     setSettingsInitialTab(tab);
@@ -502,7 +504,7 @@ export default function MainLayout() {
             initialTab={settingsInitialTab}
             linkedProvider={linkedProvider}
             onViewUserProfile={(uid) => setProfileUserId(uid)}
-            onGeoIpClick={setGeoIpTarget}
+            onGeoIpClick={ipGeolocationEnabled ? setGeoIpTarget : undefined}
             onImport={() => setImportDialogOpen(true)}
             onExport={() => setExportDialogOpen(true)}
           />
@@ -513,7 +515,7 @@ export default function MainLayout() {
           <AuditLogDialog
             open={auditLogOpen}
             onClose={() => setAuditLogOpen(false)}
-            onGeoIpClick={setGeoIpTarget}
+            onGeoIpClick={ipGeolocationEnabled ? setGeoIpTarget : undefined}
           />
         </Suspense>
       )}
@@ -532,7 +534,7 @@ export default function MainLayout() {
             onClose={() => setConnectionAuditTarget(null)}
             connectionId={connectionAuditTarget?.id ?? ''}
             connectionName={connectionAuditTarget?.name ?? ''}
-            onGeoIpClick={setGeoIpTarget}
+            onGeoIpClick={ipGeolocationEnabled ? setGeoIpTarget : undefined}
           />
         </Suspense>
       )}
@@ -569,12 +571,12 @@ export default function MainLayout() {
           />
         </Suspense>
       )}
-      {geoIpDialogMounted && (
+      {activeGeoIpTarget && geoIpDialogMounted && (
         <Suspense fallback={null}>
           <GeoIpDialog
-            open={!!geoIpTarget}
+            open={!!activeGeoIpTarget}
             onClose={() => setGeoIpTarget(null)}
-            ipAddress={geoIpTarget}
+            ipAddress={activeGeoIpTarget}
           />
         </Suspense>
       )}

@@ -50,7 +50,7 @@ The active runtime lives in:
 |------|----------|
 | Control | `control-plane-api`, `control-plane-controller`, `authz-pdp` |
 | Agent | `model-gateway`, `tool-gateway`, `agent-orchestrator`, `memory-service` |
-| Runtime | `terminal-broker`, `desktop-broker`, `tunnel-broker`, `query-runner`, `recording-worker`, `db-proxy` |
+| Runtime | `terminal-broker`, `desktop-broker`, `tunnel-broker`, `query-runner`, `map-assets`, `recording-worker`, `db-proxy` |
 | Execution | `runtime-agent` |
 
 Every Go service shares these meta endpoints via `backend/internal/app/app.go`:
@@ -92,7 +92,7 @@ That manifest controls:
 
 - which route families are registered in `backend/cmd/control-plane-api/routes*.go`
 - what the SPA exposes after it loads `GET /api/auth/config`
-- whether connections, DB proxy, keychain, multi-tenancy, recordings, zero trust, AI, enterprise auth, sharing, and CLI surfaces are active
+- whether connections, GeoIP, DB proxy, keychain, multi-tenancy, recordings, zero trust, AI, enterprise auth, sharing, and CLI surfaces are active
 
 The SPA reads the public config through `client/src/api/auth.api.ts` and stores it in `client/src/store/featureFlagsStore.ts`.
 It also loads the current tenant permission snapshot from `GET /api/user/permissions` into `client/src/store/authStore.ts` so tenant settings surfaces can be hidden when the user lacks edit rights.
@@ -109,6 +109,7 @@ flowchart LR
     API --> Postgres["PostgreSQL"]
     API --> Redis["Redis"]
     API --> Brokers["terminal-broker / desktop-broker / tunnel-broker"]
+    Client --> MapAssets["map-assets"]
     API --> Gateways["ssh-gateway / guacd / db-proxy / guacenc"]
 ```
 

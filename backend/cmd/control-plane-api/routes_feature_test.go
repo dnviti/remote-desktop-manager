@@ -16,6 +16,7 @@ func TestRegisterFeatureGatedRoutes(t *testing.T) {
 		features: runtimefeatures.Manifest{
 			ConnectionsEnabled:      false,
 			DatabaseProxyEnabled:    false,
+			IPGeolocationEnabled:    false,
 			KeychainEnabled:         false,
 			MultiTenancyEnabled:     false,
 			RecordingsEnabled:       false,
@@ -32,6 +33,8 @@ func TestRegisterFeatureGatedRoutes(t *testing.T) {
 	expectRouteAbsent(t, mux, "GET", "/api/secrets")
 	expectRouteAbsent(t, mux, "GET", "/api/recordings")
 	expectRouteAbsent(t, mux, "GET", "/api/gateways")
+	expectRouteAbsent(t, mux, "GET", "/api/geoip/8.8.8.8")
+	expectRouteAbsent(t, mux, "GET", "/api/audit/tenant/geo-summary")
 	expectRouteAbsent(t, mux, "POST", "/api/tenants")
 	expectRouteAbsent(t, mux, "POST", "/api/auth/switch-tenant")
 	expectRouteAbsent(t, mux, "POST", "/api/cli/auth/device")
@@ -47,6 +50,7 @@ func TestGatewayRoutesRemainAvailableWithoutZeroTrust(t *testing.T) {
 		features: runtimefeatures.Manifest{
 			ConnectionsEnabled:      true,
 			DatabaseProxyEnabled:    false,
+			IPGeolocationEnabled:    true,
 			KeychainEnabled:         false,
 			MultiTenancyEnabled:     true,
 			RecordingsEnabled:       false,
@@ -62,6 +66,8 @@ func TestGatewayRoutesRemainAvailableWithoutZeroTrust(t *testing.T) {
 
 	expectRoutePresent(t, mux, "GET", "/api/gateways")
 	expectRoutePresent(t, mux, "GET", "/api/gateways/templates")
+	expectRoutePresent(t, mux, "GET", "/api/geoip/8.8.8.8")
+	expectRoutePresent(t, mux, "GET", "/api/audit/tenant/geo-summary")
 	expectRoutePresent(t, mux, "POST", "/api/tenants")
 	expectRoutePresent(t, mux, "POST", "/api/auth/switch-tenant")
 }

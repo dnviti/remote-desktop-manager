@@ -28,6 +28,12 @@ capabilities:
     description: SSH, RDP, VNC connections and folders.
     legacyEnv:
       FEATURE_CONNECTIONS_ENABLED: "true"
+  ip_geolocation:
+    title: IP Geolocation
+    enabledByDefault: true
+    description: External IP lookups, geolocation audit overlays, and the dedicated tile service.
+    legacyEnv:
+      FEATURE_IP_GEOLOCATION_ENABLED: "true"
   databases:
     title: Databases
     enabledByDefault: true

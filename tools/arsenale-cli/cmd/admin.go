@@ -102,9 +102,9 @@ var adminGeoIPCmd = &cobra.Command{
 }
 
 var (
-	adminSettingsValue    string
-	adminSettingsFromFile string
-	adminEmailTo         string
+	adminSettingsValue     string
+	adminSettingsFromFile  string
+	adminEmailTo           string
 	adminSelfSignupEnabled bool
 )
 
@@ -336,6 +336,9 @@ func runAdminAuthProviders(cmd *cobra.Command, args []string) {
 func runAdminGeoIP(cmd *cobra.Command, args []string) {
 	cfg := getCfg()
 	if err := ensureAuthenticated(cfg); err != nil {
+		fatal("%v", err)
+	}
+	if err := ensureIPGeolocationEnabled(cfg); err != nil {
 		fatal("%v", err)
 	}
 

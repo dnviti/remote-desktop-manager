@@ -23,6 +23,7 @@ const (
 	ServiceDesktopBroker     ServiceName = "desktop-broker"
 	ServiceTunnelBroker      ServiceName = "tunnel-broker"
 	ServiceQueryRunner       ServiceName = "query-runner"
+	ServiceMapAssets         ServiceName = "map-assets"
 	ServiceRecordingWorker   ServiceName = "recording-worker"
 	ServiceRuntimeAgent      ServiceName = "runtime-agent"
 )

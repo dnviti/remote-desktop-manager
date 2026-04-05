@@ -298,6 +298,7 @@ These variables are emitted by the Ansible installer and control runtime feature
 | `ARSENALE_INSTALL_BACKEND` | string | `podman` | Install backend: `podman` or `kubernetes` |
 | `ARSENALE_INSTALL_CAPABILITIES` | string | — | Comma-separated enabled capability set |
 | `FEATURE_CONNECTIONS_ENABLED` | boolean | `true` | Enable SSH, RDP, VNC connections and folders |
+| `FEATURE_IP_GEOLOCATION_ENABLED` | boolean | `true` | Enable GeoIP lookups, audit maps, and the `map-assets` tile service |
 | `FEATURE_DATABASE_PROXY_ENABLED` | boolean | `true` | Enable database sessions and DB audit |
 | `FEATURE_KEYCHAIN_ENABLED` | boolean | `true` | Enable vault, secrets, files, and external vault providers |
 | `FEATURE_MULTI_TENANCY_ENABLED` | boolean | `true` | Enable multiple organizations, tenant switching, and self-service organization creation |
