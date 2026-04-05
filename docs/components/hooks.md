@@ -1,6 +1,6 @@
 # Custom Hooks
 
-> Auto-generated on 2026-03-15 by /docs create components.
+> Auto-generated on 2026-04-05 by /docs create components.
 > Source of truth is the codebase. Run /docs update components after code changes.
 
 ### `useAuth` (`client/src/hooks/useAuth.ts`)
@@ -24,7 +24,7 @@ Manages SFTP file transfer state — tracks uploads/downloads, progress events, 
 
 ### `useGatewayMonitor` (`client/src/hooks/useGatewayMonitor.ts`)
 
-Connects to `/gateway-monitor` Socket.IO namespace and applies real-time health, instance, scaling, and gateway update events to the gateway store.
+Subscribes to `GET /api/gateways/stream` over SSE and applies real-time health, instance, and scaling snapshots to the gateway store. The hook stays disabled until the current user's effective permissions are loaded and `canManageGateways` is true.
 
 **Returns**: void (side-effect hook)
 

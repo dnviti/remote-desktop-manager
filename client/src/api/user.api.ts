@@ -1,6 +1,7 @@
 import api from './client';
 import type { SshTerminalConfig } from '../constants/terminalThemes';
 import type { RdpSettings } from '../constants/rdpDefaults';
+import type { PermissionFlag } from '../utils/permissionFlags';
 
 export interface UserProfile {
   id: string;
@@ -15,8 +16,19 @@ export interface UserProfile {
   createdAt: string;
 }
 
+export interface CurrentUserPermissions {
+  tenantId?: string;
+  role?: string;
+  permissions: Record<PermissionFlag, boolean>;
+}
+
 export async function getProfile(): Promise<UserProfile> {
   const { data } = await api.get('/user/profile');
+  return data;
+}
+
+export async function getCurrentUserPermissions(): Promise<CurrentUserPermissions> {
+  const { data } = await api.get('/user/permissions');
   return data;
 }
 

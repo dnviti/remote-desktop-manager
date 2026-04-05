@@ -1,9 +1,12 @@
 import api from './client';
 import type { TenantRole } from '../utils/roles';
+import type { PermissionFlag } from '../utils/permissionFlags';
 import type { SshTerminalConfig } from '../constants/terminalThemes';
 import type { RdpSettings } from '../constants/rdpDefaults';
 import type { VncSettings } from '../constants/vncDefaults';
 import type { TenantMembershipStatus } from './auth.api';
+export { ALL_PERMISSION_FLAGS, emptyPermissionFlags } from '../utils/permissionFlags';
+export type { PermissionFlag } from '../utils/permissionFlags';
 
 export interface EnforcedConnectionSettings {
   ssh?: Partial<SshTerminalConfig>;
@@ -248,20 +251,6 @@ export async function updateMembershipExpiry(
 ): Promise<void> {
   await api.patch(`/tenants/${tenantId}/users/${userId}/expiry`, { expiresAt });
 }
-
-// Permission flags
-export type PermissionFlag =
-  | 'canConnect'
-  | 'canCreateConnections'
-  | 'canManageConnections'
-  | 'canViewCredentials'
-  | 'canShareConnections'
-  | 'canViewAuditLog'
-  | 'canManageSessions'
-  | 'canManageGateways'
-  | 'canManageUsers'
-  | 'canManageSecrets'
-  | 'canManageTenantSettings';
 
 export interface UserPermissionsData {
   role: string;

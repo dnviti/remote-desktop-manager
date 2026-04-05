@@ -29,7 +29,6 @@ import GatewayInstanceList from '../orchestration/GatewayInstanceList';
 import GatewayTemplateSection from '../gateway/GatewayTemplateSection';
 import { extractApiError } from '../../utils/apiError';
 import { gatewayModeLabel, isGatewayGroup } from '../../utils/gatewayMode';
-import { isOperatorOrAbove } from '../../utils/roles';
 
 interface TestState {
   gatewayId: string;
@@ -53,6 +52,9 @@ function triggerDownload(content: string, filename: string) {
 
 export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps) {
   const user = useAuthStore((s) => s.user);
+  const permissionsLoaded = useAuthStore((s) => s.permissionsLoaded);
+  const canManageGateways = useAuthStore((s) => s.permissions.canManageGateways);
+  const canManageSessions = useAuthStore((s) => s.permissions.canManageSessions);
   const gateways = useGatewayStore((s) => s.gateways);
   const loading = useGatewayStore((s) => s.loading);
   const fetchGateways = useGatewayStore((s) => s.fetchGateways);
@@ -84,14 +86,22 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const hasTenant = Boolean(user?.tenantId);
-  const isAdmin = isOperatorOrAbove(user?.tenantRole);
 
   useEffect(() => {
-    if (hasTenant) {
+    if (hasTenant && permissionsLoaded && canManageGateways) {
       fetchGateways();
-      if (isAdmin) fetchSshKeyPair();
+      fetchSshKeyPair();
     }
-  }, [fetchGateways, fetchSshKeyPair, hasTenant, isAdmin]);
+  }, [canManageGateways, fetchGateways, fetchSshKeyPair, hasTenant, permissionsLoaded]);
+
+  useEffect(() => {
+    const allowedTabs = new Set<string>(['gateways']);
+    if (canManageSessions) allowedTabs.add('sessions');
+    if (canManageGateways) allowedTabs.add('templates');
+    if (!allowedTabs.has(subTab)) {
+      setSubTab('gatewayActiveSubTab', 'gateways');
+    }
+  }, [canManageGateways, canManageSessions, setSubTab, subTab]);
 
   const toggleRow = (id: string) => {
     setExpandedRows((prev) => {
@@ -269,6 +279,22 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
     );
   }
 
+  if (!permissionsLoaded) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', py: 6 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  if (!canManageGateways) {
+    return (
+      <Alert severity="warning">
+        You do not have permission to manage gateways.
+      </Alert>
+    );
+  }
+
   return (
     <>
       {/* Sub-tabs */}
@@ -278,15 +304,15 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
         sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}
       >
         <Tab label="Gateways" value="gateways" sx={{ textTransform: 'none' }} />
-        {isAdmin && <Tab label="Active Sessions" value="sessions" sx={{ textTransform: 'none' }} />}
-        {isAdmin && <Tab label="Templates" value="templates" sx={{ textTransform: 'none' }} />}
+        {canManageSessions && <Tab label="Active Sessions" value="sessions" sx={{ textTransform: 'none' }} />}
+        {canManageGateways && <Tab label="Templates" value="templates" sx={{ textTransform: 'none' }} />}
       </Tabs>
 
       {/* Gateways sub-tab */}
       {subTab === 'gateways' && (
         <>
-          {/* SSH Key Pair Section (Admin only) */}
-          {isAdmin && (
+          {/* SSH Key Pair Section */}
+          {canManageGateways && (
             <Paper variant="outlined" sx={{ p: 2, mb: 3 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <KeyIcon sx={{ mr: 1, color: 'text.secondary' }} />
@@ -643,10 +669,10 @@ export default function GatewaySection({ onNavigateToTab }: GatewaySectionProps)
       )}
 
       {/* Active Sessions sub-tab */}
-      {subTab === 'sessions' && isAdmin && <SessionDashboard />}
+      {subTab === 'sessions' && canManageSessions && <SessionDashboard />}
 
       {/* Templates sub-tab */}
-      {subTab === 'templates' && isAdmin && <GatewayTemplateSection />}
+      {subTab === 'templates' && canManageGateways && <GatewayTemplateSection />}
 
       <GatewayDialog
         open={dialogOpen}

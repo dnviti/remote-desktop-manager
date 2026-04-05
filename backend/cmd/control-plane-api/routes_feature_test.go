@@ -36,6 +36,7 @@ func TestRegisterFeatureGatedRoutes(t *testing.T) {
 	expectRouteAbsent(t, mux, "POST", "/api/auth/switch-tenant")
 	expectRouteAbsent(t, mux, "POST", "/api/cli/auth/device")
 	expectRoutePresent(t, mux, "GET", "/api/auth/config")
+	expectRoutePresent(t, mux, "GET", "/api/user/permissions")
 	expectRoutePresent(t, mux, "GET", "/api/setup/status")
 }
 

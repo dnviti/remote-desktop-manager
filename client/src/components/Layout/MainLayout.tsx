@@ -59,8 +59,10 @@ import type { NavigationActions } from '../../utils/notificationActions';
 const SIDEBAR_WIDTH = 280;
 
 export default function MainLayout() {
+  const accessToken = useAuthStore((s) => s.accessToken);
   const user = useAuthStore((s) => s.user);
   const authLogout = useAuthStore((s) => s.logout);
+  const fetchCurrentPermissions = useAuthStore((s) => s.fetchCurrentPermissions);
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
   const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const vaultInitialized = useVaultStore((s) => s.initialized);
@@ -103,6 +105,13 @@ export default function MainLayout() {
       fetchTerminalDefaults();
     }
   }, [terminalDefaultsLoaded, fetchTerminalDefaults]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+    void fetchCurrentPermissions();
+  }, [accessToken, user?.id, user?.tenantId, fetchCurrentPermissions]);
 
   useEffect(() => {
     if (vaultUnlocked) {

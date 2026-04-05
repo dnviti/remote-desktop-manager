@@ -1,6 +1,6 @@
 # User Endpoints
 
-> Auto-generated on 2026-03-15 by /docs create api.
+> Auto-generated on 2026-04-05 by /docs create api.
 > Source of truth is the codebase. Run /docs update api after code changes.
 
 ## User
@@ -10,6 +10,10 @@ All endpoints require authentication.
 ### `GET /api/user/profile`
 
 Get current user's profile.
+
+### `GET /api/user/permissions`
+
+Get the current user's effective permission snapshot for the active tenant. This is the self-read endpoint the SPA uses to hide tenant settings surfaces, including gateway management, when the user lacks edit rights.
 
 ### `PUT /api/user/profile`
 

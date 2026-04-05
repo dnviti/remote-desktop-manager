@@ -2,20 +2,22 @@ import { useEffect } from 'react';
 import type { GatewayStreamSnapshot } from '../api/live.api';
 import { connectSSE } from '../api/sse';
 import { useAuthStore } from '../store/authStore';
+import { useFeatureFlagsStore } from '../store/featureFlagsStore';
 import { useGatewayStore } from '../store/gatewayStore';
 
 export function useGatewayMonitor() {
   const accessToken = useAuthStore((s) => s.accessToken);
   const tenantId = useAuthStore((s) => s.user?.tenantId);
-  const tenantRole = useAuthStore((s) => s.user?.tenantRole);
+  const permissionsLoaded = useAuthStore((s) => s.permissionsLoaded);
+  const canManageGateways = useAuthStore((s) => s.permissions.canManageGateways);
+  const featureFlagsLoaded = useFeatureFlagsStore((s) => s.loaded);
+  const zeroTrustEnabled = useFeatureFlagsStore((s) => s.zeroTrustEnabled);
   const watchedScaling = useGatewayStore((s) => Object.keys(s.watchedScalingGatewayIds).sort().join(','));
   const watchedInstances = useGatewayStore((s) => Object.keys(s.watchedInstanceGatewayIds).sort().join(','));
   const applyGatewayStreamSnapshot = useGatewayStore((s) => s.applyGatewayStreamSnapshot);
 
   useEffect(() => {
-    const normalizedRole = tenantRole?.toUpperCase();
-    const canManageGateways = normalizedRole === 'OWNER' || normalizedRole === 'ADMIN' || normalizedRole === 'OPERATOR';
-    if (!accessToken || !tenantId || !canManageGateways) return undefined;
+    if (!accessToken || !tenantId || !permissionsLoaded || !canManageGateways || !featureFlagsLoaded || !zeroTrustEnabled) return undefined;
 
     const params = new URLSearchParams();
     for (const gatewayId of watchedScaling.split(',').filter(Boolean)) {
@@ -34,5 +36,5 @@ export function useGatewayMonitor() {
         applyGatewayStreamSnapshot(data as GatewayStreamSnapshot);
       },
     });
-  }, [accessToken, tenantId, tenantRole, watchedScaling, watchedInstances, applyGatewayStreamSnapshot]);
+  }, [accessToken, tenantId, permissionsLoaded, canManageGateways, featureFlagsLoaded, zeroTrustEnabled, watchedScaling, watchedInstances, applyGatewayStreamSnapshot]);
 }

@@ -32,6 +32,22 @@ func (s Service) HandleProfile(w http.ResponseWriter, r *http.Request, claims au
 	app.WriteJSON(w, http.StatusOK, profile)
 }
 
+func (s Service) HandlePermissions(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
+	if r.Method != http.MethodGet {
+		w.Header().Set("Allow", http.MethodGet)
+		app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+
+	result, err := s.GetCurrentPermissions(r.Context(), claims)
+	if err != nil {
+		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		return
+	}
+
+	app.WriteJSON(w, http.StatusOK, result)
+}
+
 func (s Service) HandleUpdateProfile(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
 	if r.Method != http.MethodPut {
 		w.Header().Set("Allow", http.MethodPut)

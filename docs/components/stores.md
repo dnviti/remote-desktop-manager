@@ -1,6 +1,6 @@
 # State Management
 
-> Auto-generated on 2026-03-15 by /docs create components.
+> Auto-generated on 2026-04-05 by /docs create components.
 > Source of truth is the codebase. Run /docs update components after code changes.
 
 ### `authStore` (`client/src/store/authStore.ts`)
@@ -11,8 +11,14 @@
 | `csrfToken` | string \| null | CSRF token for auth endpoints |
 | `user` | object \| null | User identity (id, email, username, avatarData, tenantId, tenantRole, domainName) |
 | `isAuthenticated` | boolean | Authentication status |
+| `permissions` | object | Effective permission snapshot for the active tenant |
+| `permissionsLoaded` | boolean | Whether `/api/user/permissions` has been resolved for the current user and tenant |
+| `permissionsLoading` | boolean | Whether the current permission snapshot request is in flight |
+| `permissionsSubject` | string \| null | Cache key for the loaded permission snapshot (`userId:tenantId`) |
 
-**Actions**: `setAuth`, `setAccessToken`, `setCsrfToken`, `updateUser`, `fetchDomainProfile`, `logout`
+`permissions` is intentionally runtime-only and is not persisted to local storage.
+
+**Actions**: `setAuth`, `setAccessToken`, `setCsrfToken`, `updateUser`, `fetchCurrentPermissions`, `clearPermissions`, `fetchDomainProfile`, `logout`
 
 ### `connectionsStore` (`client/src/store/connectionsStore.ts`)
 

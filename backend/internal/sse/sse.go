@@ -21,7 +21,6 @@ func Open(w http.ResponseWriter) (*Stream, error) {
 	headers := w.Header()
 	headers.Set("Content-Type", "text/event-stream")
 	headers.Set("Cache-Control", "no-cache, no-transform")
-	headers.Set("Connection", "keep-alive")
 	headers.Set("X-Accel-Buffering", "no")
 
 	stream := &Stream{w: w, flusher: flusher}

@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/tenantauth"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 )
@@ -14,6 +15,7 @@ type Service struct {
 	DB                  *pgxpool.Pool
 	Redis               *redis.Client
 	ServerEncryptionKey []byte
+	TenantAuth          tenantauth.Service
 }
 
 var adminRoles = map[string]struct{}{
@@ -61,6 +63,12 @@ type domainProfile struct {
 	DomainName        *string `json:"domainName"`
 	DomainUsername    *string `json:"domainUsername"`
 	HasDomainPassword bool    `json:"hasDomainPassword"`
+}
+
+type currentPermissionsResponse struct {
+	TenantID    string          `json:"tenantId,omitempty"`
+	Role        string          `json:"role,omitempty"`
+	Permissions map[string]bool `json:"permissions"`
 }
 
 type domainProfilePatch struct {

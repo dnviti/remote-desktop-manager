@@ -2,7 +2,7 @@
 title: API Reference
 description: Public API groups, session flows, live streams, and internal service contracts for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-03T14:30:00Z
+generated-at: 2026-04-05T00:24:48Z
 source-files:
   - backend/internal/runtimefeatures/manifest.go
   - backend/internal/publicconfig/service.go
@@ -23,6 +23,7 @@ source-files:
   - backend/cmd/control-plane-api/routes_internal.go
   - client/src/api/client.ts
   - client/src/api/auth.api.ts
+  - client/src/api/user.api.ts
   - client/src/api/database.api.ts
   - client/src/api/dbAudit.api.ts
 ---
@@ -134,6 +135,7 @@ Recovery endpoints stay under `/api/auth/*`:
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/user/profile` | Current profile |
+| `GET` | `/api/user/permissions` | Current user's effective permissions for the active tenant |
 | `PUT` | `/api/user/profile` | Update profile |
 | `PUT` | `/api/user/password` | Change password |
 | `POST` | `/api/user/avatar` | Upload avatar |

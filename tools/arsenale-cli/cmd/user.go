@@ -109,6 +109,13 @@ var userPermissionsGetCmd = &cobra.Command{
 	Run:   runUserPermissionsGet,
 }
 
+var userPermissionsSelfCmd = &cobra.Command{
+	Use:   "self",
+	Short: "Get current user's effective permissions",
+	Args:  cobra.NoArgs,
+	Run:   runUserPermissionsSelf,
+}
+
 var userPermissionsSetCmd = &cobra.Command{
 	Use:   "set <userId>",
 	Short: "Set user permissions",
@@ -124,13 +131,13 @@ var userSearchCmd = &cobra.Command{
 }
 
 var (
-	userFromFile       string
-	userEmail          string
-	userRole           string
-	userExpiry         string
-	userPassword       string
-	userSearchQuery    string
-	userPermsFromFile  string
+	userFromFile      string
+	userEmail         string
+	userRole          string
+	userExpiry        string
+	userPassword      string
+	userSearchQuery   string
+	userPermsFromFile string
 )
 
 func init() {
@@ -151,6 +158,7 @@ func init() {
 	userCmd.AddCommand(userSearchCmd)
 
 	userPermissionsCmd.AddCommand(userPermissionsGetCmd)
+	userPermissionsCmd.AddCommand(userPermissionsSelfCmd)
 	userPermissionsCmd.AddCommand(userPermissionsSetCmd)
 
 	userCreateCmd.Flags().StringVarP(&userFromFile, "from-file", "f", "", "JSON/YAML file (- for stdin)")
@@ -437,6 +445,24 @@ func runUserPermissionsGet(cmd *cobra.Command, args []string) {
 	checkAPIError(status, body)
 	printer().PrintSingle(body, []Column{
 		{Header: "USER_ID", Field: "userId"},
+		{Header: "PERMISSIONS", Field: "permissions"},
+	})
+}
+
+func runUserPermissionsSelf(cmd *cobra.Command, args []string) {
+	cfg := getCfg()
+	if err := ensureAuthenticated(cfg); err != nil {
+		fatal("%v", err)
+	}
+
+	body, status, err := apiGet("/api/user/permissions", cfg)
+	if err != nil {
+		fatal("%v", err)
+	}
+	checkAPIError(status, body)
+	printer().PrintSingle(body, []Column{
+		{Header: "TENANT", Field: "tenantId"},
+		{Header: "ROLE", Field: "role"},
 		{Header: "PERMISSIONS", Field: "permissions"},
 	})
 }

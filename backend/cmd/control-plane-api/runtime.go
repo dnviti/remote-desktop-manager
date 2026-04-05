@@ -311,6 +311,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			DB:                  db,
 			Redis:               redisClient,
 			ServerEncryptionKey: serverEncryptionKey,
+			TenantAuth:          tenantAuthService,
 		},
 		connectionService: connections.Service{
 			DB:                  db,

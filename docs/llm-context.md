@@ -2,7 +2,7 @@
 title: LLM Context
 description: Consolidated single-file context for LLMs, bots, and operators working on Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-03T14:30:00Z
+generated-at: 2026-04-05T00:24:48Z
 source-files:
   - README.md
   - AGENT.md
@@ -14,6 +14,7 @@ source-files:
   - backend/cmd/control-plane-api/runtime.go
   - backend/cmd/control-plane-api/routes.go
   - backend/cmd/control-plane-api/routes_public.go
+  - backend/cmd/control-plane-api/routes_user_account.go
   - backend/cmd/control-plane-api/routes_sessions.go
   - backend/cmd/control-plane-api/routes_operations.go
   - backend/cmd/control-plane-api/routes_secrets.go
@@ -22,6 +23,9 @@ source-files:
   - deployment/ansible/install/capabilities.yml
   - client/vite.config.ts
   - client/src/api/auth.api.ts
+  - client/src/api/user.api.ts
+  - client/src/store/authStore.ts
+  - client/src/hooks/useGatewayMonitor.ts
   - client/src/store/featureFlagsStore.ts
   - tools/arsenale-cli/cmd/root.go
 ---
@@ -91,6 +95,7 @@ That manifest controls:
 - whether connections, DB proxy, keychain, multi-tenancy, recordings, zero trust, AI, enterprise auth, sharing, and CLI surfaces are active
 
 The SPA reads the public config through `client/src/api/auth.api.ts` and stores it in `client/src/store/featureFlagsStore.ts`.
+It also loads the current tenant permission snapshot from `GET /api/user/permissions` into `client/src/store/authStore.ts` so tenant settings surfaces can be hidden when the user lacks edit rights.
 
 ## 🏗 Core Request Flow
 
@@ -126,7 +131,7 @@ Authoritative route registration files:
 Highest-value public prefixes:
 
 - `/api/auth` — login, registration, OAuth, SAML, MFA, recovery
-- `/api/user` — profile, password, avatar, MFA lifecycle, notification schedule
+- `/api/user` — profile, password, avatar, effective permissions, MFA lifecycle, notification schedule
 - `/api/secrets` — keychain CRUD, versioning, sharing, breach check, rotation
 - `/api/vault` — personal vault lock/unlock (including MFA unlock), recovery
 - `/api/connections` — connection CRUD, sharing, import/export, favorites

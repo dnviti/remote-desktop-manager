@@ -39,36 +39,3 @@ export const themes: Record<ThemeName, Record<ThemeMode, Theme>> = {
   solarized: { dark: solarized.dark, light: solarized.light },
   onedark: { dark: onedark.dark, light: onedark.light },
 };
-
-/**
- * Google Fonts URL for all theme families.
- * Loaded once in index.html — unused families are not downloaded by the browser
- * until a CSS rule references them (browser-level tree-shaking).
- */
-export const GOOGLE_FONTS_URL =
-  'https://fonts.googleapis.com/css2?' +
-  [
-    // Editorial
-    'family=Instrument+Serif:ital@0;1',
-    'family=JetBrains+Mono:wght@400',
-    'family=Outfit:wght@300;400;500;600;700',
-    // Primer
-    'family=Figtree:wght@400;500;600;700;800',
-    'family=Source+Code+Pro:wght@400;500',
-    // Tanuki
-    'family=Manrope:wght@600;700;800',
-    'family=Urbanist:wght@300;400;500;600',
-    'family=Fira+Code:wght@400;500',
-    // Monokai
-    'family=Syne:wght@500;600;700;800',
-    'family=Rubik:wght@300;400;500',
-    'family=Space+Mono:wght@400;700',
-    // Solarized
-    'family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;0,6..72,600;0,6..72,700;1,6..72,400',
-    'family=Libre+Franklin:wght@300;400;500;600',
-    'family=Inconsolata:wght@400;600',
-    // OneDark
-    'family=Bricolage+Grotesque:wght@400;500;600;700;800',
-    'family=Karla:wght@300;400;500;600;700',
-  ].join('&') +
-  '&display=swap';

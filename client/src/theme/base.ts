@@ -4,6 +4,12 @@ import type { Theme, ThemeOptions } from '@mui/material';
  * Shared MUI component overrides used by all themes.
  * Each theme merges these with its own palette and typography.
  */
+const ignorePointerEventsWhenClosed = (ownerState: { open?: boolean }) => ({
+  // Closing overlays can remain mounted briefly while their exit transition runs.
+  // They must stop intercepting clicks as soon as `open` flips to false.
+  pointerEvents: ownerState.open === false ? ('none' as const) : ('auto' as const),
+});
+
 export const sharedComponents: ThemeOptions['components'] = {
   MuiCssBaseline: {
     styleOverrides: (themeParam: Theme) => ({
@@ -68,13 +74,39 @@ export const sharedComponents: ThemeOptions['components'] = {
       },
     },
   },
+  MuiModal: {
+    styleOverrides: {
+      root: ({ ownerState }: { ownerState: { open?: boolean } }) =>
+        ignorePointerEventsWhenClosed(ownerState),
+    },
+  },
   MuiDialog: {
     styleOverrides: {
+      root: ({ ownerState }: { ownerState: { open?: boolean } }) =>
+        ignorePointerEventsWhenClosed(ownerState),
       paper: {
         backgroundImage: 'none',
         borderRadius: 16,
         boxShadow: 'none',
       },
+    },
+  },
+  MuiPopover: {
+    styleOverrides: {
+      root: ({ ownerState }: { ownerState: { open?: boolean } }) =>
+        ignorePointerEventsWhenClosed(ownerState),
+    },
+  },
+  MuiMenu: {
+    styleOverrides: {
+      root: ({ ownerState }: { ownerState: { open?: boolean } }) =>
+        ignorePointerEventsWhenClosed(ownerState),
+    },
+  },
+  MuiDrawer: {
+    styleOverrides: {
+      root: ({ ownerState }: { ownerState: { open?: boolean } }) =>
+        ignorePointerEventsWhenClosed(ownerState),
     },
   },
   MuiPaper: {

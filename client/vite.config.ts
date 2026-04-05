@@ -10,7 +10,7 @@ const guacTarget = process.env.VITE_GUAC_TARGET || 'http://localhost:18091';
 const terminalTarget = process.env.VITE_TERMINAL_TARGET || 'http://localhost:18090';
 const devPort = Number(process.env.VITE_DEV_PORT || '3005');
 const contentSecurityPolicy =
-  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; font-src 'self' https://fonts.gstatic.com; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
+  "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' ws: wss:; font-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'";
 
 export default defineConfig({
   plugins: [
@@ -113,31 +113,13 @@ export default defineConfig({
               },
             },
           },
-          {
-            // Google Fonts stylesheets
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: 'StaleWhileRevalidate',
-            options: {
-              cacheName: 'google-fonts-stylesheets',
-            },
-          },
-          {
-            // Google Fonts webfont files
-            urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-webfonts',
-              expiration: {
-                maxEntries: 20,
-                maxAgeSeconds: 365 * 24 * 60 * 60, // 1 year
-              },
-            },
-          },
         ],
       },
     }),
   ],
   build: {
+    // Emit font files instead of inlining them as data: URLs so CSP can stay same-origin only.
+    assetsInlineLimit: 0,
     chunkSizeWarningLimit: 700,
     rolldownOptions: {
       output: {

@@ -239,7 +239,7 @@ The containerized client relies on `client/nginx.dev.conf` plus injected env suc
 - `TERMINAL_UPSTREAM_HOST`
 - `NGINX_RESOLVER`
 
-That nginx config accepts both `localhost` and `arsenale.home.arpa.viti`. For WebAuthn, OAuth, and cookie-sensitive flows, the hostname you use in the browser should match the configured public URL and RP values.
+That nginx config accepts both `localhost` and `arsenale.home.arpa.viti`. For WebAuthn, OAuth, and cookie-sensitive flows, the hostname you use in the browser should match the configured public URL and RP values. Unknown top-level asset-style paths such as `/app.js`, `/site.css`, or `/sw.js` now resolve with `404` unless the file exists, instead of falling through to `index.html`; only navigation routes use the SPA shell fallback.
 
 ## 🔒 Login Security Variables
 

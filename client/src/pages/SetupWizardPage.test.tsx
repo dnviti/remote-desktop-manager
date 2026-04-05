@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import SetupWizardPage from './SetupWizardPage';
 
-const getSetupStatus = vi.fn();
-const getDbStatus = vi.fn();
-const completeSetup = vi.fn();
+const { getSetupStatus, getDbStatus, completeSetup } = vi.hoisted(() => ({
+  getSetupStatus: vi.fn(),
+  getDbStatus: vi.fn(),
+  completeSetup: vi.fn(),
+}));
 
 vi.mock('../api/setup.api', () => ({
   getSetupStatus,

@@ -8,6 +8,7 @@ import (
 
 func (d *apiDependencies) registerUserAccountRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/user/profile", d.authenticator.Middleware(d.userService.HandleProfile))
+	mux.HandleFunc("GET /api/user/permissions", d.authenticator.Middleware(d.userService.HandlePermissions))
 	mux.HandleFunc("PUT /api/user/profile", d.authenticator.Middleware(d.userService.HandleUpdateProfile))
 	mux.HandleFunc("PUT /api/user/password", d.authenticator.Middleware(d.userService.HandleChangePassword))
 	mux.HandleFunc("POST /api/user/password-change/initiate", func(w http.ResponseWriter, r *http.Request) {

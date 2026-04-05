@@ -102,6 +102,8 @@ interface SettingsDialogProps {
 
 export default function SettingsDialog({ open, onClose, initialTab, linkedProvider, onViewUserProfile, onGeoIpClick, onImport, onExport }: SettingsDialogProps) {
   const user = useAuthStore((s) => s.user);
+  const permissionsLoaded = useAuthStore((s) => s.permissionsLoaded);
+  const canManageGateways = useAuthStore((s) => s.permissions.canManageGateways);
   const connectionsEnabled = useFeatureFlagsStore((s) => s.connectionsEnabled);
   const databaseProxyEnabled = useFeatureFlagsStore((s) => s.databaseProxyEnabled);
   const keychainEnabled = useFeatureFlagsStore((s) => s.keychainEnabled);
@@ -121,7 +123,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
     const t = BASE_TABS.filter((tab) => tab.id !== 'connections' || anyConnectionFeature);
     if (hasTenant) {
       t.push(...TENANT_TABS.filter((tab) => {
-        if (tab.id === 'gateways') return anyConnectionFeature;
+        if (tab.id === 'gateways') return anyConnectionFeature && permissionsLoaded && canManageGateways;
         if (tab.id === 'integrations') return integrationsEnabled;
         return true;
       }));
@@ -131,7 +133,7 @@ export default function SettingsDialog({ open, onClose, initialTab, linkedProvid
       t.push(ADMIN_TAB);
     }
     return t;
-  }, [anyConnectionFeature, hasTenant, integrationsEnabled, isAdmin, zeroTrustEnabled]);
+  }, [anyConnectionFeature, canManageGateways, hasTenant, integrationsEnabled, isAdmin, permissionsLoaded, zeroTrustEnabled]);
 
   const validTabIds = useMemo(() => new Set(tabs.map((t) => t.id)), [tabs]);
 
