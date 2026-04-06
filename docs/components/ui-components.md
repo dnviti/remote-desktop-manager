@@ -150,8 +150,8 @@ All full-screen dialogs use the MUI `Dialog` component with `fullScreen` prop an
 
 | Component | Purpose |
 |-----------|---------|
-| `DbEditor` | Monaco-based SQL editor with AI-assisted query generation, syntax highlighting, and auto-completion |
-| `DbSchemaBrowser` | Schema introspection panel showing tables, columns, indexes, and relationships |
+| `DbEditor` | Monaco-based database editor with AI-assisted query generation plus protocol-aware SQL and Mongo query templates |
+| `DbSchemaBrowser` | Protocol-aware schema browser that adapts labels, hierarchy, and context-menu actions to SQL and Mongo-style databases |
 | `DbResultsTable` | Paginated query results table with sorting, column resizing, and export |
 | `QueryVisualizer` | Execution plan tree visualization with node cost analysis |
 | `AiQueryOptimizer` | Natural-language-to-SQL conversion panel with AI-powered query optimization |
@@ -159,6 +159,7 @@ All full-screen dialogs use the MUI `Dialog` component with `fullScreen` prop an
 | `DbConnectionStatus` | Database connection health indicator and protocol info |
 | `DbSessionConfigPopover` | Session configuration popover (schema, search path, read-only mode) |
 | `ExecutionPlanTree` | Interactive execution plan tree with cost breakdown per node |
+| `dbBrowserHelpers` | Shared database-protocol helpers for schema-browser labels, qualified names, and default query/action templates |
 | `sqlCompletionProvider` | Monaco intellisense provider with table/column completions from schema |
 | `sqlValidation` | Real-time SQL validation markers in the editor |
 | `dbQueryHistoryUtils` | Utility functions for query history formatting and filtering |

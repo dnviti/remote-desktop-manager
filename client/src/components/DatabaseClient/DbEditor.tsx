@@ -63,6 +63,7 @@ import QueryVisualizer from './QueryVisualizer';
 import DbQueryHistory from './DbQueryHistory';
 import { addSavedQuery, deriveQueryLabel } from './dbQueryHistoryUtils';
 import DbSessionConfigPopover from './DbSessionConfigPopover';
+import { buildLimitedSelectSql, buildMongoCollectionQuery, qualifyDbObjectName } from './dbBrowserHelpers';
 import { format as formatSql } from 'sql-formatter';
 import { createSqlCompletionProvider } from './sqlCompletionProvider';
 import { validateSql } from './sqlValidation';
@@ -166,19 +167,6 @@ function defaultSessionConfigForProtocol(protocol: string, databaseName?: string
 function formatMongoQuery(raw: string): string {
   const parsed = JSON.parse(raw);
   return `${JSON.stringify(parsed, null, 2)}\n`;
-}
-
-function mongoCollectionQuery(collectionName: string, databaseName?: string): string {
-  const payload: Record<string, unknown> = {
-    operation: 'find',
-    collection: collectionName,
-    filter: {},
-    limit: 100,
-  };
-  if (databaseName) {
-    payload.database = databaseName;
-  }
-  return `${JSON.stringify(payload, null, 2)}\n`;
 }
 
 export default function DbEditor({
@@ -663,21 +651,16 @@ export default function DbEditor({
   const handleTableClick = useCallback((tableName: string, schemaName: string) => {
     if (protocol === 'mongodb') {
       updateTab(activeQueryTabId, {
-        sql: activeTab.sql.trim() ? activeTab.sql : mongoCollectionQuery(tableName, databaseName ?? schemaName),
+        sql: activeTab.sql.trim() ? activeTab.sql : buildMongoCollectionQuery(tableName, databaseName ?? schemaName),
       });
       return;
     }
 
-    const qualifiedName = schemaName === 'public' ? tableName : `${schemaName}.${tableName}`;
-    const limit = protocol === 'oracle' ? 'FETCH FIRST 100 ROWS ONLY'
-      : protocol === 'mssql' ? '-- use SELECT TOP 100'
-      : 'LIMIT 100';
+    const qualifiedName = qualifyDbObjectName(protocol, schemaName, tableName);
     updateTab(activeQueryTabId, {
       sql: activeTab.sql.trim()
         ? activeTab.sql
-        : protocol === 'mssql'
-          ? `SELECT TOP 100 * FROM ${qualifiedName};`
-          : `SELECT * FROM ${qualifiedName}\n${limit};`,
+        : buildLimitedSelectSql(protocol, '*', qualifiedName),
     });
   }, [protocol, databaseName, activeQueryTabId, activeTab, updateTab]);
 

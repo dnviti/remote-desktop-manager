@@ -51,8 +51,15 @@ import type {
   DbPackageInfo,
   DbTypeInfo,
 } from '../../api/database.api';
-
-type DbProtocolHint = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql' | 'db2' | string;
+import {
+  buildLimitedSelectSql,
+  buildMongoCollectionQuery,
+  buildMongoQuerySpec,
+  getSchemaBrowserTerms,
+  normalizeDbProtocol,
+  qualifyDbObjectName,
+  type DbProtocolHint,
+} from './dbBrowserHelpers';
 
 type BrowsableObjectType = 'table' | 'view' | 'function' | 'procedure' | 'trigger' | 'sequence' | 'package' | 'type';
 
@@ -95,38 +102,41 @@ interface SectionConfig {
   icon: React.ReactNode;
 }
 
-const SECTION_CONFIGS: SectionConfig[] = [
-  { key: 'tables', label: 'Tables', icon: <TableIcon sx={{ fontSize: 16, color: 'primary.main' }} /> },
-  { key: 'views', label: 'Views', icon: <ViewIcon sx={{ fontSize: 16, color: 'info.main' }} /> },
-  { key: 'functions', label: 'Functions', icon: <FunctionIcon sx={{ fontSize: 16, color: 'secondary.main' }} /> },
-  { key: 'procedures', label: 'Procedures', icon: <ProcedureIcon sx={{ fontSize: 16, color: 'secondary.main' }} /> },
-  { key: 'triggers', label: 'Triggers', icon: <TriggerIcon sx={{ fontSize: 16, color: 'warning.main' }} /> },
-  { key: 'sequences', label: 'Sequences', icon: <SequenceIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> },
-  { key: 'packages', label: 'Packages', icon: <PackageIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> },
-  { key: 'types', label: 'Types', icon: <TypeIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> },
-];
+function getSectionConfigs(tableSectionLabel: string): SectionConfig[] {
+  return [
+    { key: 'tables', label: tableSectionLabel, icon: <TableIcon sx={{ fontSize: 16, color: 'primary.main' }} /> },
+    { key: 'views', label: 'Views', icon: <ViewIcon sx={{ fontSize: 16, color: 'info.main' }} /> },
+    { key: 'functions', label: 'Functions', icon: <FunctionIcon sx={{ fontSize: 16, color: 'secondary.main' }} /> },
+    { key: 'procedures', label: 'Procedures', icon: <ProcedureIcon sx={{ fontSize: 16, color: 'secondary.main' }} /> },
+    { key: 'triggers', label: 'Triggers', icon: <TriggerIcon sx={{ fontSize: 16, color: 'warning.main' }} /> },
+    { key: 'sequences', label: 'Sequences', icon: <SequenceIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> },
+    { key: 'packages', label: 'Packages', icon: <PackageIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> },
+    { key: 'types', label: 'Types', icon: <TypeIcon sx={{ fontSize: 16, color: 'text.secondary' }} /> },
+  ];
+}
 
 function emptyGroup(): SchemaGroup {
   return { tables: [], views: [], functions: [], procedures: [], triggers: [], sequences: [], packages: [], types: [] };
-}
-
-function qualifiedName(schema: string, name: string): string {
-  return (schema === 'public' || schema === 'dbo') ? name : `${schema}.${name}`;
 }
 
 function copyToClipboard(text: string) {
   try { navigator?.clipboard?.writeText(text); } catch { /* ignore */ }
 }
 
-/** Protocol-aware row limit clause. */
-function rowLimit(protocol: DbProtocolHint | undefined, n = 100): string {
-  switch (protocol) {
-    case 'oracle':
-      return `FETCH FIRST ${n} ROWS ONLY`;
-    case 'mssql':
-      return `-- TOP ${n} (add to SELECT)`;
+function mongoFieldPlaceholder(column: DbColumnInfo): unknown {
+  switch (column.dataType) {
+    case 'number':
+      return 0;
+    case 'bool':
+      return false;
+    case 'array':
+      return [];
+    case 'document':
+      return {};
+    case 'date':
+      return '2026-01-01T00:00:00Z';
     default:
-      return `LIMIT ${n}`;
+      return '';
   }
 }
 
@@ -143,6 +153,21 @@ export default function DbSchemaBrowser({
   const [expandedTables, setExpandedTables] = useState<Record<string, boolean>>({});
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [menu, setMenu] = useState<MenuState | null>(null);
+  const normalizedProtocol = normalizeDbProtocol(dbProtocol);
+  const terms = useMemo(() => getSchemaBrowserTerms(normalizedProtocol), [normalizedProtocol]);
+  const sectionConfigs = useMemo(() => getSectionConfigs(terms.tableSectionLabel), [terms.tableSectionLabel]);
+  const isMongoProtocol = normalizedProtocol === 'mongodb';
+  const fallbackGroupName = useMemo(() => {
+    switch (normalizedProtocol) {
+      case 'mongodb':
+      case 'mysql':
+        return 'default';
+      case 'oracle':
+        return 'current';
+      default:
+        return 'public';
+    }
+  }, [normalizedProtocol]);
 
   const closeMenu = useCallback(() => setMenu(null), []);
 
@@ -160,17 +185,17 @@ export default function DbSchemaBrowser({
       return groups[s];
     };
 
-    for (const t of schema.tables) ensure(t.schema || 'public').tables.push(t);
-    for (const v of schema.views ?? []) ensure(v.schema || 'public').views.push(v);
-    for (const f of schema.functions ?? []) ensure(f.schema || 'public').functions.push(f);
-    for (const p of schema.procedures ?? []) ensure(p.schema || 'public').procedures.push(p);
-    for (const tr of schema.triggers ?? []) ensure(tr.schema || 'public').triggers.push(tr);
-    for (const sq of schema.sequences ?? []) ensure(sq.schema || 'public').sequences.push(sq);
-    for (const pk of schema.packages ?? []) ensure(pk.schema || 'public').packages.push(pk);
-    for (const tp of schema.types ?? []) ensure(tp.schema || 'public').types.push(tp);
+    for (const t of schema.tables) ensure(t.schema || fallbackGroupName).tables.push(t);
+    for (const v of schema.views ?? []) ensure(v.schema || fallbackGroupName).views.push(v);
+    for (const f of schema.functions ?? []) ensure(f.schema || fallbackGroupName).functions.push(f);
+    for (const p of schema.procedures ?? []) ensure(p.schema || fallbackGroupName).procedures.push(p);
+    for (const tr of schema.triggers ?? []) ensure(tr.schema || fallbackGroupName).triggers.push(tr);
+    for (const sq of schema.sequences ?? []) ensure(sq.schema || fallbackGroupName).sequences.push(sq);
+    for (const pk of schema.packages ?? []) ensure(pk.schema || fallbackGroupName).packages.push(pk);
+    for (const tp of schema.types ?? []) ensure(tp.schema || fallbackGroupName).types.push(tp);
 
     return groups;
-  }, [schema]);
+  }, [fallbackGroupName, schema]);
 
   const totalObjects = useMemo(() => {
     return schema.tables.length
@@ -213,9 +238,13 @@ export default function DbSchemaBrowser({
   };
 
   // --- Context menu helpers ---
-  const menuQn = menu ? qualifiedName(menu.schema, menu.objectName) : '';
-  const limit = rowLimit(dbProtocol);
-  const selectPrefix = dbProtocol === 'mssql' ? 'SELECT TOP 100' : 'SELECT';
+  const menuQn = menu ? qualifyDbObjectName(normalizedProtocol, menu.schema, menu.objectName) : '';
+  const menuMongoQuery = (payload: Record<string, unknown>) => {
+    if (menu?.schema) {
+      return buildMongoQuerySpec({ database: menu.schema, ...payload });
+    }
+    return buildMongoQuerySpec(payload);
+  };
 
   // Table-specific helpers (only valid when menu.table is present)
   const cols = menu?.table?.columns ?? [];
@@ -224,13 +253,13 @@ export default function DbSchemaBrowser({
   const colSetters = cols.map((c) => `${c.name} = ?`).join(', ');
 
   // --- Context menu renderers per object type ---
-  const renderTableMenuItems = () => [
-    <MenuItem key="select-all" onClick={() => insertSql(`${selectPrefix} *\nFROM ${menuQn}\n${limit};`)}>
+  const renderSqlTableMenuItems = () => [
+    <MenuItem key="select-all" onClick={() => insertSql(buildLimitedSelectSql(normalizedProtocol, '*', menuQn))}>
       <MenuItemIcon><SelectAllIcon fontSize="small" /></MenuItemIcon>
       <ListItemText>SELECT *</ListItemText>
     </MenuItem>,
     cols.length > 0 && (
-      <MenuItem key="select-cols" onClick={() => insertSql(`${selectPrefix} ${colNames}\nFROM ${menuQn}\n${limit};`)}>
+      <MenuItem key="select-cols" onClick={() => insertSql(buildLimitedSelectSql(normalizedProtocol, colNames, menuQn))}>
         <MenuItemIcon><SelectIcon fontSize="small" /></MenuItemIcon>
         <ListItemText>SELECT columns</ListItemText>
       </MenuItem>
@@ -263,11 +292,118 @@ export default function DbSchemaBrowser({
     <Divider key="d2" />,
     <MenuItem key="copy" onClick={() => { copyToClipboard(menuQn); closeMenu(); }}>
       <MenuItemIcon><CopyIcon fontSize="small" /></MenuItemIcon>
-      <ListItemText>Copy table name</ListItemText>
+      <ListItemText>{`Copy ${terms.tableObjectLabel} name`}</ListItemText>
     </MenuItem>,
   ];
 
-  const renderColumnMenuItems = () => {
+  const renderMongoTableMenuItems = () => {
+    const projection = Object.fromEntries(cols.map((column) => [column.name, 1]));
+    const documentTemplate = Object.fromEntries(
+      cols
+        .filter((column) => column.name !== '_id')
+        .slice(0, 8)
+        .map((column) => [column.name, mongoFieldPlaceholder(column)]),
+    );
+
+    return [
+      <MenuItem key="find-docs" onClick={() => insertSql(buildMongoCollectionQuery(menu?.objectName ?? '', menu?.schema))}>
+        <MenuItemIcon><SelectAllIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Find documents</ListItemText>
+      </MenuItem>,
+      cols.length > 0 && (
+        <MenuItem
+          key="find-projection"
+          onClick={() => insertSql(buildMongoCollectionQuery(menu?.objectName ?? '', menu?.schema, { projection }))}
+        >
+          <MenuItemIcon><SelectIcon fontSize="small" /></MenuItemIcon>
+          <ListItemText>Find with projection</ListItemText>
+        </MenuItem>
+      ),
+      <MenuItem
+        key="count-docs"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'count',
+          collection: menu?.objectName ?? '',
+          filter: {},
+        }))}
+      >
+        <MenuItemIcon><FunctionIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Count documents</ListItemText>
+      </MenuItem>,
+      <MenuItem
+        key="aggregate"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'aggregate',
+          collection: menu?.objectName ?? '',
+          pipeline: [
+            { $match: {} },
+            { $limit: 100 },
+          ],
+        }))}
+      >
+        <MenuItemIcon><GroupIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Aggregate template</ListItemText>
+      </MenuItem>,
+      <Divider key="d1" />,
+      <MenuItem
+        key="insert-doc"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'insertOne',
+          collection: menu?.objectName ?? '',
+          document: documentTemplate,
+        }))}
+      >
+        <MenuItemIcon><InsertIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Insert document</ListItemText>
+      </MenuItem>,
+      <MenuItem
+        key="update-docs"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'updateMany',
+          collection: menu?.objectName ?? '',
+          filter: {},
+          update: {
+            $set: documentTemplate,
+          },
+        }))}
+      >
+        <MenuItemIcon><UpdateIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Update documents</ListItemText>
+      </MenuItem>,
+      <MenuItem
+        key="delete-docs"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'deleteMany',
+          collection: menu?.objectName ?? '',
+          filter: {},
+        }))}
+      >
+        <MenuItemIcon><DeleteIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Delete documents</ListItemText>
+      </MenuItem>,
+      <MenuItem
+        key="drop-collection"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'runCommand',
+          command: { drop: menu?.objectName ?? '' },
+        }))}
+      >
+        <MenuItemIcon><DropIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Drop collection</ListItemText>
+      </MenuItem>,
+      <Divider key="d2" />,
+      <MenuItem key="copy" onClick={() => { copyToClipboard(menu?.objectName ?? ''); closeMenu(); }}>
+        <MenuItemIcon><CopyIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Copy collection name</ListItemText>
+      </MenuItem>,
+    ];
+  };
+
+  const renderTableMenuItems = () => (
+    isMongoProtocol ? renderMongoTableMenuItems() : renderSqlTableMenuItems()
+  );
+
+  const renderSqlColumnMenuItems = () => {
     if (!menu?.column) return null;
     const colName = menu.column.name;
     return [
@@ -295,13 +431,69 @@ export default function DbSchemaBrowser({
     ];
   };
 
+  const renderMongoColumnMenuItems = () => {
+    if (!menu?.column) return null;
+    const colName = menu.column.name;
+    return [
+      <MenuItem key="copy-col" onClick={() => { copyToClipboard(colName); closeMenu(); }}>
+        <MenuItemIcon><CopyIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Copy field name</ListItemText>
+      </MenuItem>,
+      <MenuItem
+        key="distinct"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'distinct',
+          collection: menu.objectName,
+          field: colName,
+          filter: {},
+        }))}
+      >
+        <MenuItemIcon><SelectIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Distinct values</ListItemText>
+      </MenuItem>,
+      <MenuItem key="copy-filter" onClick={() => { copyToClipboard(`{ "${colName}": "" }`); closeMenu(); }}>
+        <MenuItemIcon><WhereIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Copy filter</ListItemText>
+      </MenuItem>,
+      <MenuItem key="copy-sort" onClick={() => { copyToClipboard(`{ "${colName}": 1 }`); closeMenu(); }}>
+        <MenuItemIcon><OrderIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Copy sort</ListItemText>
+      </MenuItem>,
+      <MenuItem
+        key="group-count"
+        onClick={() => insertSql(menuMongoQuery({
+          operation: 'aggregate',
+          collection: menu.objectName,
+          pipeline: [
+            {
+              $group: {
+                _id: `$${colName}`,
+                count: { $sum: 1 },
+              },
+            },
+            { $sort: { count: -1 } },
+            { $limit: 100 },
+          ],
+        }))}
+      >
+        <MenuItemIcon><GroupIcon fontSize="small" /></MenuItemIcon>
+        <ListItemText>Group by field</ListItemText>
+      </MenuItem>,
+      <Divider key="col-divider" />,
+    ];
+  };
+
+  const renderColumnMenuItems = () => (
+    isMongoProtocol ? renderMongoColumnMenuItems() : renderSqlColumnMenuItems()
+  );
+
   const renderViewMenuItems = () => {
     // Check if view is materialized (look it up from schema data)
     const viewObj = (schema.views ?? []).find((v) => v.name === menu?.objectName && v.schema === menu?.schema);
     const isMaterialized = viewObj?.materialized;
 
     return [
-      <MenuItem key="select-all" onClick={() => insertSql(`${selectPrefix} *\nFROM ${menuQn}\n${limit};`)}>
+      <MenuItem key="select-all" onClick={() => insertSql(buildLimitedSelectSql(normalizedProtocol, '*', menuQn))}>
         <MenuItemIcon><SelectAllIcon fontSize="small" /></MenuItemIcon>
         <ListItemText>SELECT *</ListItemText>
       </MenuItem>,
@@ -309,7 +501,7 @@ export default function DbSchemaBrowser({
         <MenuItemIcon><FunctionIcon fontSize="small" /></MenuItemIcon>
         <ListItemText>COUNT(*)</ListItemText>
       </MenuItem>,
-      isMaterialized && dbProtocol === 'postgresql' && (
+      isMaterialized && normalizedProtocol === 'postgresql' && (
         <MenuItem key="refresh-mat" onClick={() => insertSql(`REFRESH MATERIALIZED VIEW ${menuQn};`)}>
           <MenuItemIcon><RefreshIcon fontSize="small" /></MenuItemIcon>
           <ListItemText>REFRESH MATERIALIZED VIEW</ListItemText>
@@ -487,10 +679,15 @@ export default function DbSchemaBrowser({
           </ListItemIcon>
           <ListItemText
             primary={table.name}
+            secondary={isMongoProtocol ? `${table.columns.length} fields` : undefined}
             primaryTypographyProps={{
               variant: 'body2',
               noWrap: true,
               sx: { fontSize: '0.8rem' },
+            }}
+            secondaryTypographyProps={{
+              variant: 'caption',
+              sx: { fontSize: '0.65rem' },
             }}
           />
           {isExpanded ? (
@@ -691,7 +888,7 @@ export default function DbSchemaBrowser({
         }}
       >
         <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-          Schema
+          {terms.title}
         </Typography>
         <Box>
           <Tooltip title="Refresh schema">
@@ -710,7 +907,7 @@ export default function DbSchemaBrowser({
       <Box sx={{ flex: 1, overflow: 'auto' }}>
         {totalObjects === 0 && !loading && (
           <Typography variant="caption" color="text.secondary" sx={{ p: 2, display: 'block' }}>
-            No objects found. Connect to a database to browse its schema.
+            {terms.emptyMessage}
           </Typography>
         )}
 
@@ -726,11 +923,11 @@ export default function DbSchemaBrowser({
               variant="overline"
               sx={{ px: 2, pt: 1, display: 'block', color: 'text.secondary' }}
             >
-              {schemaName}
+              {`${terms.groupLabel}: ${schemaName}`}
             </Typography>
             <Divider />
 
-            {SECTION_CONFIGS.map(({ key, label, icon }) => {
+            {sectionConfigs.map(({ key, label, icon }) => {
               const items = group[key];
               if (items.length === 0) return null;
 
