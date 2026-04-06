@@ -14,6 +14,7 @@ func TestClassifyDBQuery(t *testing.T) {
 		{name: "delete", sql: "delete from users", want: dbQueryTypeDelete},
 		{name: "ddl", sql: "drop table users", want: dbQueryTypeDDL},
 		{name: "cte", sql: "with q as (select 1) select * from q", want: dbQueryTypeSelect},
+		{name: "mongo shorthand find", sql: `{"collection":"demo_customers","filter":{"active":true},"limit":25}`, want: dbQueryTypeSelect},
 	}
 
 	for _, tt := range tests {
@@ -33,6 +34,16 @@ func TestExtractTablesAccessed(t *testing.T) {
 	}
 	if got[1] != "orders" {
 		t.Fatalf("second table = %q, want orders", got[1])
+	}
+}
+
+func TestExtractTablesAccessedMongoShorthand(t *testing.T) {
+	got := extractTablesAccessed(`{"find":"demo_customers","query":{"active":true},"limit":10}`)
+	if len(got) != 1 {
+		t.Fatalf("extractTablesAccessed() returned %d collections, want 1: %#v", len(got), got)
+	}
+	if got[0] != "demo_customers" {
+		t.Fatalf("first collection = %q, want demo_customers", got[0])
 	}
 }
 

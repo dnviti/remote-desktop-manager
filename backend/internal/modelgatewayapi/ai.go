@@ -20,6 +20,7 @@ import (
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/authn"
 	"github.com/dnviti/arsenale/backend/internal/modelgateway"
+	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 	"github.com/google/uuid"
 )
@@ -478,8 +479,8 @@ func (s Service) analyzeQueryIntent(ctx context.Context, params analyzeQueryInte
 
 	raw, err := s.completeLLM(ctx, llmCompletionOptions{
 		Messages: []llmMessage{
-			{Role: "system", Content: buildPlanningSystemPrompt()},
-			{Role: "user", Content: formatTableList(params.Schema) + "\n\nUser request: " + params.Prompt},
+			{Role: "system", Content: buildPlanningSystemPrompt(params.DBProtocol)},
+			{Role: "user", Content: formatTableList(params.Schema, params.DBProtocol) + "\n\nDatabase type: " + params.DBProtocol + "\n\nUser request: " + params.Prompt},
 		},
 	}, overrides)
 	if err != nil {
@@ -576,9 +577,11 @@ func (s Service) confirmAndGenerate(ctx context.Context, conversationID string, 
 	}
 
 	parsed := parseGenerationResponse(result.Content)
-	if err := validateGeneratedSQL(parsed.SQL); err != nil {
+	normalizedQuery, err := normalizeQueryForProtocol(conv.DBProtocol, parsed.SQL, true)
+	if err != nil {
 		return aiGenerateResult{}, err
 	}
+	parsed.SQL = normalizedQuery
 
 	if violation := findUnapprovedTableReference(parsed.SQL, filteredSchema, conv.FullSchema); violation != "" {
 		deniedTables := collectDeniedTables(filteredSchema, conv.FullSchema)
@@ -593,9 +596,11 @@ func (s Service) confirmAndGenerate(ctx context.Context, conversationID string, 
 			return aiGenerateResult{}, &requestError{status: http.StatusBadRequest, message: fmt.Sprintf("The AI used unapproved table %q. Only these tables were approved: %s. Try approving more tables or rephrasing your request.", violation, strings.Join(approvedObjects, ", "))}
 		}
 		parsed = parseGenerationResponse(retry.Content)
-		if err := validateGeneratedSQL(parsed.SQL); err != nil {
+		normalizedQuery, err = normalizeQueryForProtocol(conv.DBProtocol, parsed.SQL, true)
+		if err != nil {
 			return aiGenerateResult{}, err
 		}
+		parsed.SQL = normalizedQuery
 		if retryViolation := findUnapprovedTableReference(parsed.SQL, filteredSchema, conv.FullSchema); retryViolation != "" {
 			return aiGenerateResult{}, &requestError{status: http.StatusBadRequest, message: fmt.Sprintf("The AI used unapproved table %q. Only these tables were approved: %s. Try approving more tables or rephrasing your request.", retryViolation, strings.Join(approvedObjects, ", "))}
 		}
@@ -663,14 +668,14 @@ func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, us
 
 	conversationID := uuid.NewString()
 	messages := []llmMessage{
-		{Role: "system", Content: optimizationSystemPrompt},
+		{Role: "system", Content: buildOptimizationSystemPrompt(input.DBProtocol)},
 		{Role: "user", Content: buildFirstTurnMessage(input)},
 	}
 
 	raw, err := s.completeLLM(ctx, llmCompletionOptions{Messages: messages}, overrides)
 	var parsed firstTurnResponse
 	if err != nil {
-		parsed = buildHeuristicDataRequests(input.SQL)
+		parsed = buildHeuristicDataRequests(input)
 	} else {
 		parsed = parseFirstTurnResponse(raw.Content)
 	}
@@ -707,10 +712,21 @@ func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, us
 		delete(state.optimizationSessions, conversationID)
 		state.mu.Unlock()
 		optimizedSQL := parsed.OptimizedSQL
+		explanation := parsed.Explanation
 		if optimizedSQL == "" {
 			optimizedSQL = input.SQL
 		}
-		explanation := parsed.Explanation
+		if normalized, normErr := normalizeQueryForProtocol(input.DBProtocol, optimizedSQL, true); normErr == nil {
+			optimizedSQL = normalized
+		}
+		if isMongoDBProtocol(input.DBProtocol) {
+			if stabilized, changed, stabErr := stabilizeMongoOptimizedQuery(input.SQL, optimizedSQL); stabErr == nil {
+				optimizedSQL = stabilized
+				if changed {
+					explanation = appendMongoSemanticsNote(explanation)
+				}
+			}
+		}
 		if explanation == "" {
 			explanation = "No optimization opportunities identified."
 		}
@@ -762,6 +778,17 @@ func (s Service) continueOptimization(ctx context.Context, conversationID string
 		return optimizeQueryResult{}, err
 	}
 	parsed := parseSecondTurnResponse(raw.Content, conversation.Input.SQL)
+	if normalized, normErr := normalizeQueryForProtocol(conversation.Input.DBProtocol, parsed.OptimizedSQL, true); normErr == nil {
+		parsed.OptimizedSQL = normalized
+	}
+	if isMongoDBProtocol(conversation.Input.DBProtocol) {
+		if stabilized, changed, stabErr := stabilizeMongoOptimizedQuery(conversation.Input.SQL, parsed.OptimizedSQL); stabErr == nil {
+			parsed.OptimizedSQL = stabilized
+			if changed {
+				parsed.Explanation = appendMongoSemanticsNote(parsed.Explanation)
+			}
+		}
+	}
 
 	provider, modelID := effectiveLLMProviderAndModel(conversation.Overrides, loadAIEnvConfig())
 	_ = s.insertAuditLog(ctx, userID, "DB_QUERY_AI_OPTIMIZED", "DatabaseQuery", conversation.Input.SessionID, map[string]any{
@@ -1355,6 +1382,10 @@ func normalizeKnownDBProtocol(protocol string) string {
 	return ""
 }
 
+func isMongoDBProtocol(protocol string) bool {
+	return normalizeKnownDBProtocol(protocol) == "mongodb"
+}
+
 func normalizePlanningIdentifier(value string) string {
 	value = strings.TrimSpace(value)
 	value = strings.Trim(value, "`\"'")
@@ -1576,38 +1607,51 @@ func isPlanningNoiseToken(token string) bool {
 	}
 }
 
-func buildPlanningSystemPrompt() string {
-	return `You are a SQL query planning assistant. Given a user's request and a list of available database tables, determine which tables are needed to write the query.
+func buildPlanningSystemPrompt(dbProtocol string) string {
+	objectLabel := "tables"
+	if isMongoDBProtocol(dbProtocol) {
+		objectLabel = "collections"
+	}
+
+	return fmt.Sprintf(`You are a database query planning assistant. Given a user's request and a list of available database %s, determine which %s are needed to write the query.
 
 Return ONLY valid JSON with no markdown fences:
 {"tables": [{"name": "table_name", "schema": "schema_name", "reason": "brief reason this table is needed"}]}
 
 Rules:
-- Only include tables that are genuinely needed to answer the user's request.
-- Do not invent tables that are not in the provided list.
-- Include join tables if a relationship requires them.
-- Keep reasons concise (one sentence).`
+- Only include %s that are genuinely needed to answer the user's request.
+- Do not invent %s that are not in the provided list.
+- Include relationship or lookup %s if the query requires them.
+- Keep reasons concise (one sentence).`, objectLabel, objectLabel, objectLabel, objectLabel, objectLabel)
 }
 
-func formatTableList(tables []contracts.SchemaTable) string {
-	if len(tables) == 0 {
-		return "No tables available."
+func formatTableList(tables []contracts.SchemaTable, dbProtocol string) string {
+	objectLabel := "tables"
+	if isMongoDBProtocol(dbProtocol) {
+		objectLabel = "collections"
 	}
-	lines := []string{"Available tables:"}
+	if len(tables) == 0 {
+		return "No " + objectLabel + " available."
+	}
+	lines := []string{"Available " + objectLabel + ":"}
 	limit := len(tables)
 	if limit > 100 {
 		limit = 100
 	}
 	for _, table := range tables[:limit] {
-		qualified := table.Name
+		displayName := table.Name
 		if trimmed := strings.TrimSpace(table.Schema); trimmed != "" && trimmed != "public" {
-			qualified = trimmed + "." + table.Name
+			if isMongoDBProtocol(dbProtocol) {
+				displayName = table.Name + " (database " + trimmed + ")"
+			} else {
+				displayName = trimmed + "." + table.Name
+			}
 		}
 		columns := make([]string, 0, len(table.Columns))
 		for _, column := range table.Columns {
 			columns = append(columns, column.Name)
 		}
-		lines = append(lines, "- "+qualified+" ("+strings.Join(columns, ", ")+")")
+		lines = append(lines, "- "+displayName+" ("+strings.Join(columns, ", ")+")")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -1647,6 +1691,37 @@ func parsePlanningResponse(raw string) []objectRequest {
 }
 
 func buildGenerationSystemPrompt(dbProtocol string) string {
+	if isMongoDBProtocol(dbProtocol) {
+		return `You are a MongoDB query assistant. You generate Arsenale MongoDB JSON query specs from natural-language requests.
+
+CRITICAL CONSTRAINT:
+You may ONLY reference collections that appear in the schema below. The user has explicitly approved only these collections. You MUST NOT reference any other collection.
+
+Return ONLY valid JSON with two fields:
+{
+  "query": {
+    "collection": "collection_name",
+    "operation": "find|aggregate|count|distinct|runCommand",
+    "...": "other supported fields"
+  },
+  "explanation": "brief explanation"
+}
+
+Rules:
+1. Only generate read-only MongoDB operations: find, aggregate, count, distinct, or runCommand.
+2. ALWAYS include an explicit "operation" field.
+3. Set "collection" to the bare collection name only. Do NOT prefix it with database or schema names like "arsenale_demo.demo_customers".
+4. Only use a separate "database" field when you intentionally need a different database; otherwise omit it.
+5. Use ONLY collection and field names from the provided schema.
+6. Never return shell syntax, JavaScript, db.collection.find(...), or SQL.
+7. For simple retrievals, prefer "find". Use "aggregate" only when grouping, joining-like lookup, or computed totals are needed.
+8. For "find", include a reasonable "limit" when the user did not specify one.
+9. For "distinct", include both "collection" and "field".
+10. For "aggregate", include both "collection" and "pipeline".
+11. For "runCommand", include a "command" object.
+12. If the approved collections are insufficient, write the best read-only query you can using ONLY the approved collections and explain the limitation.`
+	}
+
 	dialect := strings.ToUpper(strings.TrimSpace(dbProtocol))
 	if dialect == "" {
 		dialect = "POSTGRESQL"
@@ -1676,16 +1751,24 @@ func formatSchemaContext(tables []contracts.SchemaTable, dbProtocol string) stri
 		return "No schema information available."
 	}
 	lines := []string{"Database type: " + dbProtocol, "", "Schema:"}
+	objectLabel := "TABLE"
+	if isMongoDBProtocol(dbProtocol) {
+		objectLabel = "COLLECTION"
+	}
 	limit := len(tables)
 	if limit > 50 {
 		limit = 50
 	}
 	for _, table := range tables[:limit] {
-		qualified := table.Name
+		displayName := table.Name
 		if trimmed := strings.TrimSpace(table.Schema); trimmed != "" && trimmed != "public" {
-			qualified = trimmed + "." + table.Name
+			if isMongoDBProtocol(dbProtocol) {
+				displayName = table.Name + " (database " + trimmed + ")"
+			} else {
+				displayName = trimmed + "." + table.Name
+			}
 		}
-		lines = append(lines, "", "TABLE "+qualified+":")
+		lines = append(lines, "", objectLabel+" "+displayName+":")
 		for _, column := range table.Columns {
 			nullable := " NOT NULL"
 			if column.Nullable {
@@ -1710,10 +1793,24 @@ func parseGenerationResponse(raw string) generationResponse {
 	extracted, err := extractJSON(raw)
 	if err == nil {
 		if record, ok := extracted.(map[string]any); ok {
-			if sqlText, ok := record["sql"].(string); ok && strings.TrimSpace(sqlText) != "" {
+			if queryText := extractQueryTextValue(record["sql"]); queryText != "" {
 				explanation, _ := record["explanation"].(string)
 				return generationResponse{
-					SQL:         strings.TrimSpace(sqlText),
+					SQL:         strings.TrimSpace(queryText),
+					Explanation: strings.TrimSpace(explanation),
+				}
+			}
+			if queryText := extractQueryTextValue(record["query"]); queryText != "" {
+				explanation, _ := record["explanation"].(string)
+				return generationResponse{
+					SQL:         strings.TrimSpace(queryText),
+					Explanation: strings.TrimSpace(explanation),
+				}
+			}
+			if queryText := extractQueryTextValue(record["query_spec"]); queryText != "" {
+				explanation, _ := record["explanation"].(string)
+				return generationResponse{
+					SQL:         strings.TrimSpace(queryText),
 					Explanation: strings.TrimSpace(explanation),
 				}
 			}
@@ -1733,6 +1830,27 @@ func parseGenerationResponse(raw string) generationResponse {
 	return generationResponse{SQL: strings.TrimSpace(raw)}
 }
 
+func extractQueryTextValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case map[string]any:
+		payload, err := json.MarshalIndent(typed, "", "  ")
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(payload))
+	case []any:
+		payload, err := json.MarshalIndent(typed, "", "  ")
+		if err != nil {
+			return ""
+		}
+		return strings.TrimSpace(string(payload))
+	default:
+		return ""
+	}
+}
+
 func validateGeneratedSQL(sqlText string) error {
 	normalized := regexp.MustCompile(`(?m)^\s*--.*$`).ReplaceAllString(sqlText, "")
 	normalized = strings.TrimSpace(normalized)
@@ -1746,6 +1864,163 @@ func validateGeneratedSQL(sqlText string) error {
 	default:
 		return &requestError{status: http.StatusBadRequest, message: "The AI generated a non-SELECT query. Only SELECT queries are allowed."}
 	}
+}
+
+func normalizeQueryForProtocol(dbProtocol, queryText string, readOnly bool) (string, error) {
+	queryText = strings.TrimSpace(queryText)
+	if queryText == "" {
+		return "", &requestError{status: http.StatusBadRequest, message: "The AI did not return a query."}
+	}
+
+	if isMongoDBProtocol(dbProtocol) {
+		var (
+			normalized string
+			err        error
+		)
+		if readOnly {
+			normalized, _, _, err = queryrunner.NormalizeMongoReadOnlyQueryText(queryText)
+		} else {
+			normalized, _, _, err = queryrunner.NormalizeMongoQueryText(queryText)
+		}
+		if err != nil {
+			return "", &requestError{status: http.StatusBadRequest, message: "The AI generated an invalid MongoDB query spec: " + err.Error()}
+		}
+		return normalized, nil
+	}
+
+	if err := validateGeneratedSQL(queryText); err != nil {
+		return "", err
+	}
+	return queryText, nil
+}
+
+func stabilizeMongoOptimizedQuery(originalQuery, optimizedQuery string) (string, bool, error) {
+	originalNormalized, err := normalizeQueryForProtocol("mongodb", originalQuery, true)
+	if err != nil {
+		return optimizedQuery, false, err
+	}
+	optimizedNormalized, err := normalizeQueryForProtocol("mongodb", optimizedQuery, true)
+	if err != nil {
+		return optimizedQuery, false, err
+	}
+
+	var originalSpec map[string]any
+	if err := json.Unmarshal([]byte(originalNormalized), &originalSpec); err != nil {
+		return optimizedNormalized, false, err
+	}
+	var optimizedSpec map[string]any
+	if err := json.Unmarshal([]byte(optimizedNormalized), &optimizedSpec); err != nil {
+		return optimizedNormalized, false, err
+	}
+
+	originalOp := normalizeMongoOptimizationOperation(originalSpec["operation"])
+	optimizedOp := normalizeMongoOptimizationOperation(optimizedSpec["operation"])
+	if originalOp == "" {
+		return optimizedNormalized, false, nil
+	}
+
+	changed := false
+	if optimizedOp == "" {
+		optimizedSpec["operation"] = originalSpec["operation"]
+		optimizedOp = originalOp
+		changed = true
+	}
+	if optimizedOp != originalOp {
+		return originalNormalized, true, nil
+	}
+
+	changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "database") || changed
+	changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "collection") || changed
+
+	switch originalOp {
+	case "find":
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "filter") || changed
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "projection") || changed
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "sort") || changed
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "limit") || changed
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "skip") || changed
+	case "count":
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "filter") || changed
+	case "distinct":
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "filter") || changed
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "field") || changed
+	case "aggregate":
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "pipeline") || changed
+	case "runcommand":
+		changed = copyMongoValueIfMissing(optimizedSpec, originalSpec, "command") || changed
+	}
+
+	payload, err := json.MarshalIndent(optimizedSpec, "", "  ")
+	if err != nil {
+		return optimizedNormalized, changed, err
+	}
+	stabilized, err := normalizeQueryForProtocol("mongodb", string(payload), true)
+	if err != nil {
+		return optimizedNormalized, changed, err
+	}
+	return stabilized, changed, nil
+}
+
+func normalizeMongoOptimizationOperation(value any) string {
+	text, _ := value.(string)
+	text = strings.ToLower(strings.TrimSpace(text))
+	text = strings.ReplaceAll(text, "_", "")
+	text = strings.ReplaceAll(text, "-", "")
+	switch text {
+	case "countdocument", "countdocuments", "estimateddocumentcount":
+		return "count"
+	case "runcmd":
+		return "runcommand"
+	default:
+		return text
+	}
+}
+
+func copyMongoValueIfMissing(dst, src map[string]any, key string) bool {
+	if !mongoValueMissing(dst[key]) {
+		return false
+	}
+	value, ok := src[key]
+	if !ok || mongoValueMissing(value) {
+		return false
+	}
+	dst[key] = value
+	return true
+}
+
+func mongoValueMissing(value any) bool {
+	switch typed := value.(type) {
+	case nil:
+		return true
+	case string:
+		return strings.TrimSpace(typed) == ""
+	case []any:
+		return len(typed) == 0
+	case map[string]any:
+		return len(typed) == 0
+	case float64:
+		return typed == 0
+	case int:
+		return typed == 0
+	case int32:
+		return typed == 0
+	case int64:
+		return typed == 0
+	default:
+		return false
+	}
+}
+
+func appendMongoSemanticsNote(explanation string) string {
+	note := "Missing MongoDB filter/sort/limit fields were preserved from the original query to keep the same result set semantics."
+	explanation = strings.TrimSpace(explanation)
+	if explanation == "" {
+		return note
+	}
+	if strings.Contains(explanation, note) {
+		return explanation
+	}
+	return explanation + " " + note
 }
 
 func findUnapprovedTableReference(sqlText string, approvedTables, allTables []contracts.SchemaTable) string {
@@ -1798,7 +2073,56 @@ func collectDeniedTables(filteredSchema, fullSchema []contracts.SchemaTable) []s
 	return denied
 }
 
-const optimizationSystemPrompt = `You are an expert SQL performance analyst and query optimizer.
+func buildOptimizationSystemPrompt(dbProtocol string) string {
+	if isMongoDBProtocol(dbProtocol) {
+		return `You are an expert MongoDB query analyst and optimizer.
+Your task is to analyze Arsenale MongoDB JSON query specs and produce optimized read-only versions.
+
+You work in a multi-turn flow:
+1. FIRST TURN: You receive a MongoDB query spec and optional metadata. Analyze it and request specific collection metadata you need (indexes, statistics, table_schema, row_count). Respond ONLY with a JSON object.
+2. SECOND TURN: You receive the requested metadata. Produce the optimized query with explanation. Respond ONLY with a JSON object.
+
+FIRST TURN response format (when you need additional data):
+{
+  "needs_data": true,
+  "data_requests": [
+    { "type": "indexes|statistics|table_schema|row_count", "target": "collection_name", "reason": "brief reason" }
+  ]
+}
+
+FIRST TURN response format (when you can optimize immediately):
+{
+  "needs_data": false,
+  "optimized_query": {
+    "collection": "collection_name",
+    "operation": "find|aggregate|count|distinct|runCommand"
+  },
+  "explanation": "Explanation of changes...",
+  "changes": ["change 1", "change 2"]
+}
+
+SECOND TURN response format:
+{
+  "optimized_query": {
+    "collection": "collection_name",
+    "operation": "find|aggregate|count|distinct|runCommand"
+  },
+  "explanation": "Explanation of changes...",
+  "changes": ["change 1", "change 2"]
+}
+
+Rules:
+- Only suggest read-only MongoDB operations.
+- ALWAYS include an explicit "operation" field in the optimized query.
+- Use the bare collection name in "collection"; do not prefix it with database or schema names like "arsenale_demo.demo_customers".
+- Only use a separate "database" field when it is genuinely required.
+- Never change the query semantics.
+- Prefer the simplest valid query shape for the requested result.
+- If the query is already optimal, return the original query unchanged and explain why.
+- Respond ONLY with valid JSON, no markdown fences or extra text.`
+	}
+
+	return `You are an expert SQL performance analyst and query optimizer.
 Your task is to analyze SQL queries and their execution plans, then produce optimized versions.
 
 You work in a multi-turn flow:
@@ -1835,19 +2159,28 @@ Rules:
 - Consider the specific database engine and version provided.
 - Be specific in your explanations (mention index names, cardinality, join strategies).
 - Respond ONLY with valid JSON, no markdown fences or extra text.`
+}
 
 func buildFirstTurnMessage(input optimizeQueryInput) string {
 	parts := []string{"Database: " + input.DBProtocol}
 	if strings.TrimSpace(input.DBVersion) != "" {
 		parts[0] += " " + strings.TrimSpace(input.DBVersion)
 	}
-	parts = append(parts, "", "SQL Query:", input.SQL)
+	queryLabel := "SQL Query"
+	if isMongoDBProtocol(input.DBProtocol) {
+		queryLabel = "MongoDB Query Spec"
+	}
+	parts = append(parts, "", queryLabel+":", input.SQL)
 	if input.ExecutionPlan != nil {
+		planLabel := "Execution Plan"
+		if isMongoDBProtocol(input.DBProtocol) {
+			planLabel = "Query Plan"
+		}
 		plan := stringifyLLMContext(input.ExecutionPlan)
 		if len(plan) > 50000 {
 			plan = plan[:50000] + "\n[truncated]"
 		}
-		parts = append(parts, "", "Execution Plan:", plan)
+		parts = append(parts, "", planLabel+":", plan)
 	}
 	if input.SchemaContext != nil {
 		parts = append(parts, "", "Schema Context:", stringifyLLMContext(input.SchemaContext))
@@ -1930,7 +2263,9 @@ func parseFirstTurnResponse(content string) firstTurnResponse {
 	}
 
 	result := firstTurnResponse{}
-	if value, ok := root["optimized_sql"].(string); ok {
+	if value := extractQueryTextValue(root["optimized_sql"]); value != "" {
+		result.OptimizedSQL = value
+	} else if value := extractQueryTextValue(root["optimized_query"]); value != "" {
 		result.OptimizedSQL = value
 	}
 	if value, ok := root["explanation"].(string); ok {
@@ -1969,8 +2304,10 @@ func parseSecondTurnResponse(content, originalSQL string) secondTurnResponse {
 		Explanation:  "Analysis complete. The query appears to be reasonably optimized.",
 		Changes:      []string{},
 	}
-	if value, ok := root["optimized_sql"].(string); ok && strings.TrimSpace(value) != "" {
-		result.OptimizedSQL = strings.TrimSpace(value)
+	if value := extractQueryTextValue(root["optimized_sql"]); value != "" {
+		result.OptimizedSQL = value
+	} else if value := extractQueryTextValue(root["optimized_query"]); value != "" {
+		result.OptimizedSQL = value
 	}
 	if value, ok := root["explanation"].(string); ok && strings.TrimSpace(value) != "" {
 		result.Explanation = strings.TrimSpace(value)
@@ -1985,8 +2322,34 @@ func parseSecondTurnResponse(content, originalSQL string) secondTurnResponse {
 	return result
 }
 
-func buildHeuristicDataRequests(sqlText string) firstTurnResponse {
-	tables := extractTablesFromSQL(sqlText)
+func buildHeuristicDataRequests(input optimizeQueryInput) firstTurnResponse {
+	if isMongoDBProtocol(input.DBProtocol) {
+		collections := extractCollectionsFromMongoQuery(input.SQL)
+		requests := make([]dataRequest, 0, len(collections)*3)
+		for _, collection := range collections {
+			requests = append(requests, dataRequest{
+				Type:   "indexes",
+				Target: collection,
+				Reason: fmt.Sprintf("Inspect indexes on `%s` to identify query-shape improvements", collection),
+			})
+			requests = append(requests, dataRequest{
+				Type:   "statistics",
+				Target: collection,
+				Reason: fmt.Sprintf("Read collection statistics for `%s` to understand scan cost", collection),
+			})
+			requests = append(requests, dataRequest{
+				Type:   "table_schema",
+				Target: collection,
+				Reason: fmt.Sprintf("Inspect sampled schema for `%s` to validate field usage", collection),
+			})
+		}
+		if len(requests) == 0 {
+			return firstTurnResponse{}
+		}
+		return firstTurnResponse{NeedsData: true, DataRequests: requests}
+	}
+
+	tables := extractTablesFromSQL(input.SQL)
 	requests := make([]dataRequest, 0, len(tables)*2)
 	for _, table := range tables {
 		requests = append(requests, dataRequest{
@@ -2017,6 +2380,14 @@ func buildHeuristicDataRequests(sqlText string) firstTurnResponse {
 		return firstTurnResponse{}
 	}
 	return firstTurnResponse{NeedsData: true, DataRequests: requests}
+}
+
+func extractCollectionsFromMongoQuery(queryText string) []string {
+	_, collection, err := queryrunner.ParseMongoQueryMetadata(queryText)
+	if err != nil || strings.TrimSpace(collection) == "" {
+		return nil
+	}
+	return []string{strings.TrimSpace(collection)}
 }
 
 func extractTablesFromSQL(sqlText string) []string {

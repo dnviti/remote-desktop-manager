@@ -166,6 +166,103 @@ func TestParseFirstTurnResponseFiltersUnsupportedRequests(t *testing.T) {
 	}
 }
 
+func TestParseGenerationResponseReadsMongoQueryObject(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"query":{"collection":"demo_customers","filter":{"active":true},"limit":25},"explanation":"Lists active customers."}`
+	result := parseGenerationResponse(raw)
+	if !strings.Contains(result.SQL, `"collection": "demo_customers"`) {
+		t.Fatalf("expected Mongo query object to be marshaled into query text, got %q", result.SQL)
+	}
+	if result.Explanation != "Lists active customers." {
+		t.Fatalf("unexpected explanation %q", result.Explanation)
+	}
+}
+
+func TestParseFirstTurnResponseReadsMongoOptimizedQueryObject(t *testing.T) {
+	t.Parallel()
+
+	raw := `{"needs_data":false,"optimized_query":{"collection":"demo_customers","filter":{"active":true},"sort":{"created_at":-1},"limit":50},"explanation":"Adds a sort and limit."}`
+	result := parseFirstTurnResponse(raw)
+	if !strings.Contains(result.OptimizedSQL, `"collection": "demo_customers"`) {
+		t.Fatalf("expected optimized Mongo query object to be marshaled into query text, got %q", result.OptimizedSQL)
+	}
+}
+
+func TestNormalizeQueryForProtocolNormalizesMongoShorthand(t *testing.T) {
+	t.Parallel()
+
+	normalized, err := normalizeQueryForProtocol("mongodb", `{"find":"demo_customers","query":{"active":true},"limit":10}`, true)
+	if err != nil {
+		t.Fatalf("normalizeQueryForProtocol() error = %v", err)
+	}
+	if !strings.Contains(normalized, `"operation": "find"`) {
+		t.Fatalf("expected normalized Mongo query to include inferred operation, got %q", normalized)
+	}
+	if !strings.Contains(normalized, `"collection": "demo_customers"`) {
+		t.Fatalf("expected normalized Mongo query to include collection, got %q", normalized)
+	}
+}
+
+func TestNormalizeQueryForProtocolSplitsQualifiedMongoCollection(t *testing.T) {
+	t.Parallel()
+
+	normalized, err := normalizeQueryForProtocol("mongodb", `{"collection":"arsenale_demo.demo_customers","operation":"find","limit":5}`, true)
+	if err != nil {
+		t.Fatalf("normalizeQueryForProtocol() error = %v", err)
+	}
+	if !strings.Contains(normalized, `"database": "arsenale_demo"`) {
+		t.Fatalf("expected normalized Mongo query to include database, got %q", normalized)
+	}
+	if !strings.Contains(normalized, `"collection": "demo_customers"`) {
+		t.Fatalf("expected normalized Mongo query to strip database prefix from collection, got %q", normalized)
+	}
+}
+
+func TestFormatSchemaContextForMongoUsesBareCollectionName(t *testing.T) {
+	t.Parallel()
+
+	context := formatSchemaContext([]contracts.SchemaTable{
+		{
+			Name:   "demo_customers",
+			Schema: "arsenale_demo",
+			Columns: []contracts.SchemaColumn{
+				{Name: "full_name", DataType: "string"},
+			},
+		},
+	}, "mongodb")
+	if !strings.Contains(context, "COLLECTION demo_customers (database arsenale_demo):") {
+		t.Fatalf("expected Mongo schema context to describe the database separately, got %q", context)
+	}
+	if strings.Contains(context, "COLLECTION arsenale_demo.demo_customers:") {
+		t.Fatalf("expected Mongo schema context to avoid schema-qualified collection names, got %q", context)
+	}
+}
+
+func TestStabilizeMongoOptimizedQueryPreservesFindSemantics(t *testing.T) {
+	t.Parallel()
+
+	stabilized, changed, err := stabilizeMongoOptimizedQuery(
+		`{"collection":"demo_customers","operation":"find","filter":{"active":true},"sort":{"created_at":-1},"limit":5}`,
+		`{"collection":"demo_customers","operation":"find"}`,
+	)
+	if err != nil {
+		t.Fatalf("stabilizeMongoOptimizedQuery() error = %v", err)
+	}
+	if !changed {
+		t.Fatal("expected Mongo optimizer output to be stabilized")
+	}
+	if !strings.Contains(stabilized, `"filter": {`) {
+		t.Fatalf("expected stabilized Mongo query to preserve filter, got %q", stabilized)
+	}
+	if !strings.Contains(stabilized, `"sort": {`) {
+		t.Fatalf("expected stabilized Mongo query to preserve sort, got %q", stabilized)
+	}
+	if !strings.Contains(stabilized, `"limit": 5`) {
+		t.Fatalf("expected stabilized Mongo query to preserve limit, got %q", stabilized)
+	}
+}
+
 func TestTenantLLMOverridesUsesTenantProviderConfig(t *testing.T) {
 	t.Parallel()
 

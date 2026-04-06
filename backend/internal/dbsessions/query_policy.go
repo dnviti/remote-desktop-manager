@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/google/uuid"
 )
 
@@ -282,13 +283,10 @@ func extractTablesAccessed(queryText string) []string {
 }
 
 func parseMongoOperation(queryText string) (string, bool) {
-	var payload struct {
-		Operation string `json:"operation"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(queryText)), &payload); err != nil {
+	operation, _, err := queryrunner.ParseMongoQueryMetadata(queryText)
+	if err != nil {
 		return "", false
 	}
-	operation := strings.ToLower(strings.TrimSpace(payload.Operation))
 	if operation == "" {
 		return "", false
 	}
@@ -296,13 +294,11 @@ func parseMongoOperation(queryText string) (string, bool) {
 }
 
 func parseMongoCollection(queryText string) (string, bool) {
-	var payload struct {
-		Collection string `json:"collection"`
-	}
-	if err := json.Unmarshal([]byte(strings.TrimSpace(queryText)), &payload); err != nil {
+	_, collection, err := queryrunner.ParseMongoQueryMetadata(queryText)
+	if err != nil {
 		return "", false
 	}
-	collection := strings.ToLower(strings.TrimSpace(payload.Collection))
+	collection = strings.ToLower(strings.TrimSpace(collection))
 	if collection == "" {
 		return "", false
 	}
