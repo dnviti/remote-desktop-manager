@@ -107,6 +107,14 @@ func VerifyAuthentication(rawCredential []byte, challenge string, credentials []
 	}, nil
 }
 
+func ExtractAuthenticationCredentialIDs(rawCredential []byte) (string, string, error) {
+	parsed, err := protocol.ParseCredentialRequestResponseBytes(rawCredential)
+	if err != nil {
+		return "", "", fmt.Errorf("parse credential assertion: %w", err)
+	}
+	return strings.TrimSpace(parsed.ID), strings.TrimSpace(base64.RawURLEncoding.EncodeToString(parsed.RawID)), nil
+}
+
 func VerifyRegistration(rawCredential []byte, challenge string) (RegisteredCredential, error) {
 	challenge = strings.TrimSpace(challenge)
 	if challenge == "" {

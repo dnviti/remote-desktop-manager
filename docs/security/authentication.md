@@ -9,7 +9,7 @@
 
 ### Session Lifecycle
 
-1. **Unlock**: User provides password (or MFA for re-unlock). Master key is decrypted and stored in the in-memory `vaultStore` Map.
+1. **Unlock**: Users without a passkey unlock with their password. When a passkey is configured, soft re-unlock is passkey-first with password fallback.
 2. **Active**: Every vault access resets the TTL (sliding window). Default TTL: 30 minutes (`VAULT_TTL_MINUTES`).
 3. **Soft lock**: TTL expiry or manual lock clears the vault session but preserves the recovery entry for MFA re-unlock.
 4. **Hard lock**: Logout or password change clears both the vault session AND the recovery entry.
@@ -23,10 +23,10 @@
 
 ### Vault Recovery (MFA Re-unlock)
 
-When the vault is unlocked with a password, the master key is also encrypted with the `SERVER_ENCRYPTION_KEY` and stored in the recovery store (`vaultRecoveryStore`). This allows MFA-based re-unlock after TTL expiry:
+When the vault is unlocked with a password, the master key is also encrypted with the `SERVER_ENCRYPTION_KEY` and stored in the recovery store (`vaultRecoveryStore`). This allows passkey-first re-unlock after TTL expiry:
 
 1. User's vault expires
-2. User triggers MFA vault unlock (TOTP, SMS, or WebAuthn)
+2. User triggers vault re-unlock with a passkey when WebAuthn is configured, otherwise with the available secondary factor
 3. Server verifies MFA, retrieves the recovery entry, decrypts the master key
 4. New vault session is created
 
@@ -78,6 +78,15 @@ The Axios client interceptor (`client/src/api/client.ts`):
 3. Uses a **single-flight pattern**: only the first 401 triggers a refresh; subsequent concurrent 401s wait for the same promise
 4. On refresh success, retries the original request with the new token
 5. On refresh failure, calls `logout()` to clear all auth state
+
+### Primary Login And Tenant-Aware MFA
+
+- The browser login flow is passkey-first and starts with a usernameless WebAuthn request.
+- Users can switch to email/password explicitly, and the UI also reveals password fallback after three failed passkey attempts in the same visit.
+- Discoverable passkeys are configured at the user level. New WebAuthn registrations now require resident credentials and user verification.
+- MFA enforcement remains tenant-aware through the active tenant policy (`mfaRequired`).
+- When a passkey is the primary sign-in method, Arsenale only prompts for secondary MFA if tenant-enforced secondary methods are actually configured for the user (email, TOTP, or SMS).
+- When password fallback is used, tenant-required MFA still applies after the password step.
 
 ### Socket.IO JWT Middleware
 

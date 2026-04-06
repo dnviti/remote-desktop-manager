@@ -12,7 +12,7 @@
 | `admin.api.ts` | Admin config (email status, self-signup, system settings) |
 | `aiQuery.api.ts` | AI-powered natural-language-to-SQL generation and query optimization |
 | `audit.api.ts` | Personal, tenant, and connection audit logs, geo data, geo summary |
-| `auth.api.ts` | Login, register, MFA flows, refresh, logout, public config |
+| `auth.api.ts` | Passkey-first login, password fallback, MFA flows, refresh, logout, public config |
 | `checkout.api.ts` | Credential checkout/check-in with approval workflow |
 | `connections.api.ts` | Connection CRUD, favorites, CLI listing |
 | `database.api.ts` | Database session query execution, schema, explain, introspection, history |
@@ -43,7 +43,7 @@
 | `tenant.api.ts` | Tenant CRUD, user management, MFA stats, IP allowlist |
 | `twofa.api.ts` | TOTP 2FA setup/verify/disable |
 | `user.api.ts` | Profile, settings, identity verification, domain profile, notification schedule |
-| `vault.api.ts` | Vault lock/unlock, MFA unlock, auto-lock, password reveal, recovery |
+| `vault.api.ts` | Vault lock/unlock, passkey-first re-unlock, auto-lock, password reveal, recovery |
 | `vault-folders.api.ts` | Vault folder CRUD (create, update, delete, list) |
 | `version.api.ts` | Version check and update notification |
 | `webauthn.api.ts` | WebAuthn credential management |

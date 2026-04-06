@@ -168,7 +168,7 @@ All full-screen dialogs use the MUI `Dialog` component with `fullScreen` prop an
 
 | Component | Purpose |
 |-----------|---------|
-| `VaultLockedOverlay` | Overlay when vault is locked — password unlock, MFA unlock options (TOTP, SMS, WebAuthn) |
+| `VaultLockedOverlay` | Overlay when vault is locked — passkey-first re-unlock with password fallback, or TOTP/SMS/password when no passkey is configured |
 
 ### Shared (`client/src/components/shared/`, `client/src/components/common/`)
 

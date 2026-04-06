@@ -83,9 +83,9 @@ func (s Service) BuildRegistrationOptions(userName, displayName string, exclude 
 		Attestation:        "none",
 		ExcludeCredentials: normalizeDescriptors(exclude),
 		AuthenticatorSelection: authenticatorSelection{
-			ResidentKey:        "preferred",
-			UserVerification:   "preferred",
-			RequireResidentKey: false,
+			ResidentKey:        "required",
+			UserVerification:   "required",
+			RequireResidentKey: true,
 		},
 		Extensions: registrationExtensions{CredProps: true},
 		Hints:      []string{},
@@ -102,7 +102,7 @@ func (s Service) BuildAuthenticationOptions(allow []CredentialDescriptor) (Authe
 		Timeout:          ChallengeTTLSeconds * 1000,
 		RPID:             s.RPID,
 		AllowCredentials: normalizeDescriptors(allow),
-		UserVerification: "preferred",
+		UserVerification: "required",
 		Hints:            []string{},
 	}, nil
 }

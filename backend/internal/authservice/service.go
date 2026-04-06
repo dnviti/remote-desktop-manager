@@ -100,6 +100,7 @@ type loginFlow struct {
 	methods          []string
 	mfaSetupRequired bool
 	tempToken        string
+	mfaSatisfied     bool
 }
 
 func (e *requestError) Error() string {
@@ -121,6 +122,8 @@ type loginUser struct {
 	TOTPEnabled             bool
 	SMSMFAEnabled           bool
 	WebAuthnEnabled         bool
+	PhoneNumber             string
+	PhoneVerified           bool
 	FailedLoginAttempts     int
 	LockedUntil             *time.Time
 	Memberships             []loginMembership

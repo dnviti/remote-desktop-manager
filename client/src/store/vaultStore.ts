@@ -9,6 +9,7 @@ interface VaultState {
   checkStatus: () => Promise<void>;
   applyStatus: (status: VaultStatusResponse) => void;
   setUnlocked: (unlocked: boolean) => void;
+  reset: () => void;
   /** Handle a vault status event pushed via Socket.IO */
   handleSocketEvent: (data: { unlocked: boolean }) => void;
 }
@@ -43,6 +44,8 @@ export const useVaultStore = create<VaultState>((set) => ({
   },
 
   setUnlocked: (unlocked) => set({ unlocked }),
+
+  reset: () => set({ unlocked: false, initialized: false, mfaUnlockAvailable: false, mfaUnlockMethods: [] }),
 
   handleSocketEvent: (data: { unlocked: boolean }) => {
     set({ unlocked: data.unlocked, initialized: true });

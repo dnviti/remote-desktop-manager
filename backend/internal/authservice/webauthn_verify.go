@@ -21,12 +21,17 @@ func (s Service) VerifyWebAuthn(ctx context.Context, tempToken string, rawCreden
 		return issuedLogin{}, &requestError{status: http.StatusBadRequest, message: "WebAuthn credential is required."}
 	}
 
-	userID, purpose, err := s.parseMFATempToken(tempToken)
+	claims, err := s.parseTempTokenClaims(tempToken)
 	if err != nil {
 		return issuedLogin{}, err
 	}
+	userID := stringClaim(claims, "userId")
+	purpose := stringClaim(claims, "purpose")
 	if purpose != "mfa-verify" {
 		return issuedLogin{}, &requestError{status: http.StatusUnauthorized, message: "Invalid token purpose"}
+	}
+	if stringClaim(claims, "primaryMethod") == primaryMethodPasskey {
+		return issuedLogin{}, &requestError{status: http.StatusUnauthorized, message: "Passkey is already the primary sign-in method for this login"}
 	}
 	if err := s.enforceLoginMFARateLimit(ctx, userID, ipAddress); err != nil {
 		return issuedLogin{}, err

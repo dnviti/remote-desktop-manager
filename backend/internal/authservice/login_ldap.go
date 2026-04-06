@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/ldapapi"
 	"github.com/google/uuid"
@@ -48,52 +47,16 @@ func (s Service) tryLDAPLogin(ctx context.Context, email, password, ipAddress, u
 	if allowlistDecision.Blocked {
 		return nil, s.rejectBlockedIPAllowlist(ctx, user.ID, ipAddress)
 	}
-	if err := s.storeVaultSession(ctx, user.ID, password, user); err != nil {
-		return nil, err
-	}
-
-	mfaMethods := make([]string, 0, 3)
-	if user.TOTPEnabled {
-		mfaMethods = append(mfaMethods, "totp")
-	}
-	if user.SMSMFAEnabled {
-		mfaMethods = append(mfaMethods, "sms")
-	}
-	if user.WebAuthnEnabled {
-		mfaMethods = append(mfaMethods, "webauthn")
-	}
-	if len(mfaMethods) > 0 {
-		tempToken, err := s.issueTempToken(user.ID, "mfa-verify", 5*time.Minute)
-		if err != nil {
+	if !user.WebAuthnEnabled {
+		if err := s.storeVaultSession(ctx, user.ID, password, user); err != nil {
 			return nil, err
 		}
-		_ = s.insertStandaloneAuditLogWithFlags(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
-		return &loginFlow{
-			requiresMFA:  true,
-			requiresTOTP: user.TOTPEnabled,
-			methods:      mfaMethods,
-			tempToken:    tempToken,
-		}, nil
 	}
-
-	if user.ActiveTenant != nil && user.ActiveTenant.MFARequired {
-		tempToken, err := s.issueTempToken(user.ID, "mfa-setup", 15*time.Minute)
-		if err != nil {
-			return nil, err
-		}
-		_ = s.insertStandaloneAuditLogWithFlags(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
-		return &loginFlow{
-			mfaSetupRequired: true,
-			tempToken:        tempToken,
-		}, nil
-	}
-
-	result, err := s.issueTokens(ctx, user, ipAddress, userAgent)
+	flow, err := s.finalizePrimaryLogin(ctx, user, primaryMethodPassword, ipAddress, userAgent)
 	if err != nil {
 		return nil, err
 	}
-	_ = s.insertStandaloneAuditLogWithFlags(ctx, &user.ID, "LDAP_LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
-	return &loginFlow{issued: &result}, nil
+	return &flow, nil
 }
 
 func (s Service) provisionLDAPUser(ctx context.Context, ldapUser ldapapi.AuthUser, ipAddress string) error {

@@ -24,6 +24,26 @@ func TestBuildRegistrationOptions(t *testing.T) {
 	if len(options.ExcludeCredentials) != 0 {
 		t.Fatalf("expected empty exclude credentials, got %d", len(options.ExcludeCredentials))
 	}
+	if options.AuthenticatorSelection.ResidentKey != "required" {
+		t.Fatalf("expected resident key to be required, got %q", options.AuthenticatorSelection.ResidentKey)
+	}
+	if !options.AuthenticatorSelection.RequireResidentKey {
+		t.Fatal("expected resident key requirement to be enabled")
+	}
+	if options.AuthenticatorSelection.UserVerification != "required" {
+		t.Fatalf("expected user verification to be required, got %q", options.AuthenticatorSelection.UserVerification)
+	}
+}
+
+func TestBuildAuthenticationOptionsRequiresUserVerification(t *testing.T) {
+	service := Service{RPID: "localhost", RPName: "Arsenale"}
+	options, err := service.BuildAuthenticationOptions(nil)
+	if err != nil {
+		t.Fatalf("BuildAuthenticationOptions() error = %v", err)
+	}
+	if options.UserVerification != "required" {
+		t.Fatalf("expected user verification to be required, got %q", options.UserVerification)
+	}
 }
 
 func TestDecodeChallengePayloadSupportsNodeBase64JSON(t *testing.T) {

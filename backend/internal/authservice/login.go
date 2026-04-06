@@ -236,51 +236,13 @@ func (s Service) Login(ctx context.Context, email, password, ipAddress, userAgen
 		return loginFlow{}, err
 	}
 
-	if err := s.storeVaultSession(ctx, user.ID, password, user); err != nil {
-		return loginFlow{}, err
-	}
-
-	mfaMethods := make([]string, 0, 2)
-	if user.TOTPEnabled {
-		mfaMethods = append(mfaMethods, "totp")
-	}
-	if user.SMSMFAEnabled {
-		mfaMethods = append(mfaMethods, "sms")
-	}
-	if user.WebAuthnEnabled {
-		mfaMethods = append(mfaMethods, "webauthn")
-	}
-	if len(mfaMethods) > 0 {
-		tempToken, err := s.issueTempToken(user.ID, "mfa-verify", 5*time.Minute)
-		if err != nil {
+	if !user.WebAuthnEnabled {
+		if err := s.storeVaultSession(ctx, user.ID, password, user); err != nil {
 			return loginFlow{}, err
 		}
-		return loginFlow{
-			requiresMFA:  true,
-			requiresTOTP: user.TOTPEnabled,
-			methods:      mfaMethods,
-			tempToken:    tempToken,
-		}, nil
 	}
 
-	if user.ActiveTenant != nil && user.ActiveTenant.MFARequired {
-		tempToken, err := s.issueTempToken(user.ID, "mfa-setup", 15*time.Minute)
-		if err != nil {
-			return loginFlow{}, err
-		}
-		return loginFlow{
-			mfaSetupRequired: true,
-			tempToken:        tempToken,
-		}, nil
-	}
-
-	result, err := s.issueTokens(ctx, user, ipAddress, userAgent)
-	if err != nil {
-		return loginFlow{}, err
-	}
-
-	_ = s.insertStandaloneAuditLogWithFlags(ctx, &user.ID, "LOGIN", map[string]any{}, ipAddress, allowlistDecision.Flags())
-	return loginFlow{issued: &result}, nil
+	return s.finalizePrimaryLogin(ctx, user, primaryMethodPassword, ipAddress, userAgent)
 }
 
 func (s Service) SwitchTenant(ctx context.Context, userID, targetTenantID, ipAddress, userAgent string) (issuedLogin, error) {
@@ -379,19 +341,20 @@ func (s Service) loadLoginUserByID(ctx context.Context, userID string) (loginUse
 func (s Service) loadLoginUserByIDOrEmail(ctx context.Context, field, value string) (loginUser, error) {
 	var user loginUser
 	query := `SELECT id, email, username, "avatarData", "passwordHash", "vaultSalt", "encryptedVaultKey", "vaultKeyIV", "vaultKeyTag",
-		        enabled, "emailVerified", "totpEnabled", "smsMfaEnabled", "webauthnEnabled", "failedLoginAttempts", "lockedUntil"
+		        enabled, "emailVerified", "totpEnabled", "smsMfaEnabled", "webauthnEnabled", COALESCE("phoneNumber", ''), COALESCE("phoneVerified", false), "failedLoginAttempts", "lockedUntil"
 		   FROM "User"
 		  WHERE email = $1`
 	if field == "id" {
 		query = `SELECT id, email, username, "avatarData", "passwordHash", "vaultSalt", "encryptedVaultKey", "vaultKeyIV", "vaultKeyTag",
-		        enabled, "emailVerified", "totpEnabled", "smsMfaEnabled", "webauthnEnabled", "failedLoginAttempts", "lockedUntil"
+		        enabled, "emailVerified", "totpEnabled", "smsMfaEnabled", "webauthnEnabled", COALESCE("phoneNumber", ''), COALESCE("phoneVerified", false), "failedLoginAttempts", "lockedUntil"
 		   FROM "User"
 		  WHERE id = $1`
 	}
 	err := s.DB.QueryRow(ctx, query, value).Scan(
 		&user.ID, &user.Email, &user.Username, &user.AvatarData, &user.PasswordHash, &user.VaultSalt,
 		&user.EncryptedVaultKey, &user.VaultKeyIV, &user.VaultKeyTag, &user.Enabled, &user.EmailVerified,
-		&user.TOTPEnabled, &user.SMSMFAEnabled, &user.WebAuthnEnabled, &user.FailedLoginAttempts, &user.LockedUntil,
+		&user.TOTPEnabled, &user.SMSMFAEnabled, &user.WebAuthnEnabled, &user.PhoneNumber, &user.PhoneVerified,
+		&user.FailedLoginAttempts, &user.LockedUntil,
 	)
 	if err != nil {
 		return loginUser{}, err

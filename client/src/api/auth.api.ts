@@ -1,8 +1,9 @@
 import api from './client';
+import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
 
 type UserInfo = { id: string; email: string; username: string | null; avatarData: string | null };
 
-type MfaMethod = 'totp' | 'sms' | 'webauthn';
+type MfaMethod = 'email' | 'totp' | 'sms' | 'webauthn';
 export type TenantMembershipStatus = 'PENDING' | 'ACCEPTED';
 
 export interface TenantMembershipInfo {
@@ -28,13 +29,38 @@ export type LoginResponse =
   | { requiresTOTP: true; tempToken: string }
   | (AuthSuccessResponse & { requiresTOTP?: false });
 
+export interface PasskeyOptionsResponse {
+  tempToken: string;
+  options: PublicKeyCredentialRequestOptionsJSON;
+}
+
 export async function loginApi(email: string, password: string): Promise<LoginResponse> {
   const { data } = await api.post('/auth/login', { email, password });
   return data;
 }
 
+export async function requestPasskeyOptionsApi() {
+  const { data } = await api.post('/auth/passkey/options');
+  return data as PasskeyOptionsResponse;
+}
+
+export async function verifyPasskeyApi(tempToken: string, credential: unknown, expectedChallenge?: string) {
+  const { data } = await api.post('/auth/passkey/verify', { tempToken, credential, expectedChallenge });
+  return data as LoginResponse;
+}
+
 export async function verifyTotpApi(tempToken: string, code: string) {
   const { data } = await api.post('/auth/verify-totp', { tempToken, code });
+  return data as AuthSuccessResponse;
+}
+
+export async function requestEmailCodeApi(tempToken: string) {
+  const { data } = await api.post('/auth/request-email-code', { tempToken });
+  return data as { message: string };
+}
+
+export async function verifyEmailCodeApi(tempToken: string, code: string) {
+  const { data } = await api.post('/auth/verify-email-code', { tempToken, code });
   return data as AuthSuccessResponse;
 }
 

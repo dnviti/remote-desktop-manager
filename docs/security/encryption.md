@@ -12,7 +12,7 @@ Arsenale employs a defense-in-depth security model:
 1. **Vault encryption** — all credentials encrypted at rest with AES-256-GCM, user-derived keys via Argon2id
 2. **JWT authentication** — short-lived access tokens with httpOnly refresh token cookies and CSRF protection
 3. **Token binding** — JWT tokens bound to originating IP + User-Agent via SHA-256 hash
-4. **Multi-factor authentication** — TOTP, SMS OTP, and WebAuthn/FIDO2 passkeys
+4. **Multi-factor authentication** — email OTP, TOTP, SMS OTP, and WebAuthn/FIDO2 passkeys
 5. **Tenant isolation** — multi-tenant RBAC with per-tenant policies
 6. **Session limits** — max concurrent sessions and absolute session timeouts (OWASP A07)
 7. **IP allowlist** — per-tenant IP/CIDR allowlists with flag or block enforcement modes

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useLayoutEffect, useRef } from 'react';
 import {
   Box, Typography, TextField, Button, Alert,
   CircularProgress, Divider, Link, Dialog,
@@ -27,6 +27,22 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 type UnlockMethod = 'webauthn' | 'totp' | 'sms' | 'password';
 const METHOD_PRIORITY: UnlockMethod[] = ['webauthn', 'totp', 'sms', 'password'];
 
+function resolveAvailableMethods(
+  mfaUnlockAvailable: boolean,
+  mfaUnlockMethods: string[],
+): UnlockMethod[] {
+  return mfaUnlockAvailable
+    ? METHOD_PRIORITY.filter((method) => method === 'password' || mfaUnlockMethods.includes(method))
+    : ['password'];
+}
+
+function resolvePreferredMethod(
+  mfaUnlockAvailable: boolean,
+  mfaUnlockMethods: string[],
+): UnlockMethod {
+  return resolveAvailableMethods(mfaUnlockAvailable, mfaUnlockMethods)[0] ?? 'password';
+}
+
 function getMethodLabel(method: UnlockMethod): string {
   switch (method) {
     case 'webauthn': return 'passkey';
@@ -51,6 +67,7 @@ export default function VaultLockedOverlay() {
   const initialized = useVaultStore((s) => s.initialized);
   const mfaUnlockAvailable = useVaultStore((s) => s.mfaUnlockAvailable);
   const mfaUnlockMethods = useVaultStore((s) => s.mfaUnlockMethods);
+  const checkVaultStatus = useVaultStore((s) => s.checkStatus);
   const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const authLogout = useAuthStore((s) => s.logout);
 
@@ -59,17 +76,30 @@ export default function VaultLockedOverlay() {
   const [code, setCode] = useState('');
   const { loading, error, clearError, run } = useAsyncAction();
   const [smsSent, setSmsSent] = useState(false);
+  const autoWebAuthnTriggeredRef = useRef(false);
+  const lockStatusResolvedRef = useRef(false);
+  const [statusRefreshing, setStatusRefreshing] = useState(false);
+  const mountedRef = useRef(true);
+
+  const needsLockStatusRefresh =
+    initialized &&
+    !unlocked &&
+    !mfaUnlockAvailable &&
+    mfaUnlockMethods.length === 0;
 
   // Determine default method based on priority
-  useEffect(() => {
-    if (!mfaUnlockAvailable) {
-      setActiveMethod('password');
-      return;
-    }
-    const best = METHOD_PRIORITY.find((m) =>
-      m === 'password' || mfaUnlockMethods.includes(m)
-    );
-    setActiveMethod(best ?? 'password');
+  useLayoutEffect(() => {
+    const availableMethods = resolveAvailableMethods(mfaUnlockAvailable, mfaUnlockMethods);
+    const preferredMethod = availableMethods[0] ?? 'password';
+    setActiveMethod((current) => {
+      if (!availableMethods.includes(current)) {
+        return preferredMethod;
+      }
+      if (current === 'password' && preferredMethod === 'webauthn') {
+        return 'webauthn';
+      }
+      return current;
+    });
   }, [mfaUnlockAvailable, mfaUnlockMethods]);
 
   // Reset state when switching methods
@@ -79,6 +109,32 @@ export default function VaultLockedOverlay() {
     setPassword('');
     setSmsSent(false);
   }, [activeMethod, clearError]);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (unlocked) {
+      lockStatusResolvedRef.current = false;
+      setStatusRefreshing(false);
+      return;
+    }
+    if (!needsLockStatusRefresh || lockStatusResolvedRef.current) {
+      return;
+    }
+
+    lockStatusResolvedRef.current = true;
+    setStatusRefreshing(true);
+
+    void checkVaultStatus().finally(() => {
+      if (mountedRef.current) {
+        setStatusRefreshing(false);
+      }
+    });
+  }, [checkVaultStatus, needsLockStatusRefresh, unlocked]);
 
   const onSuccess = useCallback(() => {
     setVaultUnlocked(true);
@@ -98,11 +154,16 @@ export default function VaultLockedOverlay() {
 
   // Auto-trigger WebAuthn when it's the active method
   useEffect(() => {
-    if (activeMethod === 'webauthn' && !unlocked && initialized) {
-      handleWebAuthn();
+    if (unlocked) {
+      autoWebAuthnTriggeredRef.current = false;
+      return;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeMethod, initialized]);
+    if (activeMethod !== 'webauthn' || !initialized || autoWebAuthnTriggeredRef.current) {
+      return;
+    }
+    autoWebAuthnTriggeredRef.current = true;
+    void handleWebAuthn();
+  }, [activeMethod, handleWebAuthn, initialized, unlocked]);
 
   const handlePasswordSubmit = async () => {
     const ok = await run(async () => {
@@ -143,9 +204,7 @@ export default function VaultLockedOverlay() {
 
   if (unlocked || !initialized) return null;
 
-  const availableMethods: UnlockMethod[] = mfaUnlockAvailable
-    ? METHOD_PRIORITY.filter((m) => m === 'password' || mfaUnlockMethods.includes(m))
-    : ['password'];
+  const availableMethods = resolveAvailableMethods(mfaUnlockAvailable, mfaUnlockMethods);
   const otherMethods = availableMethods.filter((m) => m !== activeMethod);
 
   return (
@@ -174,8 +233,17 @@ export default function VaultLockedOverlay() {
           </Alert>
         )}
 
+        {statusRefreshing && (
+          <Box sx={{ my: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+            <CircularProgress size={32} />
+            <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+              Checking available unlock methods...
+            </Typography>
+          </Box>
+        )}
+
         {/* WebAuthn */}
-        {activeMethod === 'webauthn' && (
+        {!statusRefreshing && activeMethod === 'webauthn' && (
           <Box sx={{ my: 2 }}>
             {loading ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
@@ -199,7 +267,7 @@ export default function VaultLockedOverlay() {
         )}
 
         {/* TOTP */}
-        {activeMethod === 'totp' && (
+        {!statusRefreshing && activeMethod === 'totp' && (
           <Box>
             <TextField
               autoFocus
@@ -224,7 +292,7 @@ export default function VaultLockedOverlay() {
         )}
 
         {/* SMS */}
-        {activeMethod === 'sms' && (
+        {!statusRefreshing && activeMethod === 'sms' && (
           <Box>
             {!smsSent ? (
               <Button
@@ -264,7 +332,7 @@ export default function VaultLockedOverlay() {
         )}
 
         {/* Password */}
-        {activeMethod === 'password' && (
+        {!statusRefreshing && activeMethod === 'password' && (
           <Box>
             <TextField
               autoFocus
@@ -289,7 +357,7 @@ export default function VaultLockedOverlay() {
         )}
 
         {/* Method switcher */}
-        {otherMethods.length > 0 && (
+        {!statusRefreshing && otherMethods.length > 0 && (
           <>
             <Divider sx={{ my: 2, borderColor: 'divider' }} />
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>

@@ -139,7 +139,7 @@ export default function WebAuthnSection() {
           )}
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Use passkeys or hardware security keys (YubiKey, Titan, etc.) for phishing-resistant two-factor authentication.
+          Use passkeys or hardware security keys (YubiKey, Titan, etc.) for passwordless sign-in and phishing-resistant verification.
         </Typography>
 
         {!browserSupported && (

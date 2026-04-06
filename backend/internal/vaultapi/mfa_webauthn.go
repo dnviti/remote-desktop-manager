@@ -13,10 +13,6 @@ import (
 )
 
 func (s Service) RequestWebAuthnOptions(ctx context.Context, userID string) (webauthnflow.AuthenticationOptions, error) {
-	if err := s.enforceVaultMFARateLimit(ctx, userID); err != nil {
-		return webauthnflow.AuthenticationOptions{}, err
-	}
-
 	masterKey, err := s.loadVaultRecovery(ctx, userID)
 	if err != nil {
 		return webauthnflow.AuthenticationOptions{}, err

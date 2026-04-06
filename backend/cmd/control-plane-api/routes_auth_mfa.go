@@ -7,6 +7,26 @@ import (
 )
 
 func (d *apiDependencies) registerAuthMFARoutes(mux *http.ServeMux) {
+	mux.HandleFunc("POST /api/auth/passkey/options", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.authService.HandleRequestPasskeyOptions(w, r); err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		}
+	})
+	mux.HandleFunc("POST /api/auth/passkey/verify", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.authService.HandleVerifyPasskey(w, r); err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		}
+	})
+	mux.HandleFunc("POST /api/auth/request-email-code", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.authService.HandleRequestEmailCode(w, r); err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		}
+	})
+	mux.HandleFunc("POST /api/auth/verify-email-code", func(w http.ResponseWriter, r *http.Request) {
+		if err := d.authService.HandleVerifyEmailCode(w, r); err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		}
+	})
 	mux.HandleFunc("POST /api/auth/request-sms-code", func(w http.ResponseWriter, r *http.Request) {
 		if err := d.authService.HandleRequestSMSCode(w, r); err != nil {
 			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())

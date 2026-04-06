@@ -11,6 +11,7 @@ var tenantColumns = []Column{
 	{Header: "ID", Field: "id"},
 	{Header: "NAME", Field: "name"},
 	{Header: "ROLE", Field: "role"},
+	{Header: "MFA_REQ", Field: "mfaRequired"},
 }
 
 var tenantCmd = &cobra.Command{

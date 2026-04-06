@@ -64,7 +64,6 @@ export default function MainLayout() {
   const authLogout = useAuthStore((s) => s.logout);
   const fetchCurrentPermissions = useAuthStore((s) => s.fetchCurrentPermissions);
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
-  const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const vaultInitialized = useVaultStore((s) => s.initialized);
   const vaultLocked = vaultInitialized && !vaultUnlocked;
   const notification = useNotificationStore((s) => s.notification);
@@ -253,7 +252,7 @@ export default function MainLayout() {
   const handleLockVault = async () => {
     try {
       await lockVault();
-      setVaultUnlocked(false);
+      await checkVaultStatus();
     } catch {}
   };
 

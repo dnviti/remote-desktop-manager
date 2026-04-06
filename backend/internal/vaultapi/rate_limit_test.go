@@ -53,6 +53,26 @@ func TestEnforceVaultRecoveryRateLimitUsesConfiguredMaxAttempts(t *testing.T) {
 	}
 }
 
+func TestRequestWebAuthnOptionsDoesNotConsumeVaultMFARateLimit(t *testing.T) {
+	t.Parallel()
+
+	svc := newRateLimitedVaultService(t)
+	ctx := context.Background()
+
+	for i := 0; i <= defaultVaultMFARateLimitAttempts; i++ {
+		_ = svc.enforceVaultMFARateLimit(ctx, "user-1")
+	}
+
+	_, err := svc.RequestWebAuthnOptions(ctx, "user-1")
+	var reqErr *requestError
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("expected requestError, got %v", err)
+	}
+	if reqErr.status != 403 {
+		t.Fatalf("status = %d, want 403", reqErr.status)
+	}
+}
+
 func newRateLimitedVaultService(t *testing.T) Service {
 	t.Helper()
 

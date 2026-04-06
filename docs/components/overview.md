@@ -25,7 +25,7 @@ The client is built with:
 
 | Page | Route | Purpose | Key Stores |
 |------|-------|---------|------------|
-| `LoginPage` | `/login` | Multi-step login: email/password, MFA challenge (TOTP/SMS/WebAuthn), forced MFA setup, tenant selection | authStore, vaultStore |
+| `LoginPage` | `/login` | Passkey-first login with password fallback after user choice or repeated failures, tenant-aware MFA challenge (email/TOTP/SMS/WebAuthn), forced MFA setup, tenant selection | authStore, vaultStore |
 | `RegisterPage` | `/register` | User registration with email verification and recovery key display | authStore |
 | `DashboardPage` | `/` | Main app shell — fetches connections, restores tabs, renders MainLayout | connectionsStore, tabsStore |
 | `ConnectionViewerPage` | `/viewer/:id` | Standalone popup window for a single connection (SSH/RDP/VNC) with auth bootstrap | tabsStore, authStore |

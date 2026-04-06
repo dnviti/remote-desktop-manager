@@ -11,12 +11,17 @@ import (
 )
 
 func (s Service) RequestWebAuthnOptions(ctx context.Context, tempToken string) (webauthnflow.AuthenticationOptions, error) {
-	userID, purpose, err := s.parseMFATempToken(tempToken)
+	claims, err := s.parseTempTokenClaims(tempToken)
 	if err != nil {
 		return webauthnflow.AuthenticationOptions{}, err
 	}
+	userID := stringClaim(claims, "userId")
+	purpose := stringClaim(claims, "purpose")
 	if purpose != "mfa-verify" {
 		return webauthnflow.AuthenticationOptions{}, &requestError{status: http.StatusUnauthorized, message: "Invalid token purpose"}
+	}
+	if stringClaim(claims, "primaryMethod") == primaryMethodPasskey {
+		return webauthnflow.AuthenticationOptions{}, &requestError{status: http.StatusUnauthorized, message: "Passkey is already the primary sign-in method for this login"}
 	}
 
 	user, err := s.loadWebAuthnAuthUser(ctx, userID)

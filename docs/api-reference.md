@@ -98,12 +98,16 @@ Authentication and SSO endpoints:
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/api/auth/register` | Local registration |
-| `POST` | `/api/auth/login` | Primary login |
+| `POST` | `/api/auth/passkey/options` | Start passwordless passkey login |
+| `POST` | `/api/auth/passkey/verify` | Complete passwordless passkey login |
+| `POST` | `/api/auth/login` | Email/password fallback login |
+| `POST` | `/api/auth/request-email-code` | Request email MFA code |
+| `POST` | `/api/auth/verify-email-code` | Complete email MFA |
 | `POST` | `/api/auth/verify-totp` | Complete TOTP step |
 | `POST` | `/api/auth/request-sms-code` | Request MFA SMS |
 | `POST` | `/api/auth/verify-sms` | Complete SMS MFA |
-| `POST` | `/api/auth/request-webauthn-options` | Start WebAuthn login |
-| `POST` | `/api/auth/verify-webauthn` | Complete WebAuthn login |
+| `POST` | `/api/auth/request-webauthn-options` | Start WebAuthn secondary MFA |
+| `POST` | `/api/auth/verify-webauthn` | Complete WebAuthn secondary MFA |
 | `POST` | `/api/auth/refresh` | Refresh access token |
 | `GET` | `/api/auth/session` | Inspect current auth session |
 | `POST` | `/api/auth/logout` | Revoke current login |

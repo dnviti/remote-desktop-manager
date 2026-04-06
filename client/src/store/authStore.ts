@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { getCurrentUserPermissions, getDomainProfile } from '../api/user.api';
 import { emptyPermissionFlags, type PermissionFlag } from '../utils/permissionFlags';
+import { useVaultStore } from './vaultStore';
 
 interface User {
   id: string;
@@ -46,7 +47,8 @@ export const useAuthStore = create<AuthState>()(
       permissionsLoaded: false,
       permissionsLoading: false,
       permissionsSubject: null,
-      setAuth: (accessToken, csrfToken, user) =>
+      setAuth: (accessToken, csrfToken, user) => {
+        useVaultStore.getState().reset();
         set({
           accessToken,
           csrfToken,
@@ -56,7 +58,8 @@ export const useAuthStore = create<AuthState>()(
           permissionsLoaded: false,
           permissionsLoading: false,
           permissionsSubject: null,
-        }),
+        });
+      },
       setAccessToken: (accessToken) => set({ accessToken }),
       setCsrfToken: (csrfToken) => set({ csrfToken }),
       updateUser: (data) => {
@@ -146,16 +149,19 @@ export const useAuthStore = create<AuthState>()(
         }
       },
       logout: () =>
-        set({
-          accessToken: null,
-          csrfToken: null,
-          user: null,
-          isAuthenticated: false,
-          permissions: emptyPermissionFlags(),
-          permissionsLoaded: false,
-          permissionsLoading: false,
-          permissionsSubject: null,
-        }),
+        {
+          useVaultStore.getState().reset();
+          set({
+            accessToken: null,
+            csrfToken: null,
+            user: null,
+            isAuthenticated: false,
+            permissions: emptyPermissionFlags(),
+            permissionsLoaded: false,
+            permissionsLoading: false,
+            permissionsSubject: null,
+          });
+        },
     }),
     {
       name: 'arsenale-auth',

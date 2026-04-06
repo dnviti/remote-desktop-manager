@@ -29,12 +29,13 @@ func (s Service) GetStatus(ctx context.Context, userID string) (statusResponse, 
 	methods := make([]string, 0, 3)
 	if user.WebAuthnEnabled {
 		methods = append(methods, "webauthn")
-	}
-	if user.TOTPEnabled {
-		methods = append(methods, "totp")
-	}
-	if user.SMSMFAEnabled {
-		methods = append(methods, "sms")
+	} else {
+		if user.TOTPEnabled {
+			methods = append(methods, "totp")
+		}
+		if user.SMSMFAEnabled {
+			methods = append(methods, "sms")
+		}
 	}
 
 	return statusResponse{

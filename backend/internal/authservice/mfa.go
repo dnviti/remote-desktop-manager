@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/redis/go-redis/v9"
 )
@@ -88,24 +87,13 @@ func (s Service) VerifyTOTP(ctx context.Context, tempToken, code, ipAddress, use
 }
 
 func (s Service) parseMFATempToken(tempToken string) (string, string, error) {
-	token, err := jwt.Parse(tempToken, func(token *jwt.Token) (any, error) {
-		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-			return nil, fmt.Errorf("unexpected signing method")
-		}
-		return s.JWTSecret, nil
-	})
-	if err != nil || !token.Valid {
-		return "", "", &requestError{status: http.StatusUnauthorized, message: "Invalid or expired temporary token"}
+	claims, err := s.parseTempTokenClaims(tempToken)
+	if err != nil {
+		return "", "", err
 	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return "", "", &requestError{status: http.StatusUnauthorized, message: "Invalid or expired temporary token"}
-	}
-
-	userID, _ := claims["userId"].(string)
-	purpose, _ := claims["purpose"].(string)
-	if strings.TrimSpace(userID) == "" {
+	userID := stringClaim(claims, "userId")
+	purpose := stringClaim(claims, "purpose")
+	if userID == "" {
 		return "", "", &requestError{status: http.StatusUnauthorized, message: "Invalid or expired temporary token"}
 	}
 	return userID, purpose, nil

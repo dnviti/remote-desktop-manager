@@ -132,10 +132,10 @@ Authoritative route registration files:
 
 Highest-value public prefixes:
 
-- `/api/auth` — login, registration, OAuth, SAML, MFA, recovery
+- `/api/auth` — passkey-first login, password fallback, tenant-aware MFA, registration, OAuth, SAML, recovery
 - `/api/user` — profile, password, avatar, effective permissions, MFA lifecycle, notification schedule
 - `/api/secrets` — keychain CRUD, versioning, sharing, breach check, rotation
-- `/api/vault` — personal vault lock/unlock (including MFA unlock), recovery
+- `/api/vault` — personal vault lock/unlock, passkey-first re-unlock, recovery
 - `/api/connections` — connection CRUD, sharing, import/export, favorites
 - `/api/sessions` — SSH, RDP, VNC, database, DB tunnel, heartbeat, terminate
 - `/api/gateways` — gateway CRUD, templates, scaling, tunnel controls, instances
