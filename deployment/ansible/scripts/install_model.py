@@ -176,7 +176,7 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
 
     direct_enabled = bool(routing.get("directGateway", False))
     zero_trust_enabled = bool(routing.get("zeroTrust", False)) and capabilities.get("zero_trust", False)
-    service_names = ["postgres", "migrate", "redis", "control-plane-api", "client"]
+    service_names = ["postgres", "migrate", "redis", "control-plane-api", "authz-pdp", "client"]
     if capabilities.get("connections"):
         service_names.extend(["guacd", "desktop-broker", "terminal-broker", "ssh-gateway"])
     if capabilities.get("ip_geolocation"):

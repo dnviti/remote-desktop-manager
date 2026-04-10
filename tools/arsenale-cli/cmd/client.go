@@ -74,7 +74,12 @@ func doRequest(method, path string, body interface{}, cfg *CLIConfig) ([]byte, i
 		req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
 	}
 
-	resp, err := httpClient.Do(req)
+	client, err := httpClientForConfig(cfg)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("send request: %w", err)
 	}
@@ -149,7 +154,12 @@ func apiUpload(path, filePath string, cfg *CLIConfig) ([]byte, int, error) {
 		req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
 	}
 
-	resp, err := httpClient.Do(req)
+	client, err := httpClientForConfig(cfg)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("upload request: %w", err)
 	}
@@ -176,7 +186,12 @@ func apiDownload(path, destPath string, cfg *CLIConfig) (int, error) {
 		req.Header.Set("Authorization", "Bearer "+cfg.AccessToken)
 	}
 
-	resp, err := httpClient.Do(req)
+	client, err := httpClientForConfig(cfg)
+	if err != nil {
+		return 0, err
+	}
+
+	resp, err := client.Do(req)
 	if err != nil {
 		return 0, fmt.Errorf("download request: %w", err)
 	}

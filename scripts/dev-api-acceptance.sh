@@ -629,14 +629,43 @@ clear_session_security_state() {
     return
   fi
 
+  local admin_user_id
+  admin_user_id="$("${container_runtime}" exec \
+    -e PGPASSWORD="${postgres_password}" \
+    arsenale-postgres \
+    psql -U "${db_user}" -d "${db_name}" -Atqc \
+    "SELECT id FROM \"User\" WHERE email = '${admin_email}' LIMIT 1")"
+
+  if [[ -n "${admin_user_id}" ]]; then
+    "${container_runtime}" exec "${redis_container}" redis-cli DEL \
+      "vault:user:${admin_user_id}" \
+      "vault:recovery:${admin_user_id}" \
+      >/dev/null 2>&1 || true
+  fi
+
   "${container_runtime}" exec \
     -e PGPASSWORD="${postgres_password}" \
     arsenale-postgres \
     psql -U "${db_user}" -d "${db_name}" -c \
     "UPDATE \"User\"
      SET \"failedLoginAttempts\" = 0,
-         \"lockedUntil\" = NULL
+         \"lockedUntil\" = NULL,
+         \"totpEnabled\" = false,
+         \"totpSecret\" = NULL,
+         \"encryptedTotpSecret\" = NULL,
+         \"totpSecretIV\" = NULL,
+         \"totpSecretTag\" = NULL,
+         \"smsMfaEnabled\" = false,
+         \"phoneVerified\" = false,
+         \"webauthnEnabled\" = false
      WHERE email = '${admin_email}';
+
+     DELETE FROM \"WebAuthnCredential\"
+     WHERE \"userId\" IN (
+       SELECT id
+       FROM \"User\"
+       WHERE email = '${admin_email}'
+     );
 
      DELETE FROM \"AuditLog\"
      WHERE \"userId\" IN (
@@ -3660,12 +3689,17 @@ curl --silent --show-error --fail \
 
 echo '2.2 Redis coordination'
 redis_coordination_ok=0
+redis_probe_key="acceptance:redis:${acceptance_suffix}"
+redis_probe_value="$(date +%s)"
 for attempt in 1 2 3 4 5; do
   if "${container_runtime}" exec "${redis_container}" redis-cli -h 127.0.0.1 -p 6379 ping | grep -q '^PONG$'; then
-    redis_rate_limit_keys="$("${container_runtime}" exec "${redis_container}" redis-cli --scan --pattern 'rl:*' 2>/dev/null || true)"
-    if grep -q '^rl:' <<<"${redis_rate_limit_keys}"; then
-      redis_coordination_ok=1
-      break
+    if "${container_runtime}" exec "${redis_container}" redis-cli SET "${redis_probe_key}" "${redis_probe_value}" EX 30 >/dev/null; then
+      redis_roundtrip_value="$("${container_runtime}" exec "${redis_container}" redis-cli GET "${redis_probe_key}" 2>/dev/null || true)"
+      if [[ "${redis_roundtrip_value}" == "${redis_probe_value}" ]]; then
+        "${container_runtime}" exec "${redis_container}" redis-cli DEL "${redis_probe_key}" >/dev/null 2>&1 || true
+        redis_coordination_ok=1
+        break
+      fi
     fi
   fi
   sleep 1

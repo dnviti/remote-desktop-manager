@@ -57,6 +57,7 @@ make logs SVC=arsenale-dev-tunnel-db-proxy
 |---------|--------------|--------|
 | Browser warns about the cert | Dev CA not trusted | Import `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/dev-certs/ca.pem` |
 | `ERR_CERT_AUTHORITY_INVALID` | Fresh machine or browser profile | Re-import CA and restart browser |
+| `arsenale-cli` fails with `x509: certificate signed by unknown authority` on `https://localhost:3000` | Dev CA missing or moved | Restore `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/dev-certs/client/ca.pem`, or point `ARSENALE_CA_CERT` at the active CA bundle |
 | Vite starts without HTTPS | Dev cert files missing | Run `make setup` or `make certs` |
 | API calls fail only in local Vite | Proxy targets or TLS overrides wrong | Check `client/vite.config.ts` and `VITE_*` overrides |
 | Containerized client is up but UI assets fail | nginx template mismatch | Check `client/nginx.dev.conf` and `make logs SVC=arsenale-client` |

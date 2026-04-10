@@ -370,7 +370,7 @@ The installer displays the classified plan:
 Run type:  fresh_install
 Backend:   podman
 Mode:      production
-Services:  control-plane-api, client, postgres, guacd, guacenc, ssh-gateway, ...
+Services:  control-plane-api, authz-pdp, client, postgres, guacd, guacenc, ssh-gateway, ...
 Added:     keychain, multi_tenancy, connections, databases, recordings, agentic_ai, enterprise_auth, sharing_approvals, cli
 Removed:   none
 ```

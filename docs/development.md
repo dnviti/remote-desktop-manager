@@ -175,6 +175,8 @@ go build -o ./build/go/arsenale-cli ./tools/arsenale-cli
 ./build/go/arsenale-cli --server https://localhost:3000 gateway list
 ```
 
+For the local installer stack, the CLI automatically trusts `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/dev-certs/client/ca.pem` when you target `https://localhost:3000`. Set `ARSENALE_CA_CERT` if you need to point the CLI at a different private CA bundle.
+
 ## 🖥 Frontend Architecture
 
 The React SPA in `client/` follows a layered architecture:

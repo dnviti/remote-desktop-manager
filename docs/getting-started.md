@@ -175,6 +175,8 @@ go build -o ./build/go/arsenale-cli ./tools/arsenale-cli
 ./build/go/arsenale-cli --server https://localhost:3000 whoami
 ```
 
+When the server is the local installer stack on `https://localhost:3000`, the CLI automatically loads `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/dev-certs/client/ca.pem`. Use `ARSENALE_CA_CERT` to override that trust path for another private CA.
+
 ### Acceptance flow
 
 ```bash

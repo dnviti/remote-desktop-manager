@@ -99,7 +99,7 @@ class InstallModelTest(unittest.TestCase):
         )
         self.assertEqual(
             resolved["services"],
-            ["client", "control-plane-api", "migrate", "postgres", "redis"],
+            ["authz-pdp", "client", "control-plane-api", "migrate", "postgres", "redis"],
         )
         self.assertEqual(resolved["environment"]["FEATURE_IP_GEOLOCATION_ENABLED"], "false")
         self.assertEqual(resolved["environment"]["FEATURE_KEYCHAIN_ENABLED"], "true")
