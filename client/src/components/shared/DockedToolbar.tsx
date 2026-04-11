@@ -19,7 +19,7 @@ export interface ToolbarAction {
   id: string;
   icon: React.ReactNode;
   tooltip: string;
-  onClick: () => void;
+  onClick: (event?: React.MouseEvent<HTMLButtonElement>) => void;
   active?: boolean;
   subActions?: Omit<ToolbarAction, 'subActions'>[];
   color?: string;
@@ -73,6 +73,7 @@ export default function DockedToolbar({ actions }: DockedToolbarProps) {
               onClick={toggleCollapse}
               className="flex h-7 w-full shrink-0 items-center justify-center border-b text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               aria-label={collapsed ? 'Expand toolbar' : 'Collapse toolbar'}
+              aria-expanded={!collapsed}
             >
               {collapsed
                 ? (isLeft ? <ChevronRight className="size-3" /> : <ChevronLeft className="size-3" />)
@@ -98,6 +99,7 @@ export default function DockedToolbar({ actions }: DockedToolbarProps) {
                             variant="ghost"
                             size="icon-xs"
                             disabled={action.disabled}
+                            aria-label={action.tooltip}
                             className={cn(
                               action.active && 'text-primary',
                               action.color === 'error.main' && 'text-destructive',
@@ -128,7 +130,8 @@ export default function DockedToolbar({ actions }: DockedToolbarProps) {
                       variant="ghost"
                       size="icon-xs"
                       disabled={action.disabled}
-                      onClick={action.onClick}
+                      aria-label={action.tooltip}
+                      onClick={(event) => action.onClick(event)}
                       className={cn(
                         action.active && 'text-primary',
                         action.color === 'error.main' && 'text-destructive',

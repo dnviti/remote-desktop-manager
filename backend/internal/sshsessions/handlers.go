@@ -38,7 +38,7 @@ func (s Service) HandleCreate(w http.ResponseWriter, r *http.Request, claims aut
 		WebSocketURL:        terminalWebSocketURL(r, result.Token),
 		DLPPolicy:           result.DLPPolicy,
 		EnforcedSSHSettings: result.EnforcedSSHSettings,
-		SFTPSupported:       false,
+		SFTPSupported:       true,
 	}
 	app.WriteJSON(w, http.StatusOK, response)
 	return nil

@@ -211,6 +211,7 @@ Development-specific behaviors:
 - Certificates are generated under `$ARSENALE_DEV_HOME/dev-certs/` by default.
 - The client binds to `0.0.0.0` for external access.
 - When `connections` is enabled, `dev-bootstrap` registers the local `ssh-gateway` and `guacd` containers as tenant gateways.
+- Development installs also provision a local `shared-files-s3` MinIO service so RDP shared drives and SSH browser-mediated file transfers use S3-compatible staged storage by default.
 - Endpoint-facing runtime services attach to `net-egress`: local `ssh-gateway` and `guacd` for SSH/RDP/VNC access, local `query-runner` for direct database access, and the dev tunnel gateway fixtures for zero-trust SSH/RDP/VNC/database access.
 - When `recordings` is disabled, the installer also disables session capture and recording-ready notifications, not just the `/api/recordings` routes.
 - Demo database services follow the enabled development capabilities, so the default `make dev` profile includes them. Tunnel fixtures still require `DEV_ZERO_TRUST=true`.
@@ -249,6 +250,7 @@ Production-specific behaviors:
 - API health endpoints are validated after deploy.
 - Secrets are verified to be mounted via Podman secrets, not environment variables.
 - Images can be built from source or pulled from a registry.
+- RDP shared drives and SSH staged upload/download flows require S3-compatible object storage. Production installs must set `arsenale_shared_files_s3_bucket` and related `arsenale_shared_files_s3_*` vars, plus `vault_shared_files_s3_secret_access_key` when static credentials are needed.
 
 ---
 
@@ -1011,6 +1013,22 @@ All non-secret configuration is in `inventory/group_vars/all/vars.yml`.
 | `arsenale_email_verify_required` | `false` | Require email verification |
 | `arsenale_recording_enabled` | `true` | Enable session recording |
 | `arsenale_email_provider` | `smtp` | Email provider |
+
+### Shared File Staging
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `arsenale_file_threat_scanner_mode` | `builtin` | Threat scanner mode for staged RDP/SSH file payloads |
+| `arsenale_shared_files_s3_bucket` | `""` | Production/Kubernetes bucket for staged file payloads |
+| `arsenale_shared_files_s3_region` | `us-east-1` | Region for staged file object storage |
+| `arsenale_shared_files_s3_endpoint` | `""` | Optional S3-compatible endpoint override |
+| `arsenale_shared_files_s3_access_key_id` | `""` | Access key ID for staged file storage when static credentials are used |
+| `arsenale_shared_files_s3_prefix` | `""` | Optional object key prefix for staged file storage |
+| `arsenale_shared_files_s3_force_path_style` | `false` | Force path-style requests for MinIO or compatible endpoints |
+| `arsenale_shared_files_s3_auto_create_bucket` | `false` | Auto-create the staged file bucket if it does not exist |
+| `arsenale_dev_shared_files_s3_image` | `quay.io/minio/minio:latest` | Development-only MinIO image |
+| `arsenale_dev_shared_files_s3_bucket` | `arsenale-shared-files` | Development bucket name |
+| `arsenale_dev_shared_files_s3_endpoint` | `http://shared-files-s3:9000` | Development S3 endpoint exposed inside the compose network |
 
 ### Container Images
 

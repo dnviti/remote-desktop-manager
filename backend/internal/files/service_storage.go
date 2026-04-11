@@ -8,8 +8,8 @@ import (
 	"time"
 )
 
-func (s Service) ListFiles(userID string) ([]FileInfo, error) {
-	dirPath := s.userDrivePath(userID)
+func (s Service) ListFiles(userID, connectionID string) ([]FileInfo, error) {
+	dirPath := s.userDrivePath(userID, connectionID)
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -41,8 +41,8 @@ func (s Service) ListFiles(userID string) ([]FileInfo, error) {
 	return files, nil
 }
 
-func (s Service) DeleteFile(userID, fileName string) error {
-	filePath, err := s.getFilePath(userID, fileName)
+func (s Service) DeleteFile(userID, connectionID, fileName string) error {
+	filePath, err := s.getFilePath(userID, connectionID, fileName)
 	if err != nil {
 		return err
 	}
@@ -55,8 +55,8 @@ func (s Service) DeleteFile(userID, fileName string) error {
 	return nil
 }
 
-func (s Service) currentUsage(userID string) (int64, error) {
-	files, err := s.ListFiles(userID)
+func (s Service) currentUsage(userID, connectionID string) (int64, error) {
+	files, err := s.ListFiles(userID, connectionID)
 	if err != nil {
 		return 0, err
 	}

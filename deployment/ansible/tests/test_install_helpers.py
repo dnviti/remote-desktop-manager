@@ -131,6 +131,7 @@ class InstallModelTest(unittest.TestCase):
         }
         resolved = install_model.resolve_profile(profile, self.catalog)
 
+        self.assertIn("shared-files-s3", resolved["services"])
         self.assertIn("terminal-target", resolved["services"])
         self.assertIn("dev-debian-ssh-target", resolved["services"])
         self.assertIn("dev-demo-postgres", resolved["services"])

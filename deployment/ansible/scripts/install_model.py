@@ -41,6 +41,7 @@ DEV_REFRESH_TARGET_GROUPS = {
         "tunnel-broker",
         "query-runner",
         "map-assets",
+        "shared-files-s3",
     ],
 }
 
@@ -191,7 +192,7 @@ def resolve_profile(profile: dict[str, Any], catalog: dict[str, Any]) -> dict[st
         service_names.extend(["tunnel-broker", "control-plane-controller", "runtime-agent", "agent-orchestrator"])
     if profile["mode"] == "development":
         if capabilities.get("connections"):
-            service_names.extend(["terminal-target", "dev-debian-ssh-target"])
+            service_names.extend(["shared-files-s3", "terminal-target", "dev-debian-ssh-target"])
         if capabilities.get("databases"):
             service_names.extend(
                 [

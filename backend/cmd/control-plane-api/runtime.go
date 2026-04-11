@@ -241,6 +241,14 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 		VaultTTL:  vaultTTL,
 	}
 	orchestratorDNSServers := parseCSV(os.Getenv("ORCHESTRATOR_DNS_SERVERS"))
+	sharedFileStore, err := files.LoadObjectStoreFromEnv(ctx)
+	if err != nil {
+		for i := len(closeFns) - 1; i >= 0; i-- {
+			closeFns[i]()
+		}
+		return nil, err
+	}
+	sharedFileScanner := files.LoadThreatScannerFromEnv()
 	sshSessionService := sshsessions.Service{
 		DB:                  db,
 		Redis:               redisClient,
@@ -328,10 +336,13 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			DB: db,
 		},
 		fileService: files.Service{
-			DB:                db,
-			DriveBasePath:     getenv("DRIVE_BASE_PATH", "/guacd-drive"),
-			FileUploadMaxSize: int64(parseInt(getenv("FILE_UPLOAD_MAX_SIZE", "10485760"), 10*1024*1024)),
-			UserDriveQuota:    int64(parseInt(getenv("USER_DRIVE_QUOTA", "104857600"), 100*1024*1024)),
+			DB:                 db,
+			DriveBasePath:      getenv("DRIVE_BASE_PATH", "/guacd-drive"),
+			FileUploadMaxSize:  int64(parseInt(getenv("FILE_UPLOAD_MAX_SIZE", "10485760"), 10*1024*1024)),
+			UserDriveQuota:     int64(parseInt(getenv("USER_DRIVE_QUOTA", "104857600"), 100*1024*1024)),
+			ConnectionResolver: sshSessionService,
+			Store:              sharedFileStore,
+			Scanner:            sharedFileScanner,
 		},
 		gatewayService: gateways.Service{
 			DB:                    db,

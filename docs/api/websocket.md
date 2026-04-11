@@ -3,42 +3,29 @@
 > Auto-generated on 2026-03-15 by /docs create api.
 > Source of truth is the codebase. Run /docs update api after code changes.
 
-## Socket.IO — SSH Terminal (`/ssh`)
+## SSH Terminal WebSocket (`/ws/terminal`)
 
-Connected via Socket.IO at `/ssh` namespace. Authentication via `auth.token` in handshake.
+Connected via a plain WebSocket at `/ws/terminal`. Authentication is handled with the short-lived terminal session token in the query string.
 
 **Client -> Server Events:**
 
 | Event | Data | Description |
 |-------|------|-------------|
-| `session:start` | `{ connectionId, username?, password?, credentialMode? }` | Start SSH session |
-| `data` | `string` | Terminal input (keystrokes) |
-| `resize` | `{ cols, rows }` | Terminal resize |
-| `session:heartbeat` | — | Explicit heartbeat |
-| `sftp:list` | `{ path }` | List directory contents |
-| `sftp:mkdir` | `{ path }` | Create directory |
-| `sftp:delete` | `{ path }` | Delete file |
-| `sftp:rmdir` | `{ path }` | Remove directory |
-| `sftp:rename` | `{ oldPath, newPath }` | Rename file/directory |
-| `sftp:upload:start` | `{ remotePath, fileSize, filename }` | Begin file upload |
-| `sftp:upload:chunk` | `{ transferId, chunk }` | Upload data chunk |
-| `sftp:upload:end` | `{ transferId }` | Complete upload |
-| `sftp:download:start` | `{ remotePath, filename }` | Begin file download |
-| `sftp:download:cancel` | `{ transferId }` | Cancel download |
+| `input` | `{ type: "input", data }` | Terminal input (keystrokes) |
+| `resize` | `{ type: "resize", cols, rows }` | Terminal resize |
+| `ping` | `{ type: "ping" }` | Keepalive |
 
 **Server -> Client Events:**
 
 | Event | Data | Description |
 |-------|------|-------------|
-| `session:ready` | — | SSH connection established |
-| `session:error` | `{ message }` | Connection error |
-| `session:closed` | — | Session ended |
-| `data` | `string` | Terminal output |
-| `sftp:progress` | `{ transferId, bytesTransferred, totalBytes, filename }` | Transfer progress |
-| `sftp:transfer:complete` | `{ transferId }` | Transfer complete |
-| `sftp:transfer:error` | `{ transferId, message }` | Transfer error |
-| `sftp:download:chunk` | `{ transferId, chunk }` | Download data chunk |
-| `sftp:download:complete` | `{ transferId }` | Download complete |
+| `ready` | `{ type: "ready" }` | SSH connection established |
+| `data` | `{ type: "data", data }` | Terminal output |
+| `pong` | `{ type: "pong" }` | Keepalive response |
+| `closed` | `{ type: "closed" }` | Session ended |
+| `error` | `{ type: "error", code?, message }` | Connection or session error |
+
+SSH file browsing is not part of the terminal WebSocket protocol anymore. The SPA calls `/api/files/ssh/list`, `/api/files/ssh/mkdir`, `/api/files/ssh/delete`, `/api/files/ssh/rename`, `/api/files/ssh/upload`, and `/api/files/ssh/download` over REST, and those payload transfers are staged through shared object storage.
 
 ## Socket.IO — Notifications (`/notifications`)
 

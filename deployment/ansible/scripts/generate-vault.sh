@@ -175,6 +175,7 @@ GITHUB_CLIENT_SECRET=$(read_env_var GITHUB_CLIENT_SECRET)
 OIDC_CLIENT_SECRET=$(read_env_var OIDC_CLIENT_SECRET)
 LDAP_BIND_PASSWORD=$(read_env_var LDAP_BIND_PASSWORD)
 AI_API_KEY=$(read_env_var AI_API_KEY)
+SHARED_FILES_S3_SECRET_ACCESS_KEY=$(read_env_var SHARED_FILES_S3_SECRET_ACCESS_KEY)
 
 # --- Write vault.yml ---------------------------------------------------------
 
@@ -222,6 +223,7 @@ vault_github_client_secret: "${GITHUB_CLIENT_SECRET}"
 vault_oidc_client_secret: "${OIDC_CLIENT_SECRET}"
 vault_ldap_bind_password: "${LDAP_BIND_PASSWORD}"
 vault_ai_api_key: "${AI_API_KEY}"
+vault_shared_files_s3_secret_access_key: "${SHARED_FILES_S3_SECRET_ACCESS_KEY}"
 VAULT
 
 chmod 600 "${VAULT_FILE}"

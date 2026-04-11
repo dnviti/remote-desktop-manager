@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -10,7 +11,7 @@ import (
 var fileColumns = []Column{
 	{Header: "NAME", Field: "name"},
 	{Header: "SIZE", Field: "size"},
-	{Header: "CREATED_AT", Field: "createdAt"},
+	{Header: "MODIFIED_AT", Field: "modifiedAt"},
 }
 
 var fileCmd = &cobra.Command{
@@ -49,6 +50,7 @@ var fileDeleteCmd = &cobra.Command{
 var (
 	fileUploadPath string
 	fileDestDir    string
+	fileConnection string
 )
 
 func init() {
@@ -63,6 +65,15 @@ func init() {
 	fileUploadCmd.MarkFlagRequired("file")
 
 	fileDownloadCmd.Flags().StringVar(&fileDestDir, "dest", ".", "Destination directory")
+	fileListCmd.Flags().StringVar(&fileConnection, "connection", "", "Connection name or ID for the shared drive")
+	fileUploadCmd.Flags().StringVar(&fileConnection, "connection", "", "Connection name or ID for the shared drive")
+	fileDownloadCmd.Flags().StringVar(&fileConnection, "connection", "", "Connection name or ID for the shared drive")
+	fileDeleteCmd.Flags().StringVar(&fileConnection, "connection", "", "Connection name or ID for the shared drive")
+
+	fileListCmd.MarkFlagRequired("connection")
+	fileUploadCmd.MarkFlagRequired("connection")
+	fileDownloadCmd.MarkFlagRequired("connection")
+	fileDeleteCmd.MarkFlagRequired("connection")
 }
 
 func runFileList(cmd *cobra.Command, args []string) {
@@ -71,7 +82,8 @@ func runFileList(cmd *cobra.Command, args []string) {
 		fatal("%v", err)
 	}
 
-	body, status, err := apiGet("/api/files", cfg)
+	connectionID := resolveFileConnectionID(cfg)
+	body, status, err := apiGet("/api/files?connectionId="+url.QueryEscape(connectionID), cfg)
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -85,7 +97,10 @@ func runFileUpload(cmd *cobra.Command, args []string) {
 		fatal("%v", err)
 	}
 
-	body, status, err := apiUpload("/api/files", fileUploadPath, cfg)
+	connectionID := resolveFileConnectionID(cfg)
+	body, status, err := apiUploadWithFields("/api/files", fileUploadPath, map[string]string{
+		"connectionId": connectionID,
+	}, cfg)
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -101,8 +116,9 @@ func runFileDownload(cmd *cobra.Command, args []string) {
 
 	name := args[0]
 	destPath := filepath.Join(fileDestDir, name)
+	connectionID := resolveFileConnectionID(cfg)
 
-	status, err := apiDownload("/api/files/"+name, destPath, cfg)
+	status, err := apiDownload("/api/files/"+url.PathEscape(name)+"?connectionId="+url.QueryEscape(connectionID), destPath, cfg)
 	if err != nil {
 		fatal("%v", err)
 	}
@@ -121,10 +137,19 @@ func runFileDelete(cmd *cobra.Command, args []string) {
 		fatal("%v", err)
 	}
 
-	body, status, err := apiDelete("/api/files/"+args[0], cfg)
+	connectionID := resolveFileConnectionID(cfg)
+	body, status, err := apiDelete("/api/files/"+url.PathEscape(args[0])+"?connectionId="+url.QueryEscape(connectionID), cfg)
 	if err != nil {
 		fatal("%v", err)
 	}
 	checkAPIError(status, body)
 	printer().PrintDeleted("File", args[0])
+}
+
+func resolveFileConnectionID(cfg *CLIConfig) string {
+	conn, err := findConnectionByName(fileConnection, cfg)
+	if err != nil {
+		fatal("%v", err)
+	}
+	return conn.ID
 }

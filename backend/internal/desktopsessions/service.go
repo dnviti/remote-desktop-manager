@@ -139,9 +139,6 @@ func (s Service) IssueGrant(ctx context.Context, req GrantIssueRequest) (GrantIs
 	}
 
 	protocol := strings.ToUpper(strings.TrimSpace(req.Protocol))
-	if _, err := s.Store.CloseStaleSessionsForConnection(ctx, req.UserID, req.ConnectionID, protocol); err != nil {
-		return GrantIssueResponse{}, err
-	}
 
 	tokenValue, err := desktopbroker.EncryptToken(s.Secret, buildConnectionToken(protocol, req.Token))
 	if err != nil {

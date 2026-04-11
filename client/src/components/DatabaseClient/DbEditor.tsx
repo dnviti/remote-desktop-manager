@@ -8,7 +8,6 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { Separator } from '@/components/ui/separator';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -841,6 +840,14 @@ export default function DbEditor({
       active: historyOpen,
     },
     {
+      id: 'session-settings',
+      icon: <SlidersHorizontal />,
+      tooltip: 'Session settings',
+      onClick: (event) => setConfigAnchorEl(event?.currentTarget ?? null),
+      active: !!configAnchorEl || Object.values(currentSessionConfig).some((v) => v !== undefined),
+      disabled: connectionState !== 'connected' || protocol === 'mongodb',
+    },
+    {
       id: 'export-csv',
       icon: <Download />,
       tooltip: 'Export results as CSV',
@@ -894,17 +901,6 @@ export default function DbEditor({
           hasSessionConfig={Object.values(currentSessionConfig).some((v) => v !== undefined)}
         />
         <div className="flex items-center gap-1">
-          {connectionState === 'connected' && protocol !== 'mongodb' && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className={cn('size-7', Object.values(currentSessionConfig).some((v) => v !== undefined) && 'text-primary')}
-              title="Session settings"
-              onClick={(e) => setConfigAnchorEl(e.currentTarget)}
-            >
-              <SlidersHorizontal className="size-[18px]" />
-            </Button>
-          )}
           {(connectionState === 'error' || connectionState === 'disconnected') && (
             <Button
               variant="ghost"
@@ -923,17 +919,6 @@ export default function DbEditor({
               <RefreshCw className="size-[18px]" />
             </Button>
           )}
-          <span title="Run query (Ctrl+Enter)">
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 text-primary"
-              onClick={handleRunQuery}
-              disabled={connectionState !== 'connected' || !activeTab.sql.trim() || activeTab.executing}
-            >
-              {activeTab.executing ? <Loader2 className="size-4 animate-spin" /> : <Play className="size-[18px]" />}
-            </Button>
-          </span>
         </div>
       </div>
 

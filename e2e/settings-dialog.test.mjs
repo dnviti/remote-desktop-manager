@@ -67,11 +67,6 @@ async function elementExists(locator) {
   }
 }
 
-async function elementsCount(locator) {
-  const els = await driver.findElements(locator);
-  return els.length;
-}
-
 // ── Login ──────────────────────────────────────────────────────────────────
 
 async function login() {
@@ -80,7 +75,6 @@ async function login() {
 
   // Wait for the page to load — either the login form or the main app
   await driver.wait(async () => {
-    const url = await driver.getCurrentUrl();
     const hasEmailField = await elementExists(By.css('input[type="email"], input[name="email"]'));
     const hasPasskeyButton = await elementExists(By.css('button'));
     const isLoggedIn = await elementExists(By.css('[data-testid="main-layout"], nav, aside'));
@@ -120,6 +114,7 @@ async function login() {
   const submitBtn = await driver.findElement(
     By.xpath("//button[@type='submit' or contains(., 'Sign in') or contains(., 'Log in')]"),
   );
+  await driver.wait(async () => submitBtn.isEnabled(), TIMEOUT);
   await submitBtn.click();
 
   // Wait for navigation away from login

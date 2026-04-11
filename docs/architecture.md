@@ -2,7 +2,7 @@
 title: Architecture
 description: System architecture, component interactions, data flow, and design decisions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-03T14:30:00Z
+generated-at: 2026-04-11T11:30:00Z
 source-files:
   - backend/internal/catalog/catalog.go
   - backend/internal/app/app.go
@@ -49,7 +49,7 @@ The database rule remains deliberate: the control plane is an orchestrator and p
 | Agent | `tool-gateway` | `8084` | Typed capability gateway |
 | Agent | `agent-orchestrator` | `8085` | Agent run lifecycle |
 | Agent | `memory-service` | `8086` | Working and semantic memory service |
-| Runtime | `terminal-broker` | `8090` | Browser SSH and WebSocket runtime |
+| Runtime | `terminal-broker` | `8090` | Browser SSH terminal WebSocket runtime |
 | Runtime | `desktop-broker` | `8091` | Browser RDP and VNC runtime |
 | Runtime | `tunnel-broker` | `8092` | Tunnel registration and TCP proxying |
 | Runtime | `query-runner` | `8093` | Shared query execution service |
@@ -105,7 +105,7 @@ flowchart TD
     subgraph state["State and storage"]
         Postgres["PostgreSQL"]
         Redis["Redis"]
-        Files["drive + recordings volumes"]
+        Files["S3 staged files + drive cache + recordings"]
     end
 
     Browser --> Client
@@ -139,6 +139,11 @@ flowchart TD
     DBProxy --> Files
     API --> Files
 ```
+
+Remote file transfer now has two distinct paths:
+
+- RDP shared-drive content is staged in object storage, then materialized into the per-user, per-connection Guacamole drive cache under `DRIVE_BASE_PATH`.
+- SSH file browsing and upload/download are handled directly by `control-plane-api` over REST using the same staged object store. `terminal-broker` carries terminal I/O only and no longer owns SFTP transfer events.
 
 ## 🧩 Runtime Capability Model
 

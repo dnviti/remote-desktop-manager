@@ -11,7 +11,7 @@ All endpoints require authentication.
 
 Create an RDP session. Returns encrypted Guacamole token.
 
-**Body**: `{ connectionId, credentialMode?, username?, password? }` | **Response**: `{ token, wsUrl, sessionId }`
+**Body**: `{ connectionId, credentialMode?, username?, password? }` | **Response**: `{ token, wsUrl, sessionId, resolvedUsername, resolvedDomain }`
 
 ### `POST /api/sessions/vnc`
 

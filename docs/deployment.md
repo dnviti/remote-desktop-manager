@@ -2,7 +2,7 @@
 title: Deployment
 description: Installer flow, container backends, TLS, demo fixtures, and CI/CD for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-08T16:00:00Z
+generated-at: 2026-04-11T11:45:00Z
 source-files:
   - Makefile
   - backend/Dockerfile
@@ -55,6 +55,8 @@ flowchart TD
 The checked-in `docker-compose.yml` mirrors the current generated development stack, but the installer flow and Ansible templates remain the source of truth.
 
 For local code iteration, the root `Makefile` now supports scoped refreshes such as `make dev client`, `make dev gateways`, and `make dev control-plane`. Those commands reuse the saved dev render state and rebuild/restart only the requested services; full `make dev` is still the correct path for installer/profile/cert/secret/compose changes.
+
+RDP shared-drive staging and SSH browser-mediated file transfers now require S3-compatible object storage. The development installer provisions a local `shared-files-s3` MinIO service and injects the `SHARED_FILES_S3_*` runtime env vars automatically. Production and Kubernetes installs must point those env vars at external object storage before the control plane starts.
 
 ## 🔐 Installer Artifacts
 
@@ -172,6 +174,17 @@ The compose template now emits more deployment intent into the running services:
 - `DEV_SAMPLE_*`
 
 That matters because the control plane uses those env vars to register routes, expose public config, and pick routing behavior for gateways and database sessions.
+
+File-transfer specific runtime env emitted by the installer:
+
+- `FILE_THREAT_SCANNER_MODE`
+- `SHARED_FILES_S3_BUCKET`
+- `SHARED_FILES_S3_REGION`
+- `SHARED_FILES_S3_ENDPOINT`
+- `SHARED_FILES_S3_ACCESS_KEY_ID`
+- `SHARED_FILES_S3_PREFIX`
+- `SHARED_FILES_S3_FORCE_PATH_STYLE`
+- `SHARED_FILES_S3_AUTO_CREATE_BUCKET`
 
 ## 🔐 TLS, Secrets, And Container Hardening
 

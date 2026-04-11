@@ -29,6 +29,8 @@ export interface Tab {
   active: boolean;
   credentials?: CredentialOverride;
   dbTunnel?: DbTunnelState;
+  rdpResolvedUsername?: string;
+  rdpResolvedDomain?: string;
 }
 
 interface TabsState {
@@ -38,6 +40,7 @@ interface TabsState {
   openTab: (connection: ConnectionData, credentials?: CredentialOverride) => void;
   closeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
+  setRdpIdentity: (tabId: string, username?: string, domain?: string) => void;
   restoreTabs: (connections: ConnectionData[]) => Promise<void>;
   clearAll: () => Promise<void>;
   setDbTunnel: (tabId: string, tunnel: DbTunnelState) => void;
@@ -52,13 +55,30 @@ const SYNC_DEBOUNCE_MS = 1000;
 let tabsRestored = false;
 
 function toPersistedTabs(tabs: Tab[], activeTabId: string | null): PersistedTab[] {
+  const seen = new Set<string>();
   return tabs
-    .filter((t) => !t.credentials)
+    .filter((t) => {
+      if (t.credentials || seen.has(t.connection.id)) {
+        return false;
+      }
+      seen.add(t.connection.id);
+      return true;
+    })
     .map((t, index) => ({
       connectionId: t.connection.id,
       sortOrder: index,
       isActive: t.id === activeTabId,
     }));
+}
+
+function normalizeIdentityPart(value?: string): string {
+  return value?.trim().toLowerCase() ?? '';
+}
+
+function rdpIdentityKey(tab: Pick<Tab, 'credentials' | 'rdpResolvedUsername' | 'rdpResolvedDomain'>): string {
+  const username = normalizeIdentityPart(tab.rdpResolvedUsername ?? tab.credentials?.username);
+  const domain = normalizeIdentityPart(tab.rdpResolvedDomain ?? tab.credentials?.domain);
+  return `${username}::${domain}`;
 }
 
 function scheduleSyncToServer() {
@@ -86,9 +106,11 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       addRecentConnection(userId, connection.id);
     }
 
-    // Only reuse existing tab when no credential override
-    if (!credentials) {
-      const existing = tabs.find((t) => t.connection.id === connection.id);
+    if (connection.type === 'RDP') {
+      const sameConnectionTabs = tabs.filter((t) => t.connection.type === 'RDP' && t.connection.id === connection.id);
+      const existing = !credentials
+        ? sameConnectionTabs.find((t) => !t.credentials)
+        : sameConnectionTabs.find((t) => rdpIdentityKey(t) === rdpIdentityKey({ credentials }));
       if (existing) {
         set((state) => ({ activeTabId: existing.id, recentTick: state.recentTick + 1 }));
         scheduleSyncToServer();
@@ -131,6 +153,20 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       tabs: state.tabs.map((t) => ({ ...t, active: t.id === tabId })),
     }));
     scheduleSyncToServer();
+  },
+
+  setRdpIdentity: (tabId, username, domain) => {
+    set((state) => ({
+      tabs: state.tabs.map((t) => (
+        t.id === tabId
+          ? {
+              ...t,
+              rdpResolvedUsername: username?.trim() || undefined,
+              rdpResolvedDomain: domain?.trim() || undefined,
+            }
+          : t
+      )),
+    }));
   },
 
   restoreTabs: async (connections) => {

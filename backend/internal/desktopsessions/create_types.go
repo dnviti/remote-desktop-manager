@@ -16,11 +16,13 @@ type createRequest struct {
 }
 
 type createResponse struct {
-	Token       string      `json:"token"`
-	EnableDrive bool        `json:"enableDrive,omitempty"`
-	SessionID   string      `json:"sessionId"`
-	RecordingID string      `json:"recordingId,omitempty"`
-	DLPPolicy   resolvedDLP `json:"dlpPolicy"`
+	Token            string      `json:"token"`
+	EnableDrive      bool        `json:"enableDrive,omitempty"`
+	SessionID        string      `json:"sessionId"`
+	RecordingID      string      `json:"recordingId,omitempty"`
+	DLPPolicy        resolvedDLP `json:"dlpPolicy"`
+	ResolvedUsername string      `json:"resolvedUsername,omitempty"`
+	ResolvedDomain   string      `json:"resolvedDomain,omitempty"`
 }
 
 type desktopPolicySnapshot struct {

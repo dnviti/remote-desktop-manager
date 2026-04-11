@@ -125,6 +125,10 @@ func apiPatch(path string, body interface{}, cfg *CLIConfig) ([]byte, int, error
 
 // apiUpload uploads a file via multipart form POST.
 func apiUpload(path, filePath string, cfg *CLIConfig) ([]byte, int, error) {
+	return apiUploadWithFields(path, filePath, nil, cfg)
+}
+
+func apiUploadWithFields(path, filePath string, fields map[string]string, cfg *CLIConfig) ([]byte, int, error) {
 	file, err := os.Open(filePath)
 	if err != nil {
 		return nil, 0, fmt.Errorf("open file: %w", err)
@@ -139,6 +143,11 @@ func apiUpload(path, filePath string, cfg *CLIConfig) ([]byte, int, error) {
 	}
 	if _, err := io.Copy(part, file); err != nil {
 		return nil, 0, fmt.Errorf("copy file data: %w", err)
+	}
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			return nil, 0, fmt.Errorf("write multipart field %s: %w", key, err)
+		}
 	}
 	writer.Close()
 

@@ -86,6 +86,12 @@ func (d *apiDependencies) registerResourceRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/files", d.authenticator.Middleware(d.fileService.HandleUpload))
 		mux.HandleFunc("GET /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDownload))
 		mux.HandleFunc("DELETE /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDelete))
+		mux.HandleFunc("POST /api/files/ssh/list", d.authenticator.Middleware(d.fileService.HandleSSHList))
+		mux.HandleFunc("POST /api/files/ssh/mkdir", d.authenticator.Middleware(d.fileService.HandleSSHMkdir))
+		mux.HandleFunc("POST /api/files/ssh/delete", d.authenticator.Middleware(d.fileService.HandleSSHDelete))
+		mux.HandleFunc("POST /api/files/ssh/rename", d.authenticator.Middleware(d.fileService.HandleSSHRename))
+		mux.HandleFunc("POST /api/files/ssh/upload", d.authenticator.Middleware(d.fileService.HandleSSHUpload))
+		mux.HandleFunc("POST /api/files/ssh/download", d.authenticator.Middleware(d.fileService.HandleSSHDownload))
 
 		mux.HandleFunc("GET /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleList))
 		mux.HandleFunc("POST /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleCreate))

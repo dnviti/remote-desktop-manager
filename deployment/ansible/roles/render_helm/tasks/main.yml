@@ -58,6 +58,7 @@
           'database_url': vault_database_url,
           'postgres_password': vault_postgres_password,
           'guacenc_auth_token': vault_guacenc_auth_token,
+          'shared_files_s3_secret_access_key': vault_shared_files_s3_secret_access_key,
           'smtp_pass': vault_smtp_pass,
           'sendgrid_api_key': vault_sendgrid_api_key,
           'ses_secret_access_key': vault_ses_secret_access_key,

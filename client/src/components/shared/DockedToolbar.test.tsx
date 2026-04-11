@@ -1,6 +1,7 @@
 import { fireEvent } from '@testing-library/dom';
 import { render } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { TooltipProvider } from '@/components/ui/tooltip';
 
 import DockedToolbar, { type ToolbarAction } from './DockedToolbar';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
@@ -31,18 +32,22 @@ describe('DockedToolbar', () => {
       },
     ];
 
-    const view = render(<DockedToolbar actions={actions} />);
-
-    const expandHandle = view.getByRole('button', { name: 'Expand toolbar' });
-    expect(expandHandle).toHaveAttribute('aria-expanded', 'false');
-
-    jitterClick(expandHandle);
+    const view = render(
+      <TooltipProvider>
+        <DockedToolbar actions={actions} />
+      </TooltipProvider>,
+    );
 
     const collapseHandle = view.getByRole('button', { name: 'Collapse toolbar' });
     expect(collapseHandle).toHaveAttribute('aria-expanded', 'true');
 
     jitterClick(collapseHandle);
 
-    expect(view.getByRole('button', { name: 'Expand toolbar' })).toHaveAttribute('aria-expanded', 'false');
+    const expandHandle = view.getByRole('button', { name: 'Expand toolbar' });
+    expect(expandHandle).toHaveAttribute('aria-expanded', 'false');
+
+    jitterClick(expandHandle);
+
+    expect(view.getByRole('button', { name: 'Collapse toolbar' })).toHaveAttribute('aria-expanded', 'true');
   });
 });

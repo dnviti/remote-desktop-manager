@@ -22,11 +22,12 @@ function formatFileSize(bytes: number): string {
 interface FileBrowserProps {
   open: boolean;
   onClose: () => void;
+  connectionId: string;
   disableDownload?: boolean;
   disableUpload?: boolean;
 }
 
-export default function FileBrowser({ open, onClose, disableDownload, disableUpload }: FileBrowserProps) {
+export default function FileBrowser({ open, onClose, connectionId, disableDownload, disableUpload }: FileBrowserProps) {
   const [files, setFiles] = useState<FileInfo[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -38,14 +39,14 @@ export default function FileBrowser({ open, onClose, disableDownload, disableUpl
     setLoading(true);
     setError('');
     try {
-      const result = await listFiles();
+      const result = await listFiles(connectionId);
       setFiles(result);
     } catch {
       setError('Failed to load files');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [connectionId]);
 
   useEffect(() => {
     if (open) fetchFiles();
@@ -55,7 +56,7 @@ export default function FileBrowser({ open, onClose, disableDownload, disableUpl
     setUploading(true);
     setError('');
     try {
-      const result = await uploadFile(file);
+      const result = await uploadFile(connectionId, file);
       setFiles(result);
     } catch (err: unknown) {
       setError(extractApiError(err, 'Failed to upload file'));
@@ -72,7 +73,7 @@ export default function FileBrowser({ open, onClose, disableDownload, disableUpl
 
   const handleDownload = async (name: string) => {
     try {
-      await downloadFile(name);
+      await downloadFile(connectionId, name);
     } catch {
       setError('Failed to download file');
     }
@@ -81,7 +82,7 @@ export default function FileBrowser({ open, onClose, disableDownload, disableUpl
   const handleDelete = async (name: string) => {
     setError('');
     try {
-      await deleteFile(name);
+      await deleteFile(connectionId, name);
       setFiles((prev) => prev.filter((f) => f.name !== name));
     } catch {
       setError('Failed to delete file');

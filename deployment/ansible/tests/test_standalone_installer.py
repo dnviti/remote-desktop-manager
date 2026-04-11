@@ -214,6 +214,15 @@ class StandaloneInstallerTemplateTest(unittest.TestCase):
             services["control-plane-api"]["environment"]["RECORDING_ENABLED"],
             "${FEATURE_RECORDINGS_ENABLED:-true}",
         )
+        self.assertEqual(services["control-plane-api"]["environment"]["SHARED_FILES_S3_BUCKET"], "${SHARED_FILES_S3_BUCKET:-}")
+        self.assertEqual(services["control-plane-api"]["environment"]["SHARED_FILES_S3_ENDPOINT"], "${SHARED_FILES_S3_ENDPOINT:-}")
+        self.assertIn("shared-files-s3", services)
+        self.assertEqual(services["shared-files-s3"]["image"], "quay.io/minio/minio:latest")
+        self.assertEqual(services["shared-files-s3"]["volumes"], ["shared_files_s3_data:/data"])
+        self.assertEqual(
+            services["shared-files-s3"]["healthcheck"]["test"],
+            ["CMD-SHELL", "curl --silent --fail http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"],
+        )
         self.assertEqual(services["dev-demo-oracle"]["mem_limit"], "8g")
         self.assertEqual(services["dev-demo-oracle"]["shm_size"], "1g")
         self.assertEqual(

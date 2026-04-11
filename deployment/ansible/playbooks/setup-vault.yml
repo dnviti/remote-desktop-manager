@@ -50,6 +50,7 @@
           vault_oidc_client_secret: ""
           vault_ldap_bind_password: ""
           vault_ai_api_key: ""
+          vault_shared_files_s3_secret_access_key: ""
 
     - name: Encrypt vault file
       command: ansible-vault encrypt "{{ vault_file }}"

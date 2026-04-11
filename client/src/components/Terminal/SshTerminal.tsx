@@ -3,18 +3,21 @@ import {
   Maximize,
   Minimize,
   Loader2,
+  FolderOpen,
 } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { useTabsStore } from '../../store/tabsStore';
 import { useTerminalSettingsStore } from '../../store/terminalSettingsStore';
 import type { CredentialOverride } from '../../store/tabsStore';
+import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
 import { mergeTerminalConfig, toXtermOptions, resolveThemeForMode, THEME_PRESETS } from '../../constants/terminalThemes';
 import { useThemeStore } from '../../store/themeStore';
 import DockedToolbar, { ToolbarAction } from '../shared/DockedToolbar';
 import SessionContextMenu from '../shared/SessionContextMenu';
 import ReconnectOverlay from '../shared/ReconnectOverlay';
+import SftpBrowser from '../SSH/SftpBrowser';
 import { useAutoReconnect } from '../../hooks/useAutoReconnect';
 import { useKeyboardCapture } from '../../hooks/useKeyboardCapture';
 import type { ResolvedDlpPolicy } from '../../api/connections.api';
@@ -80,6 +83,8 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
 
   const userDefaults = useTerminalSettingsStore((s) => s.userDefaults);
   const webUiMode = useThemeStore((s) => s.mode);
+  const sftpOpen = useUiPreferencesStore((s) => s.sshSftpBrowserOpen);
+  const setUiPref = useUiPreferencesStore((s) => s.set);
 
   const wasConnectedRef = useRef(false);
   const permanentErrorRef = useRef(false);
@@ -202,6 +207,14 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
   const toolbarActions = useMemo<ToolbarAction[]>(() => {
     const actions: ToolbarAction[] = [];
     actions.push({
+      id: 'sftp-browser',
+      icon: <FolderOpen className="h-4 w-4" />,
+      tooltip: sftpOpen ? 'Close SFTP Browser' : 'SFTP File Browser',
+      onClick: () => setUiPref('sshSftpBrowserOpen', !sftpOpen),
+      active: sftpOpen,
+      disabled: status !== 'connected',
+    });
+    actions.push({
       id: 'fullscreen',
       icon: isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />,
       tooltip: isFullscreen ? 'Exit Fullscreen' : 'Fullscreen',
@@ -209,7 +222,7 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
       active: isFullscreen,
     });
     return actions;
-  }, [isFullscreen, toggleFullscreen]);
+  }, [isFullscreen, setUiPref, sftpOpen, status, toggleFullscreen]);
 
   const connectSession = useCallback(async () => {
     cleanupTransport();
@@ -538,8 +551,9 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
         onFullscreenToggle={toggleFullscreen}
         isFullscreen={isFullscreen}
         onDisconnect={handleDisconnect}
-        sftpAvailable={false}
-        sftpOpen={false}
+        onToggleSftp={() => setUiPref('sshSftpBrowserOpen', !sftpOpen)}
+        sftpAvailable
+        sftpOpen={sftpOpen}
         container={isFullscreen ? containerRef.current : null}
       />
       <div className="flex flex-1 overflow-hidden">
@@ -547,6 +561,14 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
           ref={termRef}
           tabIndex={-1}
           className="flex-1 overflow-hidden [&_.xterm]:h-full [&_.xterm]:p-1"
+        />
+        <SftpBrowser
+          open={sftpOpen}
+          onClose={() => setUiPref('sshSftpBrowserOpen', false)}
+          connectionId={connectionId}
+          credentials={credentials}
+          disableDownload={dlpPolicy?.disableDownload}
+          disableUpload={dlpPolicy?.disableUpload}
         />
       </div>
       </div>{/* end inner content column */}

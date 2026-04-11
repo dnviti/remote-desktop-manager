@@ -331,9 +331,7 @@
     - name: Install Podman secrets
       include_role:
         name: podman_secrets
-      when:
-        - installer_backend_value == 'podman'
-        - installer_should_apply | bool
+      when: installer_backend_value == 'podman'
 
     - name: Render compose artifacts
       include_role:

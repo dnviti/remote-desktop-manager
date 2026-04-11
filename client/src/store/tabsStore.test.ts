@@ -32,6 +32,10 @@ function makeConnection(id: string): ConnectionData {
   };
 }
 
+function makeTypedConnection(id: string, type: ConnectionData['type']): ConnectionData {
+  return { ...makeConnection(id), type };
+}
+
 describe('useTabsStore', () => {
   beforeEach(async () => {
     vi.useFakeTimers();
@@ -89,25 +93,76 @@ describe('useTabsStore', () => {
     ]);
   });
 
-  it('reuses tabs without credential overrides but creates separate tabs for manual credentials', () => {
-    const connection = makeConnection('conn-1');
+  it('opens duplicate non-RDP tabs for the same connection', () => {
+    const sshConnection = makeTypedConnection('conn-1', 'SSH');
+    const dbConnection = makeTypedConnection('conn-2', 'DATABASE');
 
-    useTabsStore.getState().openTab(connection);
-    useTabsStore.getState().openTab(connection);
-    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    useTabsStore.getState().openTab(sshConnection);
+    useTabsStore.getState().openTab(sshConnection);
+    useTabsStore.getState().openTab(dbConnection);
+    useTabsStore.getState().openTab(dbConnection);
+
+    expect(useTabsStore.getState().tabs.map((tab) => `${tab.connection.type}:${tab.connection.id}`)).toEqual([
+      'SSH:conn-1',
+      'SSH:conn-1',
+      'DATABASE:conn-2',
+      'DATABASE:conn-2',
+    ]);
+  });
+
+  it('focuses an existing RDP tab when the same connection and username are opened again', () => {
+    const connection = makeTypedConnection('conn-1', 'RDP');
 
     useTabsStore.getState().openTab(connection, {
       username: 'root',
       password: 'secret',
       credentialMode: 'manual',
     });
+    const firstTabId = useTabsStore.getState().tabs[0]?.id;
 
-    expect(useTabsStore.getState().tabs).toHaveLength(2);
-    expect(useTabsStore.getState().tabs[1]?.credentials).toMatchObject({
+    useTabsStore.getState().openTab(connection, {
+      username: 'ROOT',
+      password: 'secret-2',
+      credentialMode: 'manual',
+    });
+
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    expect(useTabsStore.getState().activeTabId).toBe(firstTabId);
+  });
+
+  it('opens a second RDP tab when the username differs', () => {
+    const connection = makeTypedConnection('conn-1', 'RDP');
+
+    useTabsStore.getState().openTab(connection, {
       username: 'root',
       password: 'secret',
       credentialMode: 'manual',
     });
+    useTabsStore.getState().openTab(connection, {
+      username: 'admin',
+      password: 'secret',
+      credentialMode: 'manual',
+    });
+
+    expect(useTabsStore.getState().tabs).toHaveLength(2);
+  });
+
+  it('updates resolved RDP identity and uses it for later matching', () => {
+    const connection = makeTypedConnection('conn-1', 'RDP');
+
+    useTabsStore.getState().openTab(connection);
+    const firstTabId = useTabsStore.getState().tabs[0]?.id as string;
+    useTabsStore.getState().setRdpIdentity(firstTabId, 'resolved-user', 'corp');
+
+    useTabsStore.getState().openTab(connection, {
+      username: 'resolved-user',
+      password: 'secret',
+      domain: 'CORP',
+      credentialMode: 'manual',
+    });
+
+    expect(useTabsStore.getState().tabs).toHaveLength(1);
+    expect(useTabsStore.getState().activeTabId).toBe(firstTabId);
   });
 
   it('closes the active tab and allows switching the active tab explicitly', () => {

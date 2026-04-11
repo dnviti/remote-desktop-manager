@@ -246,6 +246,7 @@ services:
       - guacamole_secret
       - guacenc_auth_token
       - jwt_secret
+      - shared_files_s3_secret_access_key
       - server_encryption_key
     environment:
       PORT: "8080"
@@ -255,6 +256,16 @@ services:
       DRIVE_BASE_PATH: "/guacd-drive"
       FILE_UPLOAD_MAX_SIZE: "10485760"
       USER_DRIVE_QUOTA: "104857600"
+      FILE_THREAT_SCANNER_MODE: "${FILE_THREAT_SCANNER_MODE:-builtin}"
+      SHARED_FILES_S3_BUCKET: "${SHARED_FILES_S3_BUCKET:-}"
+      SHARED_FILES_S3_REGION: "${SHARED_FILES_S3_REGION:-us-east-1}"
+      SHARED_FILES_S3_ENDPOINT: "${SHARED_FILES_S3_ENDPOINT:-}"
+      SHARED_FILES_S3_ACCESS_KEY_ID: "${SHARED_FILES_S3_ACCESS_KEY_ID:-}"
+      SHARED_FILES_S3_SECRET_ACCESS_KEY: "${SHARED_FILES_S3_SECRET_ACCESS_KEY:-}"
+      SHARED_FILES_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/shared_files_s3_secret_access_key
+      SHARED_FILES_S3_PREFIX: "${SHARED_FILES_S3_PREFIX:-}"
+      SHARED_FILES_S3_FORCE_PATH_STYLE: "${SHARED_FILES_S3_FORCE_PATH_STYLE:-false}"
+      SHARED_FILES_S3_AUTO_CREATE_BUCKET: "${SHARED_FILES_S3_AUTO_CREATE_BUCKET:-false}"
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       REDIS_URL: "redis://redis:6379/0"
@@ -491,6 +502,26 @@ services:
 {% endif %}
 
 {% if _is_dev | default(false) | bool %}
+  shared-files-s3:
+    image: {{ arsenale_dev_shared_files_s3_image | default('quay.io/minio/minio:latest') }}
+    container_name: arsenale-shared-files-s3
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: "${SHARED_FILES_S3_ACCESS_KEY_ID:-arsenale}"
+      MINIO_ROOT_PASSWORD: "${SHARED_FILES_S3_SECRET_ACCESS_KEY:-arsenale-dev-shared-files}"
+      MINIO_REGION_NAME: "${SHARED_FILES_S3_REGION:-us-east-1}"
+    volumes:
+      - shared_files_s3_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl --silent --fail http://127.0.0.1:9000/minio/health/live >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    restart: always
+    networks:
+      - net-cache
+
   # ---------------------------------------------------------------------------
   # Go backend foundation services — active public runtime
   # ---------------------------------------------------------------------------
@@ -517,6 +548,7 @@ services:
       - guacamole_secret
       - guacenc_auth_token
       - jwt_secret
+      - shared_files_s3_secret_access_key
       - server_encryption_key
     environment:
       PORT: "8080"
@@ -577,6 +609,16 @@ services:
       DRIVE_BASE_PATH: "/guacd-drive"
       FILE_UPLOAD_MAX_SIZE: "10485760"
       USER_DRIVE_QUOTA: "104857600"
+      FILE_THREAT_SCANNER_MODE: "${FILE_THREAT_SCANNER_MODE:-builtin}"
+      SHARED_FILES_S3_BUCKET: "${SHARED_FILES_S3_BUCKET:-}"
+      SHARED_FILES_S3_REGION: "${SHARED_FILES_S3_REGION:-us-east-1}"
+      SHARED_FILES_S3_ENDPOINT: "${SHARED_FILES_S3_ENDPOINT:-}"
+      SHARED_FILES_S3_ACCESS_KEY_ID: "${SHARED_FILES_S3_ACCESS_KEY_ID:-}"
+      SHARED_FILES_S3_SECRET_ACCESS_KEY: "${SHARED_FILES_S3_SECRET_ACCESS_KEY:-}"
+      SHARED_FILES_S3_SECRET_ACCESS_KEY_FILE: /run/secrets/shared_files_s3_secret_access_key
+      SHARED_FILES_S3_PREFIX: "${SHARED_FILES_S3_PREFIX:-}"
+      SHARED_FILES_S3_FORCE_PATH_STYLE: "${SHARED_FILES_S3_FORCE_PATH_STYLE:-false}"
+      SHARED_FILES_S3_AUTO_CREATE_BUCKET: "${SHARED_FILES_S3_AUTO_CREATE_BUCKET:-false}"
       DATABASE_URL_FILE: /run/secrets/database_url
       DATABASE_SSL_ROOT_CERT: /certs/postgres/ca.pem
       REDIS_URL: "redis://redis:6379/0"
@@ -624,6 +666,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      shared-files-s3:
+        condition: service_started
     volumes:
       - arsenale_drive:/guacd-drive
       - arsenale_recordings:/recordings
@@ -1571,6 +1615,8 @@ secrets:
     external: true
   guacenc_auth_token:
     external: true
+  shared_files_s3_secret_access_key:
+    external: true
   smtp_pass:
     external: true
   sendgrid_api_key:
@@ -1608,6 +1654,7 @@ volumes:
   arsenale_redis:
   arsenale_drive:
   arsenale_recordings:
+  shared_files_s3_data:
   dev_demo_postgres_data:
   dev_demo_mysql_data:
   dev_demo_mongodb_data:

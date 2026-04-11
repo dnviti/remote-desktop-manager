@@ -64,8 +64,10 @@ Data Loss Prevention policies control clipboard and file operations in remote se
 **Per-connection overrides** (`Connection.dlpPolicy` JSON field): can only be **more** restrictive than the tenant floor (logical OR / most-restrictive wins).
 
 **Protocol enforcement:**
-- **RDP/VNC**: Clipboard via Guacamole `disable-copy`/`disable-paste` parameters + client-side defense-in-depth. File transfer via Guacamole parameters + server-side API guards.
-- **SSH**: Clipboard enforced client-side in terminal (Ctrl+Shift+C/V). SFTP enforced **server-side** in the Socket.IO handler (authoritative), with client-side UI hiding as defense-in-depth.
+- **RDP/VNC**: Clipboard via Guacamole `disable-copy`/`disable-paste` parameters + client-side defense-in-depth. RDP shared-drive transfers are gated by the staged-file API and materialized into the Guacamole drive cache only after policy checks.
+- **SSH**: Clipboard enforced client-side in terminal (Ctrl+Shift+C/V). Remote file browsing uses authenticated REST endpoints under `/api/files/ssh/*`, and upload/download payloads are staged server-side before delivery to the target host or browser.
+
+**Threat scanning:** staged file payloads are scanned before delivery. The builtin scanner currently blocks the EICAR test signature. Files rejected by scanning return HTTP 422 and are not delivered to the remote target or the browser.
 
 DLP policy changes are tracked under the `TENANT_DLP_POLICY_UPDATE` audit action.
 

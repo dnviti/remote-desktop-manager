@@ -94,14 +94,31 @@ Public endpoints for accessing externally shared secrets. No authentication requ
 
 ## Files
 
-All endpoints require authentication. Used for RDP drive redirection file management.
+All endpoints require authentication.
+
+### RDP shared drive
+
+These endpoints manage the staged RDP shared-drive view for a specific connection. `connectionId` is required on every request.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/files` | List files in user's drive |
-| `GET` | `/api/files/:name` | Download a file |
-| `POST` | `/api/files` | Upload a file (multipart, quota checked) |
-| `DELETE` | `/api/files/:name` | Delete a file |
+| `GET` | `/api/files?connectionId=...` | List staged files for an RDP shared drive |
+| `GET` | `/api/files/:name?connectionId=...` | Download a staged file |
+| `POST` | `/api/files` | Upload a file to the staged RDP shared drive (`multipart/form-data` with `connectionId` + `file`) |
+| `DELETE` | `/api/files/:name?connectionId=...` | Delete a staged file |
+
+### SSH file browser
+
+SSH file operations use dedicated REST endpoints and stage upload/download payloads through shared object storage before delivery.
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/files/ssh/list` | List a remote SSH directory |
+| `POST` | `/api/files/ssh/mkdir` | Create a remote SSH directory |
+| `POST` | `/api/files/ssh/delete` | Delete a remote SSH file or empty directory |
+| `POST` | `/api/files/ssh/rename` | Rename a remote SSH path |
+| `POST` | `/api/files/ssh/upload` | Upload a local file to a remote SSH path through staged storage |
+| `POST` | `/api/files/ssh/download` | Download a remote SSH file through staged storage |
 
 <!-- manual-start -->
 <!-- manual-end -->

@@ -2,7 +2,7 @@
 title: Installer Guide
 description: Installer flow, modes, backends, capabilities, technician password, artifacts, and operational walkthroughs for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-08T16:00:00Z
+generated-at: 2026-04-11T11:45:00Z
 source-files:
   - Makefile
   - deployment/ansible/README.md
@@ -72,6 +72,7 @@ make dev
 - Runs `dev-bootstrap` to seed an admin user and tenant.
 - Firewall rules are **not** applied.
 - Certificates are generated under `${XDG_STATE_HOME:-$HOME/.local/state}/arsenale-dev/dev-certs/` by default.
+- Provisions a local `shared-files-s3` MinIO service and wires `SHARED_FILES_S3_*` env vars for staged RDP and SSH file sharing.
 - When `connections` is enabled, `dev-bootstrap` registers the local `ssh-gateway` and `guacd` containers as tenant gateways.
 - Demo database services follow the enabled development capabilities, so the default `make dev` profile includes them. Tunnel fixtures still require `DEV_ZERO_TRUST=true`.
 
@@ -120,6 +121,7 @@ make deploy     # Non-interactive (uses existing profile or defaults)
 - The `firewall` role configures nftables when enabled.
 - API health endpoints are validated after deployment.
 - Secrets are verified to be mounted via Podman secrets, not environment variables.
+- Shared RDP and SSH file payloads require S3-compatible object storage. Production profiles must set `SHARED_FILES_S3_BUCKET` plus the related endpoint/credential vars before the control plane starts.
 
 ## Backends
 

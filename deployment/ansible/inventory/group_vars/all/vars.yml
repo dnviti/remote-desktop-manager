@@ -39,6 +39,25 @@ arsenale_email_verify_required: false
 arsenale_recording_enabled: true
 arsenale_email_provider: smtp
 
+# Shared file staging
+arsenale_file_threat_scanner_mode: builtin
+arsenale_shared_files_s3_bucket: ""
+arsenale_shared_files_s3_region: us-east-1
+arsenale_shared_files_s3_endpoint: ""
+arsenale_shared_files_s3_access_key_id: ""
+arsenale_shared_files_s3_prefix: ""
+arsenale_shared_files_s3_force_path_style: false
+arsenale_shared_files_s3_auto_create_bucket: false
+arsenale_dev_shared_files_s3_image: quay.io/minio/minio:latest
+arsenale_dev_shared_files_s3_bucket: arsenale-shared-files
+arsenale_dev_shared_files_s3_region: us-east-1
+arsenale_dev_shared_files_s3_endpoint: http://shared-files-s3:9000
+arsenale_dev_shared_files_s3_access_key_id: arsenale
+arsenale_dev_shared_files_s3_secret_access_key: arsenale-dev-shared-files
+arsenale_dev_shared_files_s3_prefix: staged
+arsenale_dev_shared_files_s3_force_path_style: true
+arsenale_dev_shared_files_s3_auto_create_bucket: true
+
 # Container images
 # Development installs always build from the local checkout.
 # Production and Kubernetes installs pull these images when arsenale_build_images is false.

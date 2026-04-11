@@ -56,7 +56,7 @@ export interface TerminalBrokerSshSessionResponse {
   webSocketUrl: string;
   dlpPolicy: ResolvedDlpPolicy;
   enforcedSshSettings: Partial<SshTerminalConfig> | null;
-  sftpSupported: false;
+  sftpSupported: boolean;
 }
 
 export type StartSshSessionResponse = TerminalBrokerSshSessionResponse;

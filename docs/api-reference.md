@@ -2,7 +2,7 @@
 title: API Reference
 description: Public API groups, session flows, live streams, and internal service contracts for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-05T00:24:48Z
+generated-at: 2026-04-11T11:30:00Z
 source-files:
   - backend/internal/runtimefeatures/manifest.go
   - backend/internal/publicconfig/service.go
@@ -190,13 +190,16 @@ Recovery endpoints stay under `/api/auth/*`:
 | `/api/connections` | CRUD, sharing, import/export, favorites, CLI listing |
 | `/api/folders` | Connection folder CRUD |
 | `/api/vault-folders` | Secret folder CRUD via manual method dispatch |
-| `/api/files` | Upload, download, and delete keychain files |
+| `/api/files` | Connection-scoped RDP shared-drive staging (`connectionId` required) |
+| `/api/files/ssh/*` | SSH file browser and staged upload/download APIs |
 | `/api/checkouts` | Approval-style credential checkout flow |
 | `/api/teams` | Team CRUD and membership management |
 | `/api/vault-providers` | External vault integration CRUD and test |
 | `/api/sync-profiles` | Directory or provider sync profile CRUD, test, run, and logs |
 
-`/api/connections/*` and `/api/folders/*` require at least one connection-capable feature. `/api/vault-folders`, `/api/files`, and `/api/vault-providers/*` additionally require `keychainEnabled`.
+`/api/connections/*` and `/api/folders/*` require at least one connection-capable feature. `/api/vault-folders`, `/api/files`, `/api/files/ssh/*`, and `/api/vault-providers/*` additionally require `keychainEnabled`.
+
+`/api/files` now requires `connectionId` on every request. `GET` and `DELETE` take it as a query parameter. `POST` takes it as a multipart form field. The RDP shared-drive view is staged through the object store and then materialized into the Guacamole drive cache. SSH file browsing uses the `/api/files/ssh/*` REST surface instead of terminal WebSocket SFTP events.
 
 ## 🔒 Vault, Secrets, And Tenant Vault
 
@@ -258,6 +261,8 @@ Session creation endpoints:
 | `POST` | `/api/sessions/rdp` | Start RDP session |
 | `POST` | `/api/sessions/vnc` | Start VNC session |
 | `POST` | `/api/sessions/database` | Start database session when `databaseProxyEnabled` is true |
+
+`POST /api/sessions/rdp` returns `resolvedUsername` and `resolvedDomain` alongside the desktop token so the SPA can deduplicate RDP tabs by the actual remote identity, not only the requested credentials.
 | `POST` | `/api/sessions/db-tunnel` | Start database tunnel session when both connections and DB proxy are enabled |
 
 Operational session endpoints:
@@ -429,12 +434,9 @@ The terminal broker exposes a WebSocket endpoint at `/ws/terminal` (port 8090 in
 | `input` | Client → Server | Terminal keystrokes |
 | `output` | Server → Client | Terminal output data |
 | `resize` | Client → Server | Terminal dimensions change |
-| `sftp:list` | Client → Server | List remote directory |
-| `sftp:mkdir` | Client → Server | Create remote directory |
-| `sftp:delete` | Client → Server | Delete remote file/directory |
-| `sftp:rename` | Client → Server | Rename remote file |
-| `sftp:upload` | Client → Server | Upload file to remote |
-| `sftp:download` | Client → Server | Download file from remote |
+| `ping` | Client → Server | Keep terminal session alive |
+
+SSH file browsing is no longer multiplexed over `/ws/terminal`. The browser uses authenticated REST endpoints under `/api/files/ssh/*` for remote listing and staged upload/download, while `/ws/terminal` carries terminal I/O only.
 
 ### Desktop WebSocket (Guacamole)
 

@@ -3,6 +3,7 @@ import { Loader2 } from 'lucide-react';
 import * as Guacamole from '@glokon/guacamole-common-js';
 import api from '../../api/client';
 import type { CredentialOverride } from '../../store/tabsStore';
+import { useTabsStore } from '../../store/tabsStore';
 import type { ResolvedDlpPolicy } from '../../api/connections.api';
 import FileBrowser from './FileBrowser';
 import DockedToolbar from '../shared/DockedToolbar';
@@ -43,6 +44,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resizeObserverRef = useRef<ResizeObserver | null>(null);
   const connectedAtRef = useRef(0);
+  const setRdpIdentity = useTabsStore((state) => state.setRdpIdentity);
 
   const credentialsRef = useRef(credentials);
   useEffect(() => { credentialsRef.current = credentials; }, [credentials]);
@@ -92,7 +94,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
           }
       ),
     });
-    const { token, sessionId, dlpPolicy: resDlp } = res.data;
+    const { token, sessionId, dlpPolicy: resDlp, resolvedUsername, resolvedDomain } = res.data;
 
     if (connectionGenRef.current !== gen) {
       if (sessionId) api.post(`/sessions/rdp/${sessionId}/end`).catch(() => {});
@@ -101,6 +103,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
 
     sessionIdRef.current = sessionId ?? null;
     if (resDlp) { setDlpPolicy(resDlp); dlpPolicyRef.current = resDlp; }
+    setRdpIdentity(tabId, resolvedUsername, resolvedDomain);
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProtocol}//${window.location.host}/guacamole/`;
@@ -257,7 +260,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
       keyboard.onkeyup = null;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps -- credentials tracked via ref
-  }, [connectionId]);
+  }, [connectionId, setRdpIdentity, tabId]);
 
   const { reconnectState, attempt, maxRetries, triggerReconnect, cancelReconnect, resetReconnect } = useAutoReconnect(
     connectSession,
@@ -403,6 +406,7 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
             <FileBrowser
               open={fileBrowserOpen}
               onClose={() => setFileBrowserOpen(false)}
+              connectionId={connectionId}
               disableDownload={dlpPolicy?.disableDownload}
               disableUpload={dlpPolicy?.disableUpload}
             />

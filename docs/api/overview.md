@@ -23,7 +23,7 @@ All REST endpoints are mounted under `/api`. The server runs on port 3001 (confi
 | 2FA (TOTP) | `/api/user/2fa` | Yes | TOTP setup/verify/disable |
 | 2FA (SMS) | `/api/user/2fa/sms` | Yes | SMS MFA setup/verify/disable |
 | 2FA (WebAuthn) | `/api/user/2fa/webauthn` | Yes | Passkey registration/management |
-| Files | `/api/files` | Yes | RDP drive file management |
+| Files | `/api/files`, `/api/files/ssh/*` | Yes | RDP shared-drive staging and SSH file browser operations |
 | Audit | `/api/audit` | Yes | Audit log queries |
 | Notifications | `/api/notifications` | Yes | In-app notification management |
 | Tenants | `/api/tenants` | Yes | Tenant CRUD, user management |

@@ -102,6 +102,8 @@ dev_tunnel_managed_ssh_gateway_id="${DEV_TUNNEL_MANAGED_SSH_GATEWAY_ID:-11111111
 access_token="${ARSENALE_ACCESS_TOKEN:-}"
 tenant_id="${ARSENALE_TENANT_ID:-}"
 user_id=""
+auth_config_json=""
+multi_tenancy_enabled=""
 token_file="${ARSENALE_TOKEN_FILE:-/tmp/arsenale-dev-access-token}"
 tenant_file="${ARSENALE_TENANT_FILE:-/tmp/arsenale-dev-tenant-id}"
 ssh_connection_id=""
@@ -155,10 +157,22 @@ resend_verification_temp_user_id=""
 forgot_password_temp_user_id=""
 reset_validation_temp_user_id=""
 sms_mfa_temp_user_id=""
+sms_mfa_temp_tenant_id=""
 webauthn_login_temp_user_id=""
+webauthn_login_temp_tenant_id=""
 mfa_setup_temp_tenant_id=""
 mfa_setup_temp_user_id=""
 reset_sms_temp_user_id=""
+reset_sms_temp_tenant_id=""
+password_change_temp_user_id=""
+password_change_temp_user_email=""
+password_change_temp_member_id=""
+tenant_admin_action_temp_user_id=""
+tenant_admin_action_temp_user_email=""
+tenant_admin_action_temp_member_id=""
+email_change_temp_user_id=""
+email_change_temp_user_email=""
+email_change_temp_member_id=""
 
 if [[ -z "${container_runtime}" ]]; then
   if command -v podman >/dev/null 2>&1; then
@@ -537,12 +551,30 @@ cleanup() {
       >/dev/null 2>&1 || true
   fi
 
+  if [[ -n "${sms_mfa_temp_tenant_id}" ]]; then
+    "${container_runtime}" exec \
+      -e PGPASSWORD="${postgres_password}" \
+      arsenale-postgres \
+      psql -U "${db_user}" -d "${db_name}" -c \
+      "DELETE FROM \"Tenant\" WHERE id = '${sms_mfa_temp_tenant_id}';" \
+      >/dev/null 2>&1 || true
+  fi
+
   if [[ -n "${webauthn_login_temp_user_id}" ]]; then
     "${container_runtime}" exec \
       -e PGPASSWORD="${postgres_password}" \
       arsenale-postgres \
       psql -U "${db_user}" -d "${db_name}" -c \
       "DELETE FROM \"RefreshToken\" WHERE \"userId\" = '${webauthn_login_temp_user_id}'; DELETE FROM \"WebAuthnCredential\" WHERE \"userId\" = '${webauthn_login_temp_user_id}'; DELETE FROM \"TenantMember\" WHERE \"userId\" = '${webauthn_login_temp_user_id}'; DELETE FROM \"User\" WHERE id = '${webauthn_login_temp_user_id}';" \
+      >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "${webauthn_login_temp_tenant_id}" ]]; then
+    "${container_runtime}" exec \
+      -e PGPASSWORD="${postgres_password}" \
+      arsenale-postgres \
+      psql -U "${db_user}" -d "${db_name}" -c \
+      "DELETE FROM \"Tenant\" WHERE id = '${webauthn_login_temp_tenant_id}';" \
       >/dev/null 2>&1 || true
   fi
 
@@ -572,6 +604,44 @@ cleanup() {
       arsenale-postgres \
       psql -U "${db_user}" -d "${db_name}" -c \
       "DELETE FROM \"RefreshToken\" WHERE \"userId\" = '${reset_sms_temp_user_id}'; DELETE FROM \"TenantMember\" WHERE \"userId\" = '${reset_sms_temp_user_id}'; DELETE FROM \"User\" WHERE id = '${reset_sms_temp_user_id}';" \
+      >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "${reset_sms_temp_tenant_id}" ]]; then
+    "${container_runtime}" exec \
+      -e PGPASSWORD="${postgres_password}" \
+      arsenale-postgres \
+      psql -U "${db_user}" -d "${db_name}" -c \
+      "DELETE FROM \"Tenant\" WHERE id = '${reset_sms_temp_tenant_id}';" \
+      >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "${password_change_temp_user_id}" ]]; then
+    "${container_runtime}" exec \
+      -e PGPASSWORD="${postgres_password}" \
+      arsenale-postgres \
+      psql -U "${db_user}" -d "${db_name}" -c \
+      "DELETE FROM \"RefreshToken\" WHERE \"userId\" = '${password_change_temp_user_id}'; DELETE FROM \"TenantMember\" WHERE \"userId\" = '${password_change_temp_user_id}'; DELETE FROM \"User\" WHERE id = '${password_change_temp_user_id}';" \
+      >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "${tenant_admin_action_temp_user_id}" ]]; then
+    "${container_runtime}" exec "${redis_container}" redis-cli DEL "vault:user:${tenant_admin_action_temp_user_id}" "vault:recovery:${tenant_admin_action_temp_user_id}" >/dev/null 2>&1 || true
+    "${container_runtime}" exec \
+      -e PGPASSWORD="${postgres_password}" \
+      arsenale-postgres \
+      psql -U "${db_user}" -d "${db_name}" -c \
+      "DELETE FROM \"RefreshToken\" WHERE \"userId\" = '${tenant_admin_action_temp_user_id}'; DELETE FROM \"TenantMember\" WHERE \"userId\" = '${tenant_admin_action_temp_user_id}'; DELETE FROM \"User\" WHERE id = '${tenant_admin_action_temp_user_id}';" \
+      >/dev/null 2>&1 || true
+  fi
+
+  if [[ -n "${email_change_temp_user_id}" ]]; then
+    "${container_runtime}" exec "${redis_container}" redis-cli DEL "vault:user:${email_change_temp_user_id}" "vault:recovery:${email_change_temp_user_id}" >/dev/null 2>&1 || true
+    "${container_runtime}" exec \
+      -e PGPASSWORD="${postgres_password}" \
+      arsenale-postgres \
+      psql -U "${db_user}" -d "${db_name}" -c \
+      "DELETE FROM \"RefreshToken\" WHERE \"userId\" = '${email_change_temp_user_id}'; DELETE FROM \"TenantMember\" WHERE \"userId\" = '${email_change_temp_user_id}'; DELETE FROM \"User\" WHERE id = '${email_change_temp_user_id}';" \
       >/dev/null 2>&1 || true
   fi
 
@@ -679,10 +749,16 @@ clear_session_security_state() {
 
 login_json_for_password() {
   local password="$1"
+  login_json_for_credentials "${admin_email}" "${password}"
+}
+
+login_json_for_credentials() {
+  local email="$1"
+  local password="$2"
   curl --silent --show-error --fail \
     --cacert "${ca_cert}" \
     -H 'content-type: application/json' \
-    -d "{\"email\":\"${admin_email}\",\"password\":\"${password}\"}" \
+    -d "{\"email\":\"${email}\",\"password\":\"${password}\"}" \
     "${api_base}/auth/login"
 }
 
@@ -791,8 +867,10 @@ setup_db_status_code="$(curl --silent --show-error --output /tmp/arsenale-setup-
 jq -e '.error == "Setup has already been completed"' /tmp/arsenale-setup-db-status.json >/dev/null
 
 echo '1.3 /api/auth/config'
-curl --silent --show-error --fail --cacert "${ca_cert}" "${api_base}/auth/config" \
+auth_config_json="$(curl --silent --show-error --fail --cacert "${ca_cert}" "${api_base}/auth/config")"
+printf '%s' "${auth_config_json}" \
   | jq -e '.selfSignupEnabled == false and .features.databaseProxyEnabled == true and .features.connectionsEnabled == true and .features.keychainEnabled == true' >/dev/null
+multi_tenancy_enabled="$(printf '%s' "${auth_config_json}" | jq -r '.features.multiTenancyEnabled')"
 
 echo '1.3.1 /api/auth/oauth/providers'
 curl --silent --show-error --fail --cacert "${ca_cert}" "${api_base}/auth/oauth/providers" \
@@ -1066,10 +1144,50 @@ curl --silent --show-error --fail \
   "${api_base}/user/profile" \
   | jq -e '.email == "'"${admin_email}"'" and .username == "admin"' >/dev/null
 
+password_change_temp_user_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+password_change_temp_member_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+password_change_temp_user_email="password-change-${password_change_temp_user_id}@example.com"
+
+"${container_runtime}" exec \
+  -e PGPASSWORD="${postgres_password}" \
+  arsenale-postgres \
+  psql -U "${db_user}" -d "${db_name}" -c \
+  "INSERT INTO \"User\" (
+      id, email, enabled, \"emailVerified\", \"passwordHash\",
+      \"vaultSalt\", \"encryptedVaultKey\", \"vaultKeyIV\", \"vaultKeyTag\",
+      \"encryptedVaultRecoveryKey\", \"vaultRecoveryKeyIV\", \"vaultRecoveryKeyTag\", \"vaultRecoveryKeySalt\",
+      \"vaultSetupComplete\", \"createdAt\", \"updatedAt\"
+   )
+   SELECT
+      '${password_change_temp_user_id}', '${password_change_temp_user_email}', true, false, \"passwordHash\",
+      \"vaultSalt\", \"encryptedVaultKey\", \"vaultKeyIV\", \"vaultKeyTag\",
+      \"encryptedVaultRecoveryKey\", \"vaultRecoveryKeyIV\", \"vaultRecoveryKeyTag\", \"vaultRecoveryKeySalt\",
+      COALESCE(\"vaultSetupComplete\", false), NOW(), NOW()
+   FROM \"User\"
+   WHERE email = '${admin_email}'
+   LIMIT 1;
+   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\")
+   VALUES ('${password_change_temp_member_id}', '${tenant_id}', '${password_change_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
+  >/dev/null
+
+password_change_login_json="$(
+  login_json_for_credentials "${password_change_temp_user_email}" "${admin_password}"
+)"
+password_change_temp_access_token="$(printf '%s' "${password_change_login_json}" | jq -r '.accessToken')"
+[[ -n "${password_change_temp_access_token}" && "${password_change_temp_access_token}" != "null" ]]
+
 echo '2.1.1.1 /api/user/password-change/initiate'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${password_change_temp_access_token}" \
   -H 'content-type: application/json' \
   -X POST \
   "${api_base}/user/password-change/initiate" \
@@ -1079,64 +1197,51 @@ echo '2.1.1.2 /api/user/identity/initiate'
 identity_verification_id="$(
   curl --silent --show-error --fail \
     --cacert "${ca_cert}" \
-    -H "authorization: Bearer ${access_token}" \
+    -H "authorization: Bearer ${password_change_temp_access_token}" \
     -H 'content-type: application/json' \
     -X POST \
     -d '{"purpose":"password-change"}' \
     "${api_base}/user/identity/initiate" \
-    | jq -r '.verificationId'
+    | jq -r 'select(.method == "password") | .verificationId'
 )"
 [[ -n "${identity_verification_id}" && "${identity_verification_id}" != "null" ]]
 
 echo '2.1.1.3 /api/user/identity/confirm'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${password_change_temp_access_token}" \
   -H 'content-type: application/json' \
   -X POST \
   -d '{"verificationId":"'"${identity_verification_id}"'","password":"'"${admin_password}"'"}' \
   "${api_base}/user/identity/confirm" \
   | jq -e '.confirmed == true' >/dev/null
 
-original_admin_password="${admin_password}"
-
 echo '2.1.1.4 /api/user/password rotate temp'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${password_change_temp_access_token}" \
   -H 'content-type: application/json' \
   -X PUT \
-  -d '{"oldPassword":"'"${original_admin_password}"'","newPassword":"'"${rotated_admin_password}"'"}' \
+  -d '{"oldPassword":"'"${admin_password}"'","newPassword":"'"${rotated_admin_password}"'"}' \
   "${api_base}/user/password" \
   | jq -e '.success == true and (.recoveryKey | length > 10)' >/dev/null
 
-rm -f "${token_file}" "${tenant_file}"
-access_token=""
-tenant_id=""
-admin_password="${rotated_admin_password}"
-
 echo '2.1.1.5 /api/auth/login with rotated password'
-ensure_access_token
-[[ -n "${access_token}" && "${access_token}" != "null" ]]
+password_change_rotated_login_json="$(
+  login_json_for_credentials "${password_change_temp_user_email}" "${rotated_admin_password}"
+)"
+password_change_temp_rotated_access_token="$(printf '%s' "${password_change_rotated_login_json}" | jq -r '.accessToken')"
+[[ -n "${password_change_temp_rotated_access_token}" && "${password_change_temp_rotated_access_token}" != "null" ]]
 
 echo '2.1.1.6 /api/user/password restore original'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${password_change_temp_rotated_access_token}" \
   -H 'content-type: application/json' \
   -X PUT \
-  -d '{"oldPassword":"'"${rotated_admin_password}"'","newPassword":"'"${original_admin_password}"'"}' \
+  -d '{"oldPassword":"'"${rotated_admin_password}"'","newPassword":"'"${admin_password}"'"}' \
   "${api_base}/user/password" \
   | jq -e '.success == true and (.recoveryKey | length > 10)' >/dev/null
-
-rm -f "${token_file}" "${tenant_file}"
-access_token=""
-tenant_id=""
-admin_password="${original_admin_password}"
-
-echo '2.1.1.7 /api/auth/login with restored password'
-ensure_access_token
-[[ -n "${access_token}" && "${access_token}" != "null" ]]
 
 echo '2.1.2 /api/user/ssh-defaults'
 curl --silent --show-error --fail \
@@ -1201,7 +1306,9 @@ curl --silent --show-error --fail \
       and .rp.name == "Arsenale"
       and .attestation == "none"
       and .user.name == $expectedUser
-      and .authenticatorSelection.userVerification == "preferred"
+      and .authenticatorSelection.residentKey == "required"
+      and .authenticatorSelection.requireResidentKey == true
+      and .authenticatorSelection.userVerification == "required"
     ' >/dev/null
 
 echo '2.1.4.1 /api/vault/status'
@@ -1862,113 +1969,117 @@ curl --silent --show-error --fail \
   | jq -e --arg tenant_id "${tenant_id}" 'type == "array" and ((map(select(.tenantId == $tenant_id)) | length) >= 1)' >/dev/null
 
 echo '2.1.11.1.0 /api/tenants create + /api/auth/switch-tenant'
-original_tenant_id="${tenant_id}"
-switch_tenant_temp_name="Acceptance Switch Tenant $(date +%s)"
-switch_json="$(curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  -H 'content-type: application/json' \
-  -d "{\"name\":\"${switch_tenant_temp_name}\"}" \
-  "${api_base}/tenants")"
-switch_tenant_temp_id="$(printf '%s' "${switch_json}" | jq -r '.tenant.id')"
-access_token="$(printf '%s' "${switch_json}" | jq -r '.accessToken')"
-tenant_id="$(printf '%s' "${switch_json}" | jq -r '.user.tenantId')"
-printf '%s' "${access_token}" > "${token_file}"
-printf '%s' "${tenant_id}" > "${tenant_file}"
-[[ "${tenant_id}" == "${switch_tenant_temp_id}" ]]
-printf '%s' "${switch_json}" | jq -e --arg tenant_id "${switch_tenant_temp_id}" --arg name "${switch_tenant_temp_name}" '.tenant.id == $tenant_id and .tenant.name == $name and .user.tenantId == $tenant_id' >/dev/null
+if [[ "${multi_tenancy_enabled}" == "true" ]]; then
+  original_tenant_id="${tenant_id}"
+  switch_tenant_temp_name="Acceptance Switch Tenant $(date +%s)"
+  switch_json="$(curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    -H 'content-type: application/json' \
+    -d "{\"name\":\"${switch_tenant_temp_name}\"}" \
+    "${api_base}/tenants")"
+  switch_tenant_temp_id="$(printf '%s' "${switch_json}" | jq -r '.tenant.id')"
+  access_token="$(printf '%s' "${switch_json}" | jq -r '.accessToken')"
+  tenant_id="$(printf '%s' "${switch_json}" | jq -r '.user.tenantId')"
+  printf '%s' "${access_token}" > "${token_file}"
+  printf '%s' "${tenant_id}" > "${tenant_file}"
+  [[ "${tenant_id}" == "${switch_tenant_temp_id}" ]]
+  printf '%s' "${switch_json}" | jq -e --arg tenant_id "${switch_tenant_temp_id}" --arg name "${switch_tenant_temp_name}" '.tenant.id == $tenant_id and .tenant.name == $name and .user.tenantId == $tenant_id' >/dev/null
 
-curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  "${api_base}/tenants/mine" \
-  | jq -e --arg tenant_id "${switch_tenant_temp_id}" --arg name "${switch_tenant_temp_name}" '.id == $tenant_id and .name == $name' >/dev/null
+  curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    "${api_base}/tenants/mine" \
+    | jq -e --arg tenant_id "${switch_tenant_temp_id}" --arg name "${switch_tenant_temp_name}" '.id == $tenant_id and .name == $name' >/dev/null
 
-curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  -H 'content-type: application/json' \
-  -X PUT \
-  -d '{"name":"Acceptance Switch Tenant Updated","defaultSessionTimeoutSeconds":4200}' \
-  "${api_base}/tenants/${switch_tenant_temp_id}" \
-  | jq -e --arg tenant_id "${switch_tenant_temp_id}" '.id == $tenant_id and .name == "Acceptance Switch Tenant Updated" and .defaultSessionTimeoutSeconds == 4200' >/dev/null
+  curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    -H 'content-type: application/json' \
+    -X PUT \
+    -d '{"name":"Acceptance Switch Tenant Updated","defaultSessionTimeoutSeconds":4200}' \
+    "${api_base}/tenants/${switch_tenant_temp_id}" \
+    | jq -e --arg tenant_id "${switch_tenant_temp_id}" '.id == $tenant_id and .name == "Acceptance Switch Tenant Updated" and .defaultSessionTimeoutSeconds == 4200' >/dev/null
 
-echo '2.1.11.1.0.1 /api/gateways/ssh-keypair and /api/secrets tenant-vault init/distribute'
-curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  "${api_base}/gateways/ssh-keypair" \
-  | jq -e '.publicKey != null and .publicKey != "" and .fingerprint != null and .fingerprint != ""' >/dev/null
+  echo '2.1.11.1.0.1 /api/gateways/ssh-keypair and /api/secrets tenant-vault init/distribute'
+  curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    "${api_base}/gateways/ssh-keypair" \
+    | jq -e '.publicKey != null and .publicKey != "" and .fingerprint != null and .fingerprint != ""' >/dev/null
 
-curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  "${api_base}/secrets/tenant-vault/status" \
-  | jq -e '.initialized == true and .hasAccess == true' >/dev/null
+  curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    "${api_base}/secrets/tenant-vault/status" \
+    | jq -e '.initialized == true and .hasAccess == true' >/dev/null
 
-tenant_vault_init_status="$(curl --silent --show-error \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  -H 'content-type: application/json' \
-  -X POST \
-  -d '{}' \
-  -o /tmp/tenant-vault-init-response.json \
-  -w '%{http_code}' \
-  "${api_base}/secrets/tenant-vault/init")"
-[[ "${tenant_vault_init_status}" == "400" ]]
-jq -e '.error == "Tenant vault is already initialized"' /tmp/tenant-vault-init-response.json >/dev/null
+  tenant_vault_init_status="$(curl --silent --show-error \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    -H 'content-type: application/json' \
+    -X POST \
+    -d '{}' \
+    -o /tmp/tenant-vault-init-response.json \
+    -w '%{http_code}' \
+    "${api_base}/secrets/tenant-vault/init")"
+  [[ "${tenant_vault_init_status}" == "400" ]]
+  jq -e '.error == "Tenant vault is already initialized"' /tmp/tenant-vault-init-response.json >/dev/null
 
-curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  "${api_base}/secrets/tenant-vault/status" \
-  | jq -e '.initialized == true and .hasAccess == true' >/dev/null
+  curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    "${api_base}/secrets/tenant-vault/status" \
+    | jq -e '.initialized == true and .hasAccess == true' >/dev/null
 
-switch_tenant_temp_user_id="$(python3 - <<'PY'
+  switch_tenant_temp_user_id="$(python3 - <<'PY'
 import uuid
 print(uuid.uuid4())
 PY
 )"
-switch_tenant_temp_user_email="go-tenant-vault-${switch_tenant_temp_user_id}@example.com"
-switch_tenant_temp_user_member_id="$(python3 - <<'PY'
+  switch_tenant_temp_user_email="go-tenant-vault-${switch_tenant_temp_user_id}@example.com"
+  switch_tenant_temp_user_member_id="$(python3 - <<'PY'
 import uuid
 print(uuid.uuid4())
 PY
 )"
-"${container_runtime}" exec \
-  -e PGPASSWORD="${postgres_password}" \
-  arsenale-postgres \
-  psql -U "${db_user}" -d "${db_name}" -c \
-  "INSERT INTO \"User\" (id, email, enabled, \"createdAt\", \"updatedAt\") VALUES ('${switch_tenant_temp_user_id}', '${switch_tenant_temp_user_email}', true, NOW(), NOW()); INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${switch_tenant_temp_user_member_id}', '${switch_tenant_temp_id}', '${switch_tenant_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
-  >/dev/null
+  "${container_runtime}" exec \
+    -e PGPASSWORD="${postgres_password}" \
+    arsenale-postgres \
+    psql -U "${db_user}" -d "${db_name}" -c \
+    "INSERT INTO \"User\" (id, email, enabled, \"createdAt\", \"updatedAt\") VALUES ('${switch_tenant_temp_user_id}', '${switch_tenant_temp_user_email}', true, NOW(), NOW()); INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${switch_tenant_temp_user_member_id}', '${switch_tenant_temp_id}', '${switch_tenant_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
+    >/dev/null
 
-curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  -H 'content-type: application/json' \
-  -X POST \
-  -d "{\"targetUserId\":\"${switch_tenant_temp_user_id}\"}" \
-  "${api_base}/secrets/tenant-vault/distribute" \
-  | jq -e '.distributed == false and .pending == true' >/dev/null
+  curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    -H 'content-type: application/json' \
+    -X POST \
+    -d "{\"targetUserId\":\"${switch_tenant_temp_user_id}\"}" \
+    "${api_base}/secrets/tenant-vault/distribute" \
+    | jq -e '.distributed == false and .pending == true' >/dev/null
 
-tenant_vault_pending_count="$("${container_runtime}" exec \
-  -e PGPASSWORD="${postgres_password}" \
-  arsenale-postgres \
-  psql -U "${db_user}" -d "${db_name}" -Atqc \
-  "SELECT COUNT(*) FROM \"PendingVaultKeyDistribution\" WHERE \"tenantId\" = '${switch_tenant_temp_id}' AND \"targetUserId\" = '${switch_tenant_temp_user_id}';")"
-[[ "${tenant_vault_pending_count}" == "1" ]]
+  tenant_vault_pending_count="$("${container_runtime}" exec \
+    -e PGPASSWORD="${postgres_password}" \
+    arsenale-postgres \
+    psql -U "${db_user}" -d "${db_name}" -Atqc \
+    "SELECT COUNT(*) FROM \"PendingVaultKeyDistribution\" WHERE \"tenantId\" = '${switch_tenant_temp_id}' AND \"targetUserId\" = '${switch_tenant_temp_user_id}';")"
+  [[ "${tenant_vault_pending_count}" == "1" ]]
 
-switch_back_json="$(curl --silent --show-error --fail \
-  --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
-  -H 'content-type: application/json' \
-  -d "{\"tenantId\":\"${original_tenant_id}\"}" \
-  "${api_base}/auth/switch-tenant")"
-access_token="$(printf '%s' "${switch_back_json}" | jq -r '.accessToken')"
-tenant_id="$(printf '%s' "${switch_back_json}" | jq -r '.user.tenantId')"
-printf '%s' "${access_token}" > "${token_file}"
-printf '%s' "${tenant_id}" > "${tenant_file}"
-[[ "${tenant_id}" == "${original_tenant_id}" ]]
+  switch_back_json="$(curl --silent --show-error --fail \
+    --cacert "${ca_cert}" \
+    -H "authorization: Bearer ${access_token}" \
+    -H 'content-type: application/json' \
+    -d "{\"tenantId\":\"${original_tenant_id}\"}" \
+    "${api_base}/auth/switch-tenant")"
+  access_token="$(printf '%s' "${switch_back_json}" | jq -r '.accessToken')"
+  tenant_id="$(printf '%s' "${switch_back_json}" | jq -r '.user.tenantId')"
+  printf '%s' "${access_token}" > "${token_file}"
+  printf '%s' "${tenant_id}" > "${tenant_file}"
+  [[ "${tenant_id}" == "${original_tenant_id}" ]]
+else
+  echo '2.1.11.1.0 /api/tenants create + /api/auth/switch-tenant skipped (multi-tenancy disabled)'
+fi
 
 "${container_runtime}" exec \
   -e PGPASSWORD="${postgres_password}" \
@@ -2281,20 +2392,60 @@ curl --silent --show-error --fail \
   "${api_base}/tenants/${tenant_id}/users/${tenant_manage_user_id}/enabled" \
   | jq -e --arg user_id "${tenant_manage_user_id}" '.id == $user_id and .enabled == true and .role == "CONSULTANT"' >/dev/null
 
+tenant_admin_action_temp_user_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+tenant_admin_action_temp_member_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+tenant_admin_action_temp_user_email="tenant-admin-action-${tenant_admin_action_temp_user_id}@example.com"
+
+"${container_runtime}" exec \
+  -e PGPASSWORD="${postgres_password}" \
+  arsenale-postgres \
+  psql -U "${db_user}" -d "${db_name}" -c \
+  "INSERT INTO \"User\" (
+      id, email, enabled, \"emailVerified\", \"passwordHash\",
+      \"vaultSalt\", \"encryptedVaultKey\", \"vaultKeyIV\", \"vaultKeyTag\",
+      \"encryptedVaultRecoveryKey\", \"vaultRecoveryKeyIV\", \"vaultRecoveryKeyTag\", \"vaultRecoveryKeySalt\",
+      \"vaultSetupComplete\", \"createdAt\", \"updatedAt\"
+   )
+   SELECT
+      '${tenant_admin_action_temp_user_id}', '${tenant_admin_action_temp_user_email}', true, false, \"passwordHash\",
+      \"vaultSalt\", \"encryptedVaultKey\", \"vaultKeyIV\", \"vaultKeyTag\",
+      \"encryptedVaultRecoveryKey\", \"vaultRecoveryKeyIV\", \"vaultRecoveryKeyTag\", \"vaultRecoveryKeySalt\",
+      COALESCE(\"vaultSetupComplete\", false), NOW(), NOW()
+   FROM \"User\"
+   WHERE email = '${admin_email}'
+   LIMIT 1;
+   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\")
+   VALUES ('${tenant_admin_action_temp_member_id}', '${tenant_id}', '${tenant_admin_action_temp_user_id}', 'ADMIN', 'ACCEPTED', true, NOW(), NOW());" \
+  >/dev/null
+
+tenant_admin_action_login_json="$(
+  login_json_for_credentials "${tenant_admin_action_temp_user_email}" "${admin_password}"
+)"
+tenant_admin_action_access_token="$(printf '%s' "${tenant_admin_action_login_json}" | jq -r '.accessToken')"
+[[ -n "${tenant_admin_action_access_token}" && "${tenant_admin_action_access_token}" != "null" ]]
+
 tenant_admin_verification_email_id="$(
   curl --silent --show-error --fail \
     --cacert "${ca_cert}" \
-    -H "authorization: Bearer ${access_token}" \
+    -H "authorization: Bearer ${tenant_admin_action_access_token}" \
     -H 'content-type: application/json' \
     -d '{"purpose":"admin-action"}' \
     "${api_base}/user/identity/initiate" \
-    | jq -r '.verificationId'
+    | jq -r 'select(.method == "password") | .verificationId'
 )"
 [[ -n "${tenant_admin_verification_email_id}" && "${tenant_admin_verification_email_id}" != "null" ]]
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${tenant_admin_action_access_token}" \
   -H 'content-type: application/json' \
   -d '{"verificationId":"'"${tenant_admin_verification_email_id}"'","password":"'"${admin_password}"'"}' \
   "${api_base}/user/identity/confirm" \
@@ -2303,7 +2454,7 @@ curl --silent --show-error --fail \
 tenant_manage_new_email="tenant-manage-updated-${tenant_manage_user_id}@example.com"
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${tenant_admin_action_access_token}" \
   -H 'content-type: application/json' \
   -X PUT \
   -d '{"newEmail":"'"${tenant_manage_new_email}"'","verificationId":"'"${tenant_admin_verification_email_id}"'"}' \
@@ -2331,17 +2482,17 @@ rm -f "${tenant_manage_temp_cookie}" "${tenant_manage_temp_headers}"
 tenant_admin_verification_password_id="$(
   curl --silent --show-error --fail \
     --cacert "${ca_cert}" \
-    -H "authorization: Bearer ${access_token}" \
+    -H "authorization: Bearer ${tenant_admin_action_access_token}" \
     -H 'content-type: application/json' \
     -d '{"purpose":"admin-action"}' \
     "${api_base}/user/identity/initiate" \
-    | jq -r '.verificationId'
+    | jq -r 'select(.method == "password") | .verificationId'
 )"
 [[ -n "${tenant_admin_verification_password_id}" && "${tenant_admin_verification_password_id}" != "null" ]]
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${tenant_admin_action_access_token}" \
   -H 'content-type: application/json' \
   -d '{"verificationId":"'"${tenant_admin_verification_password_id}"'","password":"'"${admin_password}"'"}' \
   "${api_base}/user/identity/confirm" \
@@ -2350,7 +2501,7 @@ curl --silent --show-error --fail \
 tenant_manage_new_password="VaultReset92Qx!"
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${tenant_admin_action_access_token}" \
   -H 'content-type: application/json' \
   -X PUT \
   -d '{"newPassword":"'"${tenant_manage_new_password}"'","verificationId":"'"${tenant_admin_verification_password_id}"'"}' \
@@ -2583,12 +2734,19 @@ echo '2.1.11.3.1 /api/files upload/list/download/delete'
 uploaded_file_name="acceptance-file-$(date +%s).txt"
 uploaded_file_local="$(mktemp)"
 uploaded_file_downloaded="$(mktemp)"
+file_connection_id="$(curl --silent --show-error --fail \
+  --cacert "${ca_cert}" \
+  -H "authorization: Bearer ${access_token}" \
+  "${api_base}/connections" \
+  | jq -r '([(.own[]? // empty), (.shared[]? // empty), (.team[]? // empty)] | map(select(.type == "RDP" and .enableDrive == true)) | .[0].id // empty)')"
+[[ -n "${file_connection_id}" ]]
 printf 'acceptance file payload %s\n' "$(date +%s)" > "${uploaded_file_local}"
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
   -X POST \
+  -F "connectionId=${file_connection_id}" \
   -F "file=@${uploaded_file_local};filename=${uploaded_file_name}" \
   "${api_base}/files" \
   | jq -e --arg name "${uploaded_file_name}" 'type == "array" and ((map(select(.name == $name)) | length) == 1)' >/dev/null
@@ -2596,14 +2754,14 @@ curl --silent --show-error --fail \
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
-  "${api_base}/files" \
+  "${api_base}/files?connectionId=${file_connection_id}" \
   | jq -e --arg name "${uploaded_file_name}" 'type == "array" and ((map(select(.name == $name)) | length) == 1)' >/dev/null
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
   --output "${uploaded_file_downloaded}" \
-  "${api_base}/files/${uploaded_file_name}"
+  "${api_base}/files/${uploaded_file_name}?connectionId=${file_connection_id}"
 
 cmp -s "${uploaded_file_local}" "${uploaded_file_downloaded}"
 
@@ -2611,13 +2769,13 @@ curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
   -X DELETE \
-  "${api_base}/files/${uploaded_file_name}" \
+  "${api_base}/files/${uploaded_file_name}?connectionId=${file_connection_id}" \
   | jq -e '.deleted == true' >/dev/null
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
-  "${api_base}/files" \
+  "${api_base}/files?connectionId=${file_connection_id}" \
   | jq -e --arg name "${uploaded_file_name}" 'type == "array" and ((map(select(.name == $name)) | length) == 0)' >/dev/null
 
 rm -f "${uploaded_file_local}" "${uploaded_file_downloaded}"
@@ -2839,6 +2997,11 @@ curl --silent --show-error --fail \
   | jq -e '.valid == true and .requiresSmsVerification == false and .hasRecoveryKey == false' >/dev/null
 
 echo '2.1.11.4.5 /api/auth/request-sms-code + /verify-sms'
+sms_mfa_temp_tenant_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
 sms_mfa_temp_user_id="$(python3 - <<'PY'
 import uuid
 print(uuid.uuid4())
@@ -2854,7 +3017,9 @@ PY
   -e PGPASSWORD="${postgres_password}" \
   arsenale-postgres \
   psql -U "${db_user}" -d "${db_name}" -c \
-  "INSERT INTO \"User\" (id, email, enabled, \"emailVerified\", \"passwordHash\", \"smsMfaEnabled\", \"phoneVerified\", \"phoneNumber\", \"createdAt\", \"updatedAt\") SELECT '${sms_mfa_temp_user_id}', '${sms_mfa_temp_email}', true, true, \"passwordHash\", true, true, '+15550001111', NOW(), NOW() FROM \"User\" WHERE email = '${admin_email}' LIMIT 1; INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${sms_mfa_temp_member_id}', '${tenant_id}', '${sms_mfa_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
+  "INSERT INTO \"Tenant\" (id, name, slug, \"mfaRequired\", \"createdAt\", \"updatedAt\") VALUES ('${sms_mfa_temp_tenant_id}', 'Go SMS Login Tenant', 'go-sms-login-${acceptance_suffix}', true, NOW(), NOW());
+   INSERT INTO \"User\" (id, email, enabled, \"emailVerified\", \"passwordHash\", \"smsMfaEnabled\", \"phoneVerified\", \"phoneNumber\", \"createdAt\", \"updatedAt\") SELECT '${sms_mfa_temp_user_id}', '${sms_mfa_temp_email}', true, true, \"passwordHash\", true, true, '+15550001111', NOW(), NOW() FROM \"User\" WHERE email = '${admin_email}' LIMIT 1;
+   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${sms_mfa_temp_member_id}', '${sms_mfa_temp_tenant_id}', '${sms_mfa_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
   >/dev/null
 
 clear_login_rate_limits
@@ -2898,6 +3063,11 @@ curl --silent --show-error --fail \
   | jq -e --arg email "${sms_mfa_temp_email}" '.accessToken and .user.email == $email' >/dev/null
 
 echo '2.1.11.4.5.1 /api/auth/request-webauthn-options'
+webauthn_login_temp_tenant_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
 webauthn_login_temp_user_id="$(python3 - <<'PY'
 import uuid
 print(uuid.uuid4())
@@ -2923,8 +3093,9 @@ PY
   -e PGPASSWORD="${postgres_password}" \
   arsenale-postgres \
   psql -U "${db_user}" -d "${db_name}" -c \
-  "INSERT INTO \"User\" (id, email, enabled, \"emailVerified\", \"passwordHash\", \"webauthnEnabled\", \"createdAt\", \"updatedAt\") SELECT '${webauthn_login_temp_user_id}', '${webauthn_login_temp_email}', true, true, \"passwordHash\", true, NOW(), NOW() FROM \"User\" WHERE email = '${admin_email}' LIMIT 1;
-   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${webauthn_login_temp_member_id}', '${tenant_id}', '${webauthn_login_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());
+  "INSERT INTO \"Tenant\" (id, name, slug, \"mfaRequired\", \"createdAt\", \"updatedAt\") VALUES ('${webauthn_login_temp_tenant_id}', 'Go WebAuthn Login Tenant', 'go-webauthn-login-${acceptance_suffix}', true, NOW(), NOW());
+   INSERT INTO \"User\" (id, email, enabled, \"emailVerified\", \"passwordHash\", \"webauthnEnabled\", \"createdAt\", \"updatedAt\") SELECT '${webauthn_login_temp_user_id}', '${webauthn_login_temp_email}', true, true, \"passwordHash\", true, NOW(), NOW() FROM \"User\" WHERE email = '${admin_email}' LIMIT 1;
+   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${webauthn_login_temp_member_id}', '${webauthn_login_temp_tenant_id}', '${webauthn_login_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());
    INSERT INTO \"WebAuthnCredential\" (id, \"userId\", \"credentialId\", \"publicKey\", counter, transports, \"friendlyName\", \"createdAt\") VALUES ('${webauthn_login_temp_credential_id}', '${webauthn_login_temp_user_id}', '${webauthn_login_temp_credential_ref}', 'cHVibGljLWtleQ', 0, ARRAY['usb'], 'Go Login Key', NOW());" \
   >/dev/null
 
@@ -2943,7 +3114,7 @@ curl --silent --show-error --fail \
   -H 'content-type: application/json' \
   -d "{\"tempToken\":\"${webauthn_login_temp_token}\"}" \
   "${api_base}/auth/request-webauthn-options" \
-  | jq -e --arg ref "${webauthn_login_temp_credential_ref}" --arg expectedRpId "${expected_webauthn_rp_id}" '.challenge and ((($expectedRpId | length) == 0 and (.rpId | type == "string") and (.rpId | length > 0)) or .rpId == $expectedRpId) and .userVerification == "preferred" and ((.allowCredentials | map(select(.id == $ref)) | length) == 1)' >/dev/null
+  | jq -e --arg ref "${webauthn_login_temp_credential_ref}" --arg expectedRpId "${expected_webauthn_rp_id}" '.challenge and ((($expectedRpId | length) == 0 and (.rpId | type == "string") and (.rpId | length > 0)) or .rpId == $expectedRpId) and .userVerification == "required" and ((.allowCredentials | map(select(.id == $ref)) | length) == 1)' >/dev/null
 
 echo '2.1.11.4.6 /api/auth/mfa-setup/init + /verify'
 mfa_setup_temp_tenant_id="$(python3 - <<'PY'
@@ -3022,6 +3193,11 @@ curl --silent --show-error --fail \
   | grep -qx 'true'
 
 echo '2.1.11.4.7 /api/auth/reset-password/request-sms + /complete'
+reset_sms_temp_tenant_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
 reset_sms_temp_user_id="$(python3 - <<'PY'
 import uuid
 print(uuid.uuid4())
@@ -3043,7 +3219,9 @@ reset_sms_hash="$(printf '%s' "${reset_sms_token}" | sha256sum | awk '{print $1}
   -e PGPASSWORD="${postgres_password}" \
   arsenale-postgres \
   psql -U "${db_user}" -d "${db_name}" -c \
-  "INSERT INTO \"User\" (id, email, enabled, \"emailVerified\", \"passwordHash\", \"smsMfaEnabled\", \"phoneVerified\", \"phoneNumber\", \"passwordResetTokenHash\", \"passwordResetExpiry\", \"createdAt\", \"updatedAt\") SELECT '${reset_sms_temp_user_id}', '${reset_sms_temp_email}', true, true, \"passwordHash\", true, true, '+15550002222', '${reset_sms_hash}', NOW() + INTERVAL '1 hour', NOW(), NOW() FROM \"User\" WHERE email = '${admin_email}' LIMIT 1; INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${reset_sms_temp_member_id}', '${tenant_id}', '${reset_sms_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
+  "INSERT INTO \"Tenant\" (id, name, slug, \"mfaRequired\", \"createdAt\", \"updatedAt\") VALUES ('${reset_sms_temp_tenant_id}', 'Go Reset SMS Tenant', 'go-reset-sms-${acceptance_suffix}', true, NOW(), NOW());
+   INSERT INTO \"User\" (id, email, enabled, \"emailVerified\", \"passwordHash\", \"smsMfaEnabled\", \"phoneVerified\", \"phoneNumber\", \"passwordResetTokenHash\", \"passwordResetExpiry\", \"createdAt\", \"updatedAt\") SELECT '${reset_sms_temp_user_id}', '${reset_sms_temp_email}', true, true, \"passwordHash\", true, true, '+15550002222', '${reset_sms_hash}', NOW() + INTERVAL '1 hour', NOW(), NOW() FROM \"User\" WHERE email = '${admin_email}' LIMIT 1;
+   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\") VALUES ('${reset_sms_temp_member_id}', '${reset_sms_temp_tenant_id}', '${reset_sms_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
   >/dev/null
 
 curl --silent --show-error --fail \
@@ -3605,25 +3783,64 @@ curl --silent --show-error --fail \
   "${api_base}/share/${public_share_token}/info" \
   | jq -e '.isExhausted == true' >/dev/null
 
-temp_email="admin+refactor@example.com"
+email_change_temp_user_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+email_change_temp_member_id="$(python3 - <<'PY'
+import uuid
+print(uuid.uuid4())
+PY
+)"
+email_change_temp_user_email="email-change-original-${email_change_temp_user_id}@example.com"
+temp_email="email-change-updated-${email_change_temp_user_id}@example.com"
+
+"${container_runtime}" exec \
+  -e PGPASSWORD="${postgres_password}" \
+  arsenale-postgres \
+  psql -U "${db_user}" -d "${db_name}" -c \
+  "INSERT INTO \"User\" (
+      id, email, enabled, \"emailVerified\", \"passwordHash\",
+      \"vaultSalt\", \"encryptedVaultKey\", \"vaultKeyIV\", \"vaultKeyTag\",
+      \"encryptedVaultRecoveryKey\", \"vaultRecoveryKeyIV\", \"vaultRecoveryKeyTag\", \"vaultRecoveryKeySalt\",
+      \"vaultSetupComplete\", \"createdAt\", \"updatedAt\"
+   )
+   SELECT
+      '${email_change_temp_user_id}', '${email_change_temp_user_email}', true, false, \"passwordHash\",
+      \"vaultSalt\", \"encryptedVaultKey\", \"vaultKeyIV\", \"vaultKeyTag\",
+      \"encryptedVaultRecoveryKey\", \"vaultRecoveryKeyIV\", \"vaultRecoveryKeyTag\", \"vaultRecoveryKeySalt\",
+      COALESCE(\"vaultSetupComplete\", false), NOW(), NOW()
+   FROM \"User\"
+   WHERE email = '${admin_email}'
+   LIMIT 1;
+   INSERT INTO \"TenantMember\" (id, \"tenantId\", \"userId\", role, status, \"isActive\", \"joinedAt\", \"updatedAt\")
+   VALUES ('${email_change_temp_member_id}', '${tenant_id}', '${email_change_temp_user_id}', 'MEMBER', 'ACCEPTED', true, NOW(), NOW());" \
+  >/dev/null
+
+email_change_login_json="$(
+  login_json_for_credentials "${email_change_temp_user_email}" "${admin_password}"
+)"
+email_change_access_token="$(printf '%s' "${email_change_login_json}" | jq -r '.accessToken')"
+[[ -n "${email_change_access_token}" && "${email_change_access_token}" != "null" ]]
 
 echo '2.1.12 /api/user/email-change initiate temp'
 email_change_verification_id="$(
   curl --silent --show-error --fail \
     --cacert "${ca_cert}" \
-    -H "authorization: Bearer ${access_token}" \
+    -H "authorization: Bearer ${email_change_access_token}" \
     -H 'content-type: application/json' \
     -X POST \
     -d '{"newEmail":"'"${temp_email}"'"}' \
     "${api_base}/user/email-change/initiate" \
-    | jq -r '.verificationId'
+    | jq -r 'select(.method == "password") | .verificationId'
 )"
 [[ -n "${email_change_verification_id}" && "${email_change_verification_id}" != "null" ]]
 
 echo '2.1.13 /api/user/identity/confirm for email change'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${email_change_access_token}" \
   -H 'content-type: application/json' \
   -X POST \
   -d '{"verificationId":"'"${email_change_verification_id}"'","password":"'"${admin_password}"'"}' \
@@ -3633,7 +3850,7 @@ curl --silent --show-error --fail \
 echo '2.1.14 /api/user/email-change confirm temp'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${email_change_access_token}" \
   -H 'content-type: application/json' \
   -X POST \
   -d '{"verificationId":"'"${email_change_verification_id}"'"}' \
@@ -3643,7 +3860,7 @@ curl --silent --show-error --fail \
 echo '2.1.15 /api/user/profile temp email readback'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${email_change_access_token}" \
   "${api_base}/user/profile" \
   | jq -e '.email == "'"${temp_email}"'"' >/dev/null
 
@@ -3651,19 +3868,19 @@ echo '2.1.16 /api/user/email-change restore initiate'
 restore_verification_id="$(
   curl --silent --show-error --fail \
     --cacert "${ca_cert}" \
-    -H "authorization: Bearer ${access_token}" \
+    -H "authorization: Bearer ${email_change_access_token}" \
     -H 'content-type: application/json' \
     -X POST \
-    -d '{"newEmail":"'"${admin_email}"'"}' \
+    -d '{"newEmail":"'"${email_change_temp_user_email}"'"}' \
     "${api_base}/user/email-change/initiate" \
-    | jq -r '.verificationId'
+    | jq -r 'select(.method == "password") | .verificationId'
 )"
 [[ -n "${restore_verification_id}" && "${restore_verification_id}" != "null" ]]
 
 echo '2.1.17 /api/user/identity/confirm restore'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${email_change_access_token}" \
   -H 'content-type: application/json' \
   -X POST \
   -d '{"verificationId":"'"${restore_verification_id}"'","password":"'"${admin_password}"'"}' \
@@ -3673,19 +3890,19 @@ curl --silent --show-error --fail \
 echo '2.1.18 /api/user/email-change confirm restore'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${email_change_access_token}" \
   -H 'content-type: application/json' \
   -X POST \
   -d '{"verificationId":"'"${restore_verification_id}"'"}' \
   "${api_base}/user/email-change/confirm" \
-  | jq -e '.email == "'"${admin_email}"'"' >/dev/null
+  | jq -e '.email == "'"${email_change_temp_user_email}"'"' >/dev/null
 
 echo '2.1.19 /api/user/profile restore readback'
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
-  -H "authorization: Bearer ${access_token}" \
+  -H "authorization: Bearer ${email_change_access_token}" \
   "${api_base}/user/profile" \
-  | jq -e '.email == "'"${admin_email}"'"' >/dev/null
+  | jq -e '.email == "'"${email_change_temp_user_email}"'"' >/dev/null
 
 echo '2.2 Redis coordination'
 redis_coordination_ok=0

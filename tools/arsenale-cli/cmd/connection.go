@@ -392,7 +392,7 @@ func findConnectionByName(name string, cfg *CLIConfig) (*Connection, error) {
 	}
 
 	for _, c := range connections {
-		if c.Name == name {
+		if c.Name == name || c.ID == name {
 			return &c, nil
 		}
 	}

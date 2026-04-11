@@ -2,7 +2,7 @@
 title: LLM Context
 description: Consolidated single-file context for LLMs, bots, and operators working on Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-08T16:00:00Z
+generated-at: 2026-04-11T11:45:00Z
 source-files:
   - README.md
   - AGENT.md
@@ -138,6 +138,8 @@ Highest-value public prefixes:
 - `/api/secrets` — keychain CRUD, versioning, sharing, breach check, rotation
 - `/api/vault` — personal vault lock/unlock, passkey-first re-unlock, recovery
 - `/api/connections` — connection CRUD, sharing, import/export, favorites
+- `/api/files` — connection-scoped RDP shared-drive staging
+- `/api/files/ssh/*` — SSH file browser list/mkdir/delete/rename/upload/download
 - `/api/sessions` — SSH, RDP, VNC, database, DB tunnel, heartbeat, terminate
 - `/api/gateways` — gateway CRUD, derived operational status, templates, scaling, tunnel controls, instances
 - `/api/db-audit` — query audit logs, firewall rules, masking policies, rate limits
@@ -255,7 +257,14 @@ For code-only iteration, `make dev client`, `make dev gateways`, and `make dev c
 - **Server encryption**: Separate `SERVER_ENCRYPTION_KEY` for tenant SSH keys and server-held material
 - **Sharing**: Re-encrypted per recipient; external shares use HKDF-SHA256 with optional PIN
 - **ABAC policies**: Folder > Team > Tenant specificity with time windows, MFA step-up, trusted-device requirements
-- **DLP**: Tenant floor + per-connection overrides; server-side for SSH, Guacamole params for desktop
+- **DLP**: Tenant floor + per-connection overrides; Guacamole params + staged-file API guards for desktop, REST file browser guards for SSH
+
+## 📁 File Transfer Model
+
+- RDP shared-drive files are keyed by tenant, user, and connection in the shared object store, then materialized into the Guacamole drive cache under `DRIVE_BASE_PATH`.
+- SSH file browsing does not use terminal WebSocket SFTP events. The SPA calls `/api/files/ssh/*` over REST and the control plane executes remote SFTP operations directly, staging upload/download payloads in the object store first.
+- Threat scanning is pluggable through `FILE_THREAT_SCANNER_MODE`. The builtin scanner blocks the EICAR signature and is applied before staged payloads are delivered to the target or returned to the browser.
+- The control plane requires `SHARED_FILES_S3_*` env vars for staged RDP and SSH file payloads. Development installs provision a MinIO-compatible endpoint by default; production installs must point these values at external S3-compatible storage.
 - **SQL firewall**: Regex-based query blocking in db-proxy
 - **Impossible travel**: Haversine distance between logins, flagged above 900 km/h default
 

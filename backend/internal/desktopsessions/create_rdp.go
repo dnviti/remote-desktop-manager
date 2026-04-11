@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"path"
 	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
+	"github.com/dnviti/arsenale/backend/internal/files"
 	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 )
 
@@ -64,7 +64,7 @@ func (s Service) createRDPSession(ctx context.Context, claims authn.Claims, payl
 
 	drivePath := ""
 	if connection.EnableDrive {
-		drivePath = path.Join(s.driveBasePath(), claims.UserID)
+		drivePath = files.DrivePath(s.DriveBasePath, claims.UserID, connection.ID)
 	}
 	tokenSettings := buildRDPGuacamoleSettings(
 		connection.Host,
@@ -116,11 +116,13 @@ func (s Service) createRDPSession(ctx context.Context, claims authn.Claims, payl
 	}
 
 	return createResponse{
-		Token:       grant.Token,
-		EnableDrive: connection.EnableDrive,
-		SessionID:   grant.SessionID,
-		RecordingID: firstNonEmpty(grant.RecordingID, recordingID),
-		DLPPolicy:   policy.DLPPolicy,
+		Token:            grant.Token,
+		EnableDrive:      connection.EnableDrive,
+		SessionID:        grant.SessionID,
+		RecordingID:      firstNonEmpty(grant.RecordingID, recordingID),
+		DLPPolicy:        policy.DLPPolicy,
+		ResolvedUsername: strings.TrimSpace(resolution.Credentials.Username),
+		ResolvedDomain:   strings.TrimSpace(resolution.Credentials.Domain),
 	}, nil
 }
 

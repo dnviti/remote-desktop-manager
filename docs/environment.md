@@ -72,11 +72,18 @@ In production, the Docker Compose stack uses `.env.prod` (via `env_file`).
 
 | Variable | Type | Default | Required | Env | Description |
 |----------|------|---------|----------|-----|-------------|
-| `DRIVE_BASE_PATH` | string | `./data/drive` | No | Both | Base path for RDP drive files |
+| `DRIVE_BASE_PATH` | string | `./data/drive` | No | Both | Local materialization cache for Guacamole RDP shared drives |
 | `FILE_UPLOAD_MAX_SIZE` | number | `10485760` (10MB) | No | Both | Max file upload size in bytes |
 | `USER_DRIVE_QUOTA` | number | `104857600` (100MB) | No | Both | Per-user drive quota in bytes |
-| `SFTP_MAX_FILE_SIZE` | number | `104857600` (100MB) | No | Both | Max SFTP transfer size in bytes |
-| `SFTP_CHUNK_SIZE` | number | `65536` (64KB) | No | Both | SFTP transfer chunk size in bytes |
+| `FILE_THREAT_SCANNER_MODE` | string | `builtin` | No | Both | Threat scanner mode for staged file payloads. `builtin` blocks the EICAR signature; `disabled` or `noop` skips scanning. |
+| `SHARED_FILES_S3_BUCKET` | string | — | No | Both | Bucket for staged RDP and SSH file payloads. This is required for the control plane to enable shared-drive and SSH file-transfer APIs. |
+| `SHARED_FILES_S3_REGION` | string | `us-east-1` | No | Both | Region used for staged-file object storage |
+| `SHARED_FILES_S3_ENDPOINT` | string | — | No | Both | Optional custom S3 endpoint for MinIO or another S3-compatible store |
+| `SHARED_FILES_S3_ACCESS_KEY_ID` | string | — | No | Both | Access key for staged-file object storage. Leave empty when the runtime should use ambient IAM credentials |
+| `SHARED_FILES_S3_SECRET_ACCESS_KEY` | string | — | No | Both | Secret key for staged-file object storage. Supports `_FILE` secret loading in the Go runtime |
+| `SHARED_FILES_S3_PREFIX` | string | — | No | Both | Optional key prefix applied to all staged-file objects |
+| `SHARED_FILES_S3_FORCE_PATH_STYLE` | boolean | `false` | No | Both | Force path-style S3 requests. Required by some MinIO and S3-compatible deployments |
+| `SHARED_FILES_S3_AUTO_CREATE_BUCKET` | boolean | `false` | No | Both | Automatically create the configured staged-file bucket at startup or first use |
 
 ### Email
 
