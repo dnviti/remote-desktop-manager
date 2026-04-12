@@ -80,7 +80,7 @@ func tenantLLMOverrides(tenantCfg tenantRuntimeConfig, envCfg aiEnvConfig) *llmO
 		Model:       strings.TrimSpace(tenantCfg.ModelID),
 		BaseURL:     strings.TrimSpace(tenantCfg.BaseURL),
 		MaxTokens:   tenantCfg.MaxTokensPerRequest,
-		Temperature: envCfg.Temperature,
+		Temperature: &envCfg.Temperature,
 		Timeout:     envCfg.Timeout,
 	}
 }

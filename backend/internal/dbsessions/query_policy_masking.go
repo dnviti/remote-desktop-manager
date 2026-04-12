@@ -10,10 +10,20 @@ import (
 )
 
 func (s Service) loadMaskingPolicies(ctx context.Context, tenantID string) []maskingPolicyRecord {
+	return s.loadMaskingPoliciesWithSettings(ctx, tenantID, databaseSettings{})
+}
+
+func (s Service) loadMaskingPoliciesWithSettings(ctx context.Context, tenantID string, settings databaseSettings) []maskingPolicyRecord {
+	if !settingBoolOrDefault(settings.MaskingEnabled, true) {
+		return nil
+	}
+	return resolveMaskingPolicies(s.loadTenantMaskingPolicies(ctx, tenantID), settings)
+}
+
+func (s Service) loadTenantMaskingPolicies(ctx context.Context, tenantID string) []maskingPolicyRecord {
 	if s.DB == nil || strings.TrimSpace(tenantID) == "" {
 		return nil
 	}
-
 	rows, err := s.DB.Query(ctx, `
 SELECT name, "columnPattern", strategy::text, "exemptRoles", scope
 FROM "DbMaskingPolicy"

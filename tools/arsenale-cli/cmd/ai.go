@@ -55,9 +55,14 @@ func runAiConfigGet(cmd *cobra.Command, args []string) {
 	}
 	checkAPIError(status, body)
 	printer().PrintSingle(body, []Column{
-		{Header: "PROVIDER", Field: "provider"},
-		{Header: "MODEL", Field: "modelId"},
-		{Header: "ENABLED", Field: "enabled"},
+		{Header: "GEN_ENABLED", Field: "enabled"},
+		{Header: "GEN_BACKEND", Field: "queryGeneration.backend"},
+		{Header: "GEN_MODEL", Field: "modelId"},
+		{Header: "OPT_ENABLED", Field: "queryOptimizer.enabled"},
+		{Header: "OPT_BACKEND", Field: "queryOptimizer.backend"},
+		{Header: "OPT_MODEL", Field: "queryOptimizer.modelId"},
+		{Header: "TEMP", Field: "temperature"},
+		{Header: "TIMEOUT_MS", Field: "timeoutMs"},
 	})
 }
 

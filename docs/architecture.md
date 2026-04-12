@@ -222,8 +222,9 @@ Important design details:
   - `POST /v1/schema:fetch`
   - `POST /v1/query-plans:explain`
   - `POST /v1/introspection:run`
-- The control plane applies masking, firewall, rate-limit, and audit logic after the DB proxy returns data.
+- The control plane applies masking, firewall, rate-limit, and audit logic after the DB proxy returns data, and each connection can now both enable or disable those controls and supply full connection-scoped policy objects through `dbSettings.firewall*`, `dbSettings.masking*`, and `dbSettings.rateLimit*`.
 - Persisted execution plans are opt-in per connection via `dbSettings.persistExecutionPlan`.
+- AI query generation and AI query optimization resolve from tenant-scoped named backends, then apply any per-connection overrides from `dbSettings.aiQueryGeneration*` and `dbSettings.aiQueryOptimizer*`.
 
 Supported interactive query protocols come from `backend/internal/queryrunner/protocols.go`:
 

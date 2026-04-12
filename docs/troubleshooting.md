@@ -99,10 +99,11 @@ make logs SVC=arsenale-dev-tunnel-db-proxy
 
 | Symptom | Likely cause | Action |
 |---------|--------------|--------|
-| AI tab missing in database UI | `agenticAIEnabled` is off or no tenant/env AI provider is configured | Set `FEATURE_AGENTIC_AI_ENABLED=true` and configure `/api/ai/config` or the `AI_*` env vars |
+| AI tab missing in database UI | AI query generation is disabled globally or the connection has `dbSettings.aiQueryGenerationEnabled=false` | Enable generation in `/api/ai/config`, verify a named backend exists, or remove the connection-level override |
 | "Query generation failed" error | Provider API error, model unavailable, or `control-plane-api` lacks outbound DNS/egress | Check tenant AI settings, `AI_API_KEY`, `AI_BASE_URL`, model name, and `arsenale-control-plane-api` connectivity |
 | Daily limit reached | Tenant hit `AI_MAX_REQUESTS_PER_DAY` | Wait for reset or increase the limit |
 | Ollama connection refused | Ollama service not running or wrong URL | Verify `AI_BASE_URL` points to the correct Ollama endpoint |
+| AI optimizer button missing | Query optimizer disabled globally or the connection has `dbSettings.aiQueryOptimizerEnabled=false` | Enable the optimizer in `/api/ai/config` or clear the connection-level disable flag |
 
 ## 🔑 Credential Checkout And Policy Issues
 

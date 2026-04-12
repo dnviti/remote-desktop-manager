@@ -17,7 +17,23 @@ List all connections (own + shared + team).
 
 Create a new connection.
 
-**Body**: `{ name, type, host, port, username?, password?, domain?, folderId?, teamId?, description?, sshTerminalConfig?, rdpSettings?, vncSettings?, gatewayId?, enableDrive?, defaultCredentialMode?, credentialSecretId? }`
+**Body**: `{ name, type, host, port, username?, password?, domain?, folderId?, teamId?, description?, sshTerminalConfig?, rdpSettings?, vncSettings?, dbSettings?, gatewayId?, enableDrive?, defaultCredentialMode?, credentialSecretId? }`
+
+For `DATABASE` connections, `dbSettings` now carries both transport options and per-connection enforcement/AI overrides. Common fields include:
+
+- `protocol`, `databaseName`, `cloudProvider`, `sslMode`, `persistExecutionPlan`
+- `firewallEnabled`, `maskingEnabled`, `rateLimitEnabled`
+- `firewallPolicyMode`, `maskingPolicyMode`, `rateLimitPolicyMode`
+- `firewallRules[]`, `maskingPolicies[]`, `rateLimitPolicies[]`
+- `aiQueryGenerationEnabled`, `aiQueryGenerationBackend`, `aiQueryGenerationModel`
+- `aiQueryOptimizerEnabled`, `aiQueryOptimizerBackend`, `aiQueryOptimizerModel`
+- protocol-specific fields such as `oracleConnectionType`, `oracleServiceName`, `mssqlAuthMode`, and `db2DatabaseAlias`
+
+The policy mode fields accept:
+
+- `inherit`: use only the tenant-wide firewall, masking, or rate-limit policies
+- `merge`: evaluate connection-specific policies before the tenant-wide policies
+- `override`: use only the connection-specific policies for that category
 
 ### `GET /api/connections/:id`
 
@@ -26,6 +42,8 @@ Get a single connection.
 ### `PUT /api/connections/:id`
 
 Update a connection.
+
+`dbSettings` follows the same shape as `POST /api/connections`.
 
 ### `DELETE /api/connections/:id`
 

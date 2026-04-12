@@ -29,6 +29,7 @@ type ownedConnectionSnapshot struct {
 type ownedQueryRuntime struct {
 	State                   *sessions.SessionState
 	Connection              ownedConnectionSnapshot
+	Settings                databaseSettings
 	Target                  *contracts.DatabaseTarget
 	Protocol                string
 	PersistExecutionPlan    bool

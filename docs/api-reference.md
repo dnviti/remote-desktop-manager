@@ -338,6 +338,13 @@ DB audit endpoints:
 
 The persisted execution-plan feature is controlled per connection through `dbSettings.persistExecutionPlan`. When enabled for a supported SQL protocol, the plan is stored in the DB audit log and remains visible after the session closes.
 
+Connection-level DB controls also live under `dbSettings`:
+
+- `firewallEnabled`, `maskingEnabled`, and `rateLimitEnabled` decide whether firewall, masking, and query rate limiting are active at all for that connection.
+- `firewallPolicyMode`, `maskingPolicyMode`, and `rateLimitPolicyMode` choose whether the connection inherits tenant defaults, merges local policies with tenant-wide policies, or uses connection-only policy sets.
+- `firewallRules`, `maskingPolicies`, and `rateLimitPolicies` hold full connection-scoped policy objects so the DB proxy can enforce per-connection overrides instead of only tenant-wide rules.
+- `aiQueryGenerationEnabled`, `aiQueryGenerationBackend`, `aiQueryGenerationModel`, `aiQueryOptimizerEnabled`, `aiQueryOptimizerBackend`, and `aiQueryOptimizerModel` let a database connection override the tenant AI defaults for generation and optimization.
+
 ## ⚙️ Gateways, Recordings, Admin, AI, And Misc Operations
 
 Operational domains under `routes_operations.go` include:
@@ -345,7 +352,7 @@ Operational domains under `routes_operations.go` include:
 | Path prefix | Purpose |
 |-------------|---------|
 | `/api/admin/*` | Email status, app config, and system settings |
-| `/api/ai/*` | AI provider config, SQL generation, and optimization |
+| `/api/ai/*` | Named AI backend config, per-feature defaults, SQL generation, and optimization |
 | `/api/access-policies` | Access policy CRUD |
 | `/api/keystroke-policies` | Keystroke policy CRUD |
 | `/api/gateways` | Gateway CRUD, tunnel overview, templates, scaling, deploy, and tunnel controls |

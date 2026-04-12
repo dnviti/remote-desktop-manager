@@ -27,9 +27,11 @@ func compatibleGatewayTypes(connType string) []string {
 	switch strings.ToUpper(strings.TrimSpace(connType)) {
 	case "SSH":
 		return []string{"MANAGED_SSH", "SSH_BASTION"}
+	case "DB_TUNNEL":
+		return []string{"MANAGED_SSH", "SSH_BASTION"}
 	case "RDP", "VNC":
 		return []string{"GUACD"}
-	case "DATABASE", "DB_TUNNEL":
+	case "DATABASE":
 		return []string{"DB_PROXY"}
 	default:
 		return nil
@@ -40,9 +42,11 @@ func friendlyGatewayRequirement(connType string) string {
 	switch strings.ToUpper(strings.TrimSpace(connType)) {
 	case "SSH":
 		return "SSH_BASTION or MANAGED_SSH"
+	case "DB_TUNNEL":
+		return "SSH_BASTION or MANAGED_SSH"
 	case "RDP", "VNC":
 		return "GUACD"
-	case "DATABASE", "DB_TUNNEL":
+	case "DATABASE":
 		return "DB_PROXY"
 	default:
 		return "a compatible gateway"

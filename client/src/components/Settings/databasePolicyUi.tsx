@@ -1,7 +1,15 @@
-import type { ReactNode } from 'react';
-import { Edit3, Trash2 } from 'lucide-react';
+import { useMemo, useState, type ReactNode } from 'react';
+import { Check, ChevronsUpDown, Edit3, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from '@/components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -11,6 +19,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 import {
   SettingsButtonRow,
@@ -33,58 +42,141 @@ export function PolicyTemplatePicker({
   title,
   description,
   templates,
+  comboboxLabel,
+  searchPlaceholder = 'Search presets...',
+  emptyStateLabel = 'No presets matched your search.',
   onApply,
 }: {
   title: string;
   description: string;
   templates: PolicyTemplateOption[];
+  comboboxLabel?: string;
+  searchPlaceholder?: string;
+  emptyStateLabel?: string;
   onApply: (templateName: string) => void;
 }) {
-  const groupedTemplates = templates.reduce<Record<string, PolicyTemplateOption[]>>((groups, template) => {
-    if (!groups[template.category]) {
-      groups[template.category] = [];
-    }
-    groups[template.category].push(template);
-    return groups;
-  }, {});
+  const [open, setOpen] = useState(false);
+  const [selectedTemplateName, setSelectedTemplateName] = useState<string | null>(null);
+
+  const groupedTemplates = useMemo(
+    () => templates.reduce<Record<string, PolicyTemplateOption[]>>((groups, template) => {
+      if (!groups[template.category]) {
+        groups[template.category] = [];
+      }
+      groups[template.category].push(template);
+      return groups;
+    }, {}),
+    [templates],
+  );
+
+  const selectedTemplate = templates.find((template) => template.name === selectedTemplateName) ?? null;
 
   return (
     <SettingsSectionBlock title={title} description={description}>
-      <div className="space-y-4">
-        {Object.entries(groupedTemplates).map(([category, categoryTemplates]) => (
-          <div key={category} className="space-y-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-              {category}
-            </div>
-            <div className="grid gap-3 xl:grid-cols-2">
-              {categoryTemplates.map((template) => (
-                <button
-                  key={template.name}
-                  type="button"
-                  onClick={() => onApply(template.name)}
-                  className="rounded-xl border border-border/70 bg-background/70 p-4 text-left transition-colors hover:border-primary/30 hover:bg-accent/30"
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="space-y-1">
-                      <div className="text-sm font-semibold text-foreground">{template.name}</div>
-                      <p className="text-sm leading-6 text-muted-foreground">{template.description}</p>
-                    </div>
-                    {template.badge && (
-                      <SettingsStatusBadge tone={template.badgeTone ?? 'neutral'}>
-                        {template.badge}
-                      </SettingsStatusBadge>
-                    )}
-                  </div>
-                  {template.summary && (
-                    <div className="mt-3 text-xs text-muted-foreground">
-                      {template.summary}
-                    </div>
-                  )}
-                </button>
-              ))}
-            </div>
+      <div className="space-y-3">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              type="button"
+              variant="outline"
+              role="combobox"
+              aria-expanded={open}
+              aria-label={comboboxLabel ?? title}
+              className="w-full justify-between rounded-xl px-4"
+            >
+              <span
+                className={cn(
+                  'truncate text-left',
+                  selectedTemplate ? 'text-foreground' : 'text-muted-foreground',
+                )}
+              >
+                {selectedTemplate?.name ?? 'Choose a preset'}
+              </span>
+              <ChevronsUpDown className="size-4 shrink-0 text-muted-foreground" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            className="w-[min(32rem,calc(100vw-3rem))] p-0"
+          >
+            <Command>
+              <CommandInput placeholder={searchPlaceholder} />
+              <CommandList className="max-h-80">
+                <CommandEmpty>{emptyStateLabel}</CommandEmpty>
+                {Object.entries(groupedTemplates).map(([category, categoryTemplates]) => (
+                  <CommandGroup key={category} heading={category}>
+                    {categoryTemplates.map((template) => {
+                      const isSelected = template.name === selectedTemplate?.name;
+                      return (
+                        <CommandItem
+                          key={template.name}
+                          value={[
+                            template.name,
+                            template.category,
+                            template.description,
+                            template.summary,
+                            template.badge,
+                          ]
+                            .filter(Boolean)
+                            .join(' ')}
+                          onSelect={() => {
+                            setSelectedTemplateName(template.name);
+                            onApply(template.name);
+                            setOpen(false);
+                          }}
+                          className="items-start gap-3 rounded-md px-3 py-3"
+                        >
+                          <div className="flex h-5 w-5 items-center justify-center pt-0.5">
+                            <Check
+                              className={cn(
+                                'size-4 text-primary transition-opacity',
+                                isSelected ? 'opacity-100' : 'opacity-0',
+                              )}
+                            />
+                          </div>
+                          <div className="min-w-0 flex-1 space-y-1.5">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium text-foreground">{template.name}</span>
+                              <Badge variant="outline">{template.category}</Badge>
+                              {template.badge ? (
+                                <SettingsStatusBadge tone={template.badgeTone ?? 'neutral'}>
+                                  {template.badge}
+                                </SettingsStatusBadge>
+                              ) : null}
+                            </div>
+                            <p className="text-xs leading-5 text-muted-foreground">
+                              {template.description}
+                            </p>
+                            {template.summary ? (
+                              <p className="text-xs text-muted-foreground">
+                                {template.summary}
+                              </p>
+                            ) : null}
+                          </div>
+                        </CommandItem>
+                      );
+                    })}
+                  </CommandGroup>
+                ))}
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
+
+        {selectedTemplate ? (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <Badge variant="secondary">Preset applied</Badge>
+            <Badge variant="outline">{selectedTemplate.category}</Badge>
+            {selectedTemplate.badge ? (
+              <SettingsStatusBadge tone={selectedTemplate.badgeTone ?? 'neutral'}>
+                {selectedTemplate.badge}
+              </SettingsStatusBadge>
+            ) : null}
+            {selectedTemplate.summary ? (
+              <span className="truncate">{selectedTemplate.summary}</span>
+            ) : null}
           </div>
-        ))}
+        ) : null}
       </div>
     </SettingsSectionBlock>
   );

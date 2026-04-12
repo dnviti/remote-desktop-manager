@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/dnviti/arsenale/backend/internal/dbsessions"
 )
 
 type firewallRuleRecord struct {
@@ -96,6 +98,16 @@ ORDER BY priority DESC, "createdAt" DESC
 	}
 
 	return firewallEvaluation{Allowed: true}, nil
+}
+
+func (s Service) evaluateFirewallForAIContext(ctx context.Context, tenantID string, aiContext dbsessions.OwnedAIContext, queryText, database, table string) (firewallEvaluation, error) {
+	if !boolOrDefault(aiContext.FirewallEnabled, true) {
+		return firewallEvaluation{Allowed: true}, nil
+	}
+	if strings.TrimSpace(database) == "" {
+		database = strings.TrimSpace(aiContext.DatabaseName)
+	}
+	return s.evaluateFirewall(ctx, tenantID, queryText, database, table)
 }
 
 func matchesFirewallRule(pattern, scope, queryText, database, table string) bool {

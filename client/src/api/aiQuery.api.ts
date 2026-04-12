@@ -1,11 +1,36 @@
 import api from './client';
 
-// ---------------------------------------------------------------------------
-// AI Query Generation Types (AISQL-2069)
-// ---------------------------------------------------------------------------
+export type AiProvider =
+  | 'none'
+  | 'anthropic'
+  | 'openai'
+  | 'ollama'
+  | 'openai-compatible';
+
+export interface AiBackendConfig {
+  name: string;
+  provider: AiProvider;
+  hasApiKey: boolean;
+  baseUrl?: string | null;
+  defaultModel?: string;
+}
+
+export interface AiFeatureConfig {
+  enabled: boolean;
+  backend?: string;
+  modelId?: string;
+  maxTokensPerRequest: number;
+  dailyRequestLimit?: number;
+}
 
 export interface AiConfig {
-  provider: string;
+  backends: AiBackendConfig[];
+  queryGeneration: AiFeatureConfig;
+  queryOptimizer: AiFeatureConfig;
+  temperature: number;
+  timeoutMs: number;
+
+  provider: AiProvider;
   hasApiKey: boolean;
   modelId: string;
   baseUrl: string | null;
@@ -14,14 +39,29 @@ export interface AiConfig {
   enabled: boolean;
 }
 
-export interface AiConfigUpdate {
-  provider?: string;
+export interface AiBackendUpdate {
+  name: string;
+  provider: AiProvider;
   apiKey?: string;
-  modelId?: string;
+  clearApiKey?: boolean;
   baseUrl?: string | null;
+  defaultModel?: string | null;
+}
+
+export interface AiFeatureUpdate {
+  enabled: boolean;
+  backend?: string;
+  modelId?: string;
   maxTokensPerRequest?: number;
   dailyRequestLimit?: number;
-  enabled?: boolean;
+}
+
+export interface AiConfigUpdate {
+  backends: AiBackendUpdate[];
+  queryGeneration: AiFeatureUpdate;
+  queryOptimizer: AiFeatureUpdate;
+  temperature: number;
+  timeoutMs: number;
 }
 
 export interface ObjectRequest {
@@ -77,10 +117,6 @@ export async function confirmGeneration(
   return data;
 }
 
-// ---------------------------------------------------------------------------
-// AI Query Optimization Types (SQLVIZ-2070)
-// ---------------------------------------------------------------------------
-
 export interface DataRequest {
   type: string;
   target: string;
@@ -104,10 +140,6 @@ export interface OptimizeQueryResult {
   explanation?: string;
   changes?: string[];
 }
-
-// ---------------------------------------------------------------------------
-// AI Query Optimization API calls
-// ---------------------------------------------------------------------------
 
 export async function optimizeQuery(params: OptimizeQueryParams): Promise<OptimizeQueryResult> {
   const { data } = await api.post('/ai/optimize-query', params);

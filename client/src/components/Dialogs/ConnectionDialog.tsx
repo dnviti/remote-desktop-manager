@@ -1,14 +1,12 @@
 import { useState, useEffect } from 'react';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle,
-  DialogDescription, DialogFooter,
+  Dialog, DialogContent,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Switch } from '@/components/ui/switch';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
@@ -16,7 +14,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from '@/components/ui/toggle-group';
 import { cn } from '@/lib/utils';
 import { Keyboard, KeyRound, Cloud, X } from 'lucide-react';
-import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy, DbSettings, DbProtocol, OracleConnectionType, OracleRole } from '../../api/connections.api';
+import { createConnection, updateConnection, ConnectionInput, ConnectionUpdate, ConnectionData, DlpPolicy, DbSettings, DbProtocol } from '../../api/connections.api';
 import { useConnectionsStore } from '../../store/connectionsStore';
 import type { SshTerminalConfig } from '../../constants/terminalThemes';
 import { mergeTerminalConfig } from '../../constants/terminalThemes';
@@ -38,14 +36,8 @@ import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { useFeatureFlagsStore } from '../../store/featureFlagsStore';
 import { listVaultProviders, VaultProviderData } from '../../api/externalVault.api';
 import { gatewayEndpointLabel } from '../../utils/gatewayMode';
-import {
-  cloudProviderHint,
-  nextSSLModeForCloudProvider,
-  normalizeCloudProviderSelection,
-  remapSSLModeOnProtocolChange,
-  supportsCloudProviderPresets,
-  tlsModeOptions,
-} from '../../utils/dbConnectionSecurity';
+import { supportsCloudProviderPresets } from '../../utils/dbConnectionSecurity';
+import ConnectionDialogDatabaseSection from './ConnectionDialogDatabaseSection';
 
 interface ConnectionDialogProps {
   open: boolean;
@@ -59,19 +51,60 @@ function supportsPersistedExecutionPlans(protocol?: DbProtocol): boolean {
   return protocol === 'postgresql' || protocol === 'mysql' || protocol === 'oracle' || protocol === 'mssql';
 }
 
+function supportsDatabaseSettings(type: 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL'): boolean {
+  return type === 'DATABASE' || type === 'DB_TUNNEL';
+}
+
+function inferDbProtocol(value?: string | null): DbProtocol {
+  switch ((value ?? '').trim().toLowerCase()) {
+    case 'mysql':
+    case 'mariadb':
+      return 'mysql';
+    case 'mongodb':
+    case 'mongo':
+      return 'mongodb';
+    case 'oracle':
+      return 'oracle';
+    case 'mssql':
+    case 'sqlserver':
+      return 'mssql';
+    case 'db2':
+      return 'db2';
+    default:
+      return 'postgresql';
+  }
+}
+
+function seedDbSettings(
+  connectionType: 'SSH' | 'RDP' | 'VNC' | 'DATABASE' | 'DB_TUNNEL',
+  settings?: Partial<DbSettings> | null,
+  dbType?: string | null,
+): Partial<DbSettings> {
+  if (!supportsDatabaseSettings(connectionType)) {
+    return settings ?? {};
+  }
+
+  const nextSettings = { ...(settings ?? {}) };
+  if (!nextSettings.protocol) {
+    nextSettings.protocol = inferDbProtocol(dbType);
+  }
+  return nextSettings;
+}
+
 function normalizeDbSettings(settings: Partial<DbSettings>): DbSettings | null {
-  if (!settings.protocol) {
+  const protocol = settings.protocol ?? inferDbProtocol();
+  if (!protocol) {
     return null;
   }
 
-  const supportsCloudPresets = supportsCloudProviderPresets(settings.protocol);
+  const supportsCloudPresets = supportsCloudProviderPresets(protocol);
 
   return {
     ...settings,
-    protocol: settings.protocol,
+    protocol,
     cloudProvider: supportsCloudPresets ? settings.cloudProvider : undefined,
     sslMode: settings.sslMode,
-    persistExecutionPlan: supportsPersistedExecutionPlans(settings.protocol)
+    persistExecutionPlan: supportsPersistedExecutionPlans(protocol)
       ? settings.persistExecutionPlan
       : undefined,
   };
@@ -143,9 +176,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
       setVncSettings(
         (connection.vncSettings as Partial<VncSettings>) ?? {}
       );
-      setDbSettings(
-        (connection.dbSettings as Partial<DbSettings>) ?? {}
-      );
+      setDbSettings(seedDbSettings(connection.type, connection.dbSettings as Partial<DbSettings>, connection.dbType));
       if (connection.externalVaultProviderId) {
         setCredentialMode('external-vault');
         setSelectedVaultProviderId(connection.externalVaultProviderId);
@@ -204,8 +235,11 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     if (newType === 'DB_TUNNEL' && knownPorts.includes(port)) setPort('22');
     setGatewayId('');
     setActiveSection('general');
-    if (newType === 'DATABASE') {
-      setDbSettings((prev) => ({ protocol: 'postgresql', ...prev }));
+    if (supportsDatabaseSettings(newType)) {
+      setDbSettings((prev) => seedDbSettings(newType, prev));
+      if (newType === 'DB_TUNNEL' && !targetDbPort) {
+        setTargetDbPort('5432');
+      }
     }
   };
 
@@ -215,10 +249,6 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     if (type === 'DATABASE') return g.type === 'DB_PROXY';
     return false;
   });
-  const dbTLSOptions = tlsModeOptions(dbSettings.protocol);
-  const currentDbTLSOption = dbTLSOptions.find((option) => option.value === (dbSettings.sslMode || '__default__'))
-    ?? dbTLSOptions[0];
-  const dbCloudHint = cloudProviderHint(dbSettings.protocol, dbSettings.cloudProvider);
 
   const sections: { key: string; label: string }[] = [
     { key: 'general', label: 'General' },
@@ -227,7 +257,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
     ...(type === 'SSH' ? [{ key: 'terminal', label: 'Terminal' }] : []),
     ...(type === 'RDP' ? [{ key: 'rdp', label: 'RDP Settings' }] : []),
     ...(type === 'VNC' ? [{ key: 'vnc', label: 'VNC Settings' }] : []),
-    ...(type === 'DATABASE' ? [{ key: 'database', label: 'Database' }] : []),
+    ...(supportsDatabaseSettings(type) ? [{ key: 'database', label: 'Database' }] : []),
     ...((type === 'RDP' || type === 'VNC') ? [{ key: 'dlp', label: 'DLP Policy' }] : []),
   ];
 
@@ -275,7 +305,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'VNC' && {
             vncSettings: Object.keys(vncSettings).length > 0 ? vncSettings : null,
           }),
-          ...(type === 'DATABASE' && {
+          ...(supportsDatabaseSettings(type) && {
             dbSettings: normalizeDbSettings(dbSettings),
           }),
           defaultCredentialMode: (defaultConnectMode as 'saved' | 'domain' | 'prompt') || null,
@@ -319,7 +349,7 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
           ...(type === 'VNC' && Object.keys(vncSettings).length > 0 && {
             vncSettings,
           }),
-          ...(type === 'DATABASE' && dbSettings.protocol && {
+          ...(supportsDatabaseSettings(type) && {
             dbSettings: normalizeDbSettings(dbSettings) as DbSettings,
           }),
           ...(defaultConnectMode ? { defaultCredentialMode: defaultConnectMode as 'saved' | 'domain' | 'prompt' } : {}),
@@ -673,307 +703,12 @@ export default function ConnectionDialog({ open, onClose, connection, folderId, 
               )}
 
               {/* Database Settings */}
-              {activeSection === 'database' && type === 'DATABASE' && (
-                <div className="flex flex-col gap-4">
-                  <div className="space-y-2">
-                    <Label>Database Protocol</Label>
-                    <Select
-                      value={dbSettings.protocol ?? 'postgresql'}
-                      onValueChange={(v) => {
-                        const proto = v as DbProtocol;
-                        setDbSettings((prev) => ({
-                          protocol: proto,
-                          databaseName: prev.databaseName,
-                          cloudProvider: supportsCloudProviderPresets(proto) ? prev.cloudProvider : undefined,
-                          sslMode: remapSSLModeOnProtocolChange(
-                            prev.protocol,
-                            proto,
-                            prev.sslMode,
-                            supportsCloudProviderPresets(proto) ? prev.cloudProvider : undefined,
-                          ),
-                          persistExecutionPlan: supportsPersistedExecutionPlans(proto)
-                            ? prev.persistExecutionPlan
-                            : undefined,
-                          ...(proto === 'oracle' ? { oracleConnectionType: 'basic' as OracleConnectionType } : {}),
-                        }));
-                        const protoPorts: Record<string, string> = { postgresql: '5432', mysql: '3306', mongodb: '27017', oracle: '1521', mssql: '1433', db2: '50000' };
-                        setPort(protoPorts[proto] ?? '5432');
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="postgresql">PostgreSQL</SelectItem>
-                        <SelectItem value="mysql">MySQL / MariaDB</SelectItem>
-                        <SelectItem value="mongodb">MongoDB</SelectItem>
-                        <SelectItem value="oracle">Oracle (TNS)</SelectItem>
-                        <SelectItem value="mssql">Microsoft SQL Server (TDS)</SelectItem>
-                        <SelectItem value="db2">IBM DB2 (DRDA)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="db-name">Database Name (optional)</Label>
-                    <Input
-                      id="db-name"
-                      value={dbSettings.databaseName ?? ''}
-                      onChange={(e) => setDbSettings((prev) => ({ ...prev, databaseName: e.target.value || undefined }))}
-                      placeholder="e.g. mydb"
-                    />
-                  </div>
-                  {supportsCloudProviderPresets(dbSettings.protocol) && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Cloud Provider Preset</Label>
-                        <Select
-                          value={dbSettings.cloudProvider ?? 'generic'}
-                          onValueChange={(v) => {
-                            const nextProvider = normalizeCloudProviderSelection(v);
-                            setDbSettings((prev) => ({
-                              ...prev,
-                              cloudProvider: nextProvider,
-                              sslMode: nextSSLModeForCloudProvider(
-                                prev.protocol,
-                                prev.sslMode,
-                                prev.cloudProvider,
-                                nextProvider,
-                              ),
-                            }));
-                          }}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="generic">Generic / self-hosted</SelectItem>
-                            <SelectItem value="azure">Azure Database</SelectItem>
-                            <SelectItem value="aws">AWS RDS / Aurora</SelectItem>
-                            <SelectItem value="gcp">GCP Cloud SQL</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>TLS Mode</Label>
-                        <Select
-                          value={dbSettings.sslMode || '__default__'}
-                          onValueChange={(v) => setDbSettings((prev) => ({ ...prev, sslMode: v === '__default__' ? undefined : v }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {dbTLSOptions.map((option) => (
-                              <SelectItem key={option.value || 'default'} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      {currentDbTLSOption && (
-                        <p className="text-xs text-muted-foreground">{currentDbTLSOption.helperText}</p>
-                      )}
-                      {dbCloudHint && (
-                        <div className="rounded-md border border-blue-600/50 bg-blue-600/10 px-4 py-3 text-sm text-blue-400">
-                          {dbCloudHint}
-                        </div>
-                      )}
-                      {dbSettings.sslMode === 'skip-verify' && (
-                        <div className="rounded-md border border-yellow-600/50 bg-yellow-600/10 px-4 py-3 text-sm text-yellow-500">
-                          Skip verification accepts any server certificate. Use it only when you control the network and cannot trust the certificate chain yet.
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {supportsPersistedExecutionPlans(dbSettings.protocol ?? 'postgresql') && (
-                    <div>
-                      <div className="flex items-center gap-3">
-                        <Switch
-                          id="persist-plan"
-                          checked={Boolean(dbSettings.persistExecutionPlan)}
-                          onCheckedChange={(v) => setDbSettings((prev) => ({
-                            ...prev,
-                            persistExecutionPlan: v || undefined,
-                          }))}
-                        />
-                        <Label htmlFor="persist-plan" className="font-normal">Persist execution plans in audit logs</Label>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Store the DB proxy execution plan with each audited query so it remains visible after the session closes.
-                      </p>
-                    </div>
-                  )}
-                  {dbSettings.protocol === 'oracle' && (
-                    <>
-                      {/* Connection type toggle: Basic | TNS | Custom */}
-                      <ToggleGroup
-                        type="single"
-                        value={dbSettings.oracleConnectionType ?? 'basic'}
-                        onValueChange={(val) => {
-                          if (!val) return;
-                          setDbSettings((prev) => ({
-                            protocol: 'oracle' as DbProtocol,
-                            databaseName: prev.databaseName,
-                            persistExecutionPlan: prev.persistExecutionPlan,
-                            oracleConnectionType: val as OracleConnectionType,
-                            oracleRole: prev.oracleRole,
-                            ...(val === 'basic' ? { oracleSid: prev.oracleSid, oracleServiceName: prev.oracleServiceName } : {}),
-                            ...(val === 'tns' ? { oracleTnsAlias: prev.oracleTnsAlias, oracleTnsDescriptor: prev.oracleTnsDescriptor } : {}),
-                            ...(val === 'custom' ? { oracleConnectString: prev.oracleConnectString } : {}),
-                          }));
-                        }}
-                        className="w-full"
-                      >
-                        <ToggleGroupItem value="basic" className="flex-1">Basic</ToggleGroupItem>
-                        <ToggleGroupItem value="tns" className="flex-1">TNS</ToggleGroupItem>
-                        <ToggleGroupItem value="custom" className="flex-1">Custom</ToggleGroupItem>
-                      </ToggleGroup>
-
-                      {/* Basic mode */}
-                      {(dbSettings.oracleConnectionType ?? 'basic') === 'basic' && (
-                        <div className="flex gap-3">
-                          <div className="w-[160px] space-y-2">
-                            <Label>Identifier Type</Label>
-                            <Select
-                              value={dbSettings.oracleSid ? 'sid' : 'service'}
-                              onValueChange={(v) => {
-                                if (v === 'sid') {
-                                  setDbSettings((prev) => ({ ...prev, oracleSid: prev.oracleServiceName || prev.oracleSid || '', oracleServiceName: undefined }));
-                                } else {
-                                  setDbSettings((prev) => ({ ...prev, oracleServiceName: prev.oracleSid || prev.oracleServiceName || '', oracleSid: undefined }));
-                                }
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="service">Service Name</SelectItem>
-                                <SelectItem value="sid">SID</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                          <div className="flex-1 space-y-2">
-                            <Label>{dbSettings.oracleSid !== undefined ? 'SID' : 'Service Name'}</Label>
-                            <Input
-                              value={dbSettings.oracleSid ?? dbSettings.oracleServiceName ?? ''}
-                              onChange={(e) => {
-                                const val = e.target.value || undefined;
-                                if (dbSettings.oracleSid !== undefined) {
-                                  setDbSettings((prev) => ({ ...prev, oracleSid: val }));
-                                } else {
-                                  setDbSettings((prev) => ({ ...prev, oracleServiceName: val }));
-                                }
-                              }}
-                              placeholder={dbSettings.oracleSid !== undefined ? 'e.g. ORCL' : 'e.g. FREEPDB1'}
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* TNS mode */}
-                      {dbSettings.oracleConnectionType === 'tns' && (
-                        <>
-                          <div className="space-y-2">
-                            <Label>TNS Alias</Label>
-                            <Input
-                              value={dbSettings.oracleTnsAlias ?? ''}
-                              onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleTnsAlias: e.target.value || undefined }))}
-                              placeholder="e.g. MYDB"
-                            />
-                            <p className="text-xs text-muted-foreground">Alias from tnsnames.ora (resolved via TNS_ADMIN)</p>
-                          </div>
-                          <div className="space-y-2">
-                            <Label>TNS Descriptor</Label>
-                            <Textarea
-                              value={dbSettings.oracleTnsDescriptor ?? ''}
-                              onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleTnsDescriptor: e.target.value || undefined }))}
-                              rows={3}
-                              placeholder="(DESCRIPTION=(ADDRESS=(PROTOCOL=TCP)(HOST=...)(PORT=...))(CONNECT_DATA=(SERVICE_NAME=...)))"
-                            />
-                            <p className="text-xs text-muted-foreground">Full TNS descriptor (overrides alias if both provided)</p>
-                          </div>
-                        </>
-                      )}
-
-                      {/* Custom mode */}
-                      {dbSettings.oracleConnectionType === 'custom' && (
-                        <div className="space-y-2">
-                          <Label>Connect String</Label>
-                          <Textarea
-                            value={dbSettings.oracleConnectString ?? ''}
-                            onChange={(e) => setDbSettings((prev) => ({ ...prev, oracleConnectString: e.target.value || undefined }))}
-                            rows={3}
-                            placeholder="host:port/service_name or full TNS descriptor"
-                          />
-                          <p className="text-xs text-muted-foreground">Raw connect string passed directly to the Oracle driver</p>
-                        </div>
-                      )}
-
-                      {/* Oracle Role (all modes) */}
-                      <div className="space-y-2">
-                        <Label>Role</Label>
-                        <Select
-                          value={dbSettings.oracleRole ?? 'normal'}
-                          onValueChange={(v) => setDbSettings((prev) => ({ ...prev, oracleRole: (v === 'normal' ? undefined : v) as OracleRole | undefined }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="normal">Normal</SelectItem>
-                            <SelectItem value="sysdba">SYSDBA</SelectItem>
-                            <SelectItem value="sysoper">SYSOPER</SelectItem>
-                            <SelectItem value="sysasm">SYSASM</SelectItem>
-                            <SelectItem value="sysbackup">SYSBACKUP</SelectItem>
-                            <SelectItem value="sysdg">SYSDG</SelectItem>
-                            <SelectItem value="syskm">SYSKM</SelectItem>
-                            <SelectItem value="sysrac">SYSRAC</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
-                  )}
-                  {dbSettings.protocol === 'mssql' && (
-                    <>
-                      <div className="space-y-2">
-                        <Label>Instance Name (optional)</Label>
-                        <Input
-                          value={dbSettings.mssqlInstanceName ?? ''}
-                          onChange={(e) => setDbSettings((prev) => ({ ...prev, mssqlInstanceName: e.target.value || undefined }))}
-                          placeholder="e.g. SQLEXPRESS"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Authentication Mode</Label>
-                        <Select
-                          value={dbSettings.mssqlAuthMode ?? 'sql'}
-                          onValueChange={(v) => setDbSettings((prev) => ({ ...prev, mssqlAuthMode: v as 'sql' | 'windows' }))}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="sql">SQL Server Authentication</SelectItem>
-                            <SelectItem value="windows">Windows Authentication (NTLM/Kerberos)</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </>
-                  )}
-                  {dbSettings.protocol === 'db2' && (
-                    <div className="space-y-2">
-                      <Label>Database Alias (optional)</Label>
-                      <Input
-                        value={dbSettings.db2DatabaseAlias ?? ''}
-                        onChange={(e) => setDbSettings((prev) => ({ ...prev, db2DatabaseAlias: e.target.value || undefined }))}
-                        placeholder="e.g. SAMPLE"
-                      />
-                      <p className="text-xs text-muted-foreground">Alias as cataloged on the DB2 Connect gateway</p>
-                    </div>
-                  )}
-                </div>
+              {activeSection === 'database' && supportsDatabaseSettings(type) && (
+                <ConnectionDialogDatabaseSection
+                  dbSettings={dbSettings}
+                  onChange={setDbSettings}
+                  onPortChange={type === 'DB_TUNNEL' ? setTargetDbPort : setPort}
+                />
               )}
 
               {/* DLP */}

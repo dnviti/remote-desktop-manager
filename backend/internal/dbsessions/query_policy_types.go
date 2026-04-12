@@ -25,10 +25,11 @@ type firewallEvaluation struct {
 }
 
 type firewallRuleRecord struct {
-	Name    string
-	Pattern string
-	Action  string
-	Scope   sql.NullString
+	Name     string
+	Pattern  string
+	Action   string
+	Scope    sql.NullString
+	Priority int
 }
 
 type maskingPolicyRecord struct {
@@ -55,6 +56,7 @@ type rateLimitPolicyRecord struct {
 	ExemptRoles []string
 	Scope       sql.NullString
 	Action      string
+	Priority    int
 }
 
 type rateLimitEvaluation struct {

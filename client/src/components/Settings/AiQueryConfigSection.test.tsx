@@ -20,20 +20,68 @@ describe('AiQueryConfigSection', () => {
     useNotificationStore.setState({ notification: null });
 
     getAiConfig.mockResolvedValue({
+      backends: [
+        {
+          name: 'primary',
+          provider: 'openai',
+          hasApiKey: true,
+          baseUrl: null,
+          defaultModel: 'gpt-4o',
+        },
+      ],
+      queryGeneration: {
+        enabled: false,
+        backend: 'primary',
+        modelId: 'gpt-4o',
+        maxTokensPerRequest: 4096,
+        dailyRequestLimit: 100,
+      },
+      queryOptimizer: {
+        enabled: true,
+        backend: 'primary',
+        modelId: 'gpt-4o-mini',
+        maxTokensPerRequest: 4096,
+      },
+      temperature: 0.2,
+      timeoutMs: 60000,
       provider: 'openai',
       hasApiKey: true,
       modelId: 'gpt-4o',
       baseUrl: null,
-      maxTokensPerRequest: 4000,
+      maxTokensPerRequest: 4096,
       dailyRequestLimit: 100,
       enabled: false,
     });
     updateAiConfig.mockResolvedValue({
+      backends: [
+        {
+          name: 'primary',
+          provider: 'openai',
+          hasApiKey: true,
+          baseUrl: null,
+          defaultModel: 'gpt-4o',
+        },
+      ],
+      queryGeneration: {
+        enabled: true,
+        backend: 'primary',
+        modelId: 'gpt-4.1',
+        maxTokensPerRequest: 4096,
+        dailyRequestLimit: 100,
+      },
+      queryOptimizer: {
+        enabled: true,
+        backend: 'primary',
+        modelId: 'gpt-4o-mini',
+        maxTokensPerRequest: 4096,
+      },
+      temperature: 0.2,
+      timeoutMs: 60000,
       provider: 'openai',
       hasApiKey: true,
       modelId: 'gpt-4.1',
       baseUrl: null,
-      maxTokensPerRequest: 4000,
+      maxTokensPerRequest: 4096,
       dailyRequestLimit: 100,
       enabled: true,
     });
@@ -42,20 +90,37 @@ describe('AiQueryConfigSection', () => {
   it('loads AI settings and saves the updated configuration', async () => {
     render(<AiQueryConfigSection />);
 
-    fireEvent.click(await screen.findByRole('switch', { name: 'Enable AI Query Generation' }));
-    fireEvent.change(screen.getByLabelText('AI Model'), {
+    fireEvent.click(await screen.findByRole('switch', { name: 'Enable Query Generation' }));
+    fireEvent.change(screen.getByLabelText('Query generation model'), {
       target: { value: 'gpt-4.1' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => {
       expect(updateAiConfig).toHaveBeenCalledWith({
-        provider: 'openai',
-        modelId: 'gpt-4.1',
-        baseUrl: null,
-        maxTokensPerRequest: 4000,
-        dailyRequestLimit: 100,
-        enabled: true,
+        backends: [
+          {
+            name: 'primary',
+            provider: 'openai',
+            baseUrl: null,
+            defaultModel: 'gpt-4o',
+          },
+        ],
+        queryGeneration: {
+          enabled: true,
+          backend: 'primary',
+          modelId: 'gpt-4.1',
+          maxTokensPerRequest: 4096,
+          dailyRequestLimit: 100,
+        },
+        queryOptimizer: {
+          enabled: true,
+          backend: 'primary',
+          modelId: 'gpt-4o-mini',
+          maxTokensPerRequest: 4096,
+        },
+        temperature: 0.2,
+        timeoutMs: 60000,
       });
     });
 

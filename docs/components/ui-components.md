@@ -150,11 +150,11 @@ All full-screen dialogs use the MUI `Dialog` component with `fullScreen` prop an
 
 | Component | Purpose |
 |-----------|---------|
-| `DbEditor` | Monaco-based database editor with AI-assisted query generation plus protocol-aware SQL and Mongo query templates |
+| `DbEditor` | Monaco-based database editor with protocol-aware SQL and Mongo query templates plus connection-aware AI query generation controls |
 | `DbSchemaBrowser` | Protocol-aware schema browser that adapts labels, hierarchy, and context-menu actions to SQL and Mongo-style databases |
 | `DbResultsTable` | Paginated query results table with sorting, column resizing, and export |
-| `QueryVisualizer` | Execution plan tree visualization with node cost analysis |
-| `AiQueryOptimizer` | Natural-language-to-SQL conversion panel with AI-powered query optimization |
+| `QueryVisualizer` | Execution plan tree visualization with node cost analysis and connection-aware AI optimization entry points |
+| `AiQueryOptimizer` | Multi-turn AI query optimization flow that respects per-connection optimizer enablement and backend/model defaults |
 | `DbQueryHistory` | Per-session query execution history with replay and timing |
 | `DbConnectionStatus` | Database connection health indicator and protocol info |
 | `DbSessionConfigPopover` | Session configuration popover (schema, search path, read-only mode) |

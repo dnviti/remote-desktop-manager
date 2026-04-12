@@ -12,29 +12,20 @@ import (
 )
 
 func (s Service) analyzeQueryIntent(ctx context.Context, params analyzeQueryIntentParams) (aiAnalyzeResult, error) {
-	tenantCfg, err := s.loadTenantRuntimeConfig(ctx, params.TenantID)
+	platform, err := s.loadPlatformConfig(ctx, params.TenantID)
 	if err != nil {
 		return aiAnalyzeResult{}, err
 	}
-
-	envCfg := loadAIEnvConfig()
-	if !envCfg.QueryGenerationEnabled && !tenantCfg.Enabled {
+	execution, err := resolveFeatureExecution(platform, params.AIContext, "query-generation")
+	if err != nil {
+		return aiAnalyzeResult{}, err
+	}
+	if !execution.Enabled {
 		return aiAnalyzeResult{}, &requestError{status: http.StatusForbidden, message: "AI query generation is not enabled"}
 	}
 
-	overrides := tenantLLMOverrides(tenantCfg, envCfg)
-	if overrides != nil && strings.TrimSpace(overrides.Model) == "" {
-		overrides.Model = strings.TrimSpace(envCfg.QueryGenerationModel)
-	}
-	if overrides == nil && strings.TrimSpace(envCfg.QueryGenerationModel) != "" {
-		overrides = &llmOverrides{Model: strings.TrimSpace(envCfg.QueryGenerationModel)}
-	}
-
-	dailyLimit := tenantCfg.DailyRequestLimit
-	if dailyLimit <= 0 {
-		dailyLimit = envCfg.MaxRequestsPerDay
-	}
-	if err := s.incrementDailyCounter(ctx, params.TenantID, dailyLimit); err != nil {
+	overrides := llmOverridesFromExecution(execution)
+	if err := s.incrementDailyCounter(ctx, params.TenantID, execution.DailyRequestLimit); err != nil {
 		return aiAnalyzeResult{}, err
 	}
 
@@ -70,6 +61,7 @@ func (s Service) analyzeQueryIntent(ctx context.Context, params analyzeQueryInte
 		DBProtocol: params.DBProtocol,
 		FullSchema: cloneSchemaTables(params.Schema),
 		Overrides:  overrides,
+		AIContext:  params.AIContext,
 		IPAddress:  params.IPAddress,
 		CreatedAt:  now,
 	}
@@ -168,7 +160,7 @@ func (s Service) confirmAndGenerate(ctx context.Context, conversationID string, 
 	}
 
 	var firewallWarning *string
-	if evaluation, err := s.evaluateFirewall(ctx, tenantID, parsed.SQL, "", ""); err == nil && evaluation.Matched {
+	if evaluation, err := s.evaluateFirewallForAIContext(ctx, tenantID, conv.AIContext, parsed.SQL, conv.AIContext.DatabaseName, ""); err == nil && evaluation.Matched {
 		switch evaluation.Action {
 		case "BLOCK":
 			message := "Firewall would block: " + evaluation.RuleName
@@ -179,21 +171,7 @@ func (s Service) confirmAndGenerate(ctx context.Context, conversationID string, 
 		}
 	}
 
-	provider := "none"
-	modelID := ""
-	envCfg := loadAIEnvConfig()
-	if conv.Overrides != nil && strings.TrimSpace(string(conv.Overrides.Provider)) != "" {
-		provider = string(conv.Overrides.Provider)
-	}
-	if provider == "none" && strings.TrimSpace(string(envCfg.Provider)) != "" {
-		provider = string(envCfg.Provider)
-	}
-	if conv.Overrides != nil {
-		modelID = strings.TrimSpace(conv.Overrides.Model)
-	}
-	if modelID == "" {
-		modelID = strings.TrimSpace(envCfg.Model)
-	}
+	provider, modelID := providerAndModelFromOverrides(conv.Overrides)
 
 	_ = s.insertAuditLog(ctx, userID, "AI_QUERY_GENERATED", "DatabaseQuery", tenantID, map[string]any{
 		"prompt":          truncateString(conv.Prompt, 200),

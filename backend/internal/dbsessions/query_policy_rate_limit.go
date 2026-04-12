@@ -8,32 +8,29 @@ import (
 )
 
 func (s Service) evaluateRateLimit(ctx context.Context, userID, tenantID string, queryType dbQueryType, tenantRole, database, table string) rateLimitEvaluation {
-	if s.DB == nil || strings.TrimSpace(tenantID) == "" || strings.TrimSpace(userID) == "" {
-		return rateLimitEvaluation{Allowed: true, Remaining: -1}
-	}
+	return s.evaluateRateLimitWithSettings(ctx, userID, tenantID, "", databaseSettings{}, queryType, tenantRole, database, table)
+}
 
-	rows, err := s.DB.Query(ctx, `
-SELECT id, name, "queryType"::text, "windowMs", "maxQueries", "burstMax", "exemptRoles", scope, action::text
-FROM "DbRateLimitPolicy"
-WHERE "tenantId" = $1 AND enabled = true
-ORDER BY priority DESC, "createdAt" DESC
-`, tenantID)
-	if err != nil {
+func (s Service) evaluateRateLimitWithSettings(ctx context.Context, userID, tenantID, connectionID string, settings databaseSettings, queryType dbQueryType, tenantRole, database, table string) rateLimitEvaluation {
+	if !settingBoolOrDefault(settings.RateLimitEnabled, true) {
 		return rateLimitEvaluation{Allowed: true, Remaining: -1}
 	}
-	defer rows.Close()
+	if strings.TrimSpace(userID) == "" {
+		return rateLimitEvaluation{Allowed: true, Remaining: -1}
+	}
 
 	database = strings.ToLower(strings.TrimSpace(database))
 	table = strings.ToLower(strings.TrimSpace(table))
 	tenantRole = strings.ToUpper(strings.TrimSpace(tenantRole))
+	tenantKey := strings.TrimSpace(tenantID)
+	if tenantKey == "" {
+		tenantKey = "no-tenant"
+	}
 
 	now := time.Now()
+	policies := resolveRateLimitPolicies(s.loadTenantRateLimitPolicies(ctx, tenantID), connectionID, settings)
 
-	for rows.Next() {
-		var policy rateLimitPolicyRecord
-		if scanErr := rows.Scan(&policy.ID, &policy.Name, &policy.QueryType, &policy.WindowMS, &policy.MaxQueries, &policy.BurstMax, &policy.ExemptRoles, &policy.Scope, &policy.Action); scanErr != nil {
-			return rateLimitEvaluation{Allowed: true, Remaining: -1}
-		}
+	for _, policy := range policies {
 		if policy.QueryType.Valid && !strings.EqualFold(policy.QueryType.String, string(queryType)) {
 			continue
 		}
@@ -51,7 +48,7 @@ ORDER BY priority DESC, "createdAt" DESC
 		}
 		bucketKey := strings.Join([]string{
 			strings.TrimSpace(userID),
-			strings.TrimSpace(tenantID),
+			tenantKey,
 			keyType,
 			strings.TrimSpace(policy.ID),
 		}, ":")
@@ -91,6 +88,33 @@ ORDER BY priority DESC, "createdAt" DESC
 	}
 
 	return rateLimitEvaluation{Allowed: true, Remaining: -1}
+}
+
+func (s Service) loadTenantRateLimitPolicies(ctx context.Context, tenantID string) []rateLimitPolicyRecord {
+	if s.DB == nil || strings.TrimSpace(tenantID) == "" {
+		return nil
+	}
+
+	rows, err := s.DB.Query(ctx, `
+SELECT id, name, "queryType"::text, "windowMs", "maxQueries", "burstMax", "exemptRoles", scope, action::text, priority
+FROM "DbRateLimitPolicy"
+WHERE "tenantId" = $1 AND enabled = true
+ORDER BY priority DESC, "createdAt" DESC
+`, tenantID)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	policies := make([]rateLimitPolicyRecord, 0)
+	for rows.Next() {
+		var policy rateLimitPolicyRecord
+		if scanErr := rows.Scan(&policy.ID, &policy.Name, &policy.QueryType, &policy.WindowMS, &policy.MaxQueries, &policy.BurstMax, &policy.ExemptRoles, &policy.Scope, &policy.Action, &policy.Priority); scanErr != nil {
+			return nil
+		}
+		policies = append(policies, policy)
+	}
+	return policies
 }
 
 func cleanupExpiredBucketsLocked(now time.Time) {

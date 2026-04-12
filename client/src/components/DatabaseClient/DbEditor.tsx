@@ -17,6 +17,7 @@ import type * as monacoNs from 'monaco-editor';
 import api from '../../api/client';
 import { ensureLocalMonacoLoader } from '../../lib/monacoLoader';
 import type { CredentialOverride } from '../../store/tabsStore';
+import type { DbSettings } from '../../api/connections.api';
 import type { DbQueryResult, DbSchemaInfo, DbSessionConfig } from '../../api/database.api';
 import { createDbSession, endDbSession, dbSessionHeartbeat, updateDbSessionConfig } from '../../api/database.api';
 import { extractApiError } from '../../utils/apiError';
@@ -46,6 +47,7 @@ interface DbEditorProps {
   isActive?: boolean;
   credentials?: CredentialOverride;
   initialProtocol?: string;
+  dbSettings?: DbSettings | null;
 }
 
 interface QuerySubTab {
@@ -145,6 +147,7 @@ export default function DbEditor({
   isActive = true,
   credentials,
   initialProtocol,
+  dbSettings,
 }: DbEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const monacoEditorRef = useRef<monacoNs.editor.IStandaloneCodeEditor | null>(null);
@@ -194,6 +197,7 @@ export default function DbEditor({
   const [aiApprovals, setAiApprovals] = useState<Record<number, boolean>>({});
   const [aiConversationId, setAiConversationId] = useState('');
   const aiPanelOpen = useUiPreferencesStore((s) => s.dbAiPanelOpen);
+  const aiGenerationAvailable = dbSettings?.aiQueryGenerationEnabled !== false;
 
   const [queryTabs, setQueryTabs] = useState<QuerySubTab[]>(() => {
     if (storedSubTabs?.tabs?.length) {
@@ -825,13 +829,13 @@ export default function DbEditor({
       },
       active: schemaBrowserOpen,
     },
-    {
+    ...(aiGenerationAvailable ? [{
       id: 'ai-assistant',
       icon: <Sparkles />,
       tooltip: aiPanelOpen ? 'Hide AI assistant' : 'Show AI assistant',
       onClick: () => setPref('dbAiPanelOpen', !aiPanelOpen),
       active: aiPanelOpen,
-    },
+    } satisfies ToolbarAction] : []),
     {
       id: 'query-history',
       icon: <History />,
@@ -1000,7 +1004,7 @@ export default function DbEditor({
       )}
 
       {/* AI Assistant panel */}
-      {aiPanelOpen && connectionState === 'connected' && (
+      {aiGenerationAvailable && aiPanelOpen && connectionState === 'connected' && (
         <div className="border-b border-border p-3 bg-primary/[0.04]">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="size-[18px] text-primary" />
@@ -1271,6 +1275,7 @@ export default function DbEditor({
         blocked={false}
         sessionId={sessionIdRef.current ?? undefined}
         dbProtocol={protocol}
+        aiQueryOptimizerEnabled={dbSettings?.aiQueryOptimizerEnabled !== false}
         onApplySql={(optimizedSql) => {
           updateTab(activeQueryTabId, { sql: optimizedSql });
           setVisualizerOpen(false);

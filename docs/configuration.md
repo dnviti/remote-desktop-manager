@@ -290,6 +290,13 @@ That nginx config accepts both `localhost` and `arsenale.home.arpa.viti`. For We
 | `AI_QUERY_GENERATION_MODEL` | Override model for query generation |
 | `AI_MAX_REQUESTS_PER_DAY` | Tenant daily request limit (default: 100) |
 
+Runtime precedence:
+
+- `/api/ai/config` stores tenant-scoped named AI backends plus separate defaults for query generation and query optimization.
+- Database connections can further override those defaults with `dbSettings.aiQueryGeneration*` and `dbSettings.aiQueryOptimizer*`.
+- Database audit controls keep tenant-wide defaults in Settings, but each connection can now choose `inherit`, `merge`, or `override` for firewall rules, masking policies, and query rate limits through `dbSettings.firewallPolicyMode`, `dbSettings.maskingPolicyMode`, `dbSettings.rateLimitPolicyMode`, and the matching local policy arrays.
+- The `AI_*` environment variables remain the fallback execution path when a tenant has not configured named AI backends yet.
+
 ## 📌 Precedence And Gotchas
 
 - The repo uses a single root `.env`; do not create service-local `.env` files.

@@ -1,16 +1,17 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Plus } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { useCallback, useEffect, useState } from "react";
+import { Plus } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import PolicyTable from "@/components/shared/PolicyTable";
 import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui/select';
-import { Textarea } from '@/components/ui/textarea';
+} from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import {
   createMaskingPolicy,
   deleteMaskingPolicy,
@@ -19,8 +20,8 @@ import {
   type MaskingPolicy,
   type MaskingPolicyInput,
   type MaskingStrategy,
-} from '../../api/dbAudit.api';
-import { useAsyncAction } from '../../hooks/useAsyncAction';
+} from "../../api/dbAudit.api";
+import { useAsyncAction } from "../../hooks/useAsyncAction";
 import {
   EMPTY_MASKING_POLICY_FORM,
   MASKING_EXEMPT_ROLES,
@@ -29,30 +30,33 @@ import {
   MASKING_STRATEGY_OPTIONS,
   MASKING_STRATEGY_VARIANTS,
   validateMaskingColumnPattern,
-} from './dbMaskingPolicyConfig';
+} from "./dbMaskingPolicyConfig";
 import {
   PolicyDialogShell,
   PolicyEmptyState,
   PolicyFormSection,
   PolicyMetadataBadge,
-  PolicyRecordCard,
   PolicyRoleChecklist,
   PolicyTemplatePicker,
-} from './databasePolicyUi';
+} from "./databasePolicyUi";
 import {
   SettingsFieldCard,
   SettingsLoadingState,
   SettingsPanel,
   SettingsSwitchRow,
-} from './settings-ui';
+} from "./settings-ui";
 
 export default function DbMaskingSection() {
   const [policies, setPolicies] = useState<MaskingPolicy[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingPolicy, setEditingPolicy] = useState<MaskingPolicy | null>(null);
+  const [editingPolicy, setEditingPolicy] = useState<MaskingPolicy | null>(
+    null,
+  );
   const [patternError, setPatternError] = useState<string | null>(null);
-  const [formData, setFormData] = useState<MaskingPolicyInput>(EMPTY_MASKING_POLICY_FORM);
+  const [formData, setFormData] = useState<MaskingPolicyInput>(
+    EMPTY_MASKING_POLICY_FORM,
+  );
   const { loading: saving, error, run, clearError } = useAsyncAction();
 
   const fetchPolicies = useCallback(async () => {
@@ -84,12 +88,15 @@ export default function DbMaskingSection() {
     }
   };
 
-  const updateField = <K extends keyof MaskingPolicyInput>(key: K, value: MaskingPolicyInput[K]) => {
+  const updateField = <K extends keyof MaskingPolicyInput>(
+    key: K,
+    value: MaskingPolicyInput[K],
+  ) => {
     setFormData((current) => ({ ...current, [key]: value }));
   };
 
   const updatePattern = (value: string) => {
-    updateField('columnPattern', value);
+    updateField("columnPattern", value);
     setPatternError(value.trim() ? validateMaskingColumnPattern(value) : null);
   };
 
@@ -106,8 +113,8 @@ export default function DbMaskingSection() {
       columnPattern: policy.columnPattern,
       strategy: policy.strategy,
       exemptRoles: policy.exemptRoles,
-      scope: policy.scope ?? '',
-      description: policy.description ?? '',
+      scope: policy.scope ?? "",
+      description: policy.description ?? "",
       enabled: policy.enabled,
     });
     setPatternError(null);
@@ -116,7 +123,9 @@ export default function DbMaskingSection() {
   };
 
   const applyTemplate = (templateName: string) => {
-    const template = MASKING_POLICY_TEMPLATES.find((entry) => entry.name === templateName);
+    const template = MASKING_POLICY_TEMPLATES.find(
+      (entry) => entry.name === templateName,
+    );
     if (!template) {
       return;
     }
@@ -132,7 +141,9 @@ export default function DbMaskingSection() {
   };
 
   const handleSave = async () => {
-    const validationError = validateMaskingColumnPattern(formData.columnPattern);
+    const validationError = validateMaskingColumnPattern(
+      formData.columnPattern,
+    );
     if (validationError) {
       setPatternError(validationError);
       return;
@@ -150,7 +161,7 @@ export default function DbMaskingSection() {
       } else {
         await createMaskingPolicy(payload);
       }
-    }, 'Failed to save masking policy');
+    }, "Failed to save masking policy");
 
     if (!isSuccessful) {
       return;
@@ -163,26 +174,33 @@ export default function DbMaskingSection() {
   const handleDelete = async (policyId: string) => {
     const isSuccessful = await run(async () => {
       await deleteMaskingPolicy(policyId);
-    }, 'Failed to delete masking policy');
+    }, "Failed to delete masking policy");
 
     if (isSuccessful) {
       await fetchPolicies();
     }
   };
 
-  const selectedStrategy = MASKING_STRATEGY_OPTIONS.find((entry) => entry.value === formData.strategy);
+  const selectedStrategy = MASKING_STRATEGY_OPTIONS.find(
+    (entry) => entry.value === formData.strategy,
+  );
 
   return (
     <>
       <SettingsPanel
         title="Data Masking Policies"
         description="Redact, hash, or partially reveal sensitive columns before query results leave the proxy."
-        heading={(
-          <Button type="button" size="sm" variant="outline" onClick={openCreate}>
+        heading={
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={openCreate}
+          >
             <Plus />
             Add Policy
           </Button>
-        )}
+        }
         contentClassName="space-y-4"
       >
         {error && (
@@ -199,63 +217,134 @@ export default function DbMaskingSection() {
             description="Query results currently return raw column values. Add policies when you need tenant-specific protection for PII, financial data, or credentials."
           />
         ) : (
-          <div className="space-y-3">
-            {policies.map((policy) => (
-              <PolicyRecordCard
-                key={policy.id}
-                title={policy.name}
-                description={policy.description}
-                code={policy.columnPattern}
-                badges={(
-                  <>
-                    <PolicyMetadataBadge variant={MASKING_STRATEGY_VARIANTS[policy.strategy]}>
-                      {MASKING_STRATEGY_LABELS[policy.strategy]}
-                    </PolicyMetadataBadge>
-                    <PolicyMetadataBadge variant={policy.enabled ? 'default' : 'outline'}>
-                      {policy.enabled ? 'Enabled' : 'Disabled'}
-                    </PolicyMetadataBadge>
-                    <PolicyMetadataBadge variant="outline">
-                      {policy.scope || 'Global scope'}
-                    </PolicyMetadataBadge>
-                  </>
-                )}
-                metadata={(
-                  <>
-                    <span>
-                      {policy.exemptRoles.length > 0
-                        ? `Exempt roles: ${policy.exemptRoles.join(', ')}`
-                        : 'No exempt roles'}
+          <PolicyTable
+            ariaLabel="Masking policies"
+            items={policies}
+            columns={[
+              {
+                id: "name",
+                header: "Policy",
+                className: "align-top whitespace-normal",
+                cell: (policy) => (
+                  <div className="flex min-w-[14rem] flex-col gap-1">
+                    <span className="font-medium text-foreground">
+                      {policy.name}
                     </span>
-                    <span>Updated {new Date(policy.updatedAt).toLocaleString()}</span>
-                  </>
-                )}
-                onEdit={() => openEdit(policy)}
-                onDelete={() => void handleDelete(policy.id)}
-              />
-            ))}
-          </div>
+                    {policy.description ? (
+                      <span className="text-xs text-muted-foreground">
+                        {policy.description}
+                      </span>
+                    ) : null}
+                  </div>
+                ),
+              },
+              {
+                id: "pattern",
+                header: "Column pattern",
+                className: "align-top whitespace-normal",
+                cell: (policy) => (
+                  <code className="block max-w-[24rem] break-all rounded-md bg-muted/40 px-2 py-1 font-mono text-xs text-foreground">
+                    {policy.columnPattern}
+                  </code>
+                ),
+              },
+              {
+                id: "strategy",
+                header: "Strategy",
+                cell: (policy) => (
+                  <PolicyMetadataBadge
+                    variant={MASKING_STRATEGY_VARIANTS[policy.strategy]}
+                  >
+                    {MASKING_STRATEGY_LABELS[policy.strategy]}
+                  </PolicyMetadataBadge>
+                ),
+              },
+              {
+                id: "roles",
+                header: "Exempt roles",
+                className: "align-top whitespace-normal",
+                cell: (policy) => (
+                  <span className="text-sm text-muted-foreground">
+                    {policy.exemptRoles.length > 0
+                      ? policy.exemptRoles.join(", ")
+                      : "None"}
+                  </span>
+                ),
+              },
+              {
+                id: "scope",
+                header: "Scope",
+                className: "align-top whitespace-normal",
+                cell: (policy) => (
+                  <span className="text-sm text-muted-foreground">
+                    {policy.scope || "Global scope"}
+                  </span>
+                ),
+              },
+              {
+                id: "status",
+                header: "Status",
+                cell: (policy) => (
+                  <PolicyMetadataBadge
+                    variant={policy.enabled ? "default" : "outline"}
+                  >
+                    {policy.enabled ? "Enabled" : "Disabled"}
+                  </PolicyMetadataBadge>
+                ),
+              },
+              {
+                id: "updated",
+                header: "Updated",
+                className: "align-top whitespace-normal",
+                cell: (policy) => (
+                  <span className="text-xs text-muted-foreground">
+                    {new Date(policy.updatedAt).toLocaleString()}
+                  </span>
+                ),
+              },
+            ]}
+            emptyTitle="No masking policies"
+            emptyDescription="Query results currently return raw column values. Add policies when you need tenant-specific protection for PII, financial data, or credentials."
+            getKey={(policy) => policy.id}
+            getRowLabel={(policy) => policy.name}
+            onEdit={openEdit}
+            onDelete={(policy) => void handleDelete(policy.id)}
+          />
         )}
       </SettingsPanel>
 
       <PolicyDialogShell
         open={dialogOpen}
         onOpenChange={closeDialog}
-        title={editingPolicy ? 'Edit Masking Policy' : 'Create Masking Policy'}
+        title={editingPolicy ? "Edit Masking Policy" : "Create Masking Policy"}
         description="Choose how matching columns should be transformed and which tenant roles can bypass the mask."
-        footer={(
+        footer={
           <>
-            <Button type="button" variant="outline" onClick={() => closeDialog(false)}>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => closeDialog(false)}
+            >
               Cancel
             </Button>
             <Button
               type="button"
               onClick={() => void handleSave()}
-              disabled={saving || !formData.name || !formData.columnPattern || Boolean(patternError)}
+              disabled={
+                saving ||
+                !formData.name ||
+                !formData.columnPattern ||
+                Boolean(patternError)
+              }
             >
-              {saving ? 'Saving...' : editingPolicy ? 'Update Policy' : 'Create Policy'}
+              {saving
+                ? "Saving..."
+                : editingPolicy
+                  ? "Update Policy"
+                  : "Create Policy"}
             </Button>
           </>
-        )}
+        }
       >
         {error && (
           <Alert variant="destructive">
@@ -274,18 +363,26 @@ export default function DbMaskingSection() {
 
         <PolicyFormSection>
           <div className="grid gap-4 xl:grid-cols-2">
-            <SettingsFieldCard label="Policy name" description="Use a readable name that makes incident review fast.">
+            <SettingsFieldCard
+              label="Policy name"
+              description="Use a readable name that makes incident review fast."
+            >
               <Input
                 aria-label="Policy name"
                 value={formData.name}
-                onChange={(event) => updateField('name', event.target.value)}
+                onChange={(event) => updateField("name", event.target.value)}
               />
             </SettingsFieldCard>
 
-            <SettingsFieldCard label="Masking strategy" description="Choose how matched column values should be transformed.">
+            <SettingsFieldCard
+              label="Masking strategy"
+              description="Choose how matched column values should be transformed."
+            >
               <Select
                 value={formData.strategy}
-                onValueChange={(value) => updateField('strategy', value as MaskingStrategy)}
+                onValueChange={(value) =>
+                  updateField("strategy", value as MaskingStrategy)
+                }
               >
                 <SelectTrigger aria-label="Masking strategy">
                   <SelectValue />
@@ -314,8 +411,11 @@ export default function DbMaskingSection() {
               onChange={(event) => updatePattern(event.target.value)}
               className="font-mono text-xs"
             />
-            <p className={`mt-2 text-xs ${patternError ? 'text-destructive' : 'text-muted-foreground'}`}>
-              {patternError ?? 'The pattern is checked locally before save and validated again by the backend.'}
+            <p
+              className={`mt-2 text-xs ${patternError ? "text-destructive" : "text-muted-foreground"}`}
+            >
+              {patternError ??
+                "The pattern is checked locally before save and validated again by the backend."}
             </p>
           </SettingsFieldCard>
 
@@ -324,7 +424,7 @@ export default function DbMaskingSection() {
             description="Selected roles receive raw values and bypass the mask entirely."
             options={MASKING_EXEMPT_ROLES}
             selected={formData.exemptRoles ?? []}
-            onChange={(selected) => updateField('exemptRoles', selected)}
+            onChange={(selected) => updateField("exemptRoles", selected)}
           />
 
           <div className="grid gap-4 xl:grid-cols-2">
@@ -334,9 +434,9 @@ export default function DbMaskingSection() {
             >
               <Input
                 aria-label="Policy scope"
-                value={formData.scope ?? ''}
+                value={formData.scope ?? ""}
                 placeholder="database or table name"
-                onChange={(event) => updateField('scope', event.target.value)}
+                onChange={(event) => updateField("scope", event.target.value)}
               />
             </SettingsFieldCard>
 
@@ -346,8 +446,10 @@ export default function DbMaskingSection() {
             >
               <Textarea
                 aria-label="Policy description"
-                value={formData.description ?? ''}
-                onChange={(event) => updateField('description', event.target.value)}
+                value={formData.description ?? ""}
+                onChange={(event) =>
+                  updateField("description", event.target.value)
+                }
               />
             </SettingsFieldCard>
           </div>
@@ -356,7 +458,7 @@ export default function DbMaskingSection() {
             title="Enable this policy"
             description="Disabled policies stay defined but no longer transform query results."
             checked={formData.enabled ?? true}
-            onCheckedChange={(checked) => updateField('enabled', checked)}
+            onCheckedChange={(checked) => updateField("enabled", checked)}
           />
         </PolicyFormSection>
       </PolicyDialogShell>

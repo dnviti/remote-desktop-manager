@@ -39,8 +39,8 @@ func (s Service) completeLLM(ctx context.Context, options llmCompletionOptions, 
 		if overrides.MaxTokens > 0 {
 			maxTokens = overrides.MaxTokens
 		}
-		if overrides.Temperature != 0 {
-			temperature = overrides.Temperature
+		if overrides.Temperature != nil {
+			temperature = *overrides.Temperature
 		}
 		if overrides.Timeout > 0 {
 			timeout = overrides.Timeout
@@ -50,8 +50,8 @@ func (s Service) completeLLM(ctx context.Context, options llmCompletionOptions, 
 	if options.MaxTokens > 0 {
 		maxTokens = options.MaxTokens
 	}
-	if options.Temperature != 0 {
-		temperature = options.Temperature
+	if options.Temperature != nil {
+		temperature = *options.Temperature
 	}
 	if strings.TrimSpace(string(provider)) == "" {
 		return llmCompletionResult{}, &requestError{
@@ -81,9 +81,15 @@ func (s Service) completeLLM(ctx context.Context, options llmCompletionOptions, 
 
 	switch provider {
 	case contracts.AIProviderAnthropic:
-		return s.completeAnthropic(ctx, options.Messages, modelID, maxTokens, temperature, apiKey, timeout)
+		if strings.TrimSpace(baseURL) == "" {
+			baseURL = "https://api.anthropic.com"
+		}
+		return s.completeAnthropic(ctx, options.Messages, modelID, maxTokens, temperature, baseURL, apiKey, timeout)
 	case contracts.AIProviderOpenAI:
-		return s.completeOpenAICompatible(ctx, options.Messages, modelID, maxTokens, temperature, "https://api.openai.com", timeout, apiKey)
+		if strings.TrimSpace(baseURL) == "" {
+			baseURL = "https://api.openai.com"
+		}
+		return s.completeOpenAICompatible(ctx, options.Messages, modelID, maxTokens, temperature, baseURL, timeout, apiKey)
 	case contracts.AIProviderOllama:
 		return s.completeOpenAICompatible(ctx, options.Messages, modelID, maxTokens, temperature, baseURL, timeout, "")
 	case contracts.AIProviderOpenAICompatible:
@@ -93,7 +99,7 @@ func (s Service) completeLLM(ctx context.Context, options llmCompletionOptions, 
 	}
 }
 
-func (s Service) completeAnthropic(ctx context.Context, messages []llmMessage, modelID string, maxTokens int, temperature float64, apiKey string, timeout time.Duration) (llmCompletionResult, error) {
+func (s Service) completeAnthropic(ctx context.Context, messages []llmMessage, modelID string, maxTokens int, temperature float64, baseURL, apiKey string, timeout time.Duration) (llmCompletionResult, error) {
 	systemPrompt := ""
 	nonSystem := make([]map[string]string, 0, len(messages))
 	for _, message := range messages {
@@ -125,7 +131,13 @@ func (s Service) completeAnthropic(ctx context.Context, messages []llmMessage, m
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, "https://api.anthropic.com/v1/messages", strings.NewReader(string(payload)))
+	endpoint := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if strings.HasSuffix(endpoint, "/v1") {
+		endpoint += "/messages"
+	} else {
+		endpoint += "/v1/messages"
+	}
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, strings.NewReader(string(payload)))
 	if err != nil {
 		return llmCompletionResult{}, err
 	}
@@ -176,7 +188,14 @@ func (s Service) completeOpenAICompatible(ctx context.Context, messages []llmMes
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	endpoint := strings.TrimRight(strings.TrimSpace(baseURL), "/") + "/v1/chat/completions"
+	endpoint := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	switch {
+	case strings.HasSuffix(endpoint, "/chat/completions"):
+	case strings.HasSuffix(endpoint, "/v1"):
+		endpoint += "/chat/completions"
+	default:
+		endpoint += "/v1/chat/completions"
+	}
 	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, endpoint, strings.NewReader(string(payload)))
 	if err != nil {
 		return llmCompletionResult{}, err

@@ -32,6 +32,7 @@ interface QueryVisualizerProps {
   dbProtocol?: string;
   storedExecutionPlan?: Record<string, unknown> | null;
   onApplySql?: (sql: string) => void;
+  aiQueryOptimizerEnabled?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -40,7 +41,7 @@ interface QueryVisualizerProps {
 
 export default function QueryVisualizer({
   open, onClose, queryText, queryType, executionTimeMs, rowsAffected,
-  tablesAccessed, blocked, blockReason, sessionId, dbProtocol, storedExecutionPlan, onApplySql,
+  tablesAccessed, blocked, blockReason, sessionId, dbProtocol, storedExecutionPlan, onApplySql, aiQueryOptimizerEnabled = true,
 }: QueryVisualizerProps) {
   const [copied, setCopied] = useState(false);
   const [planLoading, setPlanLoading] = useState(false);
@@ -279,7 +280,7 @@ export default function QueryVisualizer({
           )}
 
           {/* Section 4: AI Optimization */}
-          {canExplain && (
+          {canExplain && aiQueryOptimizerEnabled && (
             <>
               <Separator className="mb-4" />
               <h4 className="text-sm font-semibold mb-2">AI Query Optimization</h4>

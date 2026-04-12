@@ -4,6 +4,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/dbsessions"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 )
 
@@ -38,6 +39,7 @@ type generationConversation struct {
 	DBProtocol string
 	FullSchema []contracts.SchemaTable
 	Overrides  *llmOverrides
+	AIContext  dbsessions.OwnedAIContext
 	IPAddress  string
 	CreatedAt  time.Time
 }
@@ -62,7 +64,7 @@ type llmMessage struct {
 type llmCompletionOptions struct {
 	Messages    []llmMessage
 	MaxTokens   int
-	Temperature float64
+	Temperature *float64
 }
 
 type llmCompletionResult struct {
@@ -76,7 +78,7 @@ type llmOverrides struct {
 	Model       string
 	BaseURL     string
 	MaxTokens   int
-	Temperature float64
+	Temperature *float64
 	Timeout     time.Duration
 }
 
@@ -191,6 +193,7 @@ type analyzeQueryIntentParams struct {
 	Prompt     string
 	Schema     []contracts.SchemaTable
 	DBProtocol string
+	AIContext  dbsessions.OwnedAIContext
 	IPAddress  string
 }
 

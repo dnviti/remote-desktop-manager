@@ -28,6 +28,10 @@ if (!HTMLElement.prototype.releasePointerCapture) {
   HTMLElement.prototype.releasePointerCapture = () => {};
 }
 
+if (!HTMLElement.prototype.scrollIntoView) {
+  HTMLElement.prototype.scrollIntoView = () => {};
+}
+
 if (!window.ResizeObserver) {
   class ResizeObserverMock implements ResizeObserver {
     observe() {}

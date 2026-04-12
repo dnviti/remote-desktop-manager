@@ -59,6 +59,7 @@ export default function TabPanel() {
                 isActive={tab.id === activeTabId}
                 credentials={tab.credentials}
                 initialProtocol={tab.connection.dbSettings?.protocol}
+                dbSettings={tab.connection.dbSettings}
               />
             ) : (
               <RdpViewer

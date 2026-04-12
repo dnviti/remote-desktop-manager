@@ -33,7 +33,7 @@ func (s Service) executeOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		return contracts.QueryExecutionResponse{}, err
 	}
 
-	firewallResult := s.evaluateFirewall(ctx, tenantID, sqlText, runtime.DatabaseName, primaryTable)
+	firewallResult := s.evaluateFirewallWithSettings(ctx, tenantID, runtime.Settings, sqlText, runtime.DatabaseName, primaryTable)
 	if !firewallResult.Allowed {
 		blockReason := "Blocked by SQL firewall"
 		if strings.TrimSpace(firewallResult.RuleName) != "" {
@@ -61,7 +61,7 @@ func (s Service) executeOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		}, ipAddress)
 	}
 
-	rateLimit := s.evaluateRateLimit(ctx, userID, tenantID, queryType, tenantRole, runtime.DatabaseName, primaryTable)
+	rateLimit := s.evaluateRateLimitWithSettings(ctx, userID, tenantID, runtime.Connection.ID, runtime.Settings, queryType, tenantRole, runtime.DatabaseName, primaryTable)
 	if rateLimit.Matched && !rateLimit.Allowed {
 		blockReason := "Rate limit exceeded: " + rateLimit.PolicyName
 		s.interceptQuery(ctx, userID, runtime.Connection.ID, tenantID, sessionID, sqlText, nil, nil, true, blockReason, nil)
@@ -97,7 +97,7 @@ func (s Service) executeOwnedQuery(ctx context.Context, userID, tenantID, tenant
 
 	executionPlan := s.captureStoredExecutionPlan(ctx, runtime, sqlText)
 
-	policies := s.loadMaskingPolicies(ctx, tenantID)
+	policies := s.loadMaskingPoliciesWithSettings(ctx, tenantID, runtime.Settings)
 	maskedColumns := findMaskedColumns(policies, result.Columns, tenantRole, runtime.DatabaseName, primaryTable)
 	if len(maskedColumns) > 0 {
 		result.Rows = applyMasking(result.Rows, maskedColumns)
@@ -162,7 +162,7 @@ func (s Service) explainOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		return contracts.QueryPlanResponse{}, err
 	}
 
-	firewallResult := s.evaluateFirewall(ctx, tenantID, sqlText, runtime.DatabaseName, primaryTable)
+	firewallResult := s.evaluateFirewallWithSettings(ctx, tenantID, runtime.Settings, sqlText, runtime.DatabaseName, primaryTable)
 	if !firewallResult.Allowed {
 		blockReason := "Blocked by SQL firewall"
 		if strings.TrimSpace(firewallResult.RuleName) != "" {

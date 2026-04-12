@@ -84,6 +84,7 @@ WHERE id = $1
 	return &ownedQueryRuntime{
 		State:                   state,
 		Connection:              connection,
+		Settings:                settings,
 		Target:                  target,
 		Protocol:                dbProtocol,
 		PersistExecutionPlan:    settings.PersistExecutionPlan,

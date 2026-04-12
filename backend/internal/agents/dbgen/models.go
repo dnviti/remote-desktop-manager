@@ -2285,20 +2285,41 @@ type Tenant struct {
 	UserDriveQuotaBytes           pgtype.Int4
 }
 
+type TenantAiBackend struct {
+	ID              string
+	TenantId        string
+	Name            string
+	Provider        string
+	EncryptedApiKey pgtype.Text
+	ApiKeyIV        pgtype.Text
+	ApiKeyTag       pgtype.Text
+	BaseUrl         pgtype.Text
+	DefaultModel    pgtype.Text
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
 type TenantAiConfig struct {
-	ID                  string
-	TenantId            string
-	Provider            string
-	EncryptedApiKey     pgtype.Text
-	ApiKeyIV            pgtype.Text
-	ApiKeyTag           pgtype.Text
-	ModelId             string
-	BaseUrl             pgtype.Text
-	MaxTokensPerRequest int32
-	DailyRequestLimit   int32
-	Enabled             bool
-	CreatedAt           time.Time
-	UpdatedAt           time.Time
+	ID                     string
+	TenantId               string
+	Provider               string
+	EncryptedApiKey        pgtype.Text
+	ApiKeyIV               pgtype.Text
+	ApiKeyTag              pgtype.Text
+	ModelId                string
+	BaseUrl                pgtype.Text
+	MaxTokensPerRequest    int32
+	DailyRequestLimit      int32
+	Enabled                bool
+	CreatedAt              time.Time
+	UpdatedAt              time.Time
+	QueryGenerationBackend pgtype.Text
+	QueryGenerationModel   pgtype.Text
+	QueryOptimizerEnabled  bool
+	QueryOptimizerBackend  pgtype.Text
+	QueryOptimizerModel    pgtype.Text
+	Temperature            float64
+	TimeoutMs              int32
 }
 
 type TenantMember struct {

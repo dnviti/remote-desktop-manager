@@ -10,7 +10,7 @@
 | `client.ts` | Axios instance with JWT interceptor and auto-refresh |
 | `accessPolicy.api.ts` | ABAC access policy CRUD and evaluation |
 | `admin.api.ts` | Admin config (email status, self-signup, system settings) |
-| `aiQuery.api.ts` | AI-powered natural-language-to-SQL generation and query optimization |
+| `aiQuery.api.ts` | Named AI backend config, feature defaults, natural-language-to-SQL generation, and query optimization |
 | `audit.api.ts` | Personal, tenant, and connection audit logs, geo data, geo summary |
 | `auth.api.ts` | Passkey-first login, password fallback, MFA flows, refresh, logout, public config |
 | `checkout.api.ts` | Credential checkout/check-in with approval workflow |

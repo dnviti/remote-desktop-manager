@@ -2,6 +2,15 @@ import api from './client';
 import type { SshTerminalConfig } from '../constants/terminalThemes';
 import type { RdpSettings } from '../constants/rdpDefaults';
 import type { VncSettings } from '../constants/vncDefaults';
+import type {
+  DbQueryType,
+  FirewallAction,
+  FirewallRuleInput,
+  MaskingPolicyInput,
+  MaskingStrategy,
+  RateLimitAction,
+  RateLimitPolicyInput,
+} from './dbAudit.api';
 
 export interface DlpPolicy {
   disableCopy?: boolean;
@@ -21,6 +30,25 @@ export type DbProtocol = 'postgresql' | 'mysql' | 'mongodb' | 'oracle' | 'mssql'
 export type DbCloudProvider = 'azure' | 'aws' | 'gcp';
 export type OracleConnectionType = 'basic' | 'tns' | 'custom';
 export type OracleRole = 'normal' | 'sysdba' | 'sysoper' | 'sysasm' | 'sysbackup' | 'sysdg' | 'syskm' | 'sysrac';
+export type DbPolicyOverrideMode = 'inherit' | 'merge' | 'override';
+
+export interface ConnectionFirewallRule extends FirewallRuleInput {
+  id?: string;
+  action: FirewallAction;
+}
+
+export interface ConnectionMaskingPolicy extends MaskingPolicyInput {
+  id?: string;
+  strategy: MaskingStrategy;
+  exemptRoles?: string[];
+}
+
+export interface ConnectionRateLimitPolicy extends RateLimitPolicyInput {
+  id?: string;
+  queryType?: DbQueryType | null;
+  action?: RateLimitAction;
+  exemptRoles?: string[];
+}
 
 export interface DbSettings {
   protocol: DbProtocol;
@@ -31,6 +59,36 @@ export interface DbSettings {
   sslMode?: string;
   /** Persist execution plans in DB audit logs for supported SQL protocols. */
   persistExecutionPlan?: boolean;
+  /** Enable SQL firewall enforcement for this connection. */
+  firewallEnabled?: boolean;
+  /** Control how connection firewall rules interact with tenant-wide firewall rules. */
+  firewallPolicyMode?: DbPolicyOverrideMode;
+  /** Connection-specific firewall rules. */
+  firewallRules?: ConnectionFirewallRule[];
+  /** Enable masking enforcement for this connection. */
+  maskingEnabled?: boolean;
+  /** Control how connection masking policies interact with tenant-wide masking policies. */
+  maskingPolicyMode?: DbPolicyOverrideMode;
+  /** Connection-specific masking policies. */
+  maskingPolicies?: ConnectionMaskingPolicy[];
+  /** Enable rate limiting for this connection. */
+  rateLimitEnabled?: boolean;
+  /** Control how connection rate limits interact with tenant-wide rate limits. */
+  rateLimitPolicyMode?: DbPolicyOverrideMode;
+  /** Connection-specific rate limit policies. */
+  rateLimitPolicies?: ConnectionRateLimitPolicy[];
+  /** Enable AI query generation for this connection. */
+  aiQueryGenerationEnabled?: boolean;
+  /** Preferred AI backend for query generation. */
+  aiQueryGenerationBackend?: string;
+  /** Preferred model override for query generation. */
+  aiQueryGenerationModel?: string;
+  /** Enable AI query optimization for this connection. */
+  aiQueryOptimizerEnabled?: boolean;
+  /** Preferred AI backend for query optimization. */
+  aiQueryOptimizerBackend?: string;
+  /** Preferred model override for query optimization. */
+  aiQueryOptimizerModel?: string;
   /** Oracle: connection mode (defaults to 'basic' for backward compat). */
   oracleConnectionType?: OracleConnectionType;
   /** Oracle Basic: SID for the target instance (mutually exclusive with serviceName). */

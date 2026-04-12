@@ -44,9 +44,17 @@ func (s Service) HandleAnalyzeQuery(w http.ResponseWriter, r *http.Request, clai
 		app.ErrorJSON(w, http.StatusForbidden, "Tenant membership required")
 		return
 	}
+	aiContext, err := s.DatabaseSessions.ResolveOwnedAIContext(r.Context(), claims.UserID, claims.TenantID, req.SessionID)
+	if err != nil {
+		s.writeError(w, err)
+		return
+	}
 
 	schema, sessionProtocol := s.fetchSchemaForAI(r.Context(), claims.UserID, claims.TenantID, req.SessionID)
 	dbProtocol := req.DBProtocol
+	if dbProtocol == "" {
+		dbProtocol = normalizeKnownDBProtocol(aiContext.Protocol)
+	}
 	if dbProtocol == "" {
 		dbProtocol = normalizeKnownDBProtocol(sessionProtocol)
 	}
@@ -60,6 +68,7 @@ func (s Service) HandleAnalyzeQuery(w http.ResponseWriter, r *http.Request, clai
 		Prompt:     req.Prompt,
 		Schema:     schema,
 		DBProtocol: dbProtocol,
+		AIContext:  aiContext,
 		IPAddress:  requestIP(r),
 	})
 	if err != nil {
@@ -135,6 +144,10 @@ func (s Service) HandleOptimizeQuery(w http.ResponseWriter, r *http.Request, cla
 	if req.DBProtocol == "" {
 		_, sessionProtocol := s.fetchSchemaForAI(r.Context(), claims.UserID, claims.TenantID, req.SessionID)
 		req.DBProtocol = normalizeKnownDBProtocol(sessionProtocol)
+	}
+	if strings.TrimSpace(claims.UserID) == "" {
+		app.ErrorJSON(w, http.StatusUnauthorized, "Invalid or expired token")
+		return
 	}
 	if req.DBProtocol == "" {
 		app.ErrorJSON(w, http.StatusBadRequest, `Unsupported dbProtocol "". Must be one of: postgresql, mysql, mongodb, oracle, mssql, db2`)

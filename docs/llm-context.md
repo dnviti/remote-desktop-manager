@@ -146,7 +146,7 @@ Highest-value public prefixes:
 - `/api/recordings` — recording list, stream, analyze, video export, audit trail
 - `/api/tenants` — tenant CRUD, users, invite, permissions, IP allowlist, MFA stats
 - `/api/admin` — email status, app config, system settings, auth providers
-- `/api/ai` — AI config, natural-language-to-SQL generation, query optimization
+- `/api/ai` — named AI backend config, per-feature defaults, natural-language-to-SQL generation, query optimization
 - `/api/audit` — audit log search, geo summary, connection/tenant audit
 - `/api/notifications` — notification list, preferences, read state
 - `/api/access-policies` — access policy CRUD

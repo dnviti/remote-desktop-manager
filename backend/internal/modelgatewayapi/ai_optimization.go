@@ -14,18 +14,25 @@ import (
 )
 
 func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, userID, tenantID, ipAddress string) (optimizeQueryResult, error) {
-	envCfg := loadAIEnvConfig()
-	tenantCfg, err := s.loadTenantRuntimeConfig(ctx, tenantID)
+	aiContext, err := s.DatabaseSessions.ResolveOwnedAIContext(ctx, userID, tenantID, input.SessionID)
 	if err != nil {
 		return optimizeQueryResult{}, err
 	}
-	overrides := tenantLLMOverrides(tenantCfg, envCfg)
-	if overrides == nil && strings.TrimSpace(string(envCfg.Provider)) == "" {
+	platform, err := s.loadPlatformConfig(ctx, tenantID)
+	if err != nil {
+		return optimizeQueryResult{}, err
+	}
+	execution, err := resolveFeatureExecution(platform, aiContext, "query-optimizer")
+	if err != nil {
+		return optimizeQueryResult{}, err
+	}
+	if !execution.Enabled {
 		return optimizeQueryResult{}, &requestError{
-			status:  http.StatusServiceUnavailable,
-			message: "AI query optimization is not available. An administrator must configure an AI/LLM provider in Settings.",
+			status:  http.StatusForbidden,
+			message: "AI query optimization is not enabled",
 		}
 	}
+	overrides := llmOverridesFromExecution(execution)
 
 	conversationID := uuid.NewString()
 	messages := []llmMessage{
@@ -58,7 +65,7 @@ func (s Service) optimizeQuery(ctx context.Context, input optimizeQueryInput, us
 	}
 	state.mu.Unlock()
 
-	provider, modelID := effectiveLLMProviderAndModel(overrides, envCfg)
+	provider, modelID := providerAndModelFromOverrides(overrides)
 	_ = s.insertAuditLog(ctx, userID, "DB_QUERY_AI_OPTIMIZED", "DatabaseQuery", input.SessionID, map[string]any{
 		"conversationId":   conversationID,
 		"phase":            "initial",
@@ -151,7 +158,7 @@ func (s Service) continueOptimization(ctx context.Context, conversationID string
 		}
 	}
 
-	provider, modelID := effectiveLLMProviderAndModel(conversation.Overrides, loadAIEnvConfig())
+	provider, modelID := providerAndModelFromOverrides(conversation.Overrides)
 	_ = s.insertAuditLog(ctx, userID, "DB_QUERY_AI_OPTIMIZED", "DatabaseQuery", conversation.Input.SessionID, map[string]any{
 		"conversationId":   conversationID,
 		"phase":            "continue",
