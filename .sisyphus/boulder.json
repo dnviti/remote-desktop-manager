@@ -1,58 +1,121 @@
 {
-  "active_plan": "/home/debian/repos/arsenale/.sisyphus/plans/pr-602-fixes.md",
-  "started_at": "2026-04-14T17:16:35.014Z",
+  "active_plan": "/home/debian/repos/arsenale/.sisyphus/plans/temporary-transfer-sandbox.md",
+  "started_at": "2026-04-15T16:05:04.086Z",
   "session_ids": [
-    "ses_27358e07fffejnGfXl4A64ziay",
-    "ses_272ffa257ffe3zDk1wntd8iLeV",
-    "ses_272ffa23cffeBWs3inGnho2y31",
-    "ses_272ffa238ffeVRLZG5rt49B0yr",
-    "ses_272ffa21cffeFu76iLzA9z3PIm"
+    "ses_26e1c6da2ffecuJAp72DkRFMNw",
+    "ses_26e18aaccffe6yyZ1DUJVlCKYs",
+    "ses_26e17e537ffejnFj9HqTKP1epR",
+    "ses_26e17c941ffeJENaAlA9BZZvTq",
+    "ses_26e17799dffe3VG9XUWBaxTQ7b",
+    "ses_26d3625efffe5J2y6FoJ6Zn2g2",
+    "ses_26d3512cfffe08hpxEL4L0ih14",
+    "ses_26d3512b9ffeQo8pPOjBoCnjJa",
+    "ses_26d3512a9ffeBjHtlDZPnZwio0",
+    "ses_26d35129affelvc28d5ZRyUBVL",
+    "ses_26d35128cffevjZC0oYQ9Ci7QL",
+    "ses_26d11043bffezk7zao7gjrbHH9",
+    "ses_26d11041fffeSMlHHzCgmwuOZ6",
+    "ses_26d1103deffeIhIN4hnEBvUR4b",
+    "ses_26d11042effeyHdUWvYpKEL239",
+    "ses_26cfdec96ffefi7z0mdIz4k2XC",
+    "ses_26cfdec7cffeQYPRg0meMpNNpW",
+    "ses_26cfdec2affeYPFqMBPaWN2PZV",
+    "ses_26cfdec8affeFsedNHhVASCYpK",
+    "ses_26cef7f68ffe7nPkJLn4yud5tl",
+    "ses_26cef7f4cffe8Hx1Fu3ZtXS37w",
+    "ses_26cef7f2dffeI0HXlMenD2kaLd",
+    "ses_26cef7f5affeb0iQGgQWrNpgAT"
   ],
   "session_origins": {
-    "ses_27358e07fffejnGfXl4A64ziay": "direct",
-    "ses_272ffa257ffe3zDk1wntd8iLeV": "appended",
-    "ses_272ffa23cffeBWs3inGnho2y31": "appended",
-    "ses_272ffa238ffeVRLZG5rt49B0yr": "appended",
-    "ses_272ffa21cffeFu76iLzA9z3PIm": "appended"
+    "ses_26e1c6da2ffecuJAp72DkRFMNw": "direct",
+    "ses_26e18aaccffe6yyZ1DUJVlCKYs": "appended",
+    "ses_26e17e537ffejnFj9HqTKP1epR": "appended",
+    "ses_26e17c941ffeJENaAlA9BZZvTq": "appended",
+    "ses_26e17799dffe3VG9XUWBaxTQ7b": "appended",
+    "ses_26d3625efffe5J2y6FoJ6Zn2g2": "appended",
+    "ses_26d3512cfffe08hpxEL4L0ih14": "appended",
+    "ses_26d3512b9ffeQo8pPOjBoCnjJa": "appended",
+    "ses_26d3512a9ffeBjHtlDZPnZwio0": "appended",
+    "ses_26d35129affelvc28d5ZRyUBVL": "appended",
+    "ses_26d35128cffevjZC0oYQ9Ci7QL": "appended",
+    "ses_26d11043bffezk7zao7gjrbHH9": "appended",
+    "ses_26d11041fffeSMlHHzCgmwuOZ6": "appended",
+    "ses_26d1103deffeIhIN4hnEBvUR4b": "appended",
+    "ses_26d11042effeyHdUWvYpKEL239": "appended",
+    "ses_26cfdec96ffefi7z0mdIz4k2XC": "appended",
+    "ses_26cfdec7cffeQYPRg0meMpNNpW": "appended",
+    "ses_26cfdec2affeYPFqMBPaWN2PZV": "appended",
+    "ses_26cfdec8affeFsedNHhVASCYpK": "appended",
+    "ses_26cef7f68ffe7nPkJLn4yud5tl": "appended",
+    "ses_26cef7f4cffe8Hx1Fu3ZtXS37w": "appended",
+    "ses_26cef7f2dffeI0HXlMenD2kaLd": "appended",
+    "ses_26cef7f5affeb0iQGgQWrNpgAT": "appended"
   },
-  "plan_name": "pr-602-fixes",
+  "plan_name": "temporary-transfer-sandbox",
   "agent": "atlas",
   "task_sessions": {
     "todo:1": {
       "task_key": "todo:1",
       "task_label": "1",
-      "task_title": "Remove unused imports and vars in dialog/keychain files",
-      "session_id": "ses_272ffa257ffe3zDk1wntd8iLeV",
+      "task_title": "Add transfer-retention connection contract and deterministic defaults",
+      "session_id": "ses_26e17c941ffeJENaAlA9BZZvTq",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-14T17:22:33.500Z"
+      "category": "deep",
+      "updated_at": "2026-04-15T16:13:54.157Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "Define one backend sandbox contract, namespace layout, and cleanup owner",
+      "session_id": "ses_26e12c565ffea2Zgg95XEnISS7",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-15T16:33:32.949Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "Replace SSH remote filesystem operations with sandbox-only backend behavior",
+      "session_id": "ses_26e00f17affel6YFlBzAKFcGr5",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-15T17:05:06.052Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "Align RDP shared-drive behavior to the same temporary sandbox contract",
+      "session_id": "ses_26de08228ffelHIv5QOPKjQQlE",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-15T17:25:48.400Z"
     },
     "todo:6": {
       "task_key": "todo:6",
       "task_label": "6",
-      "task_title": "Render login domain and certificate expiry in the shared public secret view",
-      "session_id": "ses_272f34b68ffe0hHIYacKBDnTOe",
+      "task_title": "Convert the client to sandbox browser + separate history view",
+      "session_id": "ses_26dd024abffeUoZUQFlbCKFfXa",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-14T17:34:35.091Z"
+      "category": "visual-engineering",
+      "updated_at": "2026-04-15T17:58:24.188Z"
     },
-    "todo:7": {
-      "task_key": "todo:7",
-      "task_label": "7",
-      "task_title": "Render API key headers in the shared public secret view and keep secure-note behavior unchanged",
-      "session_id": "ses_272eb5118ffeNCwSAneF0AHm5a",
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "Update docs, smoke paths, and migration notes for the sandbox model",
+      "session_id": "ses_26dae2ad8ffe75PTkm1TVaLRCX",
       "agent": "Sisyphus-Junior",
-      "category": "quick",
-      "updated_at": "2026-04-14T17:42:47.987Z"
+      "category": "writing",
+      "updated_at": "2026-04-15T18:35:30.578Z"
     },
     "final-wave:f1": {
       "task_key": "final-wave:f1",
       "task_label": "F1",
       "task_title": "Plan Compliance Audit — oracle",
-      "session_id": "ses_272e1fa5affe2UP4LkOve1vGt3",
-      "agent": "oracle",
-      "category": "",
-      "updated_at": "2026-04-14T17:55:43.313Z"
+      "session_id": "ses_26cef7f5affeb0iQGgQWrNpgAT",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-04-15T21:38:47.544Z"
     }
   }
 }
