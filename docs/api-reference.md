@@ -2,7 +2,7 @@
 title: API Reference
 description: Public API groups, session flows, live streams, and internal service contracts for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-11T11:30:00Z
+generated-at: 2026-04-17T11:31:45Z
 source-files:
   - backend/internal/runtimefeatures/manifest.go
   - backend/internal/publicconfig/service.go
@@ -190,8 +190,10 @@ Recovery endpoints stay under `/api/auth/*`:
 | `/api/connections` | CRUD, sharing, import/export, favorites, CLI listing |
 | `/api/folders` | Connection folder CRUD |
 | `/api/vault-folders` | Secret folder CRUD via manual method dispatch |
-| `/api/files` | Connection-scoped RDP shared-drive staging (`connectionId` required) |
-| `/api/files/ssh/*` | SSH file browser and staged upload/download APIs |
+| `/api/files` | Connection-scoped managed transfer sandbox for RDP workspace staging and cleanup (`connectionId` required) |
+| `/api/files/history` | Connection-scoped retained-upload history list/download/restore/delete for the generic CLI and RDP surfaces |
+| `/api/files/ssh/*` | SSH sandbox workspace list/mkdir/delete/rename/upload/download APIs, sandbox-relative only |
+| `/api/files/ssh/history/*` | SSH retained-upload history list/download/restore/delete APIs used by the SSH browser |
 | `/api/checkouts` | Approval-style credential checkout flow |
 | `/api/teams` | Team CRUD and membership management |
 | `/api/vault-providers` | External vault integration CRUD and test |
@@ -199,7 +201,7 @@ Recovery endpoints stay under `/api/auth/*`:
 
 `/api/connections/*` and `/api/folders/*` require at least one connection-capable feature. `/api/vault-folders`, `/api/files`, `/api/files/ssh/*`, and `/api/vault-providers/*` additionally require `keychainEnabled`.
 
-`/api/files` now requires `connectionId` on every request. `GET` and `DELETE` take it as a query parameter. `POST` takes it as a multipart form field. The RDP shared-drive view is staged through the object store and then materialized into the Guacamole drive cache. SSH file browsing uses the `/api/files/ssh/*` REST surface instead of terminal WebSocket SFTP events.
+`/api/files` now requires `connectionId` on every request. `GET` and `DELETE` take it as a query parameter. `POST` takes it as a multipart form field. The RDP shared-drive view is staged through the object store and then materialized into the Guacamole drive cache. SSH file browsing uses the `/api/files/ssh/*` REST surface instead of terminal WebSocket file-transfer events, and the CLI and UI only accept sandbox-relative paths inside `workspace/current/`. Retained uploads are exposed through the generic `/api/files/history` routes for the CLI and RDP surfaces, while the SSH browser uses the protocol-specific `/api/files/ssh/history/*` handlers for the same retained-upload namespace. SSH session responses keep the legacy browser flag false while `fileBrowserSupported: true` so the client can hide outdated affordances.
 
 ## 🔒 Vault, Secrets, And Tenant Vault
 
@@ -257,29 +259,35 @@ Session creation endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| `POST` | `/api/sessions/ssh` | Start SSH session when `connectionsEnabled` is true |
+| `POST` | `/api/sessions/ssh` | Start SSH session when `connectionsEnabled` is true. Response returns a terminal-broker token, keeps the legacy browser flag false, and sets `fileBrowserSupported: true` |
 | `POST` | `/api/sessions/rdp` | Start RDP session |
 | `POST` | `/api/sessions/vnc` | Start VNC session |
 | `POST` | `/api/sessions/database` | Start database session when `databaseProxyEnabled` is true |
+| `POST` | `/api/sessions/db-tunnel` | Start database tunnel session when both connections and DB proxy are enabled |
 
 `POST /api/sessions/rdp` returns `resolvedUsername` and `resolvedDomain` alongside the desktop token so the SPA can deduplicate RDP tabs by the actual remote identity, not only the requested credentials.
-| `POST` | `/api/sessions/db-tunnel` | Start database tunnel session when both connections and DB proxy are enabled |
 
 Operational session endpoints:
 
 | Method | Path | Purpose |
 |--------|------|---------|
 | `GET` | `/api/sessions/active` | List active sessions |
+| `GET` | `/api/sessions/console` | List unified session-console rows keyed by session id, including recording summary fields |
 | `GET` | `/api/sessions/count` | Count active sessions |
 | `GET` | `/api/sessions/count/gateway` | Session counts by gateway |
+| `POST` | `/api/sessions/{sessionId}/pause` | Persist `PAUSED` session state and freeze SSH or desktop transport until resumed |
+| `POST` | `/api/sessions/{sessionId}/resume` | Clear `PAUSED` state and resume SSH or desktop transport |
 | `POST` | `/api/sessions/{sessionId}/terminate` | Terminate a session centrally |
+| `POST` | `/api/sessions/ssh/{sessionId}/observe` | Issue a read-only observer terminal token for an active tenant-scoped SSH session when the caller has `canObserveSessions` |
+| `POST` | `/api/sessions/rdp/{sessionId}/observe` | Issue a read-only desktop observer token that joins an active tenant-scoped RDP session when the caller has `canObserveSessions` |
+| `POST` | `/api/sessions/vnc/{sessionId}/observe` | Issue a read-only desktop observer token that joins an active tenant-scoped VNC session when the caller has `canObserveSessions` |
 | `POST` | `/api/sessions/ssh-proxy/token` | Mint SSH proxy token |
 | `GET` | `/api/sessions/ssh-proxy/status` | SSH proxy health and status |
 | `GET` | `/api/sessions/db-tunnel` | List active DB tunnels |
 | `POST` | `/api/sessions/db-tunnel/{tunnelId}/heartbeat` | Keep DB tunnel alive |
 | `DELETE` | `/api/sessions/db-tunnel/{tunnelId}` | Close a DB tunnel |
 
-Transport-specific heartbeats and end calls exist for SSH, RDP, VNC, and database sessions.
+Active-session list, count, and stream payloads surface the persisted `status` field directly. Session states now include `PAUSED` alongside `ACTIVE`, `IDLE`, and `CLOSED`. Tenant members with `canViewSessions` still see tenant-wide activity. Tenant members without `canViewSessions` now fall back to their own active sessions for `GET /api/sessions/active`, `GET /api/sessions/count`, and `GET /api/sessions/active/stream` instead of being hard-blocked. `GET /api/sessions/console` is the broader unified console feed: tenant-wide viewers get tenant-scoped rows, own-scope members are limited to their own active rows, and every row includes recording summary metadata (`exists`, `id`, `status`, `format`, `completedAt`, `fileSize`, `duration`) keyed by session id. `POST /api/sessions/ssh/{sessionId}/observe` returns a short-lived read-only observer grant for the existing `/ws/terminal` runtime instead of starting a second SSH connection. `POST /api/sessions/{rdp|vnc}/{sessionId}/observe` returns short-lived read-only desktop observer grants that join the existing Guacamole connection instead of opening a second remote desktop session. The stable client contract is the relative `webSocketPath`; browsers compose same-origin WebSocket URLs locally.
 
 ## 🗄 Database Query And Audit APIs
 
@@ -357,7 +365,7 @@ Operational domains under `routes_operations.go` include:
 | `/api/keystroke-policies` | Keystroke policy CRUD |
 | `/api/gateways` | Gateway CRUD, tunnel overview, templates, scaling, deploy, and tunnel controls |
 | `/api/rdgw/*` | RD Gateway config and RDP file generation |
-| `/api/recordings/*` | Recording list, metadata, stream, audit trail, and video export |
+| `/api/recordings/*` | Recording list, metadata, stream, audit trail, and video export with session-visibility RBAC |
 | `/api/ldap/*` | LDAP status, test, and sync |
 | `/api/notifications` | Notification list, preference management, and read state |
 | `/api/audit/*` | Tenant and connection audit search |
@@ -386,7 +394,7 @@ Notable gateway subpaths:
 | `GET` | `/api/audit/tenant` | Tenant-scoped audit logs |
 | `GET` | `/api/audit/connection/{connectionId}` | Connection-specific audit logs |
 | `GET` | `/api/audit/connection/{connectionId}/users` | Users who accessed a connection |
-| `GET` | `/api/audit/session/{sessionId}/recording` | Get session recording from audit |
+| `GET` | `/api/audit/session/{sessionId}/recording` | Get the recording linked to a visible session using the same tenant/own scope rules as `/api/recordings/*` |
 | `GET` | `/api/audit/gateways` | List gateways in audit context |
 | `GET` | `/api/audit/countries` | List countries in audit data |
 | `GET` | `/api/audit/tenant/gateways` | Tenant-scoped gateway audit |
@@ -414,6 +422,8 @@ Notable gateway subpaths:
 | `PUT` | `/api/tabs` | Sync tab state |
 | `DELETE` | `/api/tabs` | Clear tab state |
 
+Saved tab entries are tab-instance scoped. The `GET`/`PUT` payload uses `{ id, connectionId, sortOrder, isActive }`, which lets the client restore multiple simultaneous tabs for the same connection without collapsing them together.
+
 ## 📡 Live Streams
 
 Server-sent event endpoints in `routes_live.go`:
@@ -434,16 +444,17 @@ In addition to the REST API, Arsenale exposes real-time WebSocket endpoints for 
 
 ### SSH Terminal WebSocket
 
-The terminal broker exposes a WebSocket endpoint at `/ws/terminal` (port 8090 in dev). The protocol uses binary frames:
+The terminal broker exposes a WebSocket endpoint at `/ws/terminal` (port 8090 in dev). The protocol uses JSON text frames and supports one control client plus multiple live read-only observers on the same SSH runtime:
 
 | Event | Direction | Purpose |
 |-------|-----------|---------|
-| `input` | Client → Server | Terminal keystrokes |
-| `output` | Server → Client | Terminal output data |
-| `resize` | Client → Server | Terminal dimensions change |
-| `ping` | Client → Server | Keep terminal session alive |
+| `input` | Client → Server | Terminal keystrokes from the controlling SSH client only |
+| `data` | Server → Client | Terminal output data fan-out to the owner and any observers |
+| `resize` | Client → Server | Terminal dimensions change from the controlling SSH client only |
+| `ping` | Client → Server | Keep terminal session alive or keep the observer socket open |
+| `close` | Client → Server | Close the controlling terminal session, or disconnect one observer socket without ending the shared SSH runtime |
 
-SSH file browsing is no longer multiplexed over `/ws/terminal`. The browser uses authenticated REST endpoints under `/api/files/ssh/*` for remote listing and staged upload/download, while `/ws/terminal` carries terminal I/O only.
+Observer-mode grants receive the same `ready`, `data`, `error`, and `closed` events as the controlling client, but `input` and `resize` messages are rejected with `READ_ONLY` and do not touch SSH stdin or the PTY. SSH file browsing is no longer multiplexed over `/ws/terminal`. The browser uses authenticated REST endpoints under `/api/files/ssh/*` for remote listing and staged upload/download, while `/ws/terminal` carries terminal I/O only.
 
 ### Desktop WebSocket (Guacamole)
 

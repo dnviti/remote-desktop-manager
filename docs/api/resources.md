@@ -27,6 +27,8 @@ All endpoints require authentication.
 | `PUT` | `/api/tabs` | Sync tab state to server |
 | `DELETE` | `/api/tabs` | Clear all persisted tabs |
 
+Tabs are stored per tab instance, not per connection. Each persisted entry contains `id`, `connectionId`, `sortOrder`, and `isActive` so multiple tabs for the same connection can be restored independently.
+
 <!-- manual-start -->
 <!-- manual-end -->
 

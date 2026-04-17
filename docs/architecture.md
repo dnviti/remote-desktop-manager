@@ -140,10 +140,12 @@ flowchart TD
     API --> Files
 ```
 
-Remote file transfer now has two distinct paths:
+Remote file transfer now uses a managed temporary sandbox instead of raw remote filesystem browsing:
 
-- RDP shared-drive content is staged in object storage, then materialized into the per-user, per-connection Guacamole drive cache under `DRIVE_BASE_PATH`.
-- SSH file browsing and upload/download are handled directly by `control-plane-api` over REST using the same staged object store. `terminal-broker` carries terminal I/O only and no longer owns SFTP transfer events.
+- SSH file browsing and upload/download operate only on sandbox-relative paths inside `workspace/current/`.
+- Retained uploads, when enabled, live under `history/uploads/` and surface through a separate history view.
+- RDP shared-drive content mirrors the same `workspace/current/` sandbox, then materializes into the per-user, per-connection Guacamole drive cache under `DRIVE_BASE_PATH`.
+- `terminal-broker` carries terminal I/O only and no longer owns SSH file-transfer events.
 
 ## 🧩 Runtime Capability Model
 
@@ -350,7 +352,7 @@ The bootstrap flow also ensures tenant vault state, tenant SSH key pairs, an orc
 |-----------|---------|
 | PostgreSQL | Durable truth for users, tenants, connections, sessions, policies, audit, and memory metadata |
 | Redis | Coordination, rate limits, grants, leases, and stream fan-out |
-| `arsenale_drive` volume | Browser file transfer staging |
+| `arsenale_drive` volume | Managed transfer sandbox workspace staging |
 | `arsenale_recordings` volume | Session recordings and exported artifacts |
 | S3 / object storage | Recordings, exported artifacts, and agent outputs |
 | Podman secrets | Runtime delivery for JWT, database URL, guacamole secret, encryption key, and provider credentials |

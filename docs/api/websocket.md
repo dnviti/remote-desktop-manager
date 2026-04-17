@@ -5,15 +5,16 @@
 
 ## SSH Terminal WebSocket (`/ws/terminal`)
 
-Connected via a plain WebSocket at `/ws/terminal`. Authentication is handled with the short-lived terminal session token in the query string.
+Connected via a plain WebSocket at `/ws/terminal`. Authentication is handled with the short-lived terminal session token in the query string. A normal SSH grant creates the controlling runtime; an observer grant attaches a second read-only client to that same runtime.
 
 **Client -> Server Events:**
 
 | Event | Data | Description |
 |-------|------|-------------|
-| `input` | `{ type: "input", data }` | Terminal input (keystrokes) |
-| `resize` | `{ type: "resize", cols, rows }` | Terminal resize |
+| `input` | `{ type: "input", data }` | Terminal input (keystrokes) for the controlling SSH client only |
+| `resize` | `{ type: "resize", cols, rows }` | Terminal resize for the controlling SSH client only |
 | `ping` | `{ type: "ping" }` | Keepalive |
+| `close` | `{ type: "close" }` | Close the controlling terminal session, or disconnect one observer socket without ending the shared SSH runtime |
 
 **Server -> Client Events:**
 
@@ -25,7 +26,7 @@ Connected via a plain WebSocket at `/ws/terminal`. Authentication is handled wit
 | `closed` | `{ type: "closed" }` | Session ended |
 | `error` | `{ type: "error", code?, message }` | Connection or session error |
 
-SSH file browsing is not part of the terminal WebSocket protocol anymore. The SPA calls `/api/files/ssh/list`, `/api/files/ssh/mkdir`, `/api/files/ssh/delete`, `/api/files/ssh/rename`, `/api/files/ssh/upload`, and `/api/files/ssh/download` over REST, and those payload transfers are staged through shared object storage.
+Observer clients receive the same `ready`, `data`, `error`, and `closed` events as the controlling client, but `input` and `resize` messages return a `READ_ONLY` error and do not reach SSH stdin or PTY resize handling. SSH file browsing is not part of the terminal WebSocket protocol anymore. The SPA calls `/api/files/ssh/list`, `/api/files/ssh/mkdir`, `/api/files/ssh/delete`, `/api/files/ssh/rename`, `/api/files/ssh/upload`, and `/api/files/ssh/download` over REST, and those payload transfers are staged through shared object storage.
 
 ## Socket.IO — Notifications (`/notifications`)
 

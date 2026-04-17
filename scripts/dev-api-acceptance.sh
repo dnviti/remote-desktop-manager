@@ -4260,7 +4260,7 @@ printf '%s' "${export_json}" \
 
 import_connection_name="Acceptance Import $(date +%s)"
 import_payload_file="$(mktemp)"
-printf '%s' "{\"version\":\"1.0\",\"connections\":[{\"name\":\"${import_connection_name}\",\"type\":\"SSH\",\"host\":\"import-target\",\"port\":22,\"username\":\"import-user\",\"password\":\"ImportPass91Qx!\",\"description\":\"go-native-import\"}]}" > "${import_payload_file}"
+printf '%s' "{\"version\":\"1.0\",\"connections\":[{\"name\":\"${import_connection_name}\",\"type\":\"SSH\",\"host\":\"import-target-${acceptance_suffix}\",\"port\":22,\"username\":\"import-user\",\"password\":\"ImportPass91Qx!\",\"description\":\"go-native-import\"}]}" > "${import_payload_file}"
 import_result_json="$(curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
@@ -4901,8 +4901,8 @@ rdp_file_content="$(curl --silent --show-error --fail \
   --cacert "${ca_cert}" \
   -H "authorization: Bearer ${access_token}" \
   "${api_base}/rdgw/connections/${rdp_connection_id}/rdpfile")"
-printf '%s' "${rdp_file_content}" | rg 'gatewayhostname:s:rdgw\.acceptance\.local:443' >/dev/null
-printf '%s' "${rdp_file_content}" | rg 'full address:s:rdp\.invalid:3389' >/dev/null
+[[ "${rdp_file_content}" == *"gatewayhostname:s:rdgw.acceptance.local:443"* ]]
+[[ "${rdp_file_content}" == *"full address:s:rdp.invalid:3389"* ]]
 
 curl --silent --show-error --fail \
   --cacert "${ca_cert}" \

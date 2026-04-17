@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-04-12T21:25:17Z",
+  "generated_at": "2026-04-17T11:31:45Z",
   "visual_richness": "tiny",
   "sections": [
     {
@@ -9,7 +9,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "796885aaa68277f62eedc55d3e964ed4e690eb83a3b21286579c72098cc3f5d1"
+          "hash": "a4a292d74a438e452b0e9e3619fa23b1c94d7f37a2b6a7b463ba5840b61ad3db"
         },
         {
           "path": "AGENT.md",
@@ -40,7 +40,7 @@
           "hash": "f9464c64678552cd9263255039f88cd64baf01f296cbdf1c6bada8541ee0bfa3"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.009277Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "architecture",
@@ -147,7 +147,7 @@
           "hash": "5fb85c43832361399b37a14d944667e594c7faef3bf760bc2bad9bbc52980cac"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.011297Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "getting-started",
@@ -155,7 +155,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "796885aaa68277f62eedc55d3e964ed4e690eb83a3b21286579c72098cc3f5d1"
+          "hash": "a4a292d74a438e452b0e9e3619fa23b1c94d7f37a2b6a7b463ba5840b61ad3db"
         },
         {
           "path": "AGENT.md",
@@ -186,7 +186,7 @@
           "hash": "e40cfa86ecd50eca096d2d1202f960279118c713cf1fca6d13a3f94554c07abe"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.012630Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "configuration",
@@ -225,7 +225,7 @@
           "hash": "0ff8e62b9ac8ec766e66c685a2663da33c8d522a24a451dc4b7ff4d35281870c"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.013335Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "api-reference",
@@ -316,7 +316,7 @@
           "hash": "69f2149956f5e0b4132ead558a5f7cfed6811190f30ac5727c17ea11427933f8"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.014656Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "deployment",
@@ -367,7 +367,7 @@
           "hash": "cedf1f697ed32f891ba360e1a465865b131c3bc205e0fe3d4ca1c6bacfcd3910"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.015343Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "development",
@@ -438,7 +438,7 @@
           "hash": "f9464c64678552cd9263255039f88cd64baf01f296cbdf1c6bada8541ee0bfa3"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.017317Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "troubleshooting",
@@ -485,7 +485,7 @@
           "hash": "5fb85c43832361399b37a14d944667e594c7faef3bf760bc2bad9bbc52980cac"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.019032Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     },
     {
       "name": "llm-context",
@@ -493,7 +493,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "796885aaa68277f62eedc55d3e964ed4e690eb83a3b21286579c72098cc3f5d1"
+          "hash": "a4a292d74a438e452b0e9e3619fa23b1c94d7f37a2b6a7b463ba5840b61ad3db"
         },
         {
           "path": "AGENT.md",
@@ -560,7 +560,7 @@
           "hash": "0c7178dfe83b8cce70ae7a23cba9e5f8ec5f6fe797882f64a88da296ef4883e4"
         }
       ],
-      "generated_at": "2026-04-03T14:49:59.020280Z"
+      "generated_at": "2026-04-15T18:52:30Z"
     }
   ]
 }

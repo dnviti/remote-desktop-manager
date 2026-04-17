@@ -135,6 +135,8 @@ Production and local containers prefer secret files over inline env values. Comm
 | `LOG_TIMESTAMPS` | `true` | Include ISO-8601 timestamps |
 | `LOG_HTTP_REQUESTS` | `false` | Log HTTP request details |
 
+For file uploads, the containerized nginx edge is expected to allow slightly more than the backend file-size ceiling so oversized uploads reach the Go service and return a structured JSON error instead of a raw proxy-generated `413 Request Entity Too Large` page.
+
 ## 🗺 Map Assets Runtime Variables
 
 | Variable | Typical value | Why it matters |
@@ -211,6 +213,15 @@ The SPA starts fail-open with enabled defaults in `client/src/store/featureFlags
 | `ORCHESTRATOR_DNS_SERVERS` | Comma-separated upstream DNS servers for managed containers |
 | `ORCHESTRATOR_RESOLV_CONF_PATH` | Resolver file mounted into managed workloads |
 | `ORCHESTRATOR_GUACD_TLS_CERT` / `ORCHESTRATOR_GUACD_TLS_KEY` | TLS assets for managed `guacd` |
+
+## 📦 File Upload Limits
+
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `FILE_UPLOAD_MAX_SIZE` | `104857600` (`100 MiB`) | Backend file-size ceiling for RDP and SSH managed uploads before multipart overhead |
+| `USER_DRIVE_QUOTA` | `104857600` (`100 MiB`) | Per-user staged/shared-drive quota enforced after upload parsing |
+
+The backend reserves an additional `1 MiB` multipart overhead allowance when parsing uploads. In installer-rendered nginx configs, `client_max_body_size` should stay above that combined threshold; the current template uses `128m` so the client receives the backend's friendly JSON error when a file is too large.
 
 ## 🧪 Development Bootstrap Variables
 

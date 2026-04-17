@@ -2,7 +2,7 @@
 title: Development
 description: Local workflow, quality gates, testing strategy, feature alignment, and contribution conventions for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-08T16:00:00Z
+generated-at: 2026-04-15T05:30:00Z
 source-files:
   - AGENT.md
   - CONTRIBUTING.md
@@ -92,6 +92,7 @@ Supporting scripts:
 | `scripts/go-build-all.sh` | Aggregate Go build runner |
 | `scripts/security-scan.sh` | npm audit, ESLint security rules, Trivy filesystem scan, optional image scans |
 | `scripts/dev-api-acceptance.sh` | Full API and runtime acceptance against the dev stack |
+| `scripts/dev-managed-file-smoke.sh` | CLI-first managed SSH and RDP sandbox smoke path with discovery, history checks, deny checks, and audit verification |
 | `scripts/db-migrate.sh` | Runtime-aware migration helper with compose overrides |
 
 ## 🧪 Testing Surfaces
@@ -139,6 +140,8 @@ The backend includes focused test files for critical subsystems:
 - recordings,
 - audit,
 - database sessions and policies.
+
+`scripts/dev-managed-file-smoke.sh` is the focused managed-file acceptance path. It uses `arsenale-cli` against the real dev stack to discover usable SSH and RDP connections, verify the managed sandbox banner, exercise sandbox-relative SSH and RDP file flows, confirm cleanup-after-success and retain-history behavior, run a real `file history list/download` proof against the retained-history connection, reject absolute-path attempts, and read back `FILE_*` audit entries.
 
 ## 🧩 Capability Alignment Rule
 
@@ -218,7 +221,7 @@ Notable custom hooks:
 | `useAuth` | Authentication state and refresh |
 | `useAutoReconnect` | Auto-reconnect on disconnect |
 | `useGatewayMonitor` | Gateway health polling |
-| `useSftpTransfers` | SFTP file operation tracking |
+| `useSftpTransfers` | Managed SSH file-browser tracking |
 | `useDlpBrowserHardening` | DLP policy enforcement in browser |
 | `useVaultStatusStream` | Real-time vault status updates |
 | `useDesktopNotifications` | Web Notifications API for push alerts |

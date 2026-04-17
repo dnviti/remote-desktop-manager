@@ -13,7 +13,7 @@
 | gatewayId | String? | FK -> Gateway (set null) | Routing gateway |
 | instanceId | String? | FK -> ManagedGatewayInstance (set null) | Specific container instance |
 | protocol | SessionProtocol | Enum | SSH, RDP, or VNC |
-| status | SessionStatus | Default: ACTIVE | ACTIVE, IDLE, or CLOSED |
+| status | SessionStatus | Default: ACTIVE | ACTIVE, IDLE, PAUSED, or CLOSED |
 | socketId | String? | Optional | Socket.IO socket ID (SSH) |
 | guacTokenHash | String? | Optional | Guacamole token hash (RDP/VNC) |
 | ipAddress | String? | Optional | Client IP address |

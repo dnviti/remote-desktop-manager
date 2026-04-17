@@ -10,7 +10,7 @@ from pathlib import Path
 import jsonschema
 import yaml
 
-from deployment.ansible.scripts import compose_to_k8s, install_crypto, install_model, run_compose_service
+from deployment.ansible.scripts import compose_to_k8s, install_crypto, install_failure, install_model, run_compose_service
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -837,6 +837,82 @@ class RunComposeServiceTest(unittest.TestCase):
             )
             network_index = command.index("--network") + 1
             self.assertEqual(command[network_index], "arsenale-net-db")
+
+
+class InstallFailureHelperTest(unittest.TestCase):
+    def test_build_failure_message_surfaces_nested_async_loop_context(self) -> None:
+        payload = {
+            "task": "Apply compose backend",
+            "result": {
+                "failed": True,
+                "msg": "one or more items failed",
+                "results": [
+                    {"item": "build", "changed": True, "rc": 0, "stdout": "built image"},
+                    {
+                        "item": "healthcheck",
+                        "results": [
+                            {
+                                "item": "postgres",
+                                "failed": True,
+                                "rc": 1,
+                                "stderr_lines": ["postgres failed to start", "timeout waiting for port"],
+                                "stdout_lines": ["starting postgres"],
+                            }
+                        ],
+                    },
+                ],
+            },
+        }
+
+        message = install_failure.build_failure_message(payload)
+
+        self.assertTrue(message.startswith("installer apply failed"))
+        self.assertIn("task: Apply compose backend", message)
+        self.assertIn("item: healthcheck > postgres", message)
+        self.assertIn("rc: 1", message)
+        self.assertNotIn("stderr:", message)
+        self.assertNotIn("stdout:", message)
+        self.assertNotIn("message: one or more items failed", message)
+
+        detail = install_failure.build_detailed_failure_message(payload)
+        self.assertIn("stderr: postgres failed to start", detail)
+        self.assertIn("timeout waiting for port", detail)
+        self.assertIn("stdout: starting postgres", detail)
+        self.assertNotIn("message: one or more items failed", detail)
+
+    def test_build_failure_message_surfaces_direct_command_failure(self) -> None:
+        payload = {
+            "task": "Apply compose backend",
+            "result": {
+                "failed": True,
+                "msg": "non-zero return code",
+                "rc": 1,
+                "stdout": "starting containers",
+                "stderr": "podman compose up failed: permission denied",
+            },
+        }
+
+        message = install_failure.build_failure_message(payload)
+
+        self.assertTrue(message.startswith("installer apply failed"))
+        self.assertIn("task: Apply compose backend", message)
+        self.assertIn("rc: 1", message)
+        self.assertNotIn("stderr:", message)
+        self.assertNotIn("stdout:", message)
+        self.assertNotIn("message: non-zero return code", message)
+
+        detail = install_failure.build_detailed_failure_message(payload)
+        self.assertIn("stderr: podman compose up failed: permission denied", detail)
+        self.assertIn("stdout: starting containers", detail)
+        self.assertNotIn("message: non-zero return code", detail)
+
+    def test_build_failure_message_falls_back_without_actionable_details(self) -> None:
+        self.assertEqual(install_failure.build_failure_message({}), "")
+        self.assertEqual(
+            install_failure.build_failure_message({"result": {"msg": "non-zero return code"}}),
+            "",
+        )
+        self.assertEqual(install_failure.build_detailed_failure_message({}), "")
 
 
 if __name__ == "__main__":

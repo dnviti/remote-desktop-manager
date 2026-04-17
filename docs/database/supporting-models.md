@@ -78,7 +78,7 @@
 
 ## OpenTab, TenantMember, TenantVaultMember, VaultFolder, AppConfig
 
-- **OpenTab**: userId + connectionId (unique), sortOrder, isActive. Index: `[userId]`
+- **OpenTab**: per-user persisted tab instances keyed by `id`, with `connectionId`, sortOrder, and isActive. Same-connection duplicates are allowed. Index: `[userId]`
 - **TenantMember**: tenantId + userId (unique), role (TenantRole), isActive, `expiresAt` (optional expiry). Indexes: `[userId, isActive]`, `[tenantId, isActive]`, `[expiresAt]`
 - **TenantVaultMember**: tenantId + userId (unique), encryptedTenantVaultKey + IV + tag
 - **VaultFolder**: self-referential tree, scoped to personal/team/tenant. Indexes: `[userId, scope]`, `[teamId]`, `[tenantId]`

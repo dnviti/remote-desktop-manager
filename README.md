@@ -9,7 +9,7 @@ A web-based application for managing and accessing remote SSH and RDP connection
 
 ## Features
 
-- **SSH Terminal** — Interactive terminal sessions powered by XTerm.js and Go WebSocket brokers, with integrated SFTP file browser
+- **SSH Terminal** — Interactive terminal sessions powered by XTerm.js and Go WebSocket brokers, with sandbox-only managed file transfer
 - **RDP Viewer** — Remote desktop connections via Apache Guacamole with clipboard sync and drive redirection
 - **VNC Viewer** — VNC sessions via the Guacamole protocol
 - **Encrypted Vault** — All credentials encrypted at rest with AES-256-GCM; master key derived from your password via Argon2id

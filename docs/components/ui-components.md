@@ -1,6 +1,6 @@
 # UI Components
 
-> Auto-generated on 2026-03-15 by /docs create components.
+> Auto-generated on 2026-04-15 by /docs create components.
 > Source of truth is the codebase. Run /docs update components after code changes.
 
 ## Components
@@ -32,16 +32,16 @@
 
 | Component | Purpose |
 |-----------|---------|
-| `SshTerminal` | XTerm.js-based SSH terminal with Socket.IO connection, resize handling, search addon, and SFTP browser integration |
-| `SftpBrowser` | In-session SFTP file browser panel (navigate, upload, download, delete, rename, mkdir) |
-| `SftpTransferQueue` | SFTP transfer progress queue showing active/completed/failed file transfers |
+| `SshTerminal` | XTerm.js-based SSH terminal with Socket.IO connection, resize handling, search addon, and managed SSH file browser integration |
+| `SftpBrowser` | Managed SSH sandbox browser panel for sandbox-relative upload, download, delete, rename, and mkdir flows with separate retained-history handling |
+| `SftpTransferQueue` | Managed SSH file transfer queue showing active/completed/failed file transfers |
 
 ### RDP (`client/src/components/RDP/`)
 
 | Component | Purpose |
 |-----------|---------|
 | `RdpViewer` | Guacamole-based RDP viewer with clipboard sync, dynamic scaling, toolbar, and drive redirection |
-| `FileBrowser` | In-session RDP file browser for the virtual drive (upload, download, delete, create folder) |
+| `FileBrowser` | Managed RDP shared-drive browser for staged object storage flows (upload, download, delete, create folder) |
 
 ### VNC (`client/src/components/VNC/`)
 
@@ -176,7 +176,7 @@ All full-screen dialogs use the MUI `Dialog` component with `fullScreen` prop an
 |-----------|---------|
 | `DockedToolbar` | Dockable, draggable action toolbar over active RDP/VNC sessions with sub-action popovers (clipboard, screenshot, keys, fullscreen, disconnect) |
 | `ReconnectOverlay` | Reconnection overlay for dropped sessions — shows reconnecting/unstable/failed states with retry |
-| `SessionContextMenu` | Right-click context menu for active sessions (copy, paste, screenshot, send keys, fullscreen, file browser, disconnect) |
+| `SessionContextMenu` | Right-click context menu for active sessions (copy, paste, screenshot, send keys, fullscreen, managed file browser, disconnect) |
 | `IdentityVerification` | Reusable identity verification flow (email OTP, TOTP, SMS, WebAuthn, password) for sensitive operations |
 | `SlideUp` | Shared Slide-up transition component used by all full-screen dialogs |
 | `PasswordStrengthMeter` | Password strength meter using zxcvbn with score callback and visual feedback |

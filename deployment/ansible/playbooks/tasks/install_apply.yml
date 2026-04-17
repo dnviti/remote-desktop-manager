@@ -24,6 +24,7 @@
     - { src: "{{ playbook_dir }}/../scripts/compose_to_k8s.py", dest: "{{ installer_scripts_dir }}/compose_to_k8s.py" }
     - { src: "{{ playbook_dir }}/../scripts/run_compose_service.py", dest: "{{ installer_scripts_dir }}/run_compose_service.py" }
     - { src: "{{ playbook_dir }}/../scripts/compose_ps_status.py", dest: "{{ installer_scripts_dir }}/compose_ps_status.py" }
+    - { src: "{{ playbook_dir }}/../scripts/install_failure.py", dest: "{{ installer_scripts_dir }}/install_failure.py" }
 
 - name: Copy installer catalog files
   copy:
@@ -581,6 +582,56 @@
       set_fact:
         installer_completed_at: "{{ now(utc=true, fmt='%Y-%m-%dT%H:%M:%SZ') }}"
 
+    - name: Summarize installer failure for operator
+      command:
+        argv:
+          - python3
+          - "{{ installer_scripts_dir }}/install_failure.py"
+          - --stdin
+        stdin: "{{ {'task': ansible_failed_task.name | default('installer apply failed'), 'result': ansible_failed_result} | to_json }}"
+      register: installer_failure_summary
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Summarize installer failure for encrypted log
+      command:
+        argv:
+          - python3
+          - "{{ installer_scripts_dir }}/install_failure.py"
+          - --detail
+          - --stdin
+        stdin: "{{ {'task': ansible_failed_task.name | default('installer apply failed'), 'result': ansible_failed_result} | to_json }}"
+      register: installer_failure_detail
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: Build installer failure messages
+      set_fact:
+        installer_failure_message: >-
+          {{
+            (
+              (installer_failure_summary.rc | default(1) | int == 0)
+              and (installer_failure_summary.stdout | default('') | trim)
+            )
+            | ternary(
+                installer_failure_summary.stdout | default('') | trim,
+                ansible_failed_result.msg | default('installer apply failed')
+              )
+          }}
+        installer_failure_log_message: >-
+          {{
+            (
+              (installer_failure_detail.rc | default(1) | int == 0)
+              and (installer_failure_detail.stdout | default('') | trim)
+            )
+            | ternary(
+                installer_failure_detail.stdout | default('') | trim,
+                ansible_failed_result.msg | default(ansible_failed_result.stderr | default('installer apply failed'))
+              )
+          }}
+
     - name: Build failure installer status payload
       set_fact:
         installer_final_status: >-
@@ -615,7 +666,7 @@
               backend: "{{ installer_backend_value }}"
               mode: "{{ installer_profile.mode }}"
               result: failure
-              error: "{{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default('installer apply failed')) }}"
+              error: "{{ installer_failure_log_message }}"
 
     - name: Persist encrypted failure installer artifacts
       include_role:
@@ -629,7 +680,7 @@
 
     - name: Surface installer failure
       fail:
-        msg: "{{ ansible_failed_result.msg | default(ansible_failed_result.stderr | default('installer apply failed')) }}"
+        msg: "{{ installer_failure_message }}"
   always:
     - name: Remove transient compose env file
       file:

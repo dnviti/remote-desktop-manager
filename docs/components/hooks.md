@@ -18,7 +18,7 @@ Creates and manages a Socket.IO connection to a given namespace with JWT auth.
 
 ### `useSftpTransfers` (`client/src/hooks/useSftpTransfers.ts`)
 
-Manages SFTP file transfer state — tracks uploads/downloads, progress events, chunked upload/download, cancel, clear.
+Manages managed SSH file transfer state — tracks uploads/downloads, progress events, chunked transfer, cancel, clear.
 
 **Returns**: `{ transfers: TransferItem[], uploadFile, downloadFile, cancelTransfer, clearCompleted }`
 

@@ -2,7 +2,7 @@
 title: LLM Context
 description: Consolidated single-file context for LLMs, bots, and operators working on Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-11T11:45:00Z
+generated-at: 2026-04-17T18:30:00Z
 source-files:
   - README.md
   - AGENT.md
@@ -138,12 +138,12 @@ Highest-value public prefixes:
 - `/api/secrets` — keychain CRUD, versioning, sharing, breach check, rotation
 - `/api/vault` — personal vault lock/unlock, passkey-first re-unlock, recovery
 - `/api/connections` — connection CRUD, sharing, import/export, favorites
-- `/api/files` — connection-scoped RDP shared-drive staging
-- `/api/files/ssh/*` — SSH file browser list/mkdir/delete/rename/upload/download
-- `/api/sessions` — SSH, RDP, VNC, database, DB tunnel, heartbeat, terminate
+- `/api/files` — connection-scoped managed transfer sandbox for RDP workspace staging/cleanup plus the generic `/api/files/history` retained-upload surface
+- `/api/files/ssh/*` — SSH sandbox workspace list/mkdir/delete/rename/upload/download, plus `/api/files/ssh/history/*` retained-upload actions, all sandbox-relative
+- `/api/sessions` — SSH, SSH observe grants, RDP, VNC, database, DB tunnel, heartbeat, pause, resume, terminate, active-session visibility fallback, and unified session-console rows with recording summaries
 - `/api/gateways` — gateway CRUD, derived operational status, templates, scaling, tunnel controls, instances
 - `/api/db-audit` — query audit logs, firewall rules, masking policies, rate limits
-- `/api/recordings` — recording list, stream, analyze, video export, audit trail
+- `/api/recordings` — recording list, stream, analyze, video export, and audit trail aligned to the same tenant/own session-visibility rules used by `/api/sessions/console`
 - `/api/tenants` — tenant CRUD, users, invite, permissions, IP allowlist, MFA stats
 - `/api/admin` — email status, app config, system settings, auth providers
 - `/api/ai` — named AI backend config, per-feature defaults, natural-language-to-SQL generation, query optimization
@@ -153,7 +153,7 @@ Highest-value public prefixes:
 - `/api/keystroke-policies` — keystroke policy CRUD
 - `/api/checkouts` — approval-style credential checkout flow
 - `/api/teams` — team CRUD and membership management
-- `/api/tabs` — UI tab state sync
+- `/api/tabs` — UI tab state sync with tab-instance ids for restoreable same-connection duplicates
 
 ## 🗄 Database Execution Model
 
@@ -262,7 +262,7 @@ For code-only iteration, `make dev client`, `make dev gateways`, and `make dev c
 ## 📁 File Transfer Model
 
 - RDP shared-drive files are keyed by tenant, user, and connection in the shared object store, then materialized into the Guacamole drive cache under `DRIVE_BASE_PATH`.
-- SSH file browsing does not use terminal WebSocket SFTP events. The SPA calls `/api/files/ssh/*` over REST and the control plane executes remote SFTP operations directly, staging upload/download payloads in the object store first.
+- SSH file browsing does not use terminal WebSocket file-transfer events. The SPA calls `/api/files/ssh/*` over REST for workspace actions and `/api/files/ssh/history/*` for retained-upload actions, while the generic CLI and RDP history surface uses `/api/files/history`. The control plane stages upload and download payloads through shared object storage first, SSH session responses expose a managed sandbox browser only, absolute paths and traversal are rejected before transfer, and the workspace browser never exposes raw remote filesystem browsing.
 - Threat scanning is pluggable through `FILE_THREAT_SCANNER_MODE`. The builtin scanner blocks the EICAR signature and is applied before staged payloads are delivered to the target or returned to the browser.
 - The control plane requires `SHARED_FILES_S3_*` env vars for staged RDP and SSH file payloads. Development installs provision a MinIO-compatible endpoint by default; production installs must point these values at external S3-compatible storage.
 - **SQL firewall**: Regex-based query blocking in db-proxy
@@ -276,7 +276,7 @@ PostgreSQL 16 with versioned SQL migrations in `backend/migrations/`. Key entity
 
 ## 🌐 WebSocket Protocols
 
-- SSH terminal: `/ws/terminal` (port 8090) — binary frames for input, output, resize, SFTP operations
+- SSH terminal: `/ws/terminal` (port 8090) — JSON text frames for `ready`/`data`/`error`/`closed`; one controlling SSH client can fan out live read-only output to observer sockets on the same runtime
 - Desktop (RDP/VNC): `/guacamole` (port 8091) — Guacamole wire protocol
 - SSE streams: gateway status, notifications, vault status, active sessions, audit, DB audit
 

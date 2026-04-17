@@ -12,6 +12,7 @@ from jinja2 import Environment, FileSystemLoader
 ROOT = Path(__file__).resolve().parents[3]
 COMPOSE_TEMPLATE = ROOT / "deployment" / "ansible" / "roles" / "deploy" / "templates" / "compose.yml.j2"
 INSTALL_PLAYBOOK = ROOT / "deployment" / "ansible" / "playbooks" / "install.yml"
+INSTALL_APPLY_TASKS = ROOT / "deployment" / "ansible" / "playbooks" / "tasks" / "install_apply.yml"
 DEPLOY_PLAYBOOK = ROOT / "deployment" / "ansible" / "playbooks" / "deploy.yml"
 DEV_REFRESH_PLAYBOOK = ROOT / "deployment" / "ansible" / "playbooks" / "dev_refresh.yml"
 DOCKER_BUILD_WORKFLOW = ROOT / ".github" / "workflows" / "docker-build.yml"
@@ -267,6 +268,51 @@ class StandaloneInstallerConfigTest(unittest.TestCase):
 
         self.assertIn('_build: "{{ arsenale_build_images | default(false) }}"', install_text)
         self.assertIn('_build: "{{ true if _is_dev | bool else (arsenale_build_images | default(false)) }}"', deploy_text)
+
+    def test_install_playbook_failure_path_uses_one_summary_variable(self) -> None:
+        install_text = INSTALL_APPLY_TASKS.read_text(encoding="utf-8")
+        rescue_match = re.search(r"rescue:\n(?P<body>.*?)(?:\n  always:|\Z)", install_text, re.S)
+        self.assertIsNotNone(rescue_match)
+        rescue_block = rescue_match.group("body")
+
+        self.assertIn(
+            '{ src: "{{ playbook_dir }}/../scripts/install_failure.py", dest: "{{ installer_scripts_dir }}/install_failure.py" }',
+            install_text,
+        )
+        self.assertIn("name: Summarize installer failure for operator", rescue_block)
+        self.assertIn("name: Summarize installer failure for encrypted log", rescue_block)
+        self.assertIn("python3", rescue_block)
+        self.assertIn("{{ installer_scripts_dir }}/install_failure.py", rescue_block)
+        self.assertIn("--detail", rescue_block)
+        self.assertIn("changed_when: false", rescue_block)
+        self.assertIn("failed_when: false", rescue_block)
+        self.assertIn("no_log: true", rescue_block)
+        self.assertIn("installer_failure_message", rescue_block)
+        self.assertIn("installer_failure_log_message", rescue_block)
+        self.assertEqual(rescue_block.count("installer_failure_message:"), 1)
+        self.assertEqual(rescue_block.count("installer_failure_log_message:"), 1)
+        message_section = rescue_block[
+            rescue_block.index("installer_failure_message: >-") : rescue_block.index("installer_failure_log_message: >-")
+        ]
+        detail_section = rescue_block[rescue_block.index("installer_failure_log_message: >-") :]
+        self.assertIn("ansible_failed_result.msg | default('installer apply failed')", message_section)
+        self.assertNotIn("ansible_failed_result.stderr", message_section)
+        self.assertIn(
+            "ansible_failed_result.msg | default(ansible_failed_result.stderr | default('installer apply failed'))",
+            detail_section,
+        )
+        self.assertIn('error: "{{ installer_failure_log_message }}"', rescue_block)
+        self.assertIn('msg: "{{ installer_failure_message }}"', rescue_block)
+        self.assertNotIn('error: "{{ installer_failure_message }}"', rescue_block)
+
+        failure_section = rescue_block[rescue_block.index("name: Persist encrypted failure installer artifacts"):] 
+        failure_section = failure_section[: failure_section.index("- name: Surface installer failure")]
+        failure_artifacts = failure_section.split("installer_write_artifacts:", 1)[1]
+        self.assertIn("profile:", failure_artifacts)
+        self.assertIn("status:", failure_artifacts)
+        self.assertIn("log:", failure_artifacts)
+        self.assertNotIn("state:", failure_artifacts)
+        self.assertNotIn("rendered:", failure_artifacts)
 
     def test_dev_state_defaults_to_external_home_while_building_from_repo(self) -> None:
         install_text = INSTALL_PLAYBOOK.read_text(encoding="utf-8")

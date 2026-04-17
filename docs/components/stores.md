@@ -37,11 +37,11 @@
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `tabs` | Tab[] | Open tabs (id, connection, active, credentials) |
+| `tabs` | Tab[] | Open tab instances (stable id, connection, active, optional credentials) |
 | `activeTabId` | string \| null | Currently active tab |
 | `recentTick` | number | Change counter for re-render triggers |
 
-**Actions**: `openTab`, `closeTab`, `setActiveTab`, `restoreTabs`, `clearAll`. Auto-syncs to server with debounce.
+**Actions**: `openTab`, `closeTab`, `setActiveTab`, `restoreTabs`, `clearAll`. Auto-syncs tab-instance-scoped state to the server with debounce; credential-override tabs stay local-only.
 
 ### `vaultStore` (`client/src/store/vaultStore.ts`)
 
