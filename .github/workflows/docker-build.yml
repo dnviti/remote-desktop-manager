@@ -202,9 +202,16 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Enforce main ancestry for semver tags
+      - name: Determine publish profile
+        id: publish_profile
         if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
-        run: git branch -r --contains "${GITHUB_SHA}" | grep -q 'origin/main'
+        run: |
+          set -euo pipefail
+          semver_allowed=false
+          if git branch -r --contains "${GITHUB_SHA}" | grep -qE '^[[:space:]]*origin/main$'; then
+            semver_allowed=true
+          fi
+          printf 'semver_allowed=%s\n' "$semver_allowed" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -223,12 +230,11 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service.name }}
           tags: |
-            type=ref,event=branch,enable=${{ github.ref == 'refs/heads/develop' }}
             type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/develop' }}
-            type=raw,value=stable,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/develop' }}
+            type=raw,value=stable,enable=${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}},enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.publish_profile.outputs.semver_allowed == 'true' }}
+            type=semver,pattern={{major}}.{{minor}},enable=${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && steps.publish_profile.outputs.semver_allowed == 'true' }}
 
       - name: Build image for scanning
         uses: docker/build-push-action@v7

@@ -2,7 +2,7 @@ name: Browser Extension
 
 on:
   push:
-    branches: [develop, staging, main]
+    branches: [develop, main]
     paths:
       - "extra-clients/browser-extensions/**"
       - ".github/workflows/browser-extension.yml"
@@ -12,7 +12,7 @@ on:
       - "eslint.config.js"
       - "eslint.config.mjs"
   pull_request:
-    branches: [develop, staging, main]
+    branches: [develop, main]
     paths:
       - "extra-clients/browser-extensions/**"
       - ".github/workflows/browser-extension.yml"
