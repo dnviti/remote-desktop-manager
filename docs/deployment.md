@@ -2,7 +2,7 @@
 title: Deployment
 description: Installer flow, container backends, TLS, demo fixtures, and CI/CD for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-11T11:45:00Z
+generated-at: 2026-04-17T17:56:02Z
 source-files:
   - Makefile
   - backend/Dockerfile
@@ -268,6 +268,8 @@ Notable facts from the workflow definitions:
 
 - backend verification includes `go vet` and `go test -race`,
 - gateway verification runs `go vet` and `go test -race` for the Go modules under `gateways/`,
+- docker-build publishes `:latest` from `develop`, `:stable` from `main`, and semver tags only for version tags whose commits are on `origin/main` ancestry,
+- gateways-build follows the same channel split for `develop`, `main`, and main-ancestry semver tags,
 - release artifacts currently center on the CLI, not full application bundles.
 
 ## 📦 Compose Project Helper

@@ -12,9 +12,9 @@ const (
 	localGuacdImage       = "localhost/arsenale_guacd:latest"
 	localDBProxyImage     = "localhost/arsenale_db-proxy:latest"
 	localDevDBProxyImage  = "localhost/arsenale_dev-tunnel-db-proxy:latest"
-	remoteSSHGatewayImage = "ghcr.io/dnviti/arsenale/ssh-gateway:latest"
+	remoteSSHGatewayImage = "ghcr.io/dnviti/arsenale/ssh-gateway:stable"
 	remoteGuacdImage      = "guacamole/guacd:1.6.0"
-	remoteDBProxyImage    = "ghcr.io/dnviti/arsenale/db-proxy:latest"
+	remoteDBProxyImage    = "ghcr.io/dnviti/arsenale/db-proxy:stable"
 )
 
 type managedContainerPortBinding struct {

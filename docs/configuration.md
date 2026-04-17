@@ -2,7 +2,7 @@
 title: Configuration
 description: Environment variables, installer inputs, secret delivery, and configuration precedence for Arsenale
 generated-by: claw-docs
-generated-at: 2026-04-04T21:15:00Z
+generated-at: 2026-04-17T17:56:02Z
 source-files:
   - .env.example
   - deployment/ansible/inventory/group_vars/all/vars.yml
@@ -122,7 +122,7 @@ Production and local containers prefer secret files over inline env values. Comm
 |----------|---------------|----------------|
 | `HOST` | `0.0.0.0` | Listen host for Go services via `app.Run` |
 | `PORT` | Service-specific | Listen port for each Go service |
-| `ARSENALE_VERSION` | `latest`, release tag, or local value | Reported by service meta endpoints |
+| `ARSENALE_VERSION` | `stable`, release tag, or local value | Reported by service meta endpoints |
 | `CLIENT_URL` | `https://localhost:3000` or installer public URL | Used for CORS, redirects, cookies, and links |
 | `DATABASE_URL` / `DATABASE_URL_FILE` | PostgreSQL DSN | Control-plane and service persistence |
 | `DATABASE_SSL_ROOT_CERT` | `/certs/postgres/ca.pem` | PostgreSQL TLS verification |

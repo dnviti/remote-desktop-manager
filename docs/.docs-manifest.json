@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-04-17T11:31:45Z",
+  "generated_at": "2026-04-17T18:16:03Z",
   "visual_richness": "tiny",
   "sections": [
     {
@@ -40,7 +40,7 @@
           "hash": "f9464c64678552cd9263255039f88cd64baf01f296cbdf1c6bada8541ee0bfa3"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T17:56:02Z"
     },
     {
       "name": "architecture",
@@ -68,7 +68,7 @@
         },
         {
           "path": "backend/cmd/control-plane-api/runtime.go",
-          "hash": "0a63aadb6b75b8ca273d8eb110e7ba6bb34be92211546fab3194604af8a9eca4"
+          "hash": "350d65bb1699e8ac51de13c1814d19979e96a653de8238ec09862ab3e0c97631"
         },
         {
           "path": "backend/cmd/control-plane-api/routes_public.go",
@@ -147,7 +147,7 @@
           "hash": "5fb85c43832361399b37a14d944667e594c7faef3bf760bc2bad9bbc52980cac"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T18:16:03Z"
     },
     {
       "name": "getting-started",
@@ -175,7 +175,7 @@
         },
         {
           "path": ".env.example",
-          "hash": "65ad728d7ce4e53d07a9ec2186b1181c098f0e34abc6bc75f1387d1d399c8e25"
+          "hash": "e052426753ad8693f306e06b342545750153ce9d2903d75bca3df282be742b93"
         },
         {
           "path": "scripts/db-migrate.sh",
@@ -186,7 +186,7 @@
           "hash": "e40cfa86ecd50eca096d2d1202f960279118c713cf1fca6d13a3f94554c07abe"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T18:16:03Z"
     },
     {
       "name": "configuration",
@@ -194,7 +194,7 @@
       "source_files": [
         {
           "path": ".env.example",
-          "hash": "65ad728d7ce4e53d07a9ec2186b1181c098f0e34abc6bc75f1387d1d399c8e25"
+          "hash": "e052426753ad8693f306e06b342545750153ce9d2903d75bca3df282be742b93"
         },
         {
           "path": "backend/internal/app/app.go",
@@ -210,7 +210,7 @@
         },
         {
           "path": "backend/cmd/control-plane-api/runtime.go",
-          "hash": "0a63aadb6b75b8ca273d8eb110e7ba6bb34be92211546fab3194604af8a9eca4"
+          "hash": "350d65bb1699e8ac51de13c1814d19979e96a653de8238ec09862ab3e0c97631"
         },
         {
           "path": "client/vite.config.ts",
@@ -225,7 +225,7 @@
           "hash": "0ff8e62b9ac8ec766e66c685a2663da33c8d522a24a451dc4b7ff4d35281870c"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T18:16:03Z"
     },
     {
       "name": "api-reference",
@@ -316,7 +316,7 @@
           "hash": "69f2149956f5e0b4132ead558a5f7cfed6811190f30ac5727c17ea11427933f8"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T17:56:02Z"
     },
     {
       "name": "deployment",
@@ -348,11 +348,11 @@
         },
         {
           "path": ".github/workflows/docker-build.yml",
-          "hash": "23c0ebd82cacb569038874f191bd9880df41eff374274d1cabfd10f30de7f882"
+          "hash": "1ffbfdd130ea4a886d1ffba9ae71028f36f577465b08737861fb4362cc3414d8"
         },
         {
           "path": ".github/workflows/gateways-build.yml",
-          "hash": "43c74a143e37539146bfac531dbdb5df9019dd658203e9e2a28797b035126605"
+          "hash": "d731baa1a70016673d111d8835d2384e587a10614af1c07fbbb085bb80270c90"
         },
         {
           "path": ".github/workflows/security.yml",
@@ -367,7 +367,7 @@
           "hash": "cedf1f697ed32f891ba360e1a465865b131c3bc205e0fe3d4ca1c6bacfcd3910"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T18:16:03Z"
     },
     {
       "name": "development",
@@ -521,7 +521,7 @@
         },
         {
           "path": "backend/cmd/control-plane-api/runtime.go",
-          "hash": "0a63aadb6b75b8ca273d8eb110e7ba6bb34be92211546fab3194604af8a9eca4"
+          "hash": "350d65bb1699e8ac51de13c1814d19979e96a653de8238ec09862ab3e0c97631"
         },
         {
           "path": "backend/cmd/control-plane-api/routes.go",
@@ -560,7 +560,7 @@
           "hash": "0c7178dfe83b8cce70ae7a23cba9e5f8ec5f6fe797882f64a88da296ef4883e4"
         }
       ],
-      "generated_at": "2026-04-15T18:52:30Z"
+      "generated_at": "2026-04-17T18:16:03Z"
     }
   ]
 }

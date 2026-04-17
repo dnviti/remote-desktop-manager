@@ -257,7 +257,7 @@ Leave `LDAP_ENABLED=false` to disable. Compatible with FreeIPA, OpenLDAP, 389 Di
 | `PODMAN_SOCKET_PATH` | string | `$XDG_RUNTIME_DIR/podman/podman.sock` | Podman socket path |
 | `DOCKER_NETWORK` | string | `arsenale-dev` | Container network name |
 | `ORCHESTRATOR_K8S_NAMESPACE` | string | `arsenale` | Kubernetes namespace |
-| `ORCHESTRATOR_SSH_GATEWAY_IMAGE` | string | `ghcr.io/dnviti/arsenale/ssh-gateway:latest` | SSH gateway container image |
+| `ORCHESTRATOR_SSH_GATEWAY_IMAGE` | string | `ghcr.io/dnviti/arsenale/ssh-gateway:stable` | SSH gateway container image |
 | `ORCHESTRATOR_GUACD_IMAGE` | string | `guacamole/guacd:1.6.0` | guacd container image (>= 1.6.0 for recording) |
 
 ### Session Recording

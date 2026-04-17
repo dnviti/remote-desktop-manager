@@ -63,7 +63,7 @@ arsenale_dev_shared_files_s3_auto_create_bucket: true
 # Production and Kubernetes installs pull these images when arsenale_build_images is false.
 arsenale_build_images: false
 arsenale_registry: ghcr.io/dnviti/arsenale
-arsenale_image_tag: latest
+arsenale_image_tag: stable
 arsenale_postgres_image: "quay.io/sclorg/postgresql-16-c10s"
 arsenale_postgres_data_dir: "/var/lib/pgsql/data"
 arsenale_guacd_image: "{{ arsenale_registry }}/guacd:{{ arsenale_image_tag }}"

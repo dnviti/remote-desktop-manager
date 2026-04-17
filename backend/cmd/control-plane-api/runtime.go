@@ -371,7 +371,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			GatewayNetwork:        getenv("ORCHESTRATOR_GATEWAY_NETWORK", "arsenale-net-gateway"),
 			SSHGatewayImage:       getenv("ORCHESTRATOR_SSH_GATEWAY_IMAGE", "localhost/arsenale_ssh-gateway:latest"),
 			GuacdImage:            getenv("ORCHESTRATOR_GUACD_IMAGE", "localhost/arsenale_guacd:latest"),
-			DBProxyImage:          getenv("ORCHESTRATOR_DB_PROXY_IMAGE", "ghcr.io/dnviti/arsenale/db-proxy:latest"),
+			DBProxyImage:          getenv("ORCHESTRATOR_DB_PROXY_IMAGE", "ghcr.io/dnviti/arsenale/db-proxy:stable"),
 			RecordingPath:         getenv("RECORDING_PATH", "/recordings"),
 		},
 		features: featureManifest,

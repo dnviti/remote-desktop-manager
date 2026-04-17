@@ -64,5 +64,5 @@ Out of scope:
 
 | Version | Supported |
 |---------|-----------|
-| latest `main` | Yes |
+| stable `main` | Yes |
 | older releases | No |
