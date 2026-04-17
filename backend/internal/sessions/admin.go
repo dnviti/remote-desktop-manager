@@ -12,6 +12,7 @@ import (
 
 type ActiveSessionFilter struct {
 	TenantID  string
+	UserID    string
 	Protocol  string
 	GatewayID string
 }
@@ -79,20 +80,14 @@ func (s *Store) ListActiveSessions(ctx context.Context, filters ActiveSessionFil
 		   JOIN "Connection" c ON c.id = s."connectionId"
 		   LEFT JOIN "Gateway" g ON g.id = s."gatewayId"
 		   LEFT JOIN "ManagedGatewayInstance" i ON i.id = s."instanceId"
-		  WHERE EXISTS (
-		          SELECT 1
-		            FROM "TenantMember" tm
-		           WHERE tm."userId" = s."userId"
-		             AND tm."tenantId" = $1
-		             AND tm."isActive" = TRUE
-		             AND tm.status = 'ACCEPTED'::"TenantMembershipStatus"
-		             AND (tm."expiresAt" IS NULL OR tm."expiresAt" > NOW())
-		        )
-		    AND ($2 = '' OR s.protocol = $2::"SessionProtocol")
-		    AND ($3 = '' OR s."gatewayId" = $3)
+		  WHERE s."tenantId" = $1
+		    AND ($2 = '' OR s."userId" = $2)
+		    AND ($3 = '' OR s.protocol = $3::"SessionProtocol")
+		    AND ($4 = '' OR s."gatewayId" = $4)
 		    AND s.status <> 'CLOSED'::"SessionStatus"
 		  ORDER BY s."startedAt" DESC`,
 		filters.TenantID,
+		filters.UserID,
 		filters.Protocol,
 		filters.GatewayID,
 	)
@@ -151,19 +146,13 @@ func (s *Store) CountActiveSessions(ctx context.Context, filters ActiveSessionFi
 		ctx,
 		`SELECT COUNT(*)
 		   FROM "ActiveSession" s
-		  WHERE EXISTS (
-		          SELECT 1
-		            FROM "TenantMember" tm
-		           WHERE tm."userId" = s."userId"
-		             AND tm."tenantId" = $1
-		             AND tm."isActive" = TRUE
-		             AND tm.status = 'ACCEPTED'::"TenantMembershipStatus"
-		             AND (tm."expiresAt" IS NULL OR tm."expiresAt" > NOW())
-		        )
-		    AND ($2 = '' OR s.protocol = $2::"SessionProtocol")
-		    AND ($3 = '' OR s."gatewayId" = $3)
+		  WHERE s."tenantId" = $1
+		    AND ($2 = '' OR s."userId" = $2)
+		    AND ($3 = '' OR s.protocol = $3::"SessionProtocol")
+		    AND ($4 = '' OR s."gatewayId" = $4)
 		    AND s.status <> 'CLOSED'::"SessionStatus"`,
 		filters.TenantID,
+		filters.UserID,
 		filters.Protocol,
 		filters.GatewayID,
 	).Scan(&count); err != nil {
@@ -183,6 +172,7 @@ func (s *Store) CountActiveSessionsByGateway(ctx context.Context, tenantID strin
 		   FROM "ActiveSession" s
 		   JOIN "Gateway" g ON g.id = s."gatewayId"
 		  WHERE g."tenantId" = $1
+		    AND s."tenantId" = $1
 		    AND s."gatewayId" IS NOT NULL
 		    AND s.status <> 'CLOSED'::"SessionStatus"
 		  GROUP BY g.id, g.name
@@ -232,15 +222,7 @@ func (s *Store) TerminateTenantSession(ctx context.Context, sessionID, tenantID,
 		        s.status::text
 		   FROM "ActiveSession" s
 		  WHERE s.id = $1
-		    AND EXISTS (
-		          SELECT 1
-		            FROM "TenantMember" tm
-		           WHERE tm."userId" = s."userId"
-		             AND tm."tenantId" = $2
-		             AND tm."isActive" = TRUE
-		             AND tm.status = 'ACCEPTED'::"TenantMembershipStatus"
-		             AND (tm."expiresAt" IS NULL OR tm."expiresAt" > NOW())
-		        )
+		    AND s."tenantId" = $2
 		  FOR UPDATE`,
 		sessionID,
 		tenantID,
@@ -251,7 +233,7 @@ func (s *Store) TerminateTenantSession(ctx context.Context, sessionID, tenantID,
 	}
 
 	recordingID := ""
-	if record.Status != "CLOSED" {
+	if normalizeSessionStatus(record.Status) != SessionStatusClosed {
 		closedAt := time.Now().UTC()
 		if _, err := tx.Exec(
 			ctx,

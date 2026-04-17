@@ -12,7 +12,7 @@ import (
 )
 
 func (s Service) HandleStream(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims.UserID)
+	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims)
 	if err != nil {
 		s.writeRecordingError(w, err, "Recording not found")
 		return
@@ -23,7 +23,7 @@ func (s Service) HandleStream(w http.ResponseWriter, r *http.Request, claims aut
 }
 
 func (s Service) HandleAnalyze(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims.UserID)
+	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims)
 	if err != nil {
 		s.writeRecordingError(w, err, "Recording not found")
 		return
@@ -38,7 +38,7 @@ func (s Service) HandleAnalyze(w http.ResponseWriter, r *http.Request, claims au
 }
 
 func (s Service) HandleExportVideo(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims.UserID)
+	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims)
 	if err != nil {
 		s.writeRecordingError(w, err, "Recording not found")
 		return

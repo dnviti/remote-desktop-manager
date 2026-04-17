@@ -22,6 +22,9 @@ const (
 	CanShareConnections     PermissionFlag = "canShareConnections"
 	CanViewAuditLog         PermissionFlag = "canViewAuditLog"
 	CanManageSessions       PermissionFlag = "canManageSessions"
+	CanViewSessions         PermissionFlag = "canViewSessions"
+	CanObserveSessions      PermissionFlag = "canObserveSessions"
+	CanControlSessions      PermissionFlag = "canControlSessions"
 	CanManageGateways       PermissionFlag = "canManageGateways"
 	CanManageUsers          PermissionFlag = "canManageUsers"
 	CanManageSecrets        PermissionFlag = "canManageSecrets"
@@ -32,60 +35,73 @@ var roleDefaults = map[string]map[PermissionFlag]bool{
 	"OWNER": {
 		CanConnect: true, CanCreateConnections: true, CanManageConnections: true,
 		CanViewCredentials: true, CanShareConnections: true, CanViewAuditLog: true,
-		CanManageSessions: true, CanManageGateways: true, CanManageUsers: true,
+		CanViewSessions: true, CanObserveSessions: true, CanControlSessions: true,
+		CanManageGateways: true, CanManageUsers: true,
 		CanManageSecrets: true, CanManageTenantSettings: true,
 	},
 	"ADMIN": {
 		CanConnect: true, CanCreateConnections: true, CanManageConnections: true,
 		CanViewCredentials: true, CanShareConnections: true, CanViewAuditLog: true,
-		CanManageSessions: true, CanManageGateways: true, CanManageUsers: true,
+		CanViewSessions: true, CanObserveSessions: true, CanControlSessions: true,
+		CanManageGateways: true, CanManageUsers: true,
 		CanManageSecrets: true, CanManageTenantSettings: false,
 	},
 	"OPERATOR": {
 		CanConnect: true, CanCreateConnections: true, CanManageConnections: true,
 		CanViewCredentials: true, CanShareConnections: true, CanViewAuditLog: true,
-		CanManageSessions: true, CanManageGateways: true, CanManageUsers: false,
+		CanViewSessions: true, CanObserveSessions: true, CanControlSessions: true,
+		CanManageGateways: true, CanManageUsers: false,
 		CanManageSecrets: true, CanManageTenantSettings: false,
 	},
 	"MEMBER": {
 		CanConnect: true, CanCreateConnections: true, CanManageConnections: true,
 		CanViewCredentials: false, CanShareConnections: true, CanViewAuditLog: false,
-		CanManageSessions: false, CanManageGateways: false, CanManageUsers: false,
+		CanViewSessions: false, CanObserveSessions: false, CanControlSessions: false,
+		CanManageGateways: false, CanManageUsers: false,
 		CanManageSecrets: true, CanManageTenantSettings: false,
 	},
 	"CONSULTANT": {
 		CanConnect: true, CanCreateConnections: false, CanManageConnections: false,
 		CanViewCredentials: false, CanShareConnections: false, CanViewAuditLog: false,
-		CanManageSessions: false, CanManageGateways: false, CanManageUsers: false,
+		CanViewSessions: false, CanObserveSessions: false, CanControlSessions: false,
+		CanManageGateways: false, CanManageUsers: false,
 		CanManageSecrets: false, CanManageTenantSettings: false,
 	},
 	"AUDITOR": {
 		CanConnect: false, CanCreateConnections: false, CanManageConnections: false,
 		CanViewCredentials: false, CanShareConnections: false, CanViewAuditLog: true,
-		CanManageSessions: true, CanManageGateways: false, CanManageUsers: false,
+		CanViewSessions: true, CanObserveSessions: true, CanControlSessions: false,
+		CanManageGateways: false, CanManageUsers: false,
 		CanManageSecrets: false, CanManageTenantSettings: false,
 	},
 	"GUEST": {
 		CanConnect: false, CanCreateConnections: false, CanManageConnections: false,
 		CanViewCredentials: false, CanShareConnections: false, CanViewAuditLog: false,
-		CanManageSessions: false, CanManageGateways: false, CanManageUsers: false,
+		CanViewSessions: false, CanObserveSessions: false, CanControlSessions: false,
+		CanManageGateways: false, CanManageUsers: false,
 		CanManageSecrets: false, CanManageTenantSettings: false,
 	},
 }
 
-var AllPermissionFlags = []PermissionFlag{
+var StoredPermissionFlags = []PermissionFlag{
 	CanConnect,
 	CanCreateConnections,
 	CanManageConnections,
 	CanViewCredentials,
 	CanShareConnections,
 	CanViewAuditLog,
-	CanManageSessions,
+	CanViewSessions,
+	CanObserveSessions,
+	CanControlSessions,
 	CanManageGateways,
 	CanManageUsers,
 	CanManageSecrets,
 	CanManageTenantSettings,
 }
+
+var AllPermissionFlags = append(append([]PermissionFlag{}, StoredPermissionFlags...), CanManageSessions)
+
+var sessionPermissionFlags = []PermissionFlag{CanViewSessions, CanObserveSessions, CanControlSessions}
 
 func DefaultPermissions(role string) (map[PermissionFlag]bool, bool) {
 	defaults, ok := roleDefaults[strings.ToUpper(strings.TrimSpace(role))]
@@ -97,6 +113,117 @@ func DefaultPermissions(role string) (map[PermissionFlag]bool, bool) {
 		result[flag] = value
 	}
 	return result, true
+}
+
+func NormalizePermissionOverrides(overrides map[string]bool, defaults map[PermissionFlag]bool) map[string]bool {
+	if overrides == nil {
+		return nil
+	}
+
+	expanded := expandSessionOverrideAliases(overrides)
+	normalized := make(map[string]bool)
+	for _, flag := range StoredPermissionFlags {
+		key := string(flag)
+		value, ok := expanded[key]
+		if !ok {
+			continue
+		}
+		if value != defaults[flag] {
+			normalized[key] = value
+		}
+	}
+	if len(normalized) == 0 {
+		return nil
+	}
+	return normalized
+}
+
+func EffectivePermissions(role string, overrides map[string]bool) (map[PermissionFlag]bool, bool) {
+	permissions, ok := DefaultPermissions(role)
+	if !ok {
+		return nil, false
+	}
+	for key, value := range NormalizePermissionOverrides(overrides, permissions) {
+		permissions[PermissionFlag(key)] = value
+	}
+	return permissions, true
+}
+
+func PermissionMapForAPI(permissions map[PermissionFlag]bool) map[string]bool {
+	result := make(map[string]bool, len(AllPermissionFlags))
+	for _, flag := range AllPermissionFlags {
+		result[string(flag)] = false
+	}
+	for _, flag := range StoredPermissionFlags {
+		result[string(flag)] = permissions[flag]
+	}
+	result[string(CanManageSessions)] = legacyManageSessionsValue(permissions)
+	return result
+}
+
+func OverrideMapForAPI(defaults map[PermissionFlag]bool, overrides map[string]bool) map[string]bool {
+	if overrides == nil {
+		return nil
+	}
+
+	result := make(map[string]bool, len(overrides)+1)
+	for key, value := range overrides {
+		result[key] = value
+	}
+	if hasSessionOverride(overrides) {
+		permissions := make(map[PermissionFlag]bool, len(defaults))
+		for flag, value := range defaults {
+			permissions[flag] = value
+		}
+		for key, value := range overrides {
+			permissions[PermissionFlag(key)] = value
+		}
+		result[string(CanManageSessions)] = legacyManageSessionsValue(permissions)
+	}
+	return result
+}
+
+func DecodePermissionOverrides(raw string) (map[string]bool, error) {
+	var overrides map[string]bool
+	if err := json.Unmarshal([]byte(raw), &overrides); err != nil {
+		return nil, err
+	}
+	return overrides, nil
+}
+
+func expandSessionOverrideAliases(overrides map[string]bool) map[string]bool {
+	if overrides == nil {
+		return nil
+	}
+
+	expanded := make(map[string]bool, len(overrides)+len(sessionPermissionFlags))
+	for key, value := range overrides {
+		expanded[key] = value
+	}
+	legacyValue, hasLegacy := overrides[string(CanManageSessions)]
+	if !hasLegacy {
+		return expanded
+	}
+	for _, flag := range sessionPermissionFlags {
+		key := string(flag)
+		if _, ok := expanded[key]; !ok {
+			expanded[key] = legacyValue
+		}
+	}
+	return expanded
+}
+
+func hasSessionOverride(overrides map[string]bool) bool {
+	for _, flag := range sessionPermissionFlags {
+		if _, ok := overrides[string(flag)]; ok {
+			return true
+		}
+	}
+	return false
+}
+
+func legacyManageSessionsValue(permissions map[PermissionFlag]bool) bool {
+	return permissions[CanViewSessions] && permissions[CanObserveSessions] && permissions[CanControlSessions]
 }
 
 type Membership struct {
@@ -153,25 +280,18 @@ func (s Service) ResolveMembership(ctx context.Context, userID, tenantID string)
 		return nil, nil
 	}
 
-	defaults, ok := roleDefaults[roleText]
+	permissions, ok := DefaultPermissions(roleText)
 	if !ok {
 		return nil, nil
 	}
-	permissions := make(map[PermissionFlag]bool, len(defaults))
-	for flag, value := range defaults {
-		permissions[flag] = value
-	}
 
 	if overridesText != nil && *overridesText != "" {
-		var overrides map[string]bool
-		if err := json.Unmarshal([]byte(*overridesText), &overrides); err != nil {
+		overrides, err := DecodePermissionOverrides(*overridesText)
+		if err != nil {
 			return nil, fmt.Errorf("decode permission overrides: %w", err)
 		}
-		for key, value := range overrides {
-			flag := PermissionFlag(key)
-			if _, known := defaults[flag]; known {
-				permissions[flag] = value
-			}
+		for key, value := range NormalizePermissionOverrides(overrides, permissions) {
+			permissions[PermissionFlag(key)] = value
 		}
 	}
 

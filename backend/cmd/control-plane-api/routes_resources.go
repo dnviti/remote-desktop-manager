@@ -82,6 +82,10 @@ func (d *apiDependencies) registerResourceRoutes(mux *http.ServeMux) {
 			}
 		})
 
+		mux.HandleFunc("GET /api/files/history", d.authenticator.Middleware(d.fileService.HandleHistoryList))
+		mux.HandleFunc("GET /api/files/history/{id}", d.authenticator.Middleware(d.fileService.HandleHistoryDownload))
+		mux.HandleFunc("POST /api/files/history/{id}/restore", d.authenticator.Middleware(d.fileService.HandleHistoryRestore))
+		mux.HandleFunc("DELETE /api/files/history/{id}", d.authenticator.Middleware(d.fileService.HandleHistoryDelete))
 		mux.HandleFunc("GET /api/files", d.authenticator.Middleware(d.fileService.HandleList))
 		mux.HandleFunc("POST /api/files", d.authenticator.Middleware(d.fileService.HandleUpload))
 		mux.HandleFunc("GET /api/files/{name}", d.authenticator.Middleware(d.fileService.HandleDownload))
@@ -92,6 +96,10 @@ func (d *apiDependencies) registerResourceRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("POST /api/files/ssh/rename", d.authenticator.Middleware(d.fileService.HandleSSHRename))
 		mux.HandleFunc("POST /api/files/ssh/upload", d.authenticator.Middleware(d.fileService.HandleSSHUpload))
 		mux.HandleFunc("POST /api/files/ssh/download", d.authenticator.Middleware(d.fileService.HandleSSHDownload))
+		mux.HandleFunc("POST /api/files/ssh/history/list", d.authenticator.Middleware(d.fileService.HandleSSHHistoryList))
+		mux.HandleFunc("POST /api/files/ssh/history/download", d.authenticator.Middleware(d.fileService.HandleSSHHistoryDownload))
+		mux.HandleFunc("POST /api/files/ssh/history/restore", d.authenticator.Middleware(d.fileService.HandleSSHHistoryRestore))
+		mux.HandleFunc("POST /api/files/ssh/history/delete", d.authenticator.Middleware(d.fileService.HandleSSHHistoryDelete))
 
 		mux.HandleFunc("GET /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleList))
 		mux.HandleFunc("POST /api/vault-providers", d.authenticator.Middleware(d.externalVaultService.HandleCreate))

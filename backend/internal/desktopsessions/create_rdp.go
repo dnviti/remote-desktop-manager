@@ -62,9 +62,10 @@ func (s Service) createRDPSession(ctx context.Context, claims authn.Claims, payl
 		}
 	}
 
+	enableDrive := connection.EnableDrive && !(policy.DLPPolicy.DisableUpload && policy.DLPPolicy.DisableDownload)
 	drivePath := ""
-	if connection.EnableDrive {
-		drivePath = files.DrivePath(s.DriveBasePath, claims.UserID, connection.ID)
+	if enableDrive {
+		drivePath = files.DrivePath(s.DriveBasePath, claims.TenantID, claims.UserID, connection.ID)
 	}
 	tokenSettings := buildRDPGuacamoleSettings(
 		connection.Host,
@@ -72,7 +73,7 @@ func (s Service) createRDPSession(ctx context.Context, claims authn.Claims, payl
 		strings.TrimSpace(resolution.Credentials.Username),
 		strings.TrimSpace(resolution.Credentials.Password),
 		strings.TrimSpace(resolution.Credentials.Domain),
-		connection.EnableDrive,
+		enableDrive,
 		drivePath,
 		mergedSettings,
 		policy.DLPPolicy,
@@ -91,6 +92,7 @@ func (s Service) createRDPSession(ctx context.Context, claims authn.Claims, payl
 	}
 
 	grant, err := s.IssueGrant(ctx, GrantIssueRequest{
+		TenantID:     claims.TenantID,
 		UserID:       claims.UserID,
 		ConnectionID: connection.ID,
 		GatewayID:    route.GatewayID,
@@ -117,7 +119,7 @@ func (s Service) createRDPSession(ctx context.Context, claims authn.Claims, payl
 
 	return createResponse{
 		Token:            grant.Token,
-		EnableDrive:      connection.EnableDrive,
+		EnableDrive:      enableDrive,
 		SessionID:        grant.SessionID,
 		RecordingID:      firstNonEmpty(grant.RecordingID, recordingID),
 		DLPPolicy:        policy.DLPPolicy,

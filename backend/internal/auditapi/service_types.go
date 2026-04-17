@@ -1,6 +1,7 @@
 package auditapi
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
@@ -8,9 +9,14 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type membershipResolver interface {
+	ResolveMembership(ctx context.Context, userID, tenantID string) (*tenantauth.Membership, error)
+	ResolveSessionVisibility(ctx context.Context, userID, tenantID string) (*tenantauth.SessionVisibility, error)
+}
+
 type Service struct {
 	DB         *pgxpool.Pool
-	TenantAuth tenantauth.Service
+	TenantAuth membershipResolver
 }
 
 type requestError struct {

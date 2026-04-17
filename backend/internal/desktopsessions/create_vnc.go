@@ -74,6 +74,7 @@ func (s Service) createVNCSession(ctx context.Context, claims authn.Claims, payl
 	}
 
 	grant, err := s.IssueGrant(ctx, GrantIssueRequest{
+		TenantID:     claims.TenantID,
 		UserID:       claims.UserID,
 		ConnectionID: connection.ID,
 		GatewayID:    route.GatewayID,

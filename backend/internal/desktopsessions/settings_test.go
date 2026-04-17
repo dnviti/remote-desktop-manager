@@ -83,7 +83,7 @@ func TestBuildRDPGuacamoleSettingsIncludesRecordingDriveAndDLP(t *testing.T) {
 		"secret",
 		"CORP",
 		true,
-		"/guacd-drive/user-1",
+		"/guacd-drive/tenants/tenant-1/users/user-1/connections/conn-1",
 		mergedRDPSettings{
 			ColorDepth:          &colorDepth,
 			Width:               &width,
@@ -113,11 +113,33 @@ func TestBuildRDPGuacamoleSettingsIncludesRecordingDriveAndDLP(t *testing.T) {
 	assertSettingEquals(t, settings, "port", "3389")
 	assertSettingEquals(t, settings, "domain", "CORP")
 	assertSettingEquals(t, settings, "recording-name", "session.guac")
-	assertSettingEquals(t, settings, "drive-path", "/guacd-drive/user-1")
+	assertSettingEquals(t, settings, "drive-path", "/guacd-drive/tenants/tenant-1/users/user-1/connections/conn-1")
 	assertSettingEquals(t, settings, "disable-copy", "true")
 	assertSettingEquals(t, settings, "disable-upload", "true")
 	assertSettingEquals(t, settings, "disable-gfx", "true")
 	assertSettingEquals(t, settings, "enable-wallpaper", "true")
+}
+
+func TestBuildRDPGuacamoleSettingsHidesDriveWhenTransfersAreDisabled(t *testing.T) {
+	settings := buildRDPGuacamoleSettings(
+		"rdp.internal",
+		3389,
+		"alice",
+		"secret",
+		"CORP",
+		false,
+		"",
+		mergedRDPSettings{},
+		resolvedDLP{DisableDownload: true, DisableUpload: true},
+		nil,
+	)
+
+	if _, ok := settings["enable-drive"]; ok {
+		t.Fatal("enable-drive should be omitted when managed drive is hidden")
+	}
+	if _, ok := settings["drive-path"]; ok {
+		t.Fatal("drive-path should be omitted when managed drive is hidden")
+	}
 }
 
 func TestBuildRecordingPlanMapsWithinGuacdRoot(t *testing.T) {

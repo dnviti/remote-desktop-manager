@@ -1,6 +1,7 @@
 package sshsessions
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"time"
@@ -11,10 +12,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type sessionLifecycleStore interface {
+	StartSession(context.Context, sessions.StartSessionParams) (string, error)
+	EndOwnedSession(context.Context, string, string, string) error
+	HeartbeatOwnedSession(context.Context, string, string) error
+}
+
 type Service struct {
 	DB                  *pgxpool.Pool
 	Redis               *redis.Client
-	SessionStore        *sessions.Store
+	SessionStore        sessionLifecycleStore
 	TenantAuth          tenantauth.Service
 	ServerEncryptionKey []byte
 	TerminalBrokerURL   string
@@ -33,15 +40,16 @@ type createRequest struct {
 }
 
 type createResponse struct {
-	Transport           string         `json:"transport"`
-	SessionID           string         `json:"sessionId"`
-	Token               string         `json:"token"`
-	ExpiresAt           time.Time      `json:"expiresAt"`
-	WebSocketPath       string         `json:"webSocketPath"`
-	WebSocketURL        string         `json:"webSocketUrl"`
-	DLPPolicy           resolvedDLP    `json:"dlpPolicy"`
-	EnforcedSSHSettings map[string]any `json:"enforcedSshSettings"`
-	SFTPSupported       bool           `json:"sftpSupported"`
+	Transport            string         `json:"transport"`
+	SessionID            string         `json:"sessionId"`
+	Token                string         `json:"token"`
+	ExpiresAt            time.Time      `json:"expiresAt"`
+	WebSocketPath        string         `json:"webSocketPath"`
+	WebSocketURL         string         `json:"webSocketUrl"`
+	DLPPolicy            resolvedDLP    `json:"dlpPolicy"`
+	EnforcedSSHSettings  map[string]any `json:"enforcedSshSettings"`
+	SFTPSupported        bool           `json:"sftpSupported"`
+	FileBrowserSupported bool           `json:"fileBrowserSupported"`
 }
 
 type coreResult struct {
@@ -59,6 +67,10 @@ type requestError struct {
 
 func (e *requestError) Error() string {
 	return e.message
+}
+
+func (e *requestError) StatusCode() int {
+	return e.status
 }
 
 type connectionAccess struct {
@@ -81,6 +93,7 @@ type connectionRecord struct {
 	DBType                  *string
 	DBSettings              json.RawMessage
 	DLPPolicy               json.RawMessage
+	TransferRetentionPolicy json.RawMessage
 
 	EncryptedUsername *string
 	UsernameIV        *string

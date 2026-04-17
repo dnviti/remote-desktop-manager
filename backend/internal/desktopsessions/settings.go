@@ -391,6 +391,10 @@ func buildVNCGuacamoleSettings(host string, port int, password string, settings 
 	return result
 }
 
+func buildDesktopObserveSettings() map[string]any {
+	return map[string]any{"read-only": "true"}
+}
+
 func prepareRecordedRDPSettings(settings mergedRDPSettings) mergedRDPSettings {
 	settings.ResizeMethod = "reconnect"
 	if settings.Width == nil {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/dnviti/arsenale/backend/internal/connections"
 	"github.com/jackc/pgx/v5"
 )
 
@@ -48,6 +49,7 @@ SELECT
 	c."dbType",
 	c."dbSettings",
 	c."dlpPolicy",
+	c."transferRetentionPolicy",
 	c."encryptedUsername",
 	c."usernameIV",
 	c."usernameTag",
@@ -82,6 +84,7 @@ SELECT
 	c."dbType",
 	c."dbSettings",
 	c."dlpPolicy",
+	c."transferRetentionPolicy",
 	c."encryptedUsername",
 	c."usernameIV",
 	c."usernameTag",
@@ -119,6 +122,7 @@ SELECT
 	c."dbType",
 	c."dbSettings",
 	c."dlpPolicy",
+	c."transferRetentionPolicy",
 	c."encryptedUsername",
 	c."usernameIV",
 	c."usernameTag",
@@ -146,7 +150,7 @@ WHERE c.id = $1
 `, connectionID, userID, tenantID)
 
 	var conn connectionRecord
-	var dbSettings, dlp []byte
+	var dbSettings, dlp, transferRetentionPolicy []byte
 	if err := row.Scan(
 		&conn.ID,
 		&conn.Type,
@@ -162,6 +166,7 @@ WHERE c.id = $1
 		&conn.DBType,
 		&dbSettings,
 		&dlp,
+		&transferRetentionPolicy,
 		&conn.EncryptedUsername,
 		&conn.UsernameIV,
 		&conn.UsernameTag,
@@ -188,12 +193,13 @@ WHERE c.id = $1
 	}
 	conn.DBSettings = normalizeRawJSON(dbSettings)
 	conn.DLPPolicy = normalizeRawJSON(dlp)
+	conn.TransferRetentionPolicy = connections.ResolveTransferRetentionPolicy(transferRetentionPolicy)
 	return conn, nil
 }
 
 func scanConnectionRecord(row pgx.Row, _ ...any) (connectionRecord, error) {
 	var conn connectionRecord
-	var dbSettings, dlp []byte
+	var dbSettings, dlp, transferRetentionPolicy []byte
 	if err := row.Scan(
 		&conn.ID,
 		&conn.Type,
@@ -209,6 +215,7 @@ func scanConnectionRecord(row pgx.Row, _ ...any) (connectionRecord, error) {
 		&conn.DBType,
 		&dbSettings,
 		&dlp,
+		&transferRetentionPolicy,
 		&conn.EncryptedUsername,
 		&conn.UsernameIV,
 		&conn.UsernameTag,
@@ -226,6 +233,7 @@ func scanConnectionRecord(row pgx.Row, _ ...any) (connectionRecord, error) {
 	}
 	conn.DBSettings = normalizeRawJSON(dbSettings)
 	conn.DLPPolicy = normalizeRawJSON(dlp)
+	conn.TransferRetentionPolicy = connections.ResolveTransferRetentionPolicy(transferRetentionPolicy)
 	return conn, nil
 }
 

@@ -51,6 +51,7 @@ type createPayload struct {
 	DBSettings              json.RawMessage `json:"dbSettings"`
 	DefaultCredentialMode   *string         `json:"defaultCredentialMode"`
 	DLPPolicy               json.RawMessage `json:"dlpPolicy"`
+	TransferRetentionPolicy json.RawMessage `json:"transferRetentionPolicy"`
 	BastionConnectionID     *string         `json:"bastionConnectionId"`
 	TargetDBHost            *string         `json:"targetDbHost"`
 	TargetDBPort            *int            `json:"targetDbPort"`
@@ -162,6 +163,7 @@ type updatePayload struct {
 	DBSettings              optionalJSON   `json:"dbSettings"`
 	DefaultCredentialMode   optionalString `json:"defaultCredentialMode"`
 	DLPPolicy               optionalJSON   `json:"dlpPolicy"`
+	TransferRetentionPolicy optionalJSON   `json:"transferRetentionPolicy"`
 	BastionConnectionID     optionalString `json:"bastionConnectionId"`
 	TargetDBHost            optionalString `json:"targetDbHost"`
 	TargetDBPort            optionalInt    `json:"targetDbPort"`
@@ -194,6 +196,7 @@ type connectionResponse struct {
 	DBSettings              json.RawMessage `json:"dbSettings,omitempty"`
 	DefaultCredentialMode   *string         `json:"defaultCredentialMode"`
 	DLPPolicy               json.RawMessage `json:"dlpPolicy,omitempty"`
+	TransferRetentionPolicy json.RawMessage `json:"transferRetentionPolicy"`
 	TargetDBHost            *string         `json:"targetDbHost"`
 	TargetDBPort            *int            `json:"targetDbPort"`
 	DBType                  *string         `json:"dbType"`

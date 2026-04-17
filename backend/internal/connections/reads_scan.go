@@ -30,7 +30,7 @@ func scanSingleConnection(row rowScanner) (connectionResponse, error) {
 	var gatewayID, defaultCredentialMode sql.NullString
 	var targetDBHost, dbType, bastionConnectionID sql.NullString
 	var targetDBPort sql.NullInt32
-	var sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy []byte
+	var sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy []byte
 	if err := row.Scan(
 		&conn.ID,
 		&conn.Name,
@@ -54,6 +54,7 @@ func scanSingleConnection(row rowScanner) (connectionResponse, error) {
 		&dbSettings,
 		&defaultCredentialMode,
 		&dlpPolicy,
+		&transferRetentionPolicy,
 		&targetDBHost,
 		&targetDBPort,
 		&dbType,
@@ -63,7 +64,7 @@ func scanSingleConnection(row rowScanner) (connectionResponse, error) {
 	); err != nil {
 		return connectionResponse{}, err
 	}
-	applyNulls(&conn, teamID, credentialSecretID, credentialSecretName, credentialSecretType, externalVaultProviderID, externalVaultPath, description, gatewayID, defaultCredentialMode, targetDBHost, targetDBPort, dbType, bastionConnectionID, sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy)
+	applyNulls(&conn, teamID, credentialSecretID, credentialSecretName, credentialSecretType, externalVaultProviderID, externalVaultPath, description, gatewayID, defaultCredentialMode, targetDBHost, targetDBPort, dbType, bastionConnectionID, sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy)
 	return conn, nil
 }
 
@@ -106,7 +107,7 @@ func scanSingleConnectionPrefix(row rowScanner, withTeam, withShare bool) (scann
 	var gatewayID, defaultCredentialMode sql.NullString
 	var targetDBHost, dbType, bastionConnectionID sql.NullString
 	var targetDBPort sql.NullInt32
-	var sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy []byte
+	var sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy []byte
 	var teamRole, teamName, permission, sharedBy sql.NullString
 
 	dest := []any{
@@ -132,6 +133,7 @@ func scanSingleConnectionPrefix(row rowScanner, withTeam, withShare bool) (scann
 		&dbSettings,
 		&defaultCredentialMode,
 		&dlpPolicy,
+		&transferRetentionPolicy,
 		&targetDBHost,
 		&targetDBPort,
 		&dbType,
@@ -148,7 +150,7 @@ func scanSingleConnectionPrefix(row rowScanner, withTeam, withShare bool) (scann
 	if err := row.Scan(dest...); err != nil {
 		return scannedConnectionExtras{}, err
 	}
-	applyNulls(&extras.conn, teamID, credentialSecretID, credentialSecretName, credentialSecretType, externalVaultProviderID, externalVaultPath, description, gatewayID, defaultCredentialMode, targetDBHost, targetDBPort, dbType, bastionConnectionID, sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy)
+	applyNulls(&extras.conn, teamID, credentialSecretID, credentialSecretName, credentialSecretType, externalVaultProviderID, externalVaultPath, description, gatewayID, defaultCredentialMode, targetDBHost, targetDBPort, dbType, bastionConnectionID, sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy)
 	if teamRole.Valid {
 		extras.teamRole = &teamRole.String
 	}
@@ -171,7 +173,7 @@ func applyNulls(
 	targetDBHost sql.NullString,
 	targetDBPort sql.NullInt32,
 	dbType, bastionConnectionID sql.NullString,
-	sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy []byte,
+	sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy []byte,
 ) {
 	if teamID.Valid {
 		conn.TeamID = &teamID.String
@@ -218,4 +220,5 @@ func applyNulls(
 	conn.VNCSettings = normalizeRawJSON(vncSettings)
 	conn.DBSettings = normalizeRawJSON(dbSettings)
 	conn.DLPPolicy = normalizeRawJSON(dlpPolicy)
+	conn.TransferRetentionPolicy = ResolveTransferRetentionPolicy(transferRetentionPolicy)
 }

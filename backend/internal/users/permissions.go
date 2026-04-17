@@ -9,11 +9,7 @@ import (
 )
 
 func emptyPermissions() map[string]bool {
-	permissions := make(map[string]bool, len(tenantauth.AllPermissionFlags))
-	for _, flag := range tenantauth.AllPermissionFlags {
-		permissions[string(flag)] = false
-	}
-	return permissions
+	return tenantauth.PermissionMapForAPI(nil)
 }
 
 func (s Service) GetCurrentPermissions(ctx context.Context, claims authn.Claims) (currentPermissionsResponse, error) {
@@ -31,9 +27,7 @@ func (s Service) GetCurrentPermissions(ctx context.Context, claims authn.Claims)
 		if !ok {
 			return response, nil
 		}
-		for flag, value := range defaults {
-			response.Permissions[string(flag)] = value
-		}
+		response.Permissions = tenantauth.PermissionMapForAPI(defaults)
 		return response, nil
 	}
 
@@ -46,8 +40,6 @@ func (s Service) GetCurrentPermissions(ctx context.Context, claims authn.Claims)
 	}
 
 	response.Role = membership.Role
-	for flag, value := range membership.Permissions {
-		response.Permissions[string(flag)] = value
-	}
+	response.Permissions = tenantauth.PermissionMapForAPI(membership.Permissions)
 	return response, nil
 }

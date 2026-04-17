@@ -30,15 +30,16 @@ func (s Service) HandleCreate(w http.ResponseWriter, r *http.Request, claims aut
 	}
 
 	response := createResponse{
-		Transport:           "terminal-broker",
-		SessionID:           result.SessionID,
-		Token:               result.Token,
-		ExpiresAt:           result.ExpiresAt,
-		WebSocketPath:       "/ws/terminal",
-		WebSocketURL:        terminalWebSocketURL(r, result.Token),
-		DLPPolicy:           result.DLPPolicy,
-		EnforcedSSHSettings: result.EnforcedSSHSettings,
-		SFTPSupported:       true,
+		Transport:            "terminal-broker",
+		SessionID:            result.SessionID,
+		Token:                result.Token,
+		ExpiresAt:            result.ExpiresAt,
+		WebSocketPath:        "/ws/terminal",
+		WebSocketURL:         terminalWebSocketURL(r, result.Token),
+		DLPPolicy:            result.DLPPolicy,
+		EnforcedSSHSettings:  result.EnforcedSSHSettings,
+		SFTPSupported:        false,
+		FileBrowserSupported: true,
 	}
 	app.WriteJSON(w, http.StatusOK, response)
 	return nil

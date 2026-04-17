@@ -13,7 +13,7 @@ import (
 
 const (
 	defaultDriveBasePath  = "/guacd-drive"
-	defaultMaxUploadBytes = 10 * 1024 * 1024
+	defaultMaxUploadBytes = 100 * 1024 * 1024
 	defaultUserQuotaBytes = 100 * 1024 * 1024
 	multipartOverhead     = 1024 * 1024
 	maxFileNameLength     = 255
@@ -21,6 +21,7 @@ const (
 
 var unsafeUserIDPattern = regexp.MustCompile(`[^a-zA-Z0-9-]`)
 var unsafeUploadNamePattern = regexp.MustCompile(`[^a-zA-Z0-9._-]`)
+var unsafeDisplayPathPattern = regexp.MustCompile(`[^a-zA-Z0-9]+`)
 
 type Service struct {
 	DB                 *pgxpool.Pool
@@ -63,15 +64,96 @@ type tenantFilePolicy struct {
 }
 
 type resolvedFilePolicy struct {
-	DisableDownload bool
-	DisableUpload   bool
-	FileUploadMax   *int64
-	UserDriveQuota  *int64
+	DisableDownload         bool
+	DisableUpload           bool
+	RetainSuccessfulUploads bool
+	FileUploadMax           *int64
+	UserDriveQuota          *int64
 }
 
 type dlpPolicy struct {
 	DisableDownload bool `json:"disableDownload"`
 	DisableUpload   bool `json:"disableUpload"`
+}
+
+type managedFileOperationClass string
+
+const (
+	managedFileOperationClassPayload  managedFileOperationClass = "payload"
+	managedFileOperationClassMetadata managedFileOperationClass = "metadata"
+)
+
+type managedFileOperation string
+
+const (
+	managedFileOperationUpload   managedFileOperation = "upload"
+	managedFileOperationDownload managedFileOperation = "download"
+	managedFileOperationList     managedFileOperation = "list"
+	managedFileOperationMkdir    managedFileOperation = "mkdir"
+	managedFileOperationDelete   managedFileOperation = "delete"
+	managedFileOperationRename   managedFileOperation = "rename"
+)
+
+type managedFileOperationContract struct {
+	Operation                managedFileOperation
+	Class                    managedFileOperationClass
+	ManagedViaREST           bool
+	AllowsDirectClientSFTP   bool
+	RequiresObjectStore      bool
+	RequiresThreatScan       bool
+	RequiresAuditLog         bool
+	RequiresAuditCorrelation bool
+}
+
+type managedFileDependencies struct {
+	Store   ObjectStore
+	Scanner ThreatScanner
+}
+
+type managedPayloadStageRequest struct {
+	StagePrefix string
+	FileName    string
+	Payload     []byte
+	Metadata    map[string]string
+}
+
+type managedRemotePayload struct {
+	FileName string
+	Payload  []byte
+	Metadata map[string]string
+}
+
+type managedPayloadResult struct {
+	Contract           managedFileOperationContract
+	AuditCorrelationID string
+	StageKey           string
+	FileName           string
+	Payload            []byte
+	Metadata           map[string]string
+	Object             ObjectInfo
+}
+
+type ManagedHistoryEntry struct {
+	ID             string            `json:"id"`
+	FileName       string            `json:"fileName"`
+	RestoredName   string            `json:"restoredName,omitempty"`
+	Size           int64             `json:"size"`
+	ContentType    string            `json:"contentType,omitempty"`
+	TransferAt     string            `json:"transferAt"`
+	ActorID        string            `json:"actorId,omitempty"`
+	Protocol       string            `json:"protocol"`
+	TransferID     string            `json:"transferId,omitempty"`
+	ChecksumSHA256 string            `json:"checksumSha256,omitempty"`
+	PolicyDecision string            `json:"policyDecision,omitempty"`
+	ScanResult     string            `json:"scanResult,omitempty"`
+	ObjectKey      string            `json:"-"`
+	Metadata       map[string]string `json:"-"`
+	ModifiedAt     time.Time         `json:"-"`
+}
+
+type managedHistoryRetentionOptions struct {
+	Protocol string
+	ActorID  string
 }
 
 type ObjectStore interface {

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/sessionrecording"
+	"github.com/dnviti/arsenale/backend/pkg/contracts"
 	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 )
@@ -20,6 +21,18 @@ type BrokerConfig struct {
 type Broker struct {
 	config   BrokerConfig
 	upgrader websocket.Upgrader
+	runtimes *runtimeRegistry
+}
+
+type runtimeSession interface {
+	StdinPipe() (io.WriteCloser, error)
+	StdoutPipe() (io.Reader, error)
+	StderrPipe() (io.Reader, error)
+	RequestPty(term string, h, w int, modes ssh.TerminalModes) error
+	Shell() error
+	WindowChange(h, w int) error
+	Wait() error
+	Close() error
 }
 
 type clientMessage struct {
@@ -38,23 +51,38 @@ type serverMessage struct {
 
 type terminalRuntime struct {
 	logger       *slog.Logger
-	wsConn       *websocket.Conn
-	session      *ssh.Session
+	session      runtimeSession
 	stdin        io.WriteCloser
 	stdout       io.Reader
 	stderr       io.Reader
 	sessionStore SessionStore
 	sessionID    string
 	recording    *sessionrecording.Reference
+	onClose      func()
 
-	wsWriteMu   sync.Mutex
-	recordingMu sync.Mutex
-	closeOnce   sync.Once
-	closed      chan struct{}
-	outputWG    sync.WaitGroup
+	subscribersMu sync.Mutex
+	owner         *terminalSubscriber
+	observers     map[*terminalSubscriber]struct{}
+	recordingMu   sync.Mutex
+	closeOnce     sync.Once
+	closed        chan struct{}
+	outputWG      sync.WaitGroup
 
 	activityMu       sync.Mutex
 	lastActivityAt   time.Time
 	externalCloseMu  sync.Mutex
 	externalCloseSet bool
+	pausedMu         sync.Mutex
+	paused           bool
+}
+
+type terminalSubscriber struct {
+	logger      *slog.Logger
+	runtime     *terminalRuntime
+	wsConn      *websocket.Conn
+	mode        contracts.TerminalSessionMode
+	ownsRuntime bool
+	writeMu     sync.Mutex
+	closeOnce   sync.Once
+	closed      chan struct{}
 }

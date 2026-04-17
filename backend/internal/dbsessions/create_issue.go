@@ -72,6 +72,7 @@ func (s Service) createSession(ctx context.Context, claims authn.Claims, payload
 	target := buildDatabaseTarget(resolution.Connection.Host, resolution.Connection.Port, dbProtocol, databaseName, resolution.Credentials, settings, payload.SessionConfig)
 
 	result, err := s.issueSession(ctx, SessionIssueRequest{
+		TenantID:        claims.TenantID,
 		UserID:          claims.UserID,
 		ConnectionID:    resolution.Connection.ID,
 		GatewayID:       route.GatewayID,
@@ -106,11 +107,8 @@ func (s Service) issueSession(ctx context.Context, req SessionIssueRequest, vali
 	}
 
 	protocol := strings.ToUpper(strings.TrimSpace(req.Protocol))
-	if _, err := s.Store.CloseStaleSessionsForConnection(ctx, req.UserID, req.ConnectionID, protocol); err != nil {
-		return SessionIssueResponse{}, err
-	}
-
 	sessionID, err := s.Store.StartSession(ctx, sessions.StartSessionParams{
+		TenantID:        req.TenantID,
 		UserID:          req.UserID,
 		ConnectionID:    req.ConnectionID,
 		GatewayID:       req.GatewayID,

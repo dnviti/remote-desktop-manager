@@ -2,72 +2,33 @@ package terminalbroker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"io"
 	"strings"
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/sessionrecording"
-	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/ssh"
 )
 
-func (r *terminalRuntime) readWebSocket() {
-	for {
-		_, payload, err := r.wsConn.ReadMessage()
-		if err != nil {
-			r.close()
-			return
-		}
-
-		var message clientMessage
-		if err := json.Unmarshal(payload, &message); err != nil {
-			_ = r.send(serverMessage{Type: "error", Code: "PROTOCOL_ERROR", Message: "invalid websocket payload"})
-			r.close()
-			return
-		}
-
-		switch message.Type {
-		case "input":
-			if _, err := io.WriteString(r.stdin, message.Data); err != nil {
-				_ = r.send(serverMessage{Type: "error", Code: "WRITE_ERROR", Message: "failed to send terminal input"})
-				r.close()
-				return
-			}
-			r.noteActivity(false)
-		case "resize":
-			if message.Cols > 0 && message.Rows > 0 {
-				_ = r.session.WindowChange(message.Rows, message.Cols)
-			}
-			r.noteActivity(false)
-		case "ping":
-			r.noteActivity(true)
-			if err := r.send(serverMessage{Type: "pong"}); err != nil {
-				r.close()
-				return
-			}
-		case "close":
-			r.close()
-			return
-		default:
-			_ = r.send(serverMessage{Type: "error", Code: "PROTOCOL_ERROR", Message: "unsupported terminal message"})
-			r.close()
-			return
-		}
-	}
-}
+var terminalSessionStatePollInterval = 5 * time.Second
 
 func (r *terminalRuntime) streamOutput(reader io.Reader) {
 	defer r.outputWG.Done()
 
 	buffer := make([]byte, 8192)
 	for {
+		if !r.waitUntilResumed() {
+			return
+		}
 		n, err := reader.Read(buffer)
 		if n > 0 {
+			if !r.waitUntilResumed() {
+				return
+			}
 			output := string(buffer[:n])
 			r.appendRecordingOutput(output)
-			if writeErr := r.send(serverMessage{Type: "data", Data: output}); writeErr != nil {
+			if ok := r.broadcast(serverMessage{Type: "data", Data: output}); !ok {
 				r.close()
 				return
 			}
@@ -85,7 +46,7 @@ func (r *terminalRuntime) waitForSession() {
 	if err := r.session.Wait(); err != nil {
 		var exitErr *ssh.ExitError
 		if !errors.As(err, &exitErr) {
-			_ = r.send(serverMessage{Type: "error", Code: "SESSION_ERROR", Message: "terminal session ended unexpectedly"})
+			r.broadcast(serverMessage{Type: "error", Code: "SESSION_ERROR", Message: "terminal session ended unexpectedly"})
 		}
 	}
 
@@ -108,7 +69,7 @@ func (r *terminalRuntime) monitorSessionState() {
 		return
 	}
 
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(terminalSessionStatePollInterval)
 	defer ticker.Stop()
 
 	// Session shutdown can happen outside this websocket process, so the broker
@@ -123,18 +84,26 @@ func (r *terminalRuntime) monitorSessionState() {
 				r.logger.Warn("load terminal session state failed", "error", err)
 				continue
 			}
-			if !state.Exists || !state.Closed {
+			if !state.Exists {
+				continue
+			}
+			if state.Paused {
+				r.setPaused(true)
+				continue
+			}
+			r.setPaused(false)
+			if !state.Closed {
 				continue
 			}
 
 			r.markExternalClose()
 			switch state.Reason {
 			case "admin_terminated":
-				_ = r.send(serverMessage{Type: "error", Code: "SESSION_TERMINATED", Message: "Session terminated by administrator"})
+				r.broadcast(serverMessage{Type: "error", Code: "SESSION_TERMINATED", Message: "Session terminated by administrator"})
 			case "timeout":
-				_ = r.send(serverMessage{Type: "error", Code: "SESSION_TIMEOUT", Message: "Session expired due to inactivity"})
+				r.broadcast(serverMessage{Type: "error", Code: "SESSION_TIMEOUT", Message: "Session expired due to inactivity"})
 			default:
-				_ = r.send(serverMessage{Type: "error", Code: "SESSION_CLOSED", Message: "Session closed"})
+				r.broadcast(serverMessage{Type: "error", Code: "SESSION_CLOSED", Message: "Session closed"})
 			}
 			r.close()
 			return
@@ -142,18 +111,18 @@ func (r *terminalRuntime) monitorSessionState() {
 	}
 }
 
-func (r *terminalRuntime) send(message serverMessage) error {
-	r.wsWriteMu.Lock()
-	defer r.wsWriteMu.Unlock()
-	return sendWebsocketMessage(r.wsConn, message)
-}
-
 func (r *terminalRuntime) close() {
 	r.closeOnce.Do(func() {
-		_ = r.stdin.Close()
-		_ = r.session.Close()
-		_ = r.send(serverMessage{Type: "closed"})
-		closeWebSocketConnection(r.wsConn, websocket.CloseNormalClosure, "")
+		if r.stdin != nil {
+			_ = r.stdin.Close()
+		}
+		if r.session != nil {
+			_ = r.session.Close()
+		}
+		if r.onClose != nil {
+			r.onClose()
+		}
+		r.closeSubscribers()
 		if !r.wasExternallyClosed() {
 			if err := r.sessionStore.FinalizeTerminalSession(context.Background(), r.sessionID, r.recordingID()); err != nil {
 				r.logger.Warn("finalize terminal session failed", "error", err)

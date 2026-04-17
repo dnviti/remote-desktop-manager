@@ -1,12 +1,10 @@
 package desktopbroker
 
 import (
-	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -50,7 +48,7 @@ func NewBroker(config BrokerConfig) *Broker {
 	return &Broker{
 		config: config,
 		upgrader: websocket.Upgrader{
-			CheckOrigin: func(*http.Request) bool { return true },
+			CheckOrigin:  func(*http.Request) bool { return true },
 			Subprotocols: []string{"guacamole"},
 		},
 	}
@@ -70,6 +68,11 @@ func (b *Broker) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 	token, err := DecryptToken(b.config.GuacamoleSecret, tokenValue)
 	if err != nil {
+		b.sendClientError(wsConn, "Token validation failed", "INVALID_TOKEN")
+		_ = wsConn.Close()
+		return
+	}
+	if !token.ExpiresAt.IsZero() && !token.ExpiresAt.After(time.Now().UTC()) {
 		b.sendClientError(wsConn, "Token validation failed", "INVALID_TOKEN")
 		_ = wsConn.Close()
 		return
@@ -100,13 +103,14 @@ func (b *Broker) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 
 	session := &guacSession{
-		logger:       b.config.Logger.With("component", "desktop-broker", "protocol", settings.Selector),
-		wsConn:       wsConn,
-		guacdConn:    guacdConn,
-		settings:     settings,
-		sessionStore: b.config.SessionStore,
-		tokenHash:    HashToken(tokenValue),
-		recordingID:  MetadataString(token.Metadata, "recordingId"),
+		logger:         b.config.Logger.With("component", "desktop-broker", "protocol", settings.Protocol),
+		wsConn:         wsConn,
+		guacdConn:      guacdConn,
+		settings:       settings,
+		sessionStore:   b.config.SessionStore,
+		tokenHash:      HashToken(tokenValue),
+		stateSessionID: MetadataString(token.Metadata, MetadataKeyObserveSessionID),
+		recordingID:    MetadataString(token.Metadata, "recordingId"),
 	}
 
 	session.run(r.Context())
@@ -165,13 +169,14 @@ func (b *Broker) sendClientError(conn *websocket.Conn, message, code string) {
 }
 
 type guacSession struct {
-	logger       *slog.Logger
-	wsConn       *websocket.Conn
-	guacdConn    net.Conn
-	settings     CompiledSettings
-	sessionStore SessionStore
-	tokenHash    string
-	recordingID  string
+	logger         *slog.Logger
+	wsConn         *websocket.Conn
+	guacdConn      net.Conn
+	settings       CompiledSettings
+	sessionStore   SessionStore
+	tokenHash      string
+	stateSessionID string
+	recordingID    string
 
 	wsWriteMu    sync.Mutex
 	guacdWriteMu sync.Mutex
@@ -180,160 +185,8 @@ type guacSession struct {
 	ready        bool
 	closeOnce    sync.Once
 	closed       chan struct{}
-}
-
-func (s *guacSession) run(ctx context.Context) {
-	s.closed = make(chan struct{})
-
-	if err := s.writeGuacd([]byte(EncodeInstruction("select", s.settings.Selector))); err != nil {
-		s.sendErrorAndClose("Desktop service unavailable", "SERVICE_UNAVAILABLE")
-		s.finalize()
-		return
-	}
-
-	go s.readWebSocket()
-	s.readGuacd()
-	s.finalize()
-
-	select {
-	case <-ctx.Done():
-	case <-s.closed:
-	}
-}
-
-func (s *guacSession) readWebSocket() {
-	for {
-		messageType, payload, err := s.wsConn.ReadMessage()
-		if err != nil {
-			s.closeAll()
-			return
-		}
-		if messageType != websocket.TextMessage && messageType != websocket.BinaryMessage {
-			continue
-		}
-
-		s.bufferMu.Lock()
-		if s.ready {
-			s.bufferMu.Unlock()
-			if err := s.writeGuacd(payload); err != nil {
-				s.sendErrorAndClose("Desktop connection failed", "CONNECTION_ERROR")
-				return
-			}
-			continue
-		}
-		s.pending = append(s.pending, append([]byte(nil), payload...))
-		s.bufferMu.Unlock()
-	}
-}
-
-func (s *guacSession) readGuacd() {
-	decoder := &Decoder{}
-	buffer := make([]byte, 8192)
-	for {
-		n, err := s.guacdConn.Read(buffer)
-		if n > 0 {
-			instructions, decodeErr := decoder.Feed(buffer[:n])
-			if decodeErr != nil {
-				s.sendErrorAndClose("Desktop connection failed", "PROTOCOL_ERROR")
-				return
-			}
-			for _, instruction := range instructions {
-				if err := s.handleGuacdInstruction(instruction); err != nil {
-					s.sendErrorAndClose("Desktop connection failed", "CONNECTION_ERROR")
-					return
-				}
-			}
-		}
-		if err != nil {
-			if !errors.Is(err, io.EOF) {
-				s.logger.Warn("guacd read error", "error", err)
-			}
-			s.closeAll()
-			return
-		}
-	}
-}
-
-func (s *guacSession) handleGuacdInstruction(instruction []string) error {
-	if len(instruction) == 0 {
-		return nil
-	}
-
-	switch instruction[0] {
-	case "args":
-		messages, err := BuildHandshakeMessages(s.settings, instruction[1:])
-		if err != nil {
-			return err
-		}
-		for _, message := range messages {
-			if err := s.writeGuacd([]byte(message)); err != nil {
-				return err
-			}
-		}
-		return nil
-	case "ready":
-		readyPayload := ""
-		if len(instruction) > 1 {
-			readyPayload = instruction[1]
-		}
-		s.bufferMu.Lock()
-		s.ready = true
-		pending := s.pending
-		s.pending = nil
-		s.bufferMu.Unlock()
-
-		if err := s.writeWebSocket(EncodeInstruction("ready", readyPayload)); err != nil {
-			return err
-		}
-		for _, message := range pending {
-			if err := s.writeGuacd(message); err != nil {
-				return err
-			}
-		}
-		return nil
-	case "error":
-		if err := s.writeWebSocket(EncodeInstruction(instruction...)); err != nil {
-			return err
-		}
-		s.closeAll()
-		return nil
-	default:
-		return s.writeWebSocket(EncodeInstruction(instruction...))
-	}
-}
-
-func (s *guacSession) writeGuacd(payload []byte) error {
-	s.guacdWriteMu.Lock()
-	defer s.guacdWriteMu.Unlock()
-	_, err := s.guacdConn.Write(payload)
-	return err
-}
-
-func (s *guacSession) writeWebSocket(message string) error {
-	s.wsWriteMu.Lock()
-	defer s.wsWriteMu.Unlock()
-	return s.wsConn.WriteMessage(websocket.TextMessage, []byte(message))
-}
-
-func (s *guacSession) sendErrorAndClose(message, code string) {
-	_ = s.writeWebSocket(EncodeInstruction("error", message, code))
-	s.closeAll()
-}
-
-func (s *guacSession) finalize() {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if err := s.sessionStore.FinalizeDesktopSession(ctx, s.tokenHash, s.recordingID); err != nil {
-		s.logger.Warn("finalize desktop session", "error", err)
-	}
-}
-
-func (s *guacSession) closeAll() {
-	s.closeOnce.Do(func() {
-		close(s.closed)
-		_ = s.guacdConn.Close()
-		_ = s.wsConn.Close()
-	})
+	pausedMu     sync.Mutex
+	paused       bool
 }
 
 func mapGuacdError(err error) string {

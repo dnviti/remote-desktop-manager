@@ -52,11 +52,69 @@ func presentUpdateFields(payload updatePayload) []string {
 	add("dbSettings", payload.DBSettings.Present)
 	add("defaultCredentialMode", payload.DefaultCredentialMode.Present)
 	add("dlpPolicy", payload.DLPPolicy.Present)
+	add("transferRetentionPolicy", payload.TransferRetentionPolicy.Present)
 	add("bastionConnectionId", payload.BastionConnectionID.Present)
 	add("targetDbHost", payload.TargetDBHost.Present)
 	add("targetDbPort", payload.TargetDBPort.Present)
 	add("dbType", payload.DBType.Present)
 	return fields
+}
+
+type transferRetentionPolicy struct {
+	RetainSuccessfulUploads bool `json:"retainSuccessfulUploads"`
+	MaxUploadSizeBytes      int64 `json:"maxUploadSizeBytes"`
+}
+
+type transferRetentionPolicyInput struct {
+	RetainSuccessfulUploads *bool `json:"retainSuccessfulUploads"`
+	MaxUploadSizeBytes      *int64 `json:"maxUploadSizeBytes"`
+}
+
+const defaultConnectionUploadMaxBytes = 100 * 1024 * 1024
+
+func ResolveTransferRetentionPolicy(value []byte) json.RawMessage {
+	normalized, err := normalizeTransferRetentionPolicyDocument(value)
+	if err != nil {
+		return transferRetentionPolicyJSON(false, defaultConnectionUploadMaxBytes)
+	}
+	return normalized
+}
+
+func normalizeTransferRetentionPolicyInput(value json.RawMessage) (json.RawMessage, error) {
+	if len(value) == 0 || string(value) == "null" {
+		return nil, nil
+	}
+	return normalizeTransferRetentionPolicyDocument(value)
+}
+
+func normalizeTransferRetentionPolicyDocument(value []byte) (json.RawMessage, error) {
+	if len(value) == 0 || string(value) == "null" {
+		return transferRetentionPolicyJSON(false, defaultConnectionUploadMaxBytes), nil
+	}
+
+	var payload transferRetentionPolicyInput
+	if err := json.Unmarshal(value, &payload); err != nil {
+		return nil, &requestError{status: 400, message: "transferRetentionPolicy must be a JSON object"}
+	}
+	if payload.MaxUploadSizeBytes != nil && *payload.MaxUploadSizeBytes < 1 {
+		return nil, &requestError{status: 400, message: "transferRetentionPolicy.maxUploadSizeBytes must be a positive number"}
+	}
+	if payload.MaxUploadSizeBytes != nil && *payload.MaxUploadSizeBytes > defaultConnectionUploadMaxBytes {
+		return nil, &requestError{status: 400, message: "transferRetentionPolicy.maxUploadSizeBytes cannot exceed 104857600"}
+	}
+
+	return transferRetentionPolicyJSON(
+		boolOrDefault(payload.RetainSuccessfulUploads, false),
+		int64OrDefault(payload.MaxUploadSizeBytes, defaultConnectionUploadMaxBytes),
+	), nil
+}
+
+func transferRetentionPolicyJSON(retainSuccessfulUploads bool, maxUploadSizeBytes int64) json.RawMessage {
+	raw, _ := json.Marshal(transferRetentionPolicy{
+		RetainSuccessfulUploads: retainSuccessfulUploads,
+		MaxUploadSizeBytes:      maxUploadSizeBytes,
+	})
+	return raw
 }
 
 func normalizeRawJSON(value []byte) json.RawMessage {
@@ -103,6 +161,13 @@ func nullableJSON(value json.RawMessage) any {
 }
 
 func boolOrDefault(value *bool, fallback bool) bool {
+	if value == nil {
+		return fallback
+	}
+	return *value
+}
+
+func int64OrDefault(value *int64, fallback int64) int64 {
 	if value == nil {
 		return fallback
 	}

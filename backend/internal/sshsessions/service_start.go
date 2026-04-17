@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
+	"github.com/dnviti/arsenale/backend/internal/sessionrecording"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
 	"github.com/dnviti/arsenale/backend/internal/tenantauth"
 )
@@ -72,15 +73,15 @@ func (s Service) StartSession(ctx context.Context, claims authn.Claims, payload 
 		return coreResult{}, err
 	}
 
-	if _, err := s.SessionStore.CloseStaleSessionsForConnection(ctx, claims.UserID, access.Connection.ID, "SSH"); err != nil {
-		return coreResult{}, fmt.Errorf("close stale SSH sessions: %w", err)
-	}
-
 	recordingRef, err := s.maybeStartSessionRecording(ctx, claims.TenantID, claims.UserID, access.Connection.ID, "SSH", recordingGatewayDir(gatewayID, instanceID))
 	if err != nil {
 		return coreResult{}, err
 	}
 
+	return s.startResolvedSSHSession(ctx, claims, access, credentials, ipAddress, gatewayID, instanceID, bastion, policies, recordingRef)
+}
+
+func (s Service) startResolvedSSHSession(ctx context.Context, claims authn.Claims, access connectionAccess, credentials resolvedCredentials, ipAddress, gatewayID, instanceID string, bastion map[string]any, policies policySnapshot, recordingRef *sessionrecording.Reference) (coreResult, error) {
 	sessionMetadata := map[string]any{
 		"host":             access.Connection.Host,
 		"port":             access.Connection.Port,
@@ -92,6 +93,7 @@ func (s Service) StartSession(ctx context.Context, claims authn.Claims, payload 
 	}
 
 	sessionID, err := s.SessionStore.StartSession(ctx, sessions.StartSessionParams{
+		TenantID:     claims.TenantID,
 		UserID:       claims.UserID,
 		ConnectionID: access.Connection.ID,
 		GatewayID:    gatewayID,

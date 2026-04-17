@@ -53,6 +53,13 @@ func (s Service) maxUploadBytes() int64 {
 	return defaultMaxUploadBytes
 }
 
+func effectiveUploadLimit(limit *int64, fallback int64) int64 {
+	if limit != nil && *limit > 0 {
+		return *limit
+	}
+	return fallback
+}
+
 func (s Service) effectiveQuota(policy tenantFilePolicy) int64 {
 	if policy.UserDriveQuota != nil {
 		return *policy.UserDriveQuota

@@ -5,7 +5,10 @@ import (
 	"database/sql"
 )
 
-func (s Service) GetSessionRecording(ctx context.Context, sessionID string) (sessionRecordingResponse, error) {
+func (s Service) GetSessionRecording(ctx context.Context, sessionID string, access sessionRecordingAccess) (sessionRecordingResponse, error) {
+	args := []any{sessionID}
+	conditions := []string{`r."sessionId" = $1`}
+	conditions = append(conditions, access.clauses(&args, "r", "sess")...)
 	row := s.DB.QueryRow(ctx, `
 SELECT
 	r.id,
@@ -28,11 +31,12 @@ SELECT
 	c.host,
 	c.port
 FROM "SessionRecording" r
+LEFT JOIN "ActiveSession" sess ON sess.id = r."sessionId"
 JOIN "Connection" c ON c.id = r."connectionId"
-WHERE r."sessionId" = $1
+WHERE `+joinRecordingAccessConditions(conditions)+`
 ORDER BY r."createdAt" DESC
 LIMIT 1
-`, sessionID)
+`, args...)
 
 	var (
 		item           sessionRecordingResponse

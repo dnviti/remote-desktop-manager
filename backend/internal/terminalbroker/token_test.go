@@ -63,6 +63,44 @@ func TestValidateGrantRejectsExpired(t *testing.T) {
 	}
 }
 
+func TestIssueAndValidateObserverGrant(t *testing.T) {
+	grant := contracts.TerminalSessionGrant{
+		Mode:      contracts.TerminalSessionModeObserve,
+		SessionID: "session-1",
+		UserID:    "observer-1",
+		ExpiresAt: time.Now().UTC().Add(2 * time.Minute),
+	}
+
+	token, err := IssueGrant("secret", grant)
+	if err != nil {
+		t.Fatalf("IssueGrant() error = %v", err)
+	}
+
+	validated, err := ValidateGrant("secret", token, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("ValidateGrant() error = %v", err)
+	}
+	if validated.Mode != contracts.TerminalSessionModeObserve {
+		t.Fatalf("validated mode = %q, want %q", validated.Mode, contracts.TerminalSessionModeObserve)
+	}
+	if validated.SessionID != grant.SessionID {
+		t.Fatalf("validated sessionId = %q, want %q", validated.SessionID, grant.SessionID)
+	}
+	if validated.Target.Host != "" {
+		t.Fatalf("validated observer target host = %q, want empty", validated.Target.Host)
+	}
+}
+
+func TestIssueGrantRejectsObserverWithoutSessionID(t *testing.T) {
+	_, err := IssueGrant("secret", contracts.TerminalSessionGrant{Mode: contracts.TerminalSessionModeObserve})
+	if err == nil {
+		t.Fatal("IssueGrant() error = nil, want observe sessionId validation error")
+	}
+	if !strings.Contains(err.Error(), "sessionId is required for observe grants") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadSecretUsesTrimmedTerminalBrokerSecret(t *testing.T) {
 	t.Setenv("TERMINAL_BROKER_SECRET", "  terminal-secret \n")
 	_ = os.Unsetenv("TERMINAL_BROKER_SECRET_FILE")

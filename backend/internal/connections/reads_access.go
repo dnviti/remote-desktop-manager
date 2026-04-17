@@ -61,6 +61,7 @@ SELECT
 	c."dbSettings",
 	c."defaultCredentialMode",
 	c."dlpPolicy",
+	c."transferRetentionPolicy",
 	c."targetDbHost",
 	c."targetDbPort",
 	c."dbType",
@@ -101,6 +102,7 @@ SELECT
 	c."dbSettings",
 	c."defaultCredentialMode",
 	c."dlpPolicy",
+	c."transferRetentionPolicy",
 	c."targetDbHost",
 	c."targetDbPort",
 	c."dbType",
@@ -125,7 +127,7 @@ WHERE c.id = $1
 	var gatewayID, defaultCredentialMode, teamRole, teamName sql.NullString
 	var targetDBHost, dbType, bastionConnectionID sql.NullString
 	var targetDBPort sql.NullInt32
-	var sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy []byte
+	var sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy []byte
 	if err := row.Scan(
 		&conn.ID,
 		&conn.Name,
@@ -149,6 +151,7 @@ WHERE c.id = $1
 		&dbSettings,
 		&defaultCredentialMode,
 		&dlpPolicy,
+		&transferRetentionPolicy,
 		&targetDBHost,
 		&targetDBPort,
 		&dbType,
@@ -160,7 +163,7 @@ WHERE c.id = $1
 	); err != nil {
 		return connectionResponse{}, err
 	}
-	applyNulls(&conn, teamID, credentialSecretID, credentialSecretName, credentialSecretType, externalVaultProviderID, externalVaultPath, description, gatewayID, defaultCredentialMode, targetDBHost, targetDBPort, dbType, bastionConnectionID, sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy)
+	applyNulls(&conn, teamID, credentialSecretID, credentialSecretName, credentialSecretType, externalVaultProviderID, externalVaultPath, description, gatewayID, defaultCredentialMode, targetDBHost, targetDBPort, dbType, bastionConnectionID, sshConfig, rdpSettings, vncSettings, dbSettings, dlpPolicy, transferRetentionPolicy)
 	if teamRole.Valid {
 		conn.TeamRole = &teamRole.String
 	}
@@ -195,6 +198,7 @@ SELECT
 	c."dbSettings",
 	c."defaultCredentialMode",
 	c."dlpPolicy",
+	c."transferRetentionPolicy",
 	c."targetDbHost",
 	c."targetDbPort",
 	c."dbType",

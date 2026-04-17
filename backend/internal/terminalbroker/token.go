@@ -146,6 +146,7 @@ func ValidateGrant(secret, token string, now time.Time) (contracts.TerminalSessi
 
 func DescribeGrant(grant contracts.TerminalSessionGrant) contracts.TerminalSessionGrantSummary {
 	summary := contracts.TerminalSessionGrantSummary{
+		Mode:         grant.Mode,
 		SessionID:    grant.SessionID,
 		ConnectionID: grant.ConnectionID,
 		UserID:       grant.UserID,
@@ -186,6 +187,30 @@ func ProtocolDescriptor() contracts.TerminalProtocolDescriptor {
 }
 
 func normalizeGrant(grant contracts.TerminalSessionGrant) (contracts.TerminalSessionGrant, error) {
+	switch strings.ToLower(strings.TrimSpace(string(grant.Mode))) {
+	case "", string(contracts.TerminalSessionModeControl):
+		grant.Mode = contracts.TerminalSessionModeControl
+	case string(contracts.TerminalSessionModeObserve):
+		grant.Mode = contracts.TerminalSessionModeObserve
+	default:
+		return contracts.TerminalSessionGrant{}, errors.New("mode must be control or observe")
+	}
+
+	if grant.ExpiresAt.IsZero() {
+		grant.ExpiresAt = time.Now().UTC().Add(5 * time.Minute)
+	}
+	grant.ExpiresAt = grant.ExpiresAt.UTC()
+	if grant.Metadata == nil {
+		grant.Metadata = map[string]string{}
+	}
+
+	if grant.Mode == contracts.TerminalSessionModeObserve {
+		if strings.TrimSpace(grant.SessionID) == "" {
+			return contracts.TerminalSessionGrant{}, errors.New("sessionId is required for observe grants")
+		}
+		return grant, nil
+	}
+
 	if strings.TrimSpace(grant.Target.Host) == "" {
 		return contracts.TerminalSessionGrant{}, errors.New("target.host is required")
 	}
@@ -212,10 +237,6 @@ func normalizeGrant(grant contracts.TerminalSessionGrant) (contracts.TerminalSes
 			return contracts.TerminalSessionGrant{}, errors.New("bastion credentials are required")
 		}
 	}
-	if grant.ExpiresAt.IsZero() {
-		grant.ExpiresAt = time.Now().UTC().Add(5 * time.Minute)
-	}
-	grant.ExpiresAt = grant.ExpiresAt.UTC()
 	if strings.TrimSpace(grant.Terminal.Term) == "" {
 		grant.Terminal.Term = "xterm-256color"
 	}
@@ -224,9 +245,6 @@ func normalizeGrant(grant contracts.TerminalSessionGrant) (contracts.TerminalSes
 	}
 	if grant.Terminal.Rows <= 0 {
 		grant.Terminal.Rows = 24
-	}
-	if grant.Metadata == nil {
-		grant.Metadata = map[string]string{}
 	}
 	return grant, nil
 }

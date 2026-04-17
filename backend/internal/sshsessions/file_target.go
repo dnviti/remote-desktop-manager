@@ -59,19 +59,7 @@ func (s Service) ResolveFileTransferTarget(ctx context.Context, userID, tenantID
 	}
 
 	return ResolvedFileTransferTarget{
-		Connection: ConnectionSnapshot{
-			ID:           access.Connection.ID,
-			Type:         access.Connection.Type,
-			Host:         access.Connection.Host,
-			Port:         access.Connection.Port,
-			TeamID:       cloneStringPtr(access.Connection.TeamID),
-			GatewayID:    cloneStringPtr(access.Connection.GatewayID),
-			TargetDBHost: cloneStringPtr(access.Connection.TargetDBHost),
-			TargetDBPort: cloneIntPtr(access.Connection.TargetDBPort),
-			DBType:       cloneStringPtr(access.Connection.DBType),
-			DBSettings:   cloneRawJSON(access.Connection.DBSettings),
-			DLPPolicy:    cloneRawJSON(access.Connection.DLPPolicy),
-		},
+		Connection: snapshotConnectionRecord(access.Connection),
 		AccessType: access.AccessType,
 		Target:     target,
 		Bastion:    terminalEndpointFromMap(bastionMap),

@@ -77,34 +77,10 @@ func (s Service) openDBTunnel(ctx context.Context, claims authn.Claims, payload 
 	}
 	tunnel.ConnectionString = buildDBTunnelConnectionString(dbType, "127.0.0.1", tunnel.LocalPort, dbUsername, dbPassword, dbName)
 
-	if _, err := s.SessionStore.CloseStaleSessionsForConnection(ctx, claims.UserID, access.Connection.ID, "DB_TUNNEL"); err != nil {
-		tunnel.close()
-		return dbTunnelResponse{}, fmt.Errorf("close stale DB tunnel sessions: %w", err)
-	}
-
-	sessionID, err := s.SessionStore.StartSession(ctx, sessions.StartSessionParams{
-		UserID:       claims.UserID,
-		ConnectionID: access.Connection.ID,
-		Protocol:     "DB_TUNNEL",
-		IPAddress:    ipAddress,
-		Metadata: map[string]any{
-			"tunnelId":          tunnel.ID,
-			"localHost":         "127.0.0.1",
-			"localPort":         tunnel.LocalPort,
-			"targetDbHost":      targetDBHost,
-			"targetDbPort":      targetDBPort,
-			"dbType":            valueOrEmpty(dbType),
-			"transport":         "db-tunnel",
-			"credentialSource":  credentials.CredentialSource,
-			"connectionString":  valueOrEmpty(tunnel.ConnectionString),
-			"bastionHost":       strings.TrimSpace(access.Connection.Host),
-			"bastionPort":       access.Connection.Port,
-			"bastionCredential": credentials.CredentialSource,
-		},
-	})
+	sessionID, err := s.startDBTunnelSession(ctx, claims, access, ipAddress, tunnel, credentials, targetDBHost, targetDBPort, dbType)
 	if err != nil {
 		tunnel.close()
-		return dbTunnelResponse{}, fmt.Errorf("start DB tunnel session: %w", err)
+		return dbTunnelResponse{}, err
 	}
 
 	tunnel.SessionID = sessionID
@@ -131,6 +107,34 @@ func (s Service) openDBTunnel(ctx context.Context, claims authn.Claims, payload 
 		TargetDBPort:     targetDBPort,
 		DBType:           cloneStringPtr(dbType),
 	}, nil
+}
+
+func (s Service) startDBTunnelSession(ctx context.Context, claims authn.Claims, access connectionAccess, ipAddress string, tunnel *activeDBTunnel, credentials resolvedCredentials, targetDBHost string, targetDBPort int, dbType *string) (string, error) {
+	sessionID, err := s.SessionStore.StartSession(ctx, sessions.StartSessionParams{
+		TenantID:     claims.TenantID,
+		UserID:       claims.UserID,
+		ConnectionID: access.Connection.ID,
+		Protocol:     "DB_TUNNEL",
+		IPAddress:    ipAddress,
+		Metadata: map[string]any{
+			"tunnelId":          tunnel.ID,
+			"localHost":         "127.0.0.1",
+			"localPort":         tunnel.LocalPort,
+			"targetDbHost":      targetDBHost,
+			"targetDbPort":      targetDBPort,
+			"dbType":            valueOrEmpty(dbType),
+			"transport":         "db-tunnel",
+			"credentialSource":  credentials.CredentialSource,
+			"connectionString":  valueOrEmpty(tunnel.ConnectionString),
+			"bastionHost":       strings.TrimSpace(access.Connection.Host),
+			"bastionPort":       access.Connection.Port,
+			"bastionCredential": credentials.CredentialSource,
+		},
+	})
+	if err != nil {
+		return "", fmt.Errorf("start DB tunnel session: %w", err)
+	}
+	return sessionID, nil
 }
 
 func startDBTunnel(credentials resolvedCredentials, options dbTunnelStartOptions) (*activeDBTunnel, error) {

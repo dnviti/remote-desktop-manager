@@ -1,0 +1,2 @@
+ALTER TYPE public."AuditAction"
+ADD VALUE IF NOT EXISTS 'SFTP_LIST';

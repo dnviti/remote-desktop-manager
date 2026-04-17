@@ -51,6 +51,7 @@ func (d *apiDependencies) handleOwnedSessionEnd(w http.ResponseWriter, r *http.R
 
 func (d *apiDependencies) registerSessionRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/sessions/active", d.authenticator.Middleware(d.sessionAdminService.HandleList))
+	mux.HandleFunc("GET /api/sessions/console", d.authenticator.Middleware(d.sessionAdminService.HandleSessionConsole))
 	mux.HandleFunc("GET /api/sessions/count", d.authenticator.Middleware(d.sessionAdminService.HandleCount))
 	mux.HandleFunc("GET /api/sessions/count/gateway", d.authenticator.Middleware(d.sessionAdminService.HandleCountByGateway))
 	if d.features.ConnectionsEnabled {
@@ -64,6 +65,7 @@ func (d *apiDependencies) registerSessionRoutes(mux *http.ServeMux) {
 				app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 			}
 		})
+		mux.HandleFunc("POST /api/sessions/ssh/{sessionId}/observe", d.authenticator.Middleware(d.sessionAdminService.HandleObserveSSH))
 		mux.HandleFunc("POST /api/sessions/rdp", func(w http.ResponseWriter, r *http.Request) {
 			claims, err := d.authenticator.Authenticate(r)
 			if err != nil {
@@ -72,6 +74,7 @@ func (d *apiDependencies) registerSessionRoutes(mux *http.ServeMux) {
 			}
 			d.desktopSessionService.HandleCreateRDP(w, r, claims)
 		})
+		mux.HandleFunc("POST /api/sessions/rdp/{sessionId}/observe", d.authenticator.Middleware(d.sessionAdminService.HandleObserveRDP))
 		mux.HandleFunc("POST /api/sessions/vnc", func(w http.ResponseWriter, r *http.Request) {
 			claims, err := d.authenticator.Authenticate(r)
 			if err != nil {
@@ -80,6 +83,7 @@ func (d *apiDependencies) registerSessionRoutes(mux *http.ServeMux) {
 			}
 			d.desktopSessionService.HandleCreateVNC(w, r, claims)
 		})
+		mux.HandleFunc("POST /api/sessions/vnc/{sessionId}/observe", d.authenticator.Middleware(d.sessionAdminService.HandleObserveVNC))
 		mux.HandleFunc("POST /api/sessions/rdp/{sessionId}/heartbeat", func(w http.ResponseWriter, r *http.Request) {
 			claims, err := d.authenticator.Authenticate(r)
 			if err != nil {
@@ -208,6 +212,26 @@ func (d *apiDependencies) registerSessionRoutes(mux *http.ServeMux) {
 			return
 		}
 		if err := d.sessionAdminService.HandleTerminate(w, r, claims); err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		}
+	})
+	mux.HandleFunc("POST /api/sessions/{sessionId}/pause", func(w http.ResponseWriter, r *http.Request) {
+		claims, err := d.authenticator.Authenticate(r)
+		if err != nil {
+			app.ErrorJSON(w, http.StatusUnauthorized, "Invalid or expired token")
+			return
+		}
+		if err := d.sessionAdminService.HandlePause(w, r, claims); err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+		}
+	})
+	mux.HandleFunc("POST /api/sessions/{sessionId}/resume", func(w http.ResponseWriter, r *http.Request) {
+		claims, err := d.authenticator.Authenticate(r)
+		if err != nil {
+			app.ErrorJSON(w, http.StatusUnauthorized, "Invalid or expired token")
+			return
+		}
+		if err := d.sessionAdminService.HandleResume(w, r, claims); err != nil {
 			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		}
 	})

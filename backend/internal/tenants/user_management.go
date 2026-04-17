@@ -45,26 +45,24 @@ func (s Service) GetUserPermissions(ctx context.Context, tenantID, targetUserID 
 
 	result := tenantUserPermissionsResponse{
 		Role:        roleText,
-		Permissions: make(map[string]bool, len(defaults)),
-		Defaults:    make(map[string]bool, len(defaults)),
-	}
-	for flag, value := range defaults {
-		result.Permissions[string(flag)] = value
-		result.Defaults[string(flag)] = value
+		Permissions: tenantauth.PermissionMapForAPI(defaults),
+		Defaults:    tenantauth.PermissionMapForAPI(defaults),
 	}
 
 	if overridesText != nil && strings.TrimSpace(*overridesText) != "" {
-		var overrides map[string]bool
-		if err := json.Unmarshal([]byte(*overridesText), &overrides); err != nil {
+		overrides, err := tenantauth.DecodePermissionOverrides(*overridesText)
+		if err != nil {
 			return tenantUserPermissionsResponse{}, fmt.Errorf("decode permission overrides: %w", err)
 		}
-		if len(overrides) > 0 {
-			result.Overrides = make(map[string]bool, len(overrides))
-			for key, value := range overrides {
-				result.Overrides[key] = value
-				result.Permissions[key] = value
-			}
+		normalized := tenantauth.NormalizePermissionOverrides(overrides, defaults)
+		if normalized != nil {
+			result.Overrides = tenantauth.OverrideMapForAPI(defaults, normalized)
 		}
+		permissions, ok := tenantauth.EffectivePermissions(roleText, overrides)
+		if !ok {
+			return tenantUserPermissionsResponse{}, &requestError{status: 400, message: "Unknown tenant role"}
+		}
+		result.Permissions = tenantauth.PermissionMapForAPI(permissions)
 	}
 	if result.Overrides == nil {
 		result.Overrides = nil
@@ -95,30 +93,13 @@ func (s Service) UpdateUserPermissions(ctx context.Context, tenantID, targetUser
 		return tenantUserPermissionsResponse{}, &requestError{status: 400, message: "Unknown tenant role"}
 	}
 
-	if strings.EqualFold(strings.TrimSpace(roleText), "OWNER") && overrides != nil {
-		for key, value := range overrides {
+	normalized := tenantauth.NormalizePermissionOverrides(overrides, defaults)
+	if strings.EqualFold(strings.TrimSpace(roleText), "OWNER") && normalized != nil {
+		for key, value := range normalized {
 			flag := tenantauth.PermissionFlag(key)
 			if defaults[flag] && !value {
 				return tenantUserPermissionsResponse{}, &requestError{status: 400, message: "Cannot reduce permissions for an OWNER"}
 			}
-		}
-	}
-
-	var normalized map[string]bool
-	if overrides != nil {
-		normalized = make(map[string]bool)
-		for _, flag := range tenantauth.AllPermissionFlags {
-			key := string(flag)
-			value, exists := overrides[key]
-			if !exists {
-				continue
-			}
-			if value != defaults[flag] {
-				normalized[key] = value
-			}
-		}
-		if len(normalized) == 0 {
-			normalized = nil
 		}
 	}
 

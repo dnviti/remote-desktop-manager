@@ -22,6 +22,11 @@ func (s Service) HandleList(w http.ResponseWriter, r *http.Request, claims authn
 	}
 	result, err := s.ListRecordings(r.Context(), claims, query)
 	if err != nil {
+		var reqErr *requestError
+		if errors.As(err, &reqErr) {
+			app.ErrorJSON(w, reqErr.status, reqErr.message)
+			return
+		}
 		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
@@ -29,7 +34,7 @@ func (s Service) HandleList(w http.ResponseWriter, r *http.Request, claims authn
 }
 
 func (s Service) HandleGet(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims.UserID)
+	item, err := s.GetRecording(r.Context(), r.PathValue("id"), claims)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			app.ErrorJSON(w, http.StatusNotFound, "Recording not found")
@@ -70,8 +75,13 @@ func (s Service) HandleAuditTrail(w http.ResponseWriter, r *http.Request, claims
 }
 
 func (s Service) HandleDelete(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-	deleted, err := s.DeleteRecording(r.Context(), r.PathValue("id"), claims.UserID)
+	deleted, err := s.DeleteRecording(r.Context(), r.PathValue("id"), claims)
 	if err != nil {
+		var reqErr *requestError
+		if errors.As(err, &reqErr) {
+			app.ErrorJSON(w, reqErr.status, reqErr.message)
+			return
+		}
 		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}

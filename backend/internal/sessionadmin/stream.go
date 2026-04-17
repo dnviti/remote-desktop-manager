@@ -20,17 +20,14 @@ type activeSessionSnapshot struct {
 }
 
 func (s Service) HandleStream(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
-	if !s.authorized(w, r, claims) {
+	visibility, ok := s.resolveSessionVisibility(w, r, claims)
+	if !ok {
 		return
 	}
 
-	filter := sessions.ActiveSessionFilter{
-		TenantID:  claims.TenantID,
-		Protocol:  normalizeProtocol(r.URL.Query().Get("protocol")),
-		GatewayID: strings.TrimSpace(r.URL.Query().Get("gatewayId")),
-	}
+	filter := activeSessionFilterForVisibility(claims, visibility, normalizeProtocol(r.URL.Query().Get("protocol")), strings.TrimSpace(r.URL.Query().Get("gatewayId")))
 
-	snapshot, err := s.buildStreamSnapshot(r.Context(), claims.TenantID, filter)
+	snapshot, err := s.buildStreamSnapshot(r.Context(), filter)
 	if err != nil {
 		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		return
@@ -53,7 +50,7 @@ func (s Service) HandleStream(w http.ResponseWriter, r *http.Request, claims aut
 		case <-r.Context().Done():
 			return
 		case <-ticker.C:
-			snapshot, err := s.buildStreamSnapshot(r.Context(), claims.TenantID, filter)
+			snapshot, err := s.buildStreamSnapshot(r.Context(), filter)
 			if err != nil {
 				return
 			}
@@ -64,12 +61,12 @@ func (s Service) HandleStream(w http.ResponseWriter, r *http.Request, claims aut
 	}
 }
 
-func (s Service) buildStreamSnapshot(ctx context.Context, tenantID string, filter sessions.ActiveSessionFilter) (activeSessionSnapshot, error) {
+func (s Service) buildStreamSnapshot(ctx context.Context, filter sessions.ActiveSessionFilter) (activeSessionSnapshot, error) {
 	items, err := s.Store.ListActiveSessions(ctx, filter)
 	if err != nil {
 		return activeSessionSnapshot{}, err
 	}
-	count, err := s.Store.CountActiveSessions(ctx, sessions.ActiveSessionFilter{TenantID: tenantID})
+	count, err := s.Store.CountActiveSessions(ctx, filter)
 	if err != nil {
 		return activeSessionSnapshot{}, err
 	}

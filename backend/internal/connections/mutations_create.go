@@ -44,6 +44,11 @@ func (s Service) CreateConnection(ctx context.Context, claims authn.Claims, payl
 		return connectionResponse{}, err
 	}
 
+	transferRetentionPolicy, err := normalizeTransferRetentionPolicyInput(payload.TransferRetentionPolicy)
+	if err != nil {
+		return connectionResponse{}, err
+	}
+
 	gatewayID := normalizeOptionalStringPtrValue(payload.GatewayID)
 	if gatewayRoutingMandatoryEnabled() && gatewayID == nil && connectionTypeRequiresGateway(connType) {
 		resolvedGatewayID, err := s.resolveDefaultGatewayID(ctx, claims.TenantID, connType)
@@ -69,7 +74,6 @@ func (s Service) CreateConnection(ctx context.Context, claims authn.Claims, payl
 	}
 
 	var (
-		err         error
 		key         []byte
 		encUser     *encryptedField
 		encPassword *encryptedField
@@ -140,6 +144,7 @@ INSERT INTO "Connection" (
 	"vncSettings",
 	"dbSettings",
 	"dlpPolicy",
+	"transferRetentionPolicy",
 	"defaultCredentialMode",
 	"targetDbHost",
 	"targetDbPort",
@@ -183,7 +188,8 @@ VALUES (
 	$32,
 	$33,
 	$34,
-	$35
+	$35,
+	$36
 )
 RETURNING id
 `,
@@ -215,6 +221,7 @@ RETURNING id
 		nullableJSON(payload.VNCSettings),
 		nullableJSON(payload.DBSettings),
 		nullableJSON(payload.DLPPolicy),
+		nullableJSON(transferRetentionPolicy),
 		nullableString(payload.DefaultCredentialMode),
 		nullableString(payload.TargetDBHost),
 		nullableInt(payload.TargetDBPort),

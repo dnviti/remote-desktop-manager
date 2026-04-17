@@ -8,6 +8,7 @@ import (
 
 type CompiledSettings struct {
 	Selector string
+	Protocol string
 	Values   map[string]string
 	Width    string
 	Height   string
@@ -19,17 +20,19 @@ type CompiledSettings struct {
 }
 
 func CompileSettings(token ConnectionToken) (CompiledSettings, error) {
-	if token.Connection.Join != "" {
-		return CompiledSettings{}, fmt.Errorf("join connections are not supported by desktop-broker")
-	}
-
 	settingsType := strings.ToLower(token.Connection.Type)
 	if settingsType != "rdp" && settingsType != "vnc" {
 		return CompiledSettings{}, fmt.Errorf("unsupported connection type %q", token.Connection.Type)
 	}
 
+	selector := settingsType
+	if joinID := strings.TrimSpace(token.Connection.Join); joinID != "" {
+		selector = joinID
+	}
+
 	compiled := CompiledSettings{
-		Selector: settingsType,
+		Selector: selector,
+		Protocol: settingsType,
 		Values:   make(map[string]string),
 		Width:    "1024",
 		Height:   "768",

@@ -12,11 +12,15 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"golang.org/x/crypto/scrypt"
 )
 
-const guacamoleSalt = "arsenale-guac-salt"
+const (
+	guacamoleSalt               = "arsenale-guac-salt"
+	MetadataKeyObserveSessionID = "observeSessionId"
+)
 
 var ErrSecretNotConfigured = errors.New("secret not configured")
 
@@ -27,6 +31,7 @@ type TokenEnvelope struct {
 }
 
 type ConnectionToken struct {
+	ExpiresAt  time.Time `json:"expiresAt,omitempty"`
 	Connection struct {
 		Type      string         `json:"type"`
 		Join      string         `json:"join,omitempty"`
@@ -172,6 +177,9 @@ func DecryptToken(secret, encryptedToken string) (ConnectionToken, error) {
 
 	if token.Connection.Settings == nil {
 		token.Connection.Settings = map[string]any{}
+	}
+	if !token.ExpiresAt.IsZero() {
+		token.ExpiresAt = token.ExpiresAt.UTC()
 	}
 
 	return token, nil

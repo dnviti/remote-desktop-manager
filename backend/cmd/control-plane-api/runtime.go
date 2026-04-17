@@ -338,7 +338,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 		fileService: files.Service{
 			DB:                 db,
 			DriveBasePath:      getenv("DRIVE_BASE_PATH", "/guacd-drive"),
-			FileUploadMaxSize:  int64(parseInt(getenv("FILE_UPLOAD_MAX_SIZE", "10485760"), 10*1024*1024)),
+			FileUploadMaxSize:  int64(parseInt(getenv("FILE_UPLOAD_MAX_SIZE", "104857600"), 100*1024*1024)),
 			UserDriveQuota:     int64(parseInt(getenv("USER_DRIVE_QUOTA", "104857600"), 100*1024*1024)),
 			ConnectionResolver: sshSessionService,
 			Store:              sharedFileStore,
@@ -403,6 +403,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 		},
 		recordingService: recordingsapi.Service{
 			DB:                    db,
+			TenantAuth:            tenantAuthService,
 			RecordingPath:         getenv("RECORDING_PATH", "/recordings"),
 			GuacencServiceURL:     getenv("GUACENC_SERVICE_URL", "http://guacenc:3003"),
 			GuacencUseTLS:         strings.EqualFold(getenv("GUACENC_USE_TLS", "false"), "true"),
@@ -471,8 +472,9 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 		accessPolicyService:    accesspolicies.Service{DB: db},
 		keystrokePolicyService: keystrokepolicies.Service{DB: db},
 		sessionAdminService: sessionadmin.Service{
-			Store:      sessionStore,
-			TenantAuth: tenantAuthService,
+			Store:             sessionStore,
+			TenantAuth:        tenantAuthService,
+			SSHObserverGrants: sshSessionService,
 		},
 		sshSessionService: sshSessionService,
 		sshProxyService: sshproxyapi.Service{
@@ -500,6 +502,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 	deps.setupService.TenantService = &deps.tenantService
 	deps.connectionService.Redis = redisClient
 	deps.desktopSessionService.Connections = deps.connectionService
+	deps.sessionAdminService.DesktopObserverGrants = deps.desktopSessionService
 	deps.importExportService = importexportapi.Service{
 		DB:                  db,
 		Redis:               redisClient,

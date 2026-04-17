@@ -11,144 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-func (s *Store) CloseStaleSessionsForConnection(ctx context.Context, userID, connectionID, protocol string) (int, error) {
-	if s.db == nil {
-		return 0, nil
-	}
-
-	tx, err := s.db.BeginTx(ctx, pgx.TxOptions{})
-	if err != nil {
-		return 0, fmt.Errorf("begin close stale sessions: %w", err)
-	}
-	defer func() { _ = tx.Rollback(ctx) }()
-
-	rows, err := tx.Query(
-		ctx,
-		`SELECT s.id,
-		        s."userId",
-		        s."connectionId",
-		        s.protocol::text,
-		        s."gatewayId",
-		        s."instanceId",
-		        s."ipAddress",
-		        s."startedAt",
-		        s.status::text
-		   FROM "ActiveSession" s
-		  WHERE s."userId" = $1
-		    AND s."connectionId" = $2
-		    AND s.protocol = $3::"SessionProtocol"
-		    AND s.status <> 'CLOSED'::"SessionStatus"
-		  ORDER BY s."startedAt" DESC
-		  FOR UPDATE`,
-		userID,
-		connectionID,
-		protocol,
-	)
-	if err != nil {
-		return 0, fmt.Errorf("query stale sessions: %w", err)
-	}
-	defer rows.Close()
-
-	var stale []sessionRecord
-	for rows.Next() {
-		var record sessionRecord
-		if err := rows.Scan(
-			&record.ID,
-			&record.UserID,
-			&record.ConnectionID,
-			&record.Protocol,
-			&record.GatewayID,
-			&record.InstanceID,
-			&record.IPAddress,
-			&record.StartedAt,
-			&record.Status,
-		); err != nil {
-			return 0, fmt.Errorf("scan stale session: %w", err)
-		}
-		stale = append(stale, record)
-	}
-	if err := rows.Err(); err != nil {
-		return 0, fmt.Errorf("iterate stale sessions: %w", err)
-	}
-
-	if len(stale) == 0 {
-		if err := tx.Commit(ctx); err != nil {
-			return 0, fmt.Errorf("commit empty stale session close: %w", err)
-		}
-		return 0, nil
-	}
-
-	closedAt := time.Now().UTC()
-	recordingIDs := make([]string, 0, len(stale))
-	for _, record := range stale {
-		if _, err := tx.Exec(
-			ctx,
-			`UPDATE "ActiveSession"
-			    SET status = 'CLOSED'::"SessionStatus",
-			        "endedAt" = $2
-			  WHERE id = $1`,
-			record.ID,
-			closedAt,
-		); err != nil {
-			return 0, fmt.Errorf("close stale session %s: %w", record.ID, err)
-		}
-
-		recordingID := ""
-		if shouldAutoCompleteRecording(record.Protocol) {
-			recordingID, err = lookupRecordingID(ctx, tx, record.ID)
-			if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-				return 0, fmt.Errorf("lookup recording id for stale session %s: %w", record.ID, err)
-			}
-			if recordingID != "" {
-				recordingIDs = append(recordingIDs, recordingID)
-			}
-		}
-
-		var gatewayName any
-		if record.GatewayID != nil && *record.GatewayID != "" {
-			name, nameErr := loadGatewayName(ctx, tx, *record.GatewayID)
-			if nameErr == nil && name != "" {
-				gatewayName = name
-			}
-		}
-
-		details, err := json.Marshal(map[string]any{
-			"sessionId":         record.ID,
-			"protocol":          record.Protocol,
-			"reason":            "superseded_by_new_session",
-			"durationMs":        closedAt.Sub(record.StartedAt).Milliseconds(),
-			"durationFormatted": formatDuration(closedAt.Sub(record.StartedAt).Milliseconds()),
-			"gatewayName":       gatewayName,
-			"instanceId":        stringPtrValue(record.InstanceID),
-			"recordingId":       emptyToNil(recordingID),
-		})
-		if err != nil {
-			return 0, fmt.Errorf("marshal stale session audit details: %w", err)
-		}
-
-		if err := insertAuditLog(ctx, tx, auditLogParams{
-			UserID:     record.UserID,
-			Action:     "SESSION_END",
-			TargetType: "Connection",
-			TargetID:   record.ConnectionID,
-			Details:    details,
-			IPAddress:  record.IPAddress,
-			GatewayID:  record.GatewayID,
-		}); err != nil {
-			return 0, fmt.Errorf("insert stale session audit: %w", err)
-		}
-	}
-
-	if err := tx.Commit(ctx); err != nil {
-		return 0, fmt.Errorf("commit stale session close: %w", err)
-	}
-	if err := completeSessionRecordings(ctx, s.db, recordingIDs); err != nil {
-		return 0, err
-	}
-
-	return len(stale), nil
-}
-
 func (s *Store) StartSession(ctx context.Context, params StartSessionParams) (string, error) {
 	if s.db == nil {
 		return "", errors.New("postgres is not configured")
@@ -169,11 +31,12 @@ func (s *Store) StartSession(ctx context.Context, params StartSessionParams) (st
 	if _, err := tx.Exec(
 		ctx,
 		`INSERT INTO "ActiveSession" (
-			 id, "userId", "connectionId", "gatewayId", "instanceId", protocol, status, "socketId", "guacTokenHash", "ipAddress", metadata
+			 id, "tenantId", "userId", "connectionId", "gatewayId", "instanceId", protocol, status, "socketId", "guacTokenHash", "ipAddress", metadata
 		 ) VALUES (
-			 $1, $2, $3, NULLIF($4, ''), NULLIF($5, ''), $6::"SessionProtocol", 'ACTIVE'::"SessionStatus", NULLIF($7, ''), NULLIF($8, ''), NULLIF($9, ''), $10::jsonb
+			 $1, NULLIF($2, ''), $3, $4, NULLIF($5, ''), NULLIF($6, ''), $7::"SessionProtocol", 'ACTIVE'::"SessionStatus", NULLIF($8, ''), NULLIF($9, ''), NULLIF($10, ''), $11::jsonb
 		 )`,
 		sessionID,
+		params.TenantID,
 		params.UserID,
 		params.ConnectionID,
 		params.GatewayID,
@@ -347,6 +210,113 @@ func (s *Store) EndOwnedSession(ctx context.Context, sessionID, userID, reason s
 			return err
 		}
 	}
+	if err := s.cleanupManagedSandboxes(ctx, []sessionRecord{*record}); err != nil {
+		return err
+	}
 
 	return nil
+}
+
+func (s *Store) cleanupManagedSandboxes(ctx context.Context, records []sessionRecord) error {
+	hook := loadSandboxCleanupHook()
+	if hook == nil || s.db == nil || len(records) == 0 {
+		return nil
+	}
+
+	targets, err := s.loadSandboxCleanupScopes(context.WithoutCancel(ctx), records)
+	if err != nil {
+		return err
+	}
+	for _, target := range targets {
+		if err := hook(context.WithoutCancel(ctx), target); err != nil {
+			return fmt.Errorf("cleanup managed sandbox for %s/%s/%s: %w", target.Protocol, target.UserID, target.ConnectionID, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) loadSandboxCleanupScopes(ctx context.Context, records []sessionRecord) ([]SandboxCleanupScope, error) {
+	unique := make(map[string]sessionRecord, len(records))
+	for _, record := range records {
+		key := record.UserID + "\x00" + record.ConnectionID + "\x00" + record.Protocol
+		if _, exists := unique[key]; exists {
+			continue
+		}
+		unique[key] = record
+	}
+
+	targets := make([]SandboxCleanupScope, 0, len(unique))
+	for _, record := range unique {
+		activeCount, err := s.countOpenSessionsForScope(ctx, record.UserID, record.ConnectionID, record.Protocol)
+		if err != nil {
+			return nil, err
+		}
+		if activeCount > 0 {
+			continue
+		}
+		tenantID, tenantName, connectionName, userEmail, err := s.lookupSandboxCleanupMetadata(ctx, record.ConnectionID, record.UserID)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, SandboxCleanupScope{
+			TenantID:       tenantID,
+			TenantName:     tenantName,
+			UserID:         record.UserID,
+			UserEmail:      userEmail,
+			ConnectionID:   record.ConnectionID,
+			ConnectionName: connectionName,
+			Protocol:       record.Protocol,
+		})
+	}
+	return targets, nil
+}
+
+func (s *Store) lookupSandboxCleanupMetadata(ctx context.Context, connectionID, userID string) (string, string, string, string, error) {
+	var tenantID, tenantName, connectionName, userEmail string
+	err := s.db.QueryRow(ctx, `
+SELECT
+  COALESCE(c."tenantId", tm."tenantId", ''),
+  COALESCE(t.name, ''),
+  COALESCE(c.name, ''),
+  COALESCE(u.email, '')
+FROM "Connection" c
+LEFT JOIN "Team" tm ON tm.id = c."teamId"
+LEFT JOIN "Tenant" t ON t.id = COALESCE(c."tenantId", tm."tenantId")
+LEFT JOIN "User" u ON u.id = $2
+WHERE c.id = $1
+`, connectionID, userID).Scan(&tenantID, &tenantName, &connectionName, &userEmail)
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return tenantID, tenantName, connectionName, userEmail, nil
+}
+
+func (s *Store) countOpenSessionsForScope(ctx context.Context, userID, connectionID, protocol string) (int, error) {
+	var count int
+	if err := s.db.QueryRow(
+		ctx,
+		`SELECT COUNT(*)::int
+		   FROM "ActiveSession"
+		  WHERE "userId" = $1
+		    AND "connectionId" = $2
+		    AND protocol = $3::"SessionProtocol"
+		    AND status <> 'CLOSED'::"SessionStatus"`,
+		userID,
+		connectionID,
+		protocol,
+	).Scan(&count); err != nil {
+		return 0, fmt.Errorf("count open sessions for cleanup: %w", err)
+	}
+	return count, nil
+}
+
+func (s *Store) lookupConnectionTenantID(ctx context.Context, connectionID string) (string, error) {
+	var tenantID string
+	if err := s.db.QueryRow(ctx, `SELECT COALESCE("tenantId", '') FROM "Connection" WHERE id = $1`, connectionID).Scan(&tenantID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		return "", fmt.Errorf("lookup connection tenant for cleanup: %w", err)
+	}
+	return tenantID, nil
 }

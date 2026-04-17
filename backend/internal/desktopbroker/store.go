@@ -14,11 +14,26 @@ import (
 
 type SessionStore interface {
 	FinalizeDesktopSession(ctx context.Context, tokenHash, recordingID string) error
+	GetDesktopSessionState(ctx context.Context, tokenHash string) (DesktopSessionState, error)
+	GetDesktopSessionStateBySessionID(ctx context.Context, sessionID string) (DesktopSessionState, error)
+	RecordDesktopConnectionReady(ctx context.Context, tokenHash, connectionID string) error
 }
 
 type NoopSessionStore struct{}
 
 func (NoopSessionStore) FinalizeDesktopSession(context.Context, string, string) error {
+	return nil
+}
+
+func (NoopSessionStore) GetDesktopSessionState(context.Context, string) (DesktopSessionState, error) {
+	return DesktopSessionState{}, nil
+}
+
+func (NoopSessionStore) GetDesktopSessionStateBySessionID(context.Context, string) (DesktopSessionState, error) {
+	return DesktopSessionState{}, nil
+}
+
+func (NoopSessionStore) RecordDesktopConnectionReady(context.Context, string, string) error {
 	return nil
 }
 
@@ -52,6 +67,13 @@ type recordingRecord struct {
 	Status         string
 	CreatedAt      time.Time
 	ConnectionName *string
+}
+
+type DesktopSessionState struct {
+	Exists bool
+	Closed bool
+	Paused bool
+	Reason string
 }
 
 func (s *PostgresSessionStore) FinalizeDesktopSession(ctx context.Context, tokenHash, recordingID string) error {
@@ -169,6 +191,24 @@ func loadOpenSession(ctx context.Context, tx pgx.Tx, tokenHash string) (*session
 	return &record, nil
 }
 
+func (s *PostgresSessionStore) GetDesktopSessionState(ctx context.Context, tokenHash string) (DesktopSessionState, error) {
+	if tokenHash == "" {
+		return DesktopSessionState{}, nil
+	}
+
+	row := s.db.QueryRow(
+		ctx,
+		`SELECT id, status::text
+		 FROM "ActiveSession"
+		 WHERE "guacTokenHash" = $1
+		 ORDER BY "startedAt" DESC
+		 LIMIT 1`,
+		tokenHash,
+	)
+
+	return s.loadDesktopSessionState(ctx, row)
+}
+
 func lookupRecordingID(ctx context.Context, tx pgx.Tx, sessionID string) (string, error) {
 	row := tx.QueryRow(
 		ctx,
@@ -267,6 +307,42 @@ func completeRecording(ctx context.Context, db *pgxpool.Pool, recordingID string
 	}
 
 	return nil
+}
+
+func loadDesktopSessionCloseReason(ctx context.Context, db *pgxpool.Pool, sessionID string) (string, error) {
+	row := db.QueryRow(
+		ctx,
+		`SELECT action::text, COALESCE(details->>'reason', '')
+		 FROM "AuditLog"
+		 WHERE details->>'sessionId' = $1
+		   AND action IN (
+		     'SESSION_END'::"AuditAction",
+		     'SESSION_TIMEOUT'::"AuditAction",
+		     'SESSION_ABSOLUTE_TIMEOUT'::"AuditAction"
+		   )
+		 ORDER BY "createdAt" DESC
+		 LIMIT 1`,
+		sessionID,
+	)
+
+	var (
+		action string
+		reason string
+	)
+	if err := row.Scan(&action, &reason); err != nil {
+		return "", err
+	}
+
+	switch action {
+	case "SESSION_TIMEOUT", "SESSION_ABSOLUTE_TIMEOUT":
+		return "timeout", nil
+	case "SESSION_END":
+		if reason != "" {
+			return reason, nil
+		}
+	}
+
+	return "closed", nil
 }
 
 func ensureRecordingReadable(filePath string, stat os.FileInfo) error {

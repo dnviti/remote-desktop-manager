@@ -18,6 +18,7 @@ import (
 )
 
 type GrantIssueRequest struct {
+	TenantID        string                    `json:"tenantId,omitempty"`
 	UserID          string                    `json:"userId"`
 	ConnectionID    string                    `json:"connectionId"`
 	GatewayID       string                    `json:"gatewayId,omitempty"`
@@ -67,6 +68,10 @@ type requestError struct {
 
 func (e *requestError) Error() string {
 	return e.message
+}
+
+func (e *requestError) StatusCode() int {
+	return e.status
 }
 
 func (s Service) HandleIssue(w http.ResponseWriter, r *http.Request) {
@@ -146,6 +151,7 @@ func (s Service) IssueGrant(ctx context.Context, req GrantIssueRequest) (GrantIs
 	}
 
 	sessionID, err := s.Store.StartSession(ctx, sessions.StartSessionParams{
+		TenantID:        req.TenantID,
 		UserID:          req.UserID,
 		ConnectionID:    req.ConnectionID,
 		GatewayID:       req.GatewayID,

@@ -189,21 +189,24 @@ func (s Service) HandleGetSessionRecording(w http.ResponseWriter, r *http.Reques
 		app.ErrorJSON(w, http.StatusBadRequest, "sessionId is required")
 		return
 	}
-
-	recording, err := s.GetSessionRecording(r.Context(), sessionID)
+	access, err := s.resolveSessionRecordingAccess(r.Context(), claims)
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			app.ErrorJSON(w, http.StatusNotFound, "Recording not found")
+		var reqErr *requestError
+		if errors.As(err, &reqErr) {
+			app.ErrorJSON(w, reqErr.status, reqErr.message)
 			return
 		}
 		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 
-	isOwner := recording.UserID == claims.UserID
-	isAuditor := strings.TrimSpace(claims.TenantID) != "" && isAuditAdmin(claims.TenantRole)
-	if !isOwner && !isAuditor {
-		app.ErrorJSON(w, http.StatusNotFound, "Recording not found")
+	recording, err := s.GetSessionRecording(r.Context(), sessionID, access)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			app.ErrorJSON(w, http.StatusNotFound, "Recording not found")
+			return
+		}
+		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 

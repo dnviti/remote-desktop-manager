@@ -92,6 +92,13 @@ func (s Service) UpdateConnection(ctx context.Context, claims authn.Claims, conn
 	if payload.DLPPolicy.Present {
 		addUpdate(`"dlpPolicy"`, nullableJSON(payload.DLPPolicy.Value))
 	}
+	if payload.TransferRetentionPolicy.Present {
+		transferRetentionPolicy, err := normalizeTransferRetentionPolicyInput(payload.TransferRetentionPolicy.Value)
+		if err != nil {
+			return connectionResponse{}, err
+		}
+		addUpdate(`"transferRetentionPolicy"`, nullableJSON(transferRetentionPolicy))
+	}
 	if payload.DefaultCredentialMode.Present {
 		addUpdate(`"defaultCredentialMode"`, nullableString(payload.DefaultCredentialMode.Value))
 	}

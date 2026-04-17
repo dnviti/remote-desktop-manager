@@ -1,14 +1,21 @@
 package recordingsapi
 
 import (
+	"context"
 	"encoding/json"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/tenantauth"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type sessionVisibilityResolver interface {
+	ResolveSessionVisibility(ctx context.Context, userID, tenantID string) (*tenantauth.SessionVisibility, error)
+}
+
 type Service struct {
 	DB                    *pgxpool.Pool
+	TenantAuth            sessionVisibilityResolver
 	RecordingPath         string
 	GuacencServiceURL     string
 	GuacencUseTLS         bool

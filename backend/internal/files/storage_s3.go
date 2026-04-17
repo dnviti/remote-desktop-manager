@@ -162,11 +162,21 @@ func (s *s3ObjectStore) List(ctx context.Context, prefix string) ([]ObjectInfo, 
 		}
 		for _, item := range page.Contents {
 			key := strings.TrimPrefix(aws.ToString(item.Key), s.fullKey(""))
-			items = append(items, ObjectInfo{
+			info := ObjectInfo{
 				Key:        key,
 				Size:       aws.ToInt64(item.Size),
 				ModifiedAt: aws.ToTime(item.LastModified),
+			}
+			head, err := s.client.HeadObject(ctx, &s3.HeadObjectInput{
+				Bucket: aws.String(s.bucket),
+				Key:    aws.String(aws.ToString(item.Key)),
 			})
+			if err == nil {
+				info.ModifiedAt = parseMetadataTime(head.Metadata["mtime-unix"], aws.ToTime(head.LastModified))
+				info.ContentType = aws.ToString(head.ContentType)
+				info.Metadata = cloneStringMap(head.Metadata)
+			}
+			items = append(items, info)
 		}
 	}
 	return items, nil

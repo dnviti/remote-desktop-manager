@@ -72,6 +72,18 @@ func TestGatewayRoutesRemainAvailableWithoutZeroTrust(t *testing.T) {
 	expectRoutePresent(t, mux, "POST", "/api/auth/switch-tenant")
 }
 
+func TestFileHistoryRoutePreemptsGenericFileRoute(t *testing.T) {
+	deps := &apiDependencies{
+		authenticator: &authn.Authenticator{},
+		features:      runtimefeatures.Manifest{KeychainEnabled: true},
+	}
+	mux := http.NewServeMux()
+	deps.register(mux)
+
+	expectRoutePattern(t, mux, "GET", "/api/files/history", "GET /api/files/history")
+	expectRoutePattern(t, mux, "GET", "/api/files/report.txt", "GET /api/files/{name}")
+}
+
 func expectRouteAbsent(t *testing.T, mux *http.ServeMux, method, path string) {
 	t.Helper()
 	req, err := http.NewRequest(method, path, nil)
@@ -93,5 +105,17 @@ func expectRoutePresent(t *testing.T, mux *http.ServeMux, method, path string) {
 	_, pattern := mux.Handler(req)
 	if pattern == "" || pattern == "/" {
 		t.Fatalf("expected %s %s to be present", method, path)
+	}
+}
+
+func expectRoutePattern(t *testing.T, mux *http.ServeMux, method, path, wantPattern string) {
+	t.Helper()
+	req, err := http.NewRequest(method, path, nil)
+	if err != nil {
+		t.Fatalf("build request: %v", err)
+	}
+	_, pattern := mux.Handler(req)
+	if pattern != wantPattern {
+		t.Fatalf("expected %s %s to match pattern %q, got %q", method, path, wantPattern, pattern)
 	}
 }

@@ -248,6 +248,15 @@ const (
 	AuditActionDBRATELIMITPOLICYUPDATE          AuditAction = "DB_RATE_LIMIT_POLICY_UPDATE"
 	AuditActionDBRATELIMITPOLICYDELETE          AuditAction = "DB_RATE_LIMIT_POLICY_DELETE"
 	AuditActionAIQUERYGENERATED                 AuditAction = "AI_QUERY_GENERATED"
+	AuditActionSFTPLIST                         AuditAction = "SFTP_LIST"
+	AuditActionFILEUPLOAD                       AuditAction = "FILE_UPLOAD"
+	AuditActionFILEDOWNLOAD                     AuditAction = "FILE_DOWNLOAD"
+	AuditActionFILEDELETE                       AuditAction = "FILE_DELETE"
+	AuditActionFILEMKDIR                        AuditAction = "FILE_MKDIR"
+	AuditActionFILERENAME                       AuditAction = "FILE_RENAME"
+	AuditActionFILELIST                         AuditAction = "FILE_LIST"
+	AuditActionSESSIONPAUSE                     AuditAction = "SESSION_PAUSE"
+	AuditActionSESSIONRESUME                    AuditAction = "SESSION_RESUME"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -1359,6 +1368,7 @@ const (
 	SessionStatusACTIVE SessionStatus = "ACTIVE"
 	SessionStatusIDLE   SessionStatus = "IDLE"
 	SessionStatusCLOSED SessionStatus = "CLOSED"
+	SessionStatusPAUSED SessionStatus = "PAUSED"
 )
 
 func (e *SessionStatus) Scan(src interface{}) error {
@@ -1640,6 +1650,7 @@ type ActiveSession struct {
 	Metadata       []byte
 	InstanceId     pgtype.Text
 	IpAddress      pgtype.Text
+	TenantId       pgtype.Text
 }
 
 type AgentRun struct {
@@ -1725,6 +1736,7 @@ type Connection struct {
 	TargetDbHost            pgtype.Text
 	TargetDbPort            pgtype.Int4
 	DbType                  pgtype.Text
+	TransferRetentionPolicy []byte
 }
 
 type DbAuditLog struct {

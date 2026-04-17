@@ -10,40 +10,33 @@ import (
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 )
 
 func (s Service) GetAuditTrail(ctx context.Context, recordingID string, claims authn.Claims) (auditTrailResponse, error) {
 	if _, err := uuid.Parse(strings.TrimSpace(recordingID)); err != nil {
 		return auditTrailResponse{}, &requestError{status: http.StatusBadRequest, message: "invalid recording id"}
 	}
-
-	var (
-		sessionID sql.NullString
-		userID    string
-	)
-	err := s.DB.QueryRow(ctx, `SELECT "sessionId", "userId" FROM "SessionRecording" WHERE id = $1`, recordingID).Scan(&sessionID, &userID)
+	visibility, err := s.resolveRecordingVisibility(ctx, claims)
 	if err != nil {
 		return auditTrailResponse{}, err
 	}
 
-	isOwner := userID == claims.UserID
-	isAuditor := strings.TrimSpace(claims.TenantID) != "" && hasAnyRole(claims.TenantRole, "ADMIN", "OWNER", "AUDITOR")
-	if !isOwner && !isAuditor {
-		return auditTrailResponse{}, pgx.ErrNoRows
+	var sessionID sql.NullString
+	args := []any{recordingID}
+	conditions := []string{`sr.id = $1`}
+	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
+	err = s.DB.QueryRow(ctx, `SELECT sr."sessionId" FROM "SessionRecording" sr LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId" WHERE `+joinConditions(conditions), args...).Scan(&sessionID)
+	if err != nil {
+		return auditTrailResponse{}, err
 	}
 	if !sessionID.Valid {
 		return auditTrailResponse{Data: []auditTrailEntry{}, HasMore: false}, nil
 	}
 
-	args := []any{recordingID, sessionID.String}
+	args = []any{recordingID, sessionID.String}
 	// Older audit entries may reference only the session id, while newer ones can also
 	// include the recording id directly. Keep both predicates so historic trails stay visible.
-	conditions := []string{`((details ->> 'sessionId') = $2 OR (details ->> 'recordingId') = $1)`}
-	if !isAuditor {
-		args = append(args, claims.UserID)
-		conditions = append(conditions, fmt.Sprintf(`"userId" = $%d`, len(args)))
-	}
+	conditions = []string{`((details ->> 'sessionId') = $2 OR (details ->> 'recordingId') = $1)`}
 	querySQL := `
 SELECT id, "userId", action::text, "targetType", "targetId",
        CASE WHEN details IS NULL THEN NULL ELSE details::text END,
@@ -122,15 +115,6 @@ func scanAuditTrailEntry(row interface{ Scan(dest ...any) error }) (auditTrailEn
 	item.GeoCoords = geoCoords
 	item.Flags = flags
 	return item, nil
-}
-
-func hasAnyRole(role string, allowed ...string) bool {
-	for _, candidate := range allowed {
-		if role == candidate {
-			return true
-		}
-	}
-	return false
 }
 
 func (s Service) insertAuditLog(ctx context.Context, userID, action, targetID string, details map[string]any, ipAddress string) error {

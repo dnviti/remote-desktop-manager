@@ -56,6 +56,7 @@ type sessionRecord struct {
 type TerminalSessionState struct {
 	Exists bool
 	Closed bool
+	Paused bool
 	Reason string
 }
 
@@ -181,7 +182,10 @@ func (s *PostgresSessionStore) HeartbeatTerminalSession(ctx context.Context, ses
 		ctx,
 		`UPDATE "ActiveSession"
 		 SET "lastActivityAt" = NOW(),
-		     status = 'ACTIVE'::"SessionStatus"
+		     status = CASE
+		         WHEN status = 'PAUSED'::"SessionStatus" THEN 'PAUSED'::"SessionStatus"
+		         ELSE 'ACTIVE'::"SessionStatus"
+		     END
 		 WHERE id = $1
 		   AND status <> 'CLOSED'::"SessionStatus"`,
 		sessionID,
@@ -213,7 +217,7 @@ func (s *PostgresSessionStore) GetTerminalSessionState(ctx context.Context, sess
 		return TerminalSessionState{}, fmt.Errorf("load terminal session state: %w", err)
 	}
 
-	state := TerminalSessionState{Exists: true, Closed: status == "CLOSED"}
+	state := TerminalSessionState{Exists: true, Closed: status == "CLOSED", Paused: status == "PAUSED"}
 	if !state.Closed {
 		return state, nil
 	}

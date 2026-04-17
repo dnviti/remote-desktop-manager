@@ -18,20 +18,19 @@ func (s Service) ListRecordings(ctx context.Context, claims authn.Claims, query 
 	if s.DB == nil {
 		return recordingsResponse{}, fmt.Errorf("database is unavailable")
 	}
+	visibility, err := s.resolveRecordingVisibility(ctx, claims)
+	if err != nil {
+		return recordingsResponse{}, err
+	}
 	args := make([]any, 0, 8)
 	conditions := []string{`sr.protocol <> 'DATABASE'::"SessionProtocol"`}
 	baseSQL := `
 FROM "SessionRecording" sr
+LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId"
 JOIN "Connection" c ON c.id = sr."connectionId"
 JOIN "User" u ON u.id = sr."userId"
 `
-	if strings.TrimSpace(claims.TenantID) != "" {
-		args = append(args, claims.TenantID)
-		baseSQL += fmt.Sprintf(`JOIN "TenantMember" tm ON tm."userId" = sr."userId" AND tm."tenantId" = $%d AND tm."isActive" = true `, len(args))
-	} else {
-		args = append(args, claims.UserID)
-		conditions = append(conditions, fmt.Sprintf(`sr."userId" = $%d`, len(args)))
-	}
+	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
 
 	if query.ConnectionID != nil {
 		args = append(args, *query.ConnectionID)
@@ -89,31 +88,49 @@ LIMIT $%d OFFSET $%d
 	return recordingsResponse{Recordings: items, Total: total}, nil
 }
 
-func (s Service) GetRecording(ctx context.Context, recordingID, userID string) (recordingResponse, error) {
+func (s Service) GetRecording(ctx context.Context, recordingID string, claims authn.Claims) (recordingResponse, error) {
 	if _, err := uuid.Parse(strings.TrimSpace(recordingID)); err != nil {
 		return recordingResponse{}, &requestError{status: http.StatusBadRequest, message: "invalid recording id"}
 	}
+	visibility, err := s.resolveRecordingVisibility(ctx, claims)
+	if err != nil {
+		return recordingResponse{}, err
+	}
+	args := []any{recordingID}
+	conditions := []string{`sr.id = $1`}
+	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
 	row := s.DB.QueryRow(ctx, `
 SELECT sr.id, sr."sessionId", sr."userId", sr."connectionId", sr.protocol::text, sr."filePath",
        sr."fileSize", sr.duration, sr.width, sr.height, sr.format, sr.status::text,
        sr."createdAt", sr."completedAt",
        c.id, c.name, c.type::text, c.host
 FROM "SessionRecording" sr
+LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId"
 JOIN "Connection" c ON c.id = sr."connectionId"
-WHERE sr.id = $1 AND sr."userId" = $2
-`, recordingID, userID)
+WHERE `+joinConditions(conditions)+`
+`, args...)
 	return scanRecording(row, false)
 }
 
-func (s Service) DeleteRecording(ctx context.Context, recordingID, userID string) (bool, error) {
+func (s Service) DeleteRecording(ctx context.Context, recordingID string, claims authn.Claims) (bool, error) {
 	if _, err := uuid.Parse(strings.TrimSpace(recordingID)); err != nil {
 		return false, &requestError{status: http.StatusBadRequest, message: "invalid recording id"}
 	}
+	visibility, err := s.resolveRecordingVisibility(ctx, claims)
+	if err != nil {
+		return false, err
+	}
+	if !visibility.canDelete() {
+		return false, &requestError{status: http.StatusForbidden, message: "Forbidden"}
+	}
+	args := []any{recordingID}
+	conditions := []string{`sr.id = $1`}
+	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
 	var (
 		filePath sql.NullString
 		format   sql.NullString
 	)
-	err := s.DB.QueryRow(ctx, `SELECT "filePath", format FROM "SessionRecording" WHERE id = $1 AND "userId" = $2`, recordingID, userID).Scan(&filePath, &format)
+	err = s.DB.QueryRow(ctx, `SELECT sr."filePath", sr.format FROM "SessionRecording" sr LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId" WHERE `+joinConditions(conditions), args...).Scan(&filePath, &format)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil
@@ -129,7 +146,7 @@ func (s Service) DeleteRecording(ctx context.Context, recordingID, userID string
 			_ = os.Remove(filePath.String + ".mp4")
 		}
 	}
-	tag, err := s.DB.Exec(ctx, `DELETE FROM "SessionRecording" WHERE id = $1 AND "userId" = $2`, recordingID, userID)
+	tag, err := s.DB.Exec(ctx, `DELETE FROM "SessionRecording" WHERE id = $1`, recordingID)
 	if err != nil {
 		return false, fmt.Errorf("delete recording: %w", err)
 	}

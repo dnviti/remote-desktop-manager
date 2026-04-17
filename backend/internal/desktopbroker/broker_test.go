@@ -14,10 +14,12 @@ import (
 )
 
 type recordingStore struct {
-	mu          sync.Mutex
-	finalized   int
-	tokenHash   string
-	recordingID string
+	mu                sync.Mutex
+	finalized         int
+	tokenHash         string
+	recordingID       string
+	readyTokenHash    string
+	readyConnectionID string
 }
 
 func (s *recordingStore) FinalizeDesktopSession(_ context.Context, tokenHash, recordingID string) error {
@@ -26,6 +28,22 @@ func (s *recordingStore) FinalizeDesktopSession(_ context.Context, tokenHash, re
 	s.finalized++
 	s.tokenHash = tokenHash
 	s.recordingID = recordingID
+	return nil
+}
+
+func (s *recordingStore) GetDesktopSessionState(context.Context, string) (DesktopSessionState, error) {
+	return DesktopSessionState{}, nil
+}
+
+func (s *recordingStore) GetDesktopSessionStateBySessionID(context.Context, string) (DesktopSessionState, error) {
+	return DesktopSessionState{}, nil
+}
+
+func (s *recordingStore) RecordDesktopConnectionReady(_ context.Context, tokenHash, connectionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.readyTokenHash = tokenHash
+	s.readyConnectionID = connectionID
 	return nil
 }
 
@@ -168,5 +186,49 @@ func TestBrokerAcceptsNodeCompatibleTokenAndFlushesBufferedClientMessages(t *tes
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for buffered instruction")
+	}
+
+	store.mu.Lock()
+	readyConnectionID := store.readyConnectionID
+	readyTokenHash := store.readyTokenHash
+	store.mu.Unlock()
+	if readyConnectionID != "abc123" {
+		t.Fatalf("ready connection id = %q, want %q", readyConnectionID, "abc123")
+	}
+	if readyTokenHash == "" {
+		t.Fatal("expected broker to persist ready token hash")
+	}
+}
+
+func TestBrokerRejectsExpiredObserverToken(t *testing.T) {
+	t.Parallel()
+
+	store := &recordingStore{}
+	token := sampleConnectionToken()
+	token.Connection.Join = "owner-connection-123"
+	token.ExpiresAt = time.Now().UTC().Add(-1 * time.Minute)
+	token.Metadata = map[string]any{MetadataKeyObserveSessionID: "sess-observe"}
+
+	broker := NewBroker(BrokerConfig{
+		GuacamoleSecret: "broker-secret",
+		SessionStore:    store,
+	})
+
+	server := httptest.NewServer(http.HandlerFunc(broker.HandleWebSocket))
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/?token=" + mustEncryptToken(t, "broker-secret", token)
+	wsConn, _, err := websocket.DefaultDialer.Dial(wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial broker websocket: %v", err)
+	}
+	defer wsConn.Close()
+
+	_, payload, err := wsConn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read invalid-token message: %v", err)
+	}
+	if string(payload) != EncodeInstruction("error", "Token validation failed", "INVALID_TOKEN") {
+		t.Fatalf("unexpected expired-token payload: %q", string(payload))
 	}
 }

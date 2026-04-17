@@ -25,6 +25,7 @@ func NewBroker(config BrokerConfig) *Broker {
 		upgrader: websocket.Upgrader{
 			CheckOrigin: func(*http.Request) bool { return true },
 		},
+		runtimes: newRuntimeRegistry(),
 	}
 }
 
@@ -88,6 +89,39 @@ func (b *Broker) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		sendSocketErrorAndClose(wsConn, "INVALID_TOKEN", err.Error())
 		return
 	}
+	if grant.Mode == contracts.TerminalSessionModeObserve {
+		b.handleObserveWebSocket(wsConn, grant)
+		return
+	}
+	b.handleControlWebSocket(wsConn, grant)
+}
+
+func (b *Broker) handleObserveWebSocket(wsConn *websocket.Conn, grant contracts.TerminalSessionGrant) {
+	runtime, ok := b.runtimes.get(grant.SessionID)
+	if !ok {
+		sendSocketErrorAndClose(wsConn, "SESSION_NOT_FOUND", "active SSH session is not available for observation")
+		return
+	}
+
+	subscriber := newTerminalSubscriber(runtime, wsConn, contracts.TerminalSessionModeObserve, false)
+	if !runtime.attachSubscriber(subscriber) {
+		sendSocketErrorAndClose(wsConn, "SESSION_NOT_FOUND", "active SSH session is not available for observation")
+		return
+	}
+	if err := subscriber.send(serverMessage{Type: "ready"}); err != nil {
+		subscriber.disconnect()
+		return
+	}
+
+	go subscriber.readWebSocket()
+	<-subscriber.closed
+}
+
+func (b *Broker) handleControlWebSocket(wsConn *websocket.Conn, grant contracts.TerminalSessionGrant) {
+	if _, exists := b.runtimes.get(grant.SessionID); exists {
+		sendSocketErrorAndClose(wsConn, "SESSION_ACTIVE", "terminal session is already attached")
+		return
+	}
 
 	client, cleanup, err := connectSSH(grant)
 	if err != nil {
@@ -97,20 +131,35 @@ func (b *Broker) HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer cleanup()
 
-	runtime, socketErr := b.newTerminalRuntime(wsConn, client, grant)
+	runtime, socketErr := b.newTerminalRuntime(client, grant)
 	if socketErr != nil {
 		sendSocketErrorAndClose(wsConn, socketErr.code, socketErr.message)
 		return
 	}
-	if err := sendWebsocketMessage(wsConn, serverMessage{Type: "ready"}); err != nil {
-		_ = wsConn.Close()
+	runtime.onClose = func() {
+		b.runtimes.remove(grant.SessionID, runtime)
+	}
+	if !b.runtimes.add(grant.SessionID, runtime) {
+		_ = runtime.session.Close()
+		sendSocketErrorAndClose(wsConn, "SESSION_ACTIVE", "terminal session is already attached")
+		return
+	}
+
+	subscriber := newTerminalSubscriber(runtime, wsConn, contracts.TerminalSessionModeControl, true)
+	if !runtime.attachSubscriber(subscriber) {
+		runtime.close()
+		sendSocketErrorAndClose(wsConn, "SESSION_ACTIVE", "terminal session is already attached")
+		return
+	}
+	if err := subscriber.send(serverMessage{Type: "ready"}); err != nil {
+		runtime.close()
 		return
 	}
 
 	runtime.outputWG.Add(2)
 	go runtime.streamOutput(runtime.stdout)
 	go runtime.streamOutput(runtime.stderr)
-	go runtime.readWebSocket()
+	go subscriber.readWebSocket()
 	go runtime.waitForSession()
 	go runtime.monitorSessionState()
 	runtime.noteActivity(true)
@@ -123,7 +172,7 @@ type socketError struct {
 	message string
 }
 
-func (b *Broker) newTerminalRuntime(wsConn *websocket.Conn, client *ssh.Client, grant contracts.TerminalSessionGrant) (*terminalRuntime, *socketError) {
+func (b *Broker) newTerminalRuntime(client *ssh.Client, grant contracts.TerminalSessionGrant) (*terminalRuntime, *socketError) {
 	session, err := client.NewSession()
 	if err != nil {
 		return nil, &socketError{code: "SESSION_ERROR", message: "failed to create SSH session"}
@@ -161,7 +210,6 @@ func (b *Broker) newTerminalRuntime(wsConn *websocket.Conn, client *ssh.Client, 
 
 	return &terminalRuntime{
 		logger:       b.config.Logger.With("component", "terminal-broker", "session_id", grant.SessionID),
-		wsConn:       wsConn,
 		session:      session,
 		stdin:        stdin,
 		stdout:       stdout,
@@ -170,5 +218,6 @@ func (b *Broker) newTerminalRuntime(wsConn *websocket.Conn, client *ssh.Client, 
 		sessionID:    grant.SessionID,
 		recording:    recordingReference(grant.Metadata),
 		closed:       make(chan struct{}),
+		observers:    make(map[*terminalSubscriber]struct{}),
 	}, nil
 }

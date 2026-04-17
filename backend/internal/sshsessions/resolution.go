@@ -28,17 +28,18 @@ type ResolveConnectionOptions struct {
 }
 
 type ConnectionSnapshot struct {
-	ID           string
-	Type         string
-	Host         string
-	Port         int
-	TeamID       *string
-	GatewayID    *string
-	TargetDBHost *string
-	TargetDBPort *int
-	DBType       *string
-	DBSettings   json.RawMessage
-	DLPPolicy    json.RawMessage
+	ID                      string
+	Type                    string
+	Host                    string
+	Port                    int
+	TeamID                  *string
+	GatewayID               *string
+	TargetDBHost            *string
+	TargetDBPort            *int
+	DBType                  *string
+	DBSettings              json.RawMessage
+	DLPPolicy               json.RawMessage
+	TransferRetentionPolicy json.RawMessage
 }
 
 type ResolvedConnection struct {
@@ -87,19 +88,7 @@ func (s Service) ResolveConnection(ctx context.Context, userID, tenantID, connec
 	}
 
 	return ResolvedConnection{
-		Connection: ConnectionSnapshot{
-			ID:           access.Connection.ID,
-			Type:         access.Connection.Type,
-			Host:         access.Connection.Host,
-			Port:         access.Connection.Port,
-			TeamID:       cloneStringPtr(access.Connection.TeamID),
-			GatewayID:    cloneStringPtr(access.Connection.GatewayID),
-			TargetDBHost: cloneStringPtr(access.Connection.TargetDBHost),
-			TargetDBPort: cloneIntPtr(access.Connection.TargetDBPort),
-			DBType:       cloneStringPtr(access.Connection.DBType),
-			DBSettings:   cloneRawJSON(access.Connection.DBSettings),
-			DLPPolicy:    cloneRawJSON(access.Connection.DLPPolicy),
-		},
+		Connection: snapshotConnectionRecord(access.Connection),
 		AccessType: access.AccessType,
 		Credentials: ResolvedCredentials{
 			Username:         credentials.Username,
@@ -156,4 +145,21 @@ func cloneIntPtr(value *int) *int {
 	}
 	cloned := *value
 	return &cloned
+}
+
+func snapshotConnectionRecord(record connectionRecord) ConnectionSnapshot {
+	return ConnectionSnapshot{
+		ID:                      record.ID,
+		Type:                    record.Type,
+		Host:                    record.Host,
+		Port:                    record.Port,
+		TeamID:                  cloneStringPtr(record.TeamID),
+		GatewayID:               cloneStringPtr(record.GatewayID),
+		TargetDBHost:            cloneStringPtr(record.TargetDBHost),
+		TargetDBPort:            cloneIntPtr(record.TargetDBPort),
+		DBType:                  cloneStringPtr(record.DBType),
+		DBSettings:              cloneRawJSON(record.DBSettings),
+		DLPPolicy:               cloneRawJSON(record.DLPPolicy),
+		TransferRetentionPolicy: cloneRawJSON(record.TransferRetentionPolicy),
+	}
 }

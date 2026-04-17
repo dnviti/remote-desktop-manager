@@ -2,6 +2,13 @@ package contracts
 
 import "time"
 
+type TerminalSessionMode string
+
+const (
+	TerminalSessionModeControl TerminalSessionMode = "control"
+	TerminalSessionModeObserve TerminalSessionMode = "observe"
+)
+
 type TerminalEndpoint struct {
 	Host       string `json:"host"`
 	Port       int    `json:"port"`
@@ -18,14 +25,15 @@ type TerminalSettings struct {
 }
 
 type TerminalSessionGrant struct {
-	SessionID    string            `json:"sessionId,omitempty"`
-	ConnectionID string            `json:"connectionId,omitempty"`
-	UserID       string            `json:"userId,omitempty"`
-	ExpiresAt    time.Time         `json:"expiresAt"`
-	Target       TerminalEndpoint  `json:"target"`
-	Bastion      *TerminalEndpoint `json:"bastion,omitempty"`
-	Terminal     TerminalSettings  `json:"terminal,omitempty"`
-	Metadata     map[string]string `json:"metadata,omitempty"`
+	Mode         TerminalSessionMode `json:"mode,omitempty"`
+	SessionID    string              `json:"sessionId,omitempty"`
+	ConnectionID string              `json:"connectionId,omitempty"`
+	UserID       string              `json:"userId,omitempty"`
+	ExpiresAt    time.Time           `json:"expiresAt"`
+	Target       TerminalEndpoint    `json:"target"`
+	Bastion      *TerminalEndpoint   `json:"bastion,omitempty"`
+	Terminal     TerminalSettings    `json:"terminal,omitempty"`
+	Metadata     map[string]string   `json:"metadata,omitempty"`
 }
 
 type TerminalSessionGrantIssueRequest struct {
@@ -46,6 +54,7 @@ type TerminalEndpointSummary struct {
 }
 
 type TerminalSessionGrantSummary struct {
+	Mode         TerminalSessionMode      `json:"mode,omitempty"`
 	SessionID    string                   `json:"sessionId,omitempty"`
 	ConnectionID string                   `json:"connectionId,omitempty"`
 	UserID       string                   `json:"userId,omitempty"`

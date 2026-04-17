@@ -19,17 +19,20 @@ func (s *Store) HeartbeatOwnedSession(ctx context.Context, sessionID, userID str
 	if err != nil {
 		return err
 	}
-	if record.Status == "CLOSED" {
+	if normalizeSessionStatus(record.Status) == SessionStatusClosed {
 		return ErrSessionClosed
 	}
+
+	targetStatus := heartbeatSessionStatus(record.Status)
 
 	if _, err := s.db.Exec(
 		ctx,
 		`UPDATE "ActiveSession"
 		    SET "lastActivityAt" = NOW(),
-		        status = 'ACTIVE'::"SessionStatus"
+		        status = $2::"SessionStatus"
 		  WHERE id = $1`,
 		sessionID,
+		targetStatus,
 	); err != nil {
 		return fmt.Errorf("heartbeat session: %w", err)
 	}
@@ -104,7 +107,7 @@ func (s *Store) UpdateOwnedSessionMetadata(ctx context.Context, sessionID, userI
 	if err != nil {
 		return err
 	}
-	if record.Status == "CLOSED" {
+	if normalizeSessionStatus(record.Status) == SessionStatusClosed {
 		return ErrSessionClosed
 	}
 

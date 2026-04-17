@@ -19,7 +19,16 @@ if [ -f /opt/tunnel-agent/dist/index.js ]; then
   node /opt/tunnel-agent/dist/index.js &
 fi
 
-set -- /usr/sbin/guacd -b 0.0.0.0 -l 4822 -f
+guacd_bin="$(command -v guacd || true)"
+if [ -z "$guacd_bin" ] && [ -x /opt/guacamole/sbin/guacd ]; then
+  guacd_bin="/opt/guacamole/sbin/guacd"
+fi
+if [ -z "$guacd_bin" ]; then
+  echo "guacd binary not found" >&2
+  exit 127
+fi
+
+set -- "$guacd_bin" -b 0.0.0.0 -l 4822 -f
 
 if [ "${GUACD_SSL:-false}" = "true" ]; then
   tls_cert_path="${GUACD_SSL_CERT:-}"
