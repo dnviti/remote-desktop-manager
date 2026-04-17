@@ -117,3 +117,25 @@ func TestManagedGatewayAttachNetworksPrependsEgress(t *testing.T) {
 		t.Fatalf("managedGatewayAttachNetworks() = %q, want %q", strings.Join(got, ","), want)
 	}
 }
+
+func TestManagedGatewayImageCandidatesUseStableRemoteDefaults(t *testing.T) {
+	t.Parallel()
+
+	service := Service{}
+
+	sshCandidates := strings.Join(service.managedGatewayImageCandidates("MANAGED_SSH"), ",")
+	if strings.Contains(sshCandidates, "ghcr.io/dnviti/arsenale/ssh-gateway:latest") {
+		t.Fatal("managedGatewayImageCandidates() kept latest remote ssh-gateway fallback")
+	}
+	if !strings.Contains(sshCandidates, "ghcr.io/dnviti/arsenale/ssh-gateway:stable") {
+		t.Fatal("managedGatewayImageCandidates() missing stable remote ssh-gateway fallback")
+	}
+
+	dbProxyCandidates := strings.Join(service.managedGatewayImageCandidates("DB_PROXY"), ",")
+	if strings.Contains(dbProxyCandidates, "ghcr.io/dnviti/arsenale/db-proxy:latest") {
+		t.Fatal("managedGatewayImageCandidates() kept latest remote db-proxy fallback")
+	}
+	if !strings.Contains(dbProxyCandidates, "ghcr.io/dnviti/arsenale/db-proxy:stable") {
+		t.Fatal("managedGatewayImageCandidates() missing stable remote db-proxy fallback")
+	}
+}
