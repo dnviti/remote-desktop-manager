@@ -362,6 +362,12 @@ class StandaloneInstallerConfigTest(unittest.TestCase):
         docker_steps = docker_build["jobs"]["build-and-scan"]["steps"]
         docker_meta = next(step for step in docker_steps if step.get("name") == "Extract metadata")
         docker_tags = docker_meta["with"]["tags"]
+        docker_publish_profile = next(step for step in docker_steps if step.get("name") == "Determine publish profile")
+        self.assertEqual(docker_publish_profile["id"], "publish_profile")
+        self.assertIn('git branch -r --contains "${GITHUB_SHA}"', docker_publish_profile["run"])
+        self.assertIn("origin/main", docker_publish_profile["run"])
+        docker_publish = next(step for step in docker_steps if step.get("name") == "Push to registry")
+        self.assertIn("steps.publish_profile.outputs.semver_allowed == 'true'", docker_publish["if"])
         self.assertNotIn("type=ref,event=branch", docker_tags)
         self.assertIn("type=ref,event=pr", docker_tags)
         self.assertIn(
@@ -405,6 +411,13 @@ class StandaloneInstallerConfigTest(unittest.TestCase):
         )
 
         gateways_build = yaml.safe_load(GATEWAYS_BUILD_WORKFLOW.read_text(encoding="utf-8"))
+        gateway_steps = gateways_build["jobs"]["build-and-scan"]["steps"]
+        gateway_publish_profile = next(step for step in gateway_steps if step.get("name") == "Determine publish profile")
+        self.assertEqual(gateway_publish_profile["id"], "publish_profile")
+        self.assertIn('git branch -r --contains "${GITHUB_SHA}"', gateway_publish_profile["run"])
+        self.assertIn("origin/main", gateway_publish_profile["run"])
+        gateway_publish = next(step for step in gateway_steps if step.get("name") == "Push to registry")
+        self.assertIn("steps.publish_profile.outputs.semver_allowed == 'true'", gateway_publish["if"])
         gateway_services = {
             entry["name"]
             for entry in gateways_build["jobs"]["build-and-scan"]["strategy"]["matrix"]["gateway"]
