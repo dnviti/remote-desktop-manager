@@ -49,12 +49,47 @@ describe('useAuthStore', () => {
       permissionsLoaded: false,
     });
     expect(persisted.state).toMatchObject({
-      csrfToken: 'csrf-token',
       user: baseUser,
       isAuthenticated: true,
     });
     expect(persisted.state.accessToken).toBeUndefined();
+    expect(persisted.state.csrfToken).toBeUndefined();
     expect(persisted.state.permissions).toBeUndefined();
+  });
+
+  it('applies restored browser sessions without resetting permissions for the same identity', () => {
+    useAuthStore.getState().setAuth('access-token', 'csrf-token', tenantUser);
+    useAuthStore.setState({
+      permissionsLoaded: true,
+      permissionsLoading: false,
+      permissionsSubject: 'user-1:tenant-1',
+      permissions: {
+        canConnect: true,
+        canCreateConnections: true,
+        canManageConnections: true,
+        canViewCredentials: true,
+        canShareConnections: true,
+        canViewAuditLog: true,
+        canViewSessions: true,
+        canObserveSessions: true,
+        canControlSessions: true,
+        canManageSessions: true,
+        canManageGateways: false,
+        canManageUsers: false,
+        canManageSecrets: true,
+        canManageTenantSettings: false,
+      },
+    });
+
+    useAuthStore.getState().applySession('restored-access-token', 'restored-csrf-token', tenantUser);
+
+    expect(useAuthStore.getState()).toMatchObject({
+      accessToken: 'restored-access-token',
+      csrfToken: 'restored-csrf-token',
+      permissionsLoaded: true,
+      permissionsSubject: 'user-1:tenant-1',
+    });
+    expect(useAuthStore.getState().permissions.canManageSecrets).toBe(true);
   });
 
   it('merges partial user updates into the current profile', () => {

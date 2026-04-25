@@ -8,6 +8,7 @@ import StatusBar from './StatusBar';
 import type { ConnectionData } from '@/api/connections.api';
 import { useDlpBrowserHardening } from '@/hooks/useDlpBrowserHardening';
 import { useGatewayMonitor } from '@/hooks/useGatewayMonitor';
+import { useActivityTouch } from '@/hooks/useActivityTouch';
 import { useLazyMount } from '@/hooks/useLazyMount';
 import { useSessionCountMonitor } from '@/hooks/useSessionCountMonitor';
 import { useShareSync } from '@/hooks/useShareSync';
@@ -82,6 +83,7 @@ export default function WorkspaceShell({
   const uiZoomLevel = useUiPreferencesStore((s) => s.uiZoomLevel);
 
   useGatewayMonitor();
+  useActivityTouch();
   useSessionCountMonitor();
   useShareSync();
   useDlpBrowserHardening();

@@ -1,5 +1,41 @@
-import axios from 'axios';
+import axios, { type AxiosHeaders, type InternalAxiosRequestConfig } from 'axios';
 import { useAuthStore } from '../store/authStore';
+
+const browserCsrfCookieName = 'arsenale-csrf';
+
+function readHeaderValue(headers: AxiosHeaders | Record<string, unknown> | undefined, name: string): unknown {
+  if (!headers) {
+    return undefined;
+  }
+  if ('get' in headers && typeof headers.get === 'function') {
+    return headers.get(name);
+  }
+  return headers[name];
+}
+
+function readBrowserCookie(name: string): string | null {
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  const prefix = `${name}=`;
+  for (const part of document.cookie.split(';')) {
+    const cookie = part.trim();
+    if (cookie.startsWith(prefix)) {
+      return decodeURIComponent(cookie.slice(prefix.length));
+    }
+  }
+
+  return null;
+}
+
+function readBrowserCsrfToken(): string | null {
+  return readBrowserCookie(browserCsrfCookieName);
+}
+
+function isSessionRestoreRequest(config?: { url?: string | undefined }): boolean {
+  return config?.url === '/auth/session' || config?.url === '/api/auth/session';
+}
 
 const api = axios.create({
   baseURL: '/api',
@@ -15,33 +51,34 @@ api.interceptors.request.use((config) => {
   }
   // Send CSRF token on all state-changing requests (POST, PUT, PATCH, DELETE)
   const method = config.method?.toUpperCase();
-  if (csrfToken && method && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
-    config.headers['X-CSRF-Token'] = csrfToken;
+  const requestCsrfToken = readBrowserCsrfToken() ?? csrfToken;
+  if (requestCsrfToken && method && !['GET', 'HEAD', 'OPTIONS'].includes(method)) {
+    config.headers['X-CSRF-Token'] = requestCsrfToken;
   }
   return config;
 });
 
-// Refresh lock: when multiple requests get 401 simultaneously,
-// only the first one triggers a refresh; the rest wait for it.
+// Session restore lock: when multiple requests get 401 simultaneously,
+// only the first one restores the browser session; the rest wait for it.
 let refreshPromise: Promise<string> | null = null;
 
 export async function refreshAccessToken(): Promise<string> {
-  const { isAuthenticated, csrfToken } = useAuthStore.getState();
+  const { isAuthenticated } = useAuthStore.getState();
   if (!isAuthenticated) {
     throw new Error('Not authenticated');
   }
 
   if (!refreshPromise) {
     refreshPromise = axios
-      .post('/api/auth/refresh', {}, {
+      .get('/api/auth/session', {
         withCredentials: true,
-        headers: csrfToken ? { 'X-CSRF-Token': csrfToken } : {},
       })
       .then((res) => {
         const { accessToken, csrfToken: newCsrfToken, user } = res.data;
-        useAuthStore.getState().setAccessToken(accessToken);
-        if (newCsrfToken) useAuthStore.getState().setCsrfToken(newCsrfToken);
-        if (user) useAuthStore.getState().updateUser(user);
+        if (!user) {
+          throw new Error('Session restore missing user payload');
+        }
+        useAuthStore.getState().applySession(accessToken, newCsrfToken ?? null, user);
         return accessToken as string;
       })
       .finally(() => {
@@ -56,9 +93,9 @@ export async function refreshAccessToken(): Promise<string> {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config as (InternalAxiosRequestConfig & { _retry?: boolean }) | undefined;
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isSessionRestoreRequest(originalRequest)) {
       originalRequest._retry = true;
 
       const { isAuthenticated } = useAuthStore.getState();
@@ -81,5 +118,13 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export function readCsrfTokenForBrowserRequests(): string | null {
+  return readBrowserCsrfToken() ?? useAuthStore.getState().csrfToken;
+}
+
+export function readRequestHeader(config: { headers?: AxiosHeaders | Record<string, unknown> | undefined }, name: string): unknown {
+  return readHeaderValue(config.headers, name);
+}
 
 export default api;

@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { restoreSessionApi } from '@/api/auth.api';
+import { useActivityTouch } from '@/hooks/useActivityTouch';
 import {
   observeRdpSession,
   observeSshSession,
@@ -22,7 +23,7 @@ export default function SessionObserverPage() {
   const { id, protocol } = useParams<{ id: string; protocol: string }>();
   const accessToken = useAuthStore((s) => s.accessToken);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
+  const applySession = useAuthStore((s) => s.applySession);
 
   const [authBootstrapped, setAuthBootstrapped] = useState(Boolean(accessToken));
   const [loading, setLoading] = useState(true);
@@ -40,6 +41,8 @@ export default function SessionObserverPage() {
   const authReady = Boolean(accessToken) || authBootstrapped;
   const unsupportedProtocol = authReady && Boolean(protocol) && normalizedProtocol == null;
 
+  useActivityTouch();
+
   useEffect(() => {
     if (accessToken || authBootstrapped) {
       return;
@@ -47,10 +50,7 @@ export default function SessionObserverPage() {
 
     restoreSessionApi()
       .then((res) => {
-        setAccessToken(res.accessToken);
-        if (res.csrfToken) {
-          useAuthStore.getState().setCsrfToken(res.csrfToken);
-        }
+        applySession(res.accessToken, res.csrfToken, res.user);
         setAuthBootstrapped(true);
       })
       .catch(() => {
@@ -61,7 +61,7 @@ export default function SessionObserverPage() {
         }
         setLoading(false);
       });
-  }, [accessToken, authBootstrapped, isAuthenticated, setAccessToken]);
+  }, [accessToken, applySession, authBootstrapped, isAuthenticated]);
 
   useEffect(() => {
     if (!authReady || !id || !normalizedProtocol) {

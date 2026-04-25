@@ -95,6 +95,14 @@ func (s Service) validateCSRF(r *http.Request) error {
 	return nil
 }
 
+func (s Service) ensureCSRFCookie(w http.ResponseWriter, r *http.Request, ttl time.Duration) string {
+	if cookie, err := r.Cookie(s.csrfCookieName()); err == nil && cookie.Value != "" {
+		s.setCSRFCookieValue(w, cookie.Value, ttl)
+		return cookie.Value
+	}
+	return s.setCSRFCookie(w, ttl)
+}
+
 func (s Service) setRefreshTokenCookie(w http.ResponseWriter, refreshToken string, ttl time.Duration) {
 	if ttl <= 0 {
 		ttl = 7 * 24 * time.Hour
@@ -127,15 +135,10 @@ func (s Service) setBrowserSessionCookie(w http.ResponseWriter, sessionID string
 	})
 }
 
-func (s Service) setCSRFCookie(w http.ResponseWriter, ttl time.Duration) string {
+func (s Service) setCSRFCookieValue(w http.ResponseWriter, token string, ttl time.Duration) {
 	if ttl <= 0 {
 		ttl = 7 * 24 * time.Hour
 	}
-	buf := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
-		panic(fmt.Errorf("generate csrf token: %w", err))
-	}
-	token := hex.EncodeToString(buf)
 	http.SetCookie(w, &http.Cookie{
 		Name:     s.csrfCookieName(),
 		Value:    token,
@@ -146,6 +149,18 @@ func (s Service) setCSRFCookie(w http.ResponseWriter, ttl time.Duration) string 
 		Secure:   s.CookieSecure,
 		SameSite: s.cookieSameSite(),
 	})
+}
+
+func (s Service) setCSRFCookie(w http.ResponseWriter, ttl time.Duration) string {
+	if ttl <= 0 {
+		ttl = 7 * 24 * time.Hour
+	}
+	buf := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, buf); err != nil {
+		panic(fmt.Errorf("generate csrf token: %w", err))
+	}
+	token := hex.EncodeToString(buf)
+	s.setCSRFCookieValue(w, token, ttl)
 	return token
 }
 

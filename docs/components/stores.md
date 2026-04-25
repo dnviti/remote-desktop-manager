@@ -16,9 +16,9 @@
 | `permissionsLoading` | boolean | Whether the current permission snapshot request is in flight |
 | `permissionsSubject` | string \| null | Cache key for the loaded permission snapshot (`userId:tenantId`) |
 
-`permissions` is intentionally runtime-only and is not persisted to local storage.
+`permissions`, `accessToken`, and `csrfToken` are intentionally runtime-only and are not persisted to local storage.
 
-**Actions**: `setAuth`, `setAccessToken`, `setCsrfToken`, `updateUser`, `fetchCurrentPermissions`, `clearPermissions`, `fetchDomainProfile`, `logout`
+**Actions**: `setAuth`, `applySession`, `setAccessToken`, `setCsrfToken`, `updateUser`, `fetchCurrentPermissions`, `clearPermissions`, `fetchDomainProfile`, `logout`
 
 ### `connectionsStore` (`client/src/store/connectionsStore.ts`)
 
@@ -52,7 +52,7 @@
 | `mfaUnlockAvailable` | boolean | Whether MFA re-unlock is possible |
 | `mfaUnlockMethods` | string[] | Available MFA methods for re-unlock |
 
-**Actions**: `checkStatus`, `setUnlocked`, `startPolling`, `stopPolling`
+**Actions**: `checkStatus`, `applyStatus`, `setUnlocked`, `reset`, `handleSocketEvent`
 
 ### `uiPreferencesStore` (`client/src/store/uiPreferencesStore.ts`)
 

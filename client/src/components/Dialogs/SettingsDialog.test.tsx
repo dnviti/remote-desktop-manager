@@ -152,6 +152,30 @@ describe('SettingsDialog', () => {
     expect(screen.getByText('Profile content')).toBeInTheDocument();
   });
 
+  it('keeps the main settings pane shrinkable for wide section content', async () => {
+    render(
+      <SettingsDialog
+        open
+        onClose={() => {}}
+      />,
+    );
+
+    const activeContent = await screen.findByText('Profile content');
+    const mainPane = activeContent.closest('main');
+    const section = activeContent.closest('.settings-section');
+    const contentWrapper = activeContent.closest('.settings-content');
+    const contentScrollContainer = contentWrapper?.parentElement;
+
+    expect(mainPane).toHaveClass('min-w-0');
+    expect(mainPane).toHaveClass('w-full');
+    expect(section).toHaveClass('min-w-0');
+    expect(section).toHaveClass('w-full');
+    expect(contentWrapper).toHaveClass('min-w-0');
+    expect(contentWrapper).toHaveClass('w-full');
+    expect(contentScrollContainer).toHaveClass('overflow-y-auto');
+    expect(contentScrollContainer).not.toHaveAttribute('data-radix-scroll-area-viewport');
+  });
+
   it('falls back to the first available section when no requested section exists', async () => {
     buildSettingsConcerns.mockReturnValue([
       createConcernWithSections('personal', 'Personal', [

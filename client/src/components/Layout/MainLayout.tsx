@@ -24,6 +24,7 @@ import { cn } from '@/lib/utils';
 import type { ConnectionData } from '@/api/connections.api';
 import { logoutApi } from '@/api/auth.api';
 import { lockVault } from '@/api/vault.api';
+import { broadcastVaultWindowSync } from '@/utils/vaultWindowSync';
 import ConnectionTree from '../Sidebar/ConnectionTree';
 import TabBar from '../Tabs/TabBar';
 import TabPanel from '../Tabs/TabPanel';
@@ -80,6 +81,8 @@ export default function MainLayout() {
   const fetchCurrentPermissions = useAuthStore((state) => state.fetchCurrentPermissions);
   const vaultUnlocked = useVaultStore((state) => state.unlocked);
   const vaultInitialized = useVaultStore((state) => state.initialized);
+  const setVaultUnlocked = useVaultStore((state) => state.setUnlocked);
+  const checkVaultStatus = useVaultStore((state) => state.checkStatus);
   const notification = useNotificationStore((state) => state.notification);
   const clearNotification = useNotificationStore((state) => state.clear);
   const themeMode = useThemeStore((state) => state.mode);
@@ -98,7 +101,6 @@ export default function MainLayout() {
   const recordingsEnabled = useFeatureFlagsStore((state) => state.recordingsEnabled);
   const sharingApprovalsEnabled = useFeatureFlagsStore((state) => state.sharingApprovalsEnabled);
   const fetchFeatureFlags = useFeatureFlagsStore((state) => state.fetchFeatureFlags);
-  const checkVaultStatus = useVaultStore((state) => state.checkStatus);
   const anyConnectionFeature = connectionsEnabled || databaseProxyEnabled;
   const vaultLocked = vaultInitialized && !vaultUnlocked;
 
@@ -269,7 +271,8 @@ export default function MainLayout() {
   const handleLockVault = async () => {
     try {
       await lockVault();
-      await checkVaultStatus();
+      setVaultUnlocked(false);
+      broadcastVaultWindowSync('lock');
     } catch {
       // Keep the current vault status if locking fails.
     }

@@ -14,7 +14,7 @@ vi.mock('../Audit/AuditGeoMap', () => ({
 
 describe('AuditLogTenantView', () => {
   beforeEach(() => {
-    vi.resetAllMocks();
+    vi.clearAllMocks();
   });
 
   it('uses the same filters as the table for the map and keeps the map selected when filtering by country', async () => {

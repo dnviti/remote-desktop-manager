@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAuthStore } from '@/store/authStore';
 import { useFeatureFlagsStore } from '@/store/featureFlagsStore';
@@ -10,8 +10,26 @@ import { useVaultStore } from '@/store/vaultStore';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import StatusBar from './StatusBar';
 
+const { lockVault } = vi.hoisted(() => ({
+  lockVault: vi.fn(),
+}));
+
+const { broadcastVaultWindowSync } = vi.hoisted(() => ({
+  broadcastVaultWindowSync: vi.fn(),
+}));
+
+vi.mock('@/api/vault.api', () => ({
+  lockVault,
+}));
+
+vi.mock('@/utils/vaultWindowSync', () => ({
+  broadcastVaultWindowSync,
+}));
+
 describe('StatusBar', () => {
   beforeEach(() => {
+    vi.clearAllMocks();
+    lockVault.mockResolvedValue({ unlocked: false });
     useAuthStore.setState({
       user: {
         id: 'user-1',
@@ -135,5 +153,24 @@ describe('StatusBar', () => {
     );
 
     expect(screen.getByRole('button', { name: /checking/i })).toBeInTheDocument();
+  });
+
+  it('locks the local vault immediately and broadcasts the lock signal', async () => {
+    useFeatureFlagsStore.setState({ loaded: true, keychainEnabled: true });
+    useVaultStore.setState({ unlocked: true, initialized: true });
+
+    render(
+      <TooltipProvider>
+        <StatusBar />
+      </TooltipProvider>,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /^open$/i }));
+
+    await waitFor(() => {
+      expect(lockVault).toHaveBeenCalledTimes(1);
+    });
+    expect(useVaultStore.getState()).toMatchObject({ unlocked: false, initialized: true });
+    expect(broadcastVaultWindowSync).toHaveBeenCalledWith('lock');
   });
 });

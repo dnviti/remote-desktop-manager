@@ -43,7 +43,7 @@ export const useVaultStore = create<VaultState>((set) => ({
     });
   },
 
-  setUnlocked: (unlocked) => set({ unlocked }),
+  setUnlocked: (unlocked) => set({ unlocked, initialized: true }),
 
   reset: () => set({ unlocked: false, initialized: false, mfaUnlockAvailable: false, mfaUnlockMethods: [] }),
 

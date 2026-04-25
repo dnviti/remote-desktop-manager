@@ -23,6 +23,12 @@ Get vault lock status and available MFA unlock methods.
 
 **Response**: `{ unlocked, mfaUnlockAvailable, mfaUnlockMethods[] }`
 
+### `POST /api/vault/touch`
+
+Extend the active vault-session TTL after user activity. Returns `unlocked: false` and emits a vault status update if the vault session has already expired.
+
+**Response**: `{ unlocked }`
+
 ### `POST /api/vault/reveal-password`
 
 Reveal a connection's decrypted password.

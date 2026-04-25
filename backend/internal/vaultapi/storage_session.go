@@ -11,6 +11,13 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+func (s Service) effectiveVaultTTL() time.Duration {
+	if s.VaultTTL > 0 {
+		return s.VaultTTL
+	}
+	return 30 * time.Minute
+}
+
 func (s Service) hasRedisKey(ctx context.Context, key string) bool {
 	if s.Redis == nil {
 		return false
@@ -56,10 +63,7 @@ func (s Service) storeVaultSession(ctx context.Context, userID string, masterKey
 	if err != nil {
 		return fmt.Errorf("marshal vault session: %w", err)
 	}
-	ttl := s.VaultTTL
-	if ttl <= 0 {
-		ttl = 30 * time.Minute
-	}
+	ttl := s.effectiveVaultTTL()
 	if err := s.Redis.Set(ctx, "vault:user:"+userID, raw, ttl).Err(); err != nil {
 		return fmt.Errorf("store vault session: %w", err)
 	}
@@ -72,6 +76,53 @@ func (s Service) storeVaultSession(ctx context.Context, userID string, masterKey
 		}
 	}
 	return nil
+}
+
+func (s Service) TouchVaultSession(ctx context.Context, userID string) (bool, error) {
+	if s.Redis == nil || userID == "" {
+		return false, nil
+	}
+
+	ttl := s.effectiveVaultTTL()
+	touched, err := s.Redis.Expire(ctx, "vault:user:"+userID, ttl).Result()
+	if err != nil {
+		return false, fmt.Errorf("touch vault session: %w", err)
+	}
+	if !touched {
+		if err := s.publishVaultStatus(ctx, userID, false); err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if err := s.touchTTLPattern(ctx, "vault:team:*:"+userID, ttl); err != nil {
+		return false, err
+	}
+	if err := s.touchTTLPattern(ctx, "vault:tenant:*:"+userID, ttl); err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (s Service) touchTTLPattern(ctx context.Context, pattern string, ttl time.Duration) error {
+	if s.Redis == nil {
+		return nil
+	}
+	var cursor uint64
+	for {
+		keys, nextCursor, err := s.Redis.Scan(ctx, cursor, pattern, 100).Result()
+		if err != nil {
+			return fmt.Errorf("scan %s: %w", pattern, err)
+		}
+		for _, key := range keys {
+			if err := s.Redis.Expire(ctx, key, ttl).Err(); err != nil && !errors.Is(err, redis.Nil) {
+				return fmt.Errorf("touch %s: %w", key, err)
+			}
+		}
+		cursor = nextCursor
+		if cursor == 0 {
+			return nil
+		}
+	}
 }
 
 func (s Service) clearVaultSessions(ctx context.Context, userID string) error {
@@ -110,7 +161,7 @@ func (s Service) publishVaultStatus(ctx context.Context, userID string, unlocked
 		return nil
 	}
 	payload, _ := json.Marshal(map[string]any{"userId": userID, "unlocked": unlocked})
-	if err := s.Redis.Publish(ctx, "vault:status", string(payload)).Err(); err != nil && !errors.Is(err, redis.Nil) {
+	if err := s.Redis.Publish(ctx, vaultStatusStreamChannel, string(payload)).Err(); err != nil && !errors.Is(err, redis.Nil) {
 		return fmt.Errorf("publish vault status: %w", err)
 	}
 	return nil

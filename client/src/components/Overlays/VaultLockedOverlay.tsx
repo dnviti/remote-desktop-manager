@@ -39,6 +39,7 @@ import { logoutApi } from '../../api/auth.api';
 import { useAuthStore } from '../../store/authStore';
 import { useVaultStore } from '../../store/vaultStore';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
+import { broadcastVaultWindowSync } from '../../utils/vaultWindowSync';
 
 type UnlockMethod = 'webauthn' | 'totp' | 'sms' | 'password';
 
@@ -200,6 +201,7 @@ export default function VaultLockedOverlay() {
 
   const onSuccess = useCallback(() => {
     setVaultUnlocked(true);
+    broadcastVaultWindowSync('unlock');
     setPassword('');
     setCode('');
     setSmsSent(false);

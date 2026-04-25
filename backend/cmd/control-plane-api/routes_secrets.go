@@ -14,6 +14,7 @@ func (d *apiDependencies) registerVaultAndSecretsRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/vault/unlock-mfa/request-sms", d.authenticator.Middleware(d.vaultService.HandleRequestSMSCode))
 	mux.HandleFunc("POST /api/vault/unlock-mfa/sms", d.authenticator.Middleware(d.vaultService.HandleUnlockWithSMS))
 	mux.HandleFunc("POST /api/vault/lock", d.authenticator.Middleware(d.vaultService.HandleLock))
+	mux.HandleFunc("POST /api/vault/touch", d.authenticator.Middleware(d.vaultService.HandleTouch))
 	mux.HandleFunc("GET /api/vault/status", d.authenticator.Middleware(d.vaultService.HandleStatus))
 	mux.HandleFunc("GET /api/vault/auto-lock", d.authenticator.Middleware(d.vaultService.HandleGetAutoLock))
 	mux.HandleFunc("PUT /api/vault/auto-lock", d.authenticator.Middleware(d.vaultService.HandleSetAutoLock))

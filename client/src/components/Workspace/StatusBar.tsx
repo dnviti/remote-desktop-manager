@@ -22,6 +22,7 @@ import { useVaultStore } from '@/store/vaultStore';
 import { useCommandPaletteStore } from '@/store/commandPaletteStore';
 import { useUiPreferencesStore } from '@/store/uiPreferencesStore';
 import { summarizeGatewayStatuses } from '@/utils/gatewayStatus';
+import { broadcastVaultWindowSync } from '@/utils/vaultWindowSync';
 import { lockVault } from '@/api/vault.api';
 
 function StatusBarButton({
@@ -67,6 +68,7 @@ export default function StatusBar({ onOpenSettings, onOpenSessions }: StatusBarP
   const canManageGateways = useAuthStore((s) => s.permissions.canManageGateways);
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
   const vaultInitialized = useVaultStore((s) => s.initialized);
+  const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const checkVaultStatus = useVaultStore((s) => s.checkStatus);
   const keychainEnabled = useFeatureFlagsStore((s) => s.keychainEnabled);
   const featureFlagsLoaded = useFeatureFlagsStore((s) => s.loaded);
@@ -119,11 +121,12 @@ export default function StatusBar({ onOpenSettings, onOpenSessions }: StatusBarP
 
   const handleVaultToggle = async () => {
     if (vaultUnlocked) {
+      setVaultUnlocked(false);
+      broadcastVaultWindowSync('lock');
       try {
         await lockVault();
-        await checkVaultStatus();
       } catch {
-        // ignore
+        await checkVaultStatus();
       }
     }
     // When locked, clicking does nothing — the VaultLockedOverlay handles unlock

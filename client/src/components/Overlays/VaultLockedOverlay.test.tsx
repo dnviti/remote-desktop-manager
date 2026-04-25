@@ -1,5 +1,5 @@
 import React, { StrictMode } from 'react';
-import { act, render } from '@testing-library/react';
+import { act, fireEvent, render } from '@testing-library/react';
 import { waitFor } from '@testing-library/dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -33,6 +33,10 @@ const { startAuthentication } = vi.hoisted(() => ({
   startAuthentication: vi.fn(),
 }));
 
+const { broadcastVaultWindowSync } = vi.hoisted(() => ({
+  broadcastVaultWindowSync: vi.fn(),
+}));
+
 vi.mock('../../api/vault.api', () => ({
   getVaultStatus,
   unlockVault,
@@ -49,6 +53,10 @@ vi.mock('../../api/auth.api', () => ({
 
 vi.mock('@simplewebauthn/browser', () => ({
   startAuthentication,
+}));
+
+vi.mock('../../utils/vaultWindowSync', () => ({
+  broadcastVaultWindowSync,
 }));
 
 function deferred<T>() {
@@ -175,5 +183,27 @@ describe('VaultLockedOverlay', () => {
       expect(requestVaultWebAuthnOptions).toHaveBeenCalledTimes(1);
     });
     expect(startAuthentication).toHaveBeenCalledTimes(1);
+  });
+
+  it('broadcasts an unlock signal after password unlock succeeds', async () => {
+    const view = render(<VaultLockedOverlay />);
+
+    await act(async () => {
+      useVaultStore.setState({
+        unlocked: false,
+        initialized: true,
+        mfaUnlockAvailable: false,
+        mfaUnlockMethods: [],
+      });
+    });
+
+    fireEvent.change(view.getByLabelText('Password'), { target: { value: 'vault-password' } });
+    fireEvent.click(view.getByRole('button', { name: 'Unlock Vault' }));
+
+    await waitFor(() => {
+      expect(unlockVault).toHaveBeenCalledWith('vault-password');
+    });
+    expect(useVaultStore.getState()).toMatchObject({ unlocked: true, initialized: true });
+    expect(broadcastVaultWindowSync).toHaveBeenCalledWith('unlock');
   });
 });

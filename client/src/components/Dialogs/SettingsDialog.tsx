@@ -287,11 +287,12 @@ export default function SettingsDialog({
     if (!open) return;
 
     const sectionElement = activeSectionRef.current;
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-radix-scroll-area-viewport]',
-    );
+    const scrollContainer =
+      scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') instanceof HTMLElement
+        ? (scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement)
+        : scrollAreaRef.current;
 
-    if (!sectionElement || !viewport || typeof IntersectionObserver === 'undefined') {
+    if (!sectionElement || !scrollContainer || typeof IntersectionObserver === 'undefined') {
       return;
     }
 
@@ -308,7 +309,7 @@ export default function SettingsDialog({
         );
       },
       {
-        root: viewport,
+        root: scrollContainer,
         threshold: 0.6,
       },
     );
@@ -361,11 +362,12 @@ export default function SettingsDialog({
     if (programmaticScrollResetRef.current !== null) {
       window.clearTimeout(programmaticScrollResetRef.current);
     }
-    const viewport = scrollAreaRef.current?.querySelector(
-      '[data-radix-scroll-area-viewport]',
-    );
-    if (viewport instanceof HTMLElement && typeof viewport.scrollTo === 'function') {
-      viewport.scrollTo({ top: 0, behavior: 'smooth' });
+    const scrollContainer =
+      scrollAreaRef.current?.querySelector('[data-radix-scroll-area-viewport]') instanceof HTMLElement
+        ? (scrollAreaRef.current.querySelector('[data-radix-scroll-area-viewport]') as HTMLElement)
+        : scrollAreaRef.current;
+    if (scrollContainer instanceof HTMLElement && typeof scrollContainer.scrollTo === 'function') {
+      scrollContainer.scrollTo({ top: 0, behavior: 'smooth' });
     }
     programmaticScrollResetRef.current = window.setTimeout(() => {
       programmaticScrollRef.current = false;
@@ -408,7 +410,7 @@ export default function SettingsDialog({
         showCloseButton={false}
         className="h-[100dvh] w-screen max-w-none gap-0 rounded-none border-0 p-0 sm:h-[94vh] sm:w-[96vw] sm:max-w-[1500px] sm:overflow-hidden sm:rounded-2xl sm:border"
       >
-        <div className="flex h-full min-h-0 flex-col bg-background sm:flex-row">
+        <div className="flex h-full min-h-0 min-w-0 flex-col bg-background sm:flex-row">
           {/* ── Sidebar ── */}
           <aside className="settings-sidebar flex w-full shrink-0 flex-col border-b bg-card/30 sm:w-[272px] sm:border-b-0 sm:border-r">
             <DialogHeader className="gap-3 px-4 pb-3 pt-4">
@@ -578,7 +580,7 @@ export default function SettingsDialog({
           </aside>
 
           {/* ── Main content ── */}
-          <main className="flex min-h-0 flex-1 flex-col">
+          <main className="flex min-h-0 min-w-0 w-full flex-1 flex-col">
             {/* Compact header with breadcrumb */}
             <div className="flex items-center justify-between border-b px-5 py-3">
               {currentConcern ? (
@@ -637,14 +639,14 @@ export default function SettingsDialog({
             </div>
 
             {/* Scrollable content — single active section at a time */}
-            <ScrollArea ref={scrollAreaRef} className="min-h-0 flex-1">
-              <div className="settings-content px-5 py-5">
+            <div ref={scrollAreaRef} className="min-h-0 min-w-0 w-full flex-1 overflow-y-auto">
+              <div className="settings-content min-w-0 w-full px-5 py-5">
                 {activeSection && (
                   <section
                     ref={activeSectionRef}
                     key={activeSection.id}
                     id={activeSection.id}
-                    className="settings-section"
+                    className="settings-section min-w-0 w-full"
                   >
                     {/*
                     <div className="mb-4">
@@ -660,7 +662,7 @@ export default function SettingsDialog({
                   </section>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           </main>
         </div>
       </DialogContent>

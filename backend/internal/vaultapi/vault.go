@@ -190,6 +190,9 @@ func (s Service) RecoverWithKey(ctx context.Context, userID, recoveryKey, curren
 	if err := s.clearVaultRecovery(ctx, userID); err != nil {
 		return nil, err
 	}
+	if err := s.publishVaultStatus(ctx, userID, false); err != nil {
+		return nil, err
+	}
 	if err := s.insertAuditLog(ctx, userID, "VAULT_RECOVERED", map[string]any{"method": "recovery_key"}, ipAddress); err != nil {
 		return nil, err
 	}
@@ -323,6 +326,9 @@ func (s Service) ExplicitReset(ctx context.Context, userID, password, ipAddress 
 		return nil, err
 	}
 	if err := s.clearVaultRecovery(ctx, userID); err != nil {
+		return nil, err
+	}
+	if err := s.publishVaultStatus(ctx, userID, false); err != nil {
 		return nil, err
 	}
 

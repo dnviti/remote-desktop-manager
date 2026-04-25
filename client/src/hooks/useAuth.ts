@@ -6,7 +6,7 @@ import { restoreSessionApi } from '../api/auth.api';
 export function useAuth() {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const accessToken = useAuthStore((s) => s.accessToken);
-  const setAuth = useAuthStore((s) => s.setAuth);
+  const applySession = useAuthStore((s) => s.applySession);
   const logout = useAuthStore((s) => s.logout);
   const [loading, setLoading] = useState(!accessToken);
   const [attempt, setAttempt] = useState(0);
@@ -22,7 +22,7 @@ export function useAuth() {
     restoreSessionApi()
       .then((data) => {
         if (cancelled) return;
-        setAuth(data.accessToken, data.csrfToken, data.user);
+        applySession(data.accessToken, data.csrfToken, data.user);
         setLoading(false);
       })
       .catch((error) => {
@@ -46,7 +46,7 @@ export function useAuth() {
         window.clearTimeout(retryTimer);
       }
     };
-  }, [accessToken, attempt, logout, setAuth]);
+  }, [accessToken, applySession, attempt, logout]);
 
   return { isAuthenticated: isAuthenticated || Boolean(accessToken), loading };
 }

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AlertCircle, Loader2, ShieldEllipsis } from 'lucide-react';
+import { AlertCircle, ShieldEllipsis } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -14,10 +14,16 @@ import { extractApiError } from '../../utils/apiError';
 import GatewayDialog from '../gateway/GatewayDialog';
 import GatewayTemplateSection from '../gateway/GatewayTemplateSection';
 import SessionDashboard from '../orchestration/SessionDashboard';
-import { GatewayInventoryPanel, GatewaySshKeyPanel } from './gatewaySectionCards';
+import {
+  GatewayAccessRestrictedState,
+  GatewayPermissionsLoadingState,
+  NoGatewayTenantState,
+} from './gatewaySectionAccessStates';
+import GatewayInventoryTable from './GatewayInventoryTable';
+import { GatewaySshKeyPanel } from './gatewaySectionCards';
 import { GatewayDeleteDialog, GatewayForceDeleteDialog, GatewayRotateKeyDialog } from './gatewaySectionDialogs';
+import { GatewayOverviewSummary } from './gatewaySectionSummary';
 import { triggerTextDownload, type GatewayTestState } from './gatewaySectionUtils';
-import { SettingsPanel, SettingsSummaryGrid, SettingsSummaryItem } from './settings-ui';
 import { buildSessionsRoute } from '@/components/sessions/sessionConsoleRoute';
 import type { SessionsRouteState } from '@/components/sessions/sessionConsoleRoute';
 
@@ -66,10 +72,6 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
   const hasTenant = Boolean(user?.tenantId);
   const canAccessGatewayArea = canManageGateways || canViewSessions;
   const currentTab = subTab as GatewaySubTab;
-  const totalGateways = gateways.length;
-  const managedGateways = gateways.filter((gateway) => gateway.deploymentMode === 'MANAGED_GROUP').length;
-  const tunnelEnabledGateways = gateways.filter((gateway) => gateway.tunnelEnabled).length;
-  const defaultGateways = gateways.filter((gateway) => gateway.isDefault).length;
 
   useEffect(() => {
     if (hasTenant && permissionsLoaded && canManageGateways) {
@@ -241,49 +243,19 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
   };
 
   if (!hasTenant) {
-    return (
-      <SettingsPanel
-        title="Gateway access"
-        description="Create or join an organization before managing gateways, sessions, and templates."
-        contentClassName="space-y-4"
-      >
-        <Alert variant="warning">
-          <AlertCircle className="size-4" />
-          <AlertTitle>No organization yet</AlertTitle>
-          <AlertDescription>
-            Gateway administration is only available inside an organization workspace.
-          </AlertDescription>
-        </Alert>
-        <Button type="button" onClick={() => onNavigateToTab?.('organization')}>
-          Set Up Organization
-        </Button>
-      </SettingsPanel>
-    );
+    return <NoGatewayTenantState onNavigateToTab={onNavigateToTab} />;
   }
 
   if (!permissionsLoaded) {
-    return (
-      <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="size-4 animate-spin" />
-        Loading gateway permissions.
-      </div>
-    );
+    return <GatewayPermissionsLoadingState />;
   }
 
   if (!canAccessGatewayArea) {
-    return (
-      <Alert variant="warning">
-        <AlertCircle className="size-4" />
-        <AlertTitle>Gateway access is restricted</AlertTitle>
-        <AlertDescription>
-          You do not have permission to view active sessions or manage gateways for this organization.
-        </AlertDescription>
-      </Alert>
-    );
+    return <GatewayAccessRestrictedState />;
   }
 
   return (
-    <div className="space-y-6">
+    <div className="min-w-0 w-full max-w-full space-y-6">
       {error ? (
         <Alert variant="destructive">
           <AlertCircle className="size-4" />
@@ -300,16 +272,13 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
         </Alert>
       ) : null}
 
-      {canManageGateways ? (
-        <SettingsSummaryGrid>
-          <SettingsSummaryItem label="Total gateways" value={String(totalGateways)} />
-          <SettingsSummaryItem label="Managed groups" value={String(managedGateways)} />
-          <SettingsSummaryItem label="Tunnel-enabled" value={String(tunnelEnabledGateways)} />
-          <SettingsSummaryItem label="Default routes" value={String(defaultGateways)} />
-        </SettingsSummaryGrid>
-      ) : null}
+      {canManageGateways ? <GatewayOverviewSummary gateways={gateways} /> : null}
 
-      <Tabs value={currentTab} onValueChange={(value) => setSubTab('gatewayActiveSubTab', value)}>
+      <Tabs
+        value={currentTab}
+        onValueChange={(value) => setSubTab('gatewayActiveSubTab', value)}
+        className="min-w-0 w-full max-w-full"
+      >
         <TabsList>
           {canManageGateways ? <TabsTrigger value="gateways">Gateways</TabsTrigger> : null}
           {canViewSessions ? <TabsTrigger value="sessions">Sessions</TabsTrigger> : null}
@@ -317,7 +286,7 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
         </TabsList>
 
         {canManageGateways ? (
-          <TabsContent value="gateways" className="space-y-6">
+          <TabsContent value="gateways" className="min-w-0 w-full max-w-full space-y-6">
             <GatewaySshKeyPanel
               copied={copied}
               keyActionLoading={keyActionLoading}
@@ -330,7 +299,7 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
               sshKeyPair={sshKeyPair}
             />
 
-            <GatewayInventoryPanel
+            <GatewayInventoryTable
               expandedGatewayIds={expandedGatewayIds}
               gateways={gateways}
               loading={loading}
@@ -355,7 +324,7 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
         ) : null}
 
         {canViewSessions ? (
-          <TabsContent value="sessions" className="space-y-4">
+          <TabsContent value="sessions" className="min-w-0 w-full max-w-full space-y-4">
             <SessionDashboard onOpenSessions={() => onOpenSessions?.()} />
             <Button
               type="button"
@@ -374,7 +343,7 @@ export default function GatewaySection({ onNavigateToTab, onOpenSessions }: Gate
         ) : null}
 
         {canManageGateways && (
-          <TabsContent value="templates"><GatewayTemplateSection /></TabsContent>
+          <TabsContent value="templates" className="min-w-0 w-full max-w-full"><GatewayTemplateSection /></TabsContent>
         )}
       </Tabs>
 

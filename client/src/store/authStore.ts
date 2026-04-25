@@ -27,6 +27,7 @@ interface AuthState {
   permissionsLoading: boolean;
   permissionsSubject: string | null;
   setAuth: (accessToken: string, csrfToken: string, user: User) => void;
+  applySession: (accessToken: string, csrfToken: string | null, user: User) => void;
   setAccessToken: (token: string) => void;
   setCsrfToken: (token: string) => void;
   updateUser: (data: Partial<User>) => void;
@@ -58,6 +59,27 @@ export const useAuthStore = create<AuthState>()(
           permissionsLoaded: false,
           permissionsLoading: false,
           permissionsSubject: null,
+        });
+      },
+      applySession: (accessToken, csrfToken, user) => {
+        const current = get().user;
+        const identityChanged = !current || current.id !== user.id || current.tenantId !== user.tenantId;
+        if (identityChanged) {
+          useVaultStore.getState().reset();
+        }
+        set({
+          accessToken,
+          csrfToken,
+          user,
+          isAuthenticated: true,
+          ...(identityChanged
+            ? {
+                permissions: emptyPermissionFlags(),
+                permissionsLoaded: false,
+                permissionsLoading: false,
+                permissionsSubject: null,
+              }
+            : {}),
         });
       },
       setAccessToken: (accessToken) => set({ accessToken }),
@@ -170,7 +192,6 @@ export const useAuthStore = create<AuthState>()(
         // in-memory only to limit XSS exposure. Never persist it.
         user: state.user,
         isAuthenticated: state.isAuthenticated,
-        csrfToken: state.csrfToken,
       }),
     }
   )

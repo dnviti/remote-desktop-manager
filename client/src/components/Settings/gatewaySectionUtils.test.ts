@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { getGatewayHealthMeta } from "./gatewaySectionUtils";
+import {
+  formatGatewayType,
+  getGatewayEndpointValue,
+  getGatewayHealthMeta,
+  getGatewayInventorySearchText,
+} from "./gatewaySectionUtils";
 import type { GatewayData } from "../../api/gateway.api";
 
 function tunnelGateway(overrides: Partial<GatewayData> = {}): GatewayData {
@@ -56,5 +61,24 @@ describe("getGatewayHealthMeta", () => {
       tone: "success",
       description: "Tunnel is connected and reporting a healthy heartbeat.",
     });
+  });
+
+  it("formats gateway labels and builds inventory search text", () => {
+    const gateway = tunnelGateway({
+      type: "DB_PROXY",
+      deploymentMode: "SINGLE_INSTANCE",
+      host: "db-proxy.example.com",
+      port: 5432,
+      isManaged: false,
+    });
+
+    expect(formatGatewayType(gateway.type)).toBe("DB Proxy");
+    expect(getGatewayEndpointValue(gateway)).toBe("db-proxy.example.com:5432");
+    expect(getGatewayInventorySearchText(gateway)).toContain("db-proxy.example.com");
+    expect(getGatewayInventorySearchText(gateway)).toContain("db proxy");
+  });
+
+  it("formats managed group endpoints for inventory summaries", () => {
+    expect(getGatewayEndpointValue(tunnelGateway())).toBe("Managed group · service port 2222");
   });
 });

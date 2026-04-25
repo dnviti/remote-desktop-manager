@@ -133,10 +133,10 @@ Authoritative route registration files:
 
 Highest-value public prefixes:
 
-- `/api/auth` — passkey-first login, password fallback, tenant-aware MFA, registration, OAuth, SAML, recovery
+- `/api/auth` — passkey-first login, password fallback, tenant-aware MFA, browser-session restore/activity touch, registration, OAuth, SAML, recovery
 - `/api/user` — profile, password, avatar, effective permissions, MFA lifecycle, notification schedule
 - `/api/secrets` — keychain CRUD, versioning, sharing, breach check, rotation
-- `/api/vault` — personal vault lock/unlock, passkey-first re-unlock, recovery
+- `/api/vault` — personal vault lock/unlock, activity touch, passkey-first re-unlock, recovery
 - `/api/connections` — connection CRUD, sharing, import/export, favorites
 - `/api/files` — connection-scoped managed transfer sandbox for RDP workspace staging/cleanup plus the generic `/api/files/history` retained-upload surface
 - `/api/files/ssh/*` — SSH sandbox workspace list/mkdir/delete/rename/upload/download, plus `/api/files/ssh/history/*` retained-upload actions, all sandbox-relative

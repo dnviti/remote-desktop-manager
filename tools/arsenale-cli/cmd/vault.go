@@ -31,6 +31,12 @@ var vaultLockCmd = &cobra.Command{
 	Run:   runVaultLock,
 }
 
+var vaultTouchCmd = &cobra.Command{
+	Use:   "touch",
+	Short: "Refresh the vault activity timeout",
+	Run:   runVaultTouch,
+}
+
 var vaultAutoLockCmd = &cobra.Command{
 	Use:   "auto-lock",
 	Short: "Manage auto-lock settings",
@@ -90,6 +96,7 @@ func init() {
 	vaultCmd.AddCommand(vaultStatusCmd)
 	vaultCmd.AddCommand(vaultUnlockCmd)
 	vaultCmd.AddCommand(vaultLockCmd)
+	vaultCmd.AddCommand(vaultTouchCmd)
 	vaultCmd.AddCommand(vaultAutoLockCmd)
 	vaultCmd.AddCommand(vaultRecoveryStatusCmd)
 	vaultCmd.AddCommand(vaultRevealPasswordCmd)
@@ -165,6 +172,22 @@ func runVaultLock(cmd *cobra.Command, args []string) {
 	}
 	checkAPIError(status, body)
 	fmt.Println("Vault locked")
+}
+
+func runVaultTouch(cmd *cobra.Command, args []string) {
+	cfg := getCfg()
+	if err := ensureAuthenticated(cfg); err != nil {
+		fatal("%v", err)
+	}
+
+	body, status, err := apiPost("/api/vault/touch", nil, cfg)
+	if err != nil {
+		fatal("%v", err)
+	}
+	checkAPIError(status, body)
+	printer().PrintSingle(body, []Column{
+		{Header: "UNLOCKED", Field: "unlocked"},
+	})
 }
 
 func runVaultAutoLockGet(cmd *cobra.Command, args []string) {

@@ -38,6 +38,7 @@ import { useFeatureFlagsStore } from '@/store/featureFlagsStore';
 import { useCommandPaletteStore } from '@/store/commandPaletteStore';
 import { useSecretStore } from '@/store/secretStore';
 import { lockVault } from '@/api/vault.api';
+import { broadcastVaultWindowSync } from '@/utils/vaultWindowSync';
 import { getRecentConnectionIds } from '@/utils/recentConnections';
 import { useAuthStore } from '@/store/authStore';
 import {
@@ -99,6 +100,7 @@ export default function CommandPalette({
   const themeMode = useThemeStore((s) => s.mode);
   const toggleTheme = useThemeStore((s) => s.toggle);
   const vaultUnlocked = useVaultStore((s) => s.unlocked);
+  const setVaultUnlocked = useVaultStore((s) => s.setUnlocked);
   const checkVaultStatus = useVaultStore((s) => s.checkStatus);
   const setPreference = useUiPreferencesStore((s) => s.set);
   const uiZoomLevel = useUiPreferencesStore((s) => s.uiZoomLevel);
@@ -173,11 +175,12 @@ export default function CommandPalette({
   };
 
   const handleLockVault = async () => {
+    setVaultUnlocked(false);
+    broadcastVaultWindowSync('lock');
     try {
       await lockVault();
-      await checkVaultStatus();
     } catch {
-      // ignore
+      await checkVaultStatus();
     }
   };
 

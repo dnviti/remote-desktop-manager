@@ -1,7 +1,10 @@
 import { useEffect } from 'react';
+import { lockVault } from '@/api/vault.api';
 import { useCommandPaletteStore } from '@/store/commandPaletteStore';
 import { useUiPreferencesStore } from '@/store/uiPreferencesStore';
 import { useTabsStore } from '@/store/tabsStore';
+import { useVaultStore } from '@/store/vaultStore';
+import { broadcastVaultWindowSync } from '@/utils/vaultWindowSync';
 import type { ConnectionFilter } from '@/components/Workspace/AppSidebar';
 
 function isRemoteViewerFocused(): boolean {
@@ -115,10 +118,12 @@ export function useGlobalShortcuts() {
       if (key === 'l' && !e.shiftKey && !isMonacoEditorFocused()) {
         e.preventDefault();
         e.stopPropagation();
-        // Fire and forget — vault lock
-        import('@/api/vault.api').then(({ lockVault }) => {
-          void lockVault();
-        });
+        useVaultStore.getState().setUnlocked(false);
+        broadcastVaultWindowSync('lock');
+        void lockVault()
+          .catch(() => {
+            void useVaultStore.getState().checkStatus();
+          });
         return;
       }
     };

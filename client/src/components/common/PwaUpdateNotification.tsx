@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { RefreshCcw, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -13,19 +13,29 @@ import { useRegisterSW } from 'virtual:pwa-register/react';
  * so the new service worker waits until the user explicitly accepts the update.
  */
 export default function PwaUpdateNotification() {
+  const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
   const {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swUrl, registration) {
-      // Check for updates every 60 minutes
-      if (registration) {
-        setInterval(() => {
-          void registration.update();
-        }, 60 * 60 * 1000);
-      }
+      setRegistration(registration ?? null);
     },
   });
+
+  useEffect(() => {
+    if (!registration) {
+      return undefined;
+    }
+
+    const intervalId = window.setInterval(() => {
+      void registration.update();
+    }, 60 * 60 * 1000);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [registration]);
 
   const handleUpdate = useCallback(() => {
     void updateServiceWorker(true);

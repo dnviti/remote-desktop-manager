@@ -124,6 +124,18 @@ Refresh access token using httpOnly cookie. CSRF-protected.
 
 **Auth**: Cookie | **Response**: `{ accessToken, csrfToken, user }`
 
+### `GET /api/auth/session`
+
+Restore the current browser session from the httpOnly browser-session cookie. Reuses the existing CSRF cookie when present.
+
+**Auth**: Cookie | **Response**: `{ accessToken, csrfToken, user }`
+
+### `POST /api/auth/activity`
+
+Extend the authenticated browser session and refresh the browser-session and CSRF cookie expirations after user activity.
+
+**Auth**: Yes | **Response**: `{ ok: true }`
+
 ### `POST /api/auth/logout`
 
 Logout and revoke refresh token. CSRF-protected.

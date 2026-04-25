@@ -117,6 +117,11 @@ export async function restoreSessionApi() {
   };
 }
 
+export async function touchAuthActivityApi() {
+  const { data } = await api.post('/auth/activity');
+  return data as { ok: boolean };
+}
+
 export async function logoutApi() {
   await api.post('/auth/logout');
 }

@@ -27,6 +27,31 @@ export function formatGatewayType(type: GatewayData["type"]) {
   }
 }
 
+export function getGatewayEndpointValue(gateway: GatewayData) {
+  if (gateway.deploymentMode === "MANAGED_GROUP") {
+    return `Managed group · service port ${gateway.port}`;
+  }
+
+  return `${gateway.host}:${gateway.port}`;
+}
+
+export function getGatewayInventorySearchText(gateway: GatewayData) {
+  return [
+    gateway.name,
+    gateway.description ?? "",
+    formatGatewayType(gateway.type),
+    getGatewayModeBadge(gateway),
+    gateway.isDefault ? "default" : "",
+    gateway.publishPorts ? "published" : "",
+    getGatewayEndpointValue(gateway),
+    gateway.host,
+    String(gateway.port),
+    gateway.operationalReason,
+  ]
+    .join(" ")
+    .toLowerCase();
+}
+
 export function getGatewayHealthMeta(
   gateway: GatewayData,
   testState?: GatewayTestState,

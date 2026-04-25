@@ -28,6 +28,7 @@ function LazyFallback() {
 import { useAuth } from './hooks/useAuth';
 import { useAuthStore } from './store/authStore';
 import { useVaultStatusStream } from './hooks/useVaultStatusStream';
+import { useVaultWindowSync } from './hooks/useVaultWindowSync';
 import { getSetupStatus } from './api/setup.api';
 import { useFeatureFlagsStore } from './store/featureFlagsStore';
 
@@ -84,6 +85,7 @@ function SetupGuard({ children }: { children: React.ReactNode }) {
 export default function App() {
   const recordingsEnabled = useFeatureFlagsStore((s) => s.recordingsEnabled);
   const sharingApprovalsEnabled = useFeatureFlagsStore((s) => s.sharingApprovalsEnabled);
+  useVaultWindowSync();
 
   return (
     <Suspense fallback={<LazyFallback />}>

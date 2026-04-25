@@ -5,9 +5,21 @@
 
 ### `useAuth` (`client/src/hooks/useAuth.ts`)
 
-Bootstraps authentication on mount. Refreshes access token from cookie if authenticated but token is missing. Redirects to login on failure.
+Bootstraps authentication on mount. Restores the browser session from the httpOnly session cookie if the in-memory access token is missing. Redirects to login on failure.
 
 **Returns**: `{ isAuthenticated: boolean, loading: boolean }`
+
+### `useActivityTouch` (`client/src/hooks/useActivityTouch.ts`)
+
+Listens for real user activity and throttles auth/vault touch calls to keep browser and vault sessions alive while the user is active. If the vault touch response reports a locked vault, it updates the vault store and broadcasts the lock to other windows.
+
+**Returns**: void (side-effect hook)
+
+### `useVaultWindowSync` (`client/src/hooks/useVaultWindowSync.ts`)
+
+Subscribes to vault lock/unlock signals via `BroadcastChannel` with a `localStorage` event fallback so multiple browser windows stay in sync.
+
+**Returns**: void (side-effect hook)
 
 ### `useSocket` (`client/src/hooks/useSocket.ts`)
 
@@ -95,7 +107,7 @@ Integrates with the Web Notifications API for desktop push notifications. Reques
 
 ### `useVaultStatusStream` (`client/src/hooks/useVaultStatusStream.ts`)
 
-Subscribes to the `GET /api/vault/status/stream` SSE endpoint for real-time vault lock/unlock state changes. Updates the vault store on status events.
+Subscribes to the `GET /api/vault/status/stream` SSE endpoint for real-time vault lock/unlock state changes. Updates the vault store on status events; the server now pushes matching Redis status updates immediately.
 
 **Returns**: void (side-effect hook)
 

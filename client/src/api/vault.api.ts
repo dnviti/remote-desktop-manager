@@ -22,6 +22,11 @@ export async function getVaultStatus() {
   return data as VaultStatusResponse;
 }
 
+export async function touchVaultActivityApi() {
+  const { data } = await api.post('/vault/touch');
+  return data as { unlocked: boolean };
+}
+
 // MFA-based vault unlock
 
 export async function unlockVaultWithTotp(code: string) {

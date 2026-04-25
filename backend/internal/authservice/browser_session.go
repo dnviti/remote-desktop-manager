@@ -21,11 +21,33 @@ type browserSessionState struct {
 	ExpiresAt time.Time `json:"expiresAt"`
 }
 
-func (s Service) ApplyBrowserAuthCookies(ctx context.Context, w http.ResponseWriter, userID, refreshToken string, ttl time.Duration) (string, error) {
+func (s Service) browserSessionTTLForUser(user loginUser) time.Duration {
+	ttl := s.RefreshCookieTTL
 	if ttl <= 0 {
 		ttl = 7 * 24 * time.Hour
 	}
+	if active := user.ActiveTenant; active != nil && active.JWTRefreshExpiresSeconds != nil && *active.JWTRefreshExpiresSeconds > 0 {
+		ttl = time.Duration(*active.JWTRefreshExpiresSeconds) * time.Second
+	}
+	return ttl
+}
 
+func (s Service) browserSessionTTLForUserID(ctx context.Context, userID string) (time.Duration, error) {
+	if s.DB == nil || userID == "" {
+		return s.browserSessionTTLForUser(loginUser{}), nil
+	}
+
+	user, err := s.loadLoginUserByID(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+	return s.browserSessionTTLForUser(user), nil
+}
+
+func (s Service) ApplyBrowserAuthCookies(ctx context.Context, w http.ResponseWriter, userID, refreshToken string, ttl time.Duration) (string, error) {
+	if ttl <= 0 {
+		ttl = s.browserSessionTTLForUser(loginUser{})
+	}
 	if s.Redis != nil && userID != "" {
 		sessionID := uuid.NewString()
 		state := browserSessionState{
@@ -46,6 +68,46 @@ func (s Service) ApplyBrowserAuthCookies(ctx context.Context, w http.ResponseWri
 	return s.setCSRFCookie(w, ttl), nil
 }
 
+func (s Service) TouchBrowserSession(ctx context.Context, sessionID, userID string, ttl time.Duration) (string, error) {
+	if s.Redis == nil || userID == "" {
+		return "", nil
+	}
+	if ttl <= 0 {
+		ttl = s.browserSessionTTLForUser(loginUser{})
+	}
+
+	if sessionID != "" {
+		raw, err := s.Redis.Get(ctx, browserSessionKeyPrefix+sessionID).Bytes()
+		switch {
+		case err == nil:
+			var state browserSessionState
+			if unmarshalErr := json.Unmarshal(raw, &state); unmarshalErr != nil || state.UserID != userID {
+				sessionID = ""
+			}
+		case errors.Is(err, redis.Nil):
+			sessionID = ""
+		case err != nil:
+			return "", fmt.Errorf("load browser session: %w", err)
+		}
+	}
+
+	if sessionID == "" {
+		sessionID = uuid.NewString()
+	}
+
+	raw, err := json.Marshal(browserSessionState{
+		UserID:    userID,
+		ExpiresAt: time.Now().Add(ttl).UTC(),
+	})
+	if err != nil {
+		return "", fmt.Errorf("marshal browser session: %w", err)
+	}
+	if err := s.Redis.Set(ctx, browserSessionKeyPrefix+sessionID, raw, ttl).Err(); err != nil {
+		return "", fmt.Errorf("store browser session: %w", err)
+	}
+	return sessionID, nil
+}
+
 func (s Service) HandleSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
@@ -56,7 +118,7 @@ func (s Service) HandleSession(w http.ResponseWriter, r *http.Request) {
 	if sessionCookie, err := r.Cookie(s.browserSessionCookieName()); err == nil && sessionCookie.Value != "" {
 		result, ttl, err := s.RestoreBrowserSession(r.Context(), sessionCookie.Value, requestIP(r), r.UserAgent())
 		if err == nil {
-			csrfToken := s.setCSRFCookie(w, ttl)
+			csrfToken := s.ensureCSRFCookie(w, r, ttl)
 			app.WriteJSON(w, http.StatusOK, map[string]any{
 				"accessToken": result.accessToken,
 				"csrfToken":   csrfToken,

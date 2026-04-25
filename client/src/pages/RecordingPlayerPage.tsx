@@ -4,6 +4,7 @@ import { Loader2 } from 'lucide-react';
 import { restoreSessionApi } from '../api/auth.api';
 import { getRecording } from '../api/recordings.api';
 import type { Recording } from '../api/recordings.api';
+import { useActivityTouch } from '../hooks/useActivityTouch';
 import { useAuthStore } from '../store/authStore';
 import GuacPlayer from '../components/Recording/GuacPlayer';
 import SshPlayer from '../components/Recording/SshPlayer';
@@ -13,12 +14,14 @@ export default function RecordingPlayerPage() {
   const { id } = useParams<{ id: string }>();
   const accessToken = useAuthStore((s) => s.accessToken);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const setAccessToken = useAuthStore((s) => s.setAccessToken);
+  const applySession = useAuthStore((s) => s.applySession);
 
   const [authReady, setAuthReady] = useState(Boolean(accessToken));
   const [recording, setRecording] = useState<Recording | null>(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+
+  useActivityTouch();
 
   // Bootstrap auth: accessToken is not persisted, so refresh it for popup windows
   /* eslint-disable react-hooks/set-state-in-effect -- bootstrap auth state for popup windows */
@@ -29,8 +32,7 @@ export default function RecordingPlayerPage() {
     }
     restoreSessionApi()
       .then((res) => {
-        setAccessToken(res.accessToken);
-        if (res.csrfToken) useAuthStore.getState().setCsrfToken(res.csrfToken);
+        applySession(res.accessToken, res.csrfToken, res.user);
         setAuthReady(true);
       })
       .catch(() => {
@@ -41,7 +43,7 @@ export default function RecordingPlayerPage() {
         }
         setLoading(false);
       });
-  }, [accessToken, isAuthenticated, setAccessToken]);
+  }, [accessToken, applySession, isAuthenticated]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // Fetch recording data once auth is ready

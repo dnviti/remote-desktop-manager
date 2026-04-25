@@ -29,7 +29,7 @@ export function SettingsPanel({
   contentClassName,
 }: SettingsPanelProps) {
   return (
-    <section className={cn('space-y-5', className)}>
+    <section className={cn('min-w-0 w-full max-w-full space-y-5', className)}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <h3 className="font-heading text-lg font-medium tracking-tight text-foreground">{title}</h3>
@@ -38,7 +38,7 @@ export function SettingsPanel({
         {heading}
       </div>
       <Separator className="bg-border/70" />
-      <div className={cn('space-y-5', contentClassName)}>{children}</div>
+      <div className={cn('min-w-0 w-full max-w-full space-y-5', contentClassName)}>{children}</div>
     </section>
   );
 }

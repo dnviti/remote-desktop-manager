@@ -35,8 +35,9 @@ The public edge is the Go control plane under `https://localhost:3000/api` in de
 Authentication behavior is implemented in `client/src/api/client.ts`:
 
 - bearer token in `Authorization: Bearer <token>`
-- CSRF token in `X-CSRF-Token` for state-changing requests
-- automatic token refresh via `POST /api/auth/refresh`
+- browser CSRF cookie in `X-CSRF-Token` for state-changing requests
+- browser-session restore via `GET /api/auth/session` after authenticated 401s
+- activity touches through `POST /api/auth/activity` and `POST /api/vault/touch`
 
 One architectural change matters more than any raw endpoint count: the surface is now feature-gated. `backend/internal/runtimefeatures/manifest.go` decides which route families are registered, and `GET /api/auth/config` exposes that same manifest to the client.
 
@@ -110,6 +111,7 @@ Authentication and SSO endpoints:
 | `POST` | `/api/auth/verify-webauthn` | Complete WebAuthn secondary MFA |
 | `POST` | `/api/auth/refresh` | Refresh access token |
 | `GET` | `/api/auth/session` | Inspect current auth session |
+| `POST` | `/api/auth/activity` | Extend the current browser session after user activity |
 | `POST` | `/api/auth/logout` | Revoke current login |
 | `POST` | `/api/auth/switch-tenant` | Change active tenant |
 
@@ -212,6 +214,7 @@ The secrets surface uses plural `/api/secrets` paths. That is the current author
 | `POST` | `/api/vault/unlock` | Unlock personal vault |
 | `POST` | `/api/vault/lock` | Lock personal vault |
 | `GET` | `/api/vault/status` | Current vault state |
+| `POST` | `/api/vault/touch` | Extend active vault-session TTL after user activity |
 | `GET` | `/api/vault/auto-lock` | Current auto-lock timeout |
 | `PUT` | `/api/vault/auto-lock` | Update auto-lock timeout |
 | `POST` | `/api/vault/recover-with-key` | Recovery-key unlock |
@@ -437,6 +440,7 @@ Server-sent event endpoints in `routes_live.go`:
 - `GET /api/db-audit/logs/stream`
 
 These are feature-gated in the same way as their non-stream route families.
+Vault status streams also subscribe to Redis `vault:status` updates so lock/unlock changes are pushed immediately instead of waiting for the polling tick.
 
 ## 🔌 WebSocket and Real-Time Protocols
 

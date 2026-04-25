@@ -55,6 +55,7 @@ func (d *apiDependencies) registerAuthRoutes(mux *http.ServeMux) {
 			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		}
 	})
+	mux.HandleFunc("POST /api/auth/activity", d.authenticator.Middleware(d.authService.HandleActivityTouch))
 	mux.HandleFunc("POST /api/auth/refresh", d.authService.HandleRefresh)
 	mux.HandleFunc("GET /api/auth/session", d.authService.HandleSession)
 	mux.HandleFunc("POST /api/auth/logout", d.authService.HandleLogout)
