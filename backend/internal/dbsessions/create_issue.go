@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 	"github.com/dnviti/arsenale/backend/internal/tenantauth"
 )
 
@@ -39,7 +39,7 @@ func (s Service) createSession(ctx context.Context, claims authn.Claims, payload
 		return SessionIssueResponse{}, &requestError{status: http.StatusBadRequest, message: "connectionId is required"}
 	}
 
-	resolution, err := s.ConnectionResolver.ResolveConnection(ctx, claims.UserID, claims.TenantID, connectionID, sshsessions.ResolveConnectionOptions{
+	resolution, err := s.ConnectionResolver.ResolveConnection(ctx, claims.UserID, claims.TenantID, connectionID, connectionaccess.ResolveConnectionOptions{
 		ExpectedType:     "DATABASE",
 		OverrideUsername: payload.Username,
 		OverridePassword: payload.Password,

@@ -39,7 +39,7 @@ Authentication behavior is implemented in `client/src/api/client.ts`:
 - browser-session restore via `GET /api/auth/session` after authenticated 401s
 - activity touches through `POST /api/auth/activity` and `POST /api/vault/touch`
 
-One architectural change matters more than any raw endpoint count: the surface is now feature-gated. `backend/internal/runtimefeatures/manifest.go` decides which route families are registered, and `GET /api/auth/config` exposes that same manifest to the client.
+One architectural change matters more than any raw endpoint count: the surface is now feature-gated. `backend/internal/runtimefeatures/manifest.go` decides which route families are registered, and `GET /api/auth/config` exposes that same manifest, including the ordered `enabledCapabilities` list, to the client.
 
 ## 🧩 Runtime Capability Switches
 
@@ -49,7 +49,7 @@ One architectural change matters more than any raw endpoint count: the surface i
 | `databaseProxyEnabled` | Enables database sessions, DB tunnels, DB audit, and AI SQL helpers |
 | `keychainEnabled` | Enables vault, secrets, files, vault folders, and external vault providers |
 | `recordingsEnabled` | Enables recording list, playback, analysis, and export |
-| `zeroTrustEnabled` | Enables gateways, templates, tunnel overview, instance logs, and tunnel metrics |
+| `zeroTrustEnabled` | Enables tunnel-specific controls and managed zero-trust gateway paths |
 | `enterpriseAuthEnabled` | Enables SAML, OAuth, OIDC, LDAP, and auth-provider admin APIs |
 | `sharingApprovalsEnabled` | Enables public sharing, approvals, checkouts, and connection sharing APIs |
 | `cliEnabled` | Enables CLI device auth and CLI connection list surfaces |

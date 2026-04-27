@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 )
 
 func (s Service) listManagedHistory(ctx context.Context, historyPrefix string) ([]ManagedHistoryEntry, error) {
@@ -129,7 +129,7 @@ func (s Service) restoreManagedRDPHistory(ctx context.Context, drivePath, worksp
 	return entry, transfer, nil
 }
 
-func (s Service) restoreManagedSSHHistory(ctx context.Context, client sshRemoteClient, scope managedSandboxScope, target sshsessions.ResolvedFileTransferTarget, historyID, restorePath string) (ManagedHistoryEntry, managedPayloadResult, error) {
+func (s Service) restoreManagedSSHHistory(ctx context.Context, client sshRemoteClient, scope managedSandboxScope, target connectionaccess.ResolvedFileTransferTarget, historyID, restorePath string) (ManagedHistoryEntry, managedPayloadResult, error) {
 	historyPrefix := historyUploadsPrefix(scope.Protocol, scope.TenantID, scope.UserID, scope.ConnectionID)
 	workspacePrefix := workspaceCurrentPrefix(scope.Protocol, scope.TenantID, scope.UserID, scope.ConnectionID)
 	entry, info, payload, err := s.readManagedHistoryPayload(ctx, historyPrefix, historyID)

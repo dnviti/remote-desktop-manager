@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 )
 
 func (s Service) resolveOwnedQueryRuntime(ctx context.Context, userID, tenantID, sessionID string) (*ownedQueryRuntime, error) {
@@ -44,7 +44,7 @@ WHERE id = $1
 		return nil, ErrQueryRuntimeUnsupported
 	}
 
-	resolveOpts := sshsessions.ResolveConnectionOptions{ExpectedType: "DATABASE"}
+	resolveOpts := connectionaccess.ResolveConnectionOptions{ExpectedType: "DATABASE"}
 	if usesOverrideCredentials {
 		username, password, err := resolveOverrideCredentials(state.Metadata, s.ServerEncryptionKey)
 		if err != nil {

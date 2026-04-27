@@ -166,7 +166,7 @@ Important architectural consequences:
 - Session routes are only registered when `AnyConnectionFeature()` is true.
 - Database session and DB audit surfaces depend on `DatabaseProxyEnabled`.
 - GeoIP lookups and audit-map views depend on `IPGeolocationEnabled`.
-- Gateway and tunnel surfaces depend on `ZeroTrustEnabled`.
+- Gateway management depends on connection features; tunnel-only controls depend on `ZeroTrustEnabled`.
 - The client starts fail-open with enabled defaults, then narrows to the server-provided manifest after `GET /api/auth/config` succeeds.
 
 ## 🔐 Public Request Pipeline

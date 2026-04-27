@@ -22,10 +22,24 @@ export const MsgType = {
 export type MsgTypeValue = typeof MsgType[keyof typeof MsgType];
 
 export const HEADER_SIZE = 4;
+export const MAX_FRAME_PAYLOAD_SIZE = 10 * 1024 * 1024;
+
+export interface TunnelFrame {
+  type: number;
+  streamId: number;
+  payload: Buffer;
+}
+
+export function isKnownMsgType(type: number): type is MsgTypeValue {
+  return Object.values(MsgType).includes(type as MsgTypeValue);
+}
 
 /** Build a binary frame matching the TunnelBroker wire format. */
 export function buildFrame(type: MsgTypeValue, streamId: number, payload?: Buffer): Buffer {
   const body = payload ?? Buffer.alloc(0);
+  if (body.length > MAX_FRAME_PAYLOAD_SIZE) {
+    throw new RangeError(`frame payload exceeds ${MAX_FRAME_PAYLOAD_SIZE} bytes`);
+  }
   const frame = Buffer.allocUnsafe(HEADER_SIZE + body.length);
   frame[0] = type;
   frame[1] = 0; // flags
@@ -34,9 +48,10 @@ export function buildFrame(type: MsgTypeValue, streamId: number, payload?: Buffe
   return frame;
 }
 
-/** Parse a binary frame. Returns null if the buffer is too short. */
-export function parseFrame(buf: Buffer): { type: MsgTypeValue; streamId: number; payload: Buffer } | null {
+/** Parse a binary frame. Returns null if the buffer is too short or too large. */
+export function parseFrame(buf: Buffer): TunnelFrame | null {
   if (buf.length < HEADER_SIZE) return null;
+  if (buf.length - HEADER_SIZE > MAX_FRAME_PAYLOAD_SIZE) return null;
   const type = buf[0] as MsgTypeValue;
   const streamId = buf.readUInt16BE(2);
   const payload = buf.subarray(HEADER_SIZE);

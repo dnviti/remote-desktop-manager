@@ -16,7 +16,7 @@ The client is built with:
 - **XTerm.js** — SSH terminal emulation
 - **guacamole-common-js** — RDP/VNC remote desktop rendering
 
-**Total**: 11 pages, 88+ components, 17 stores, 15 hooks, 40 API modules.
+**Total**: 11 pages, 88+ components, 17 stores, 15 hooks, 41 API modules.
 
 <!-- manual-start -->
 <!-- manual-end -->

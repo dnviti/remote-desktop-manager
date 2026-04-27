@@ -23,13 +23,14 @@ import {
   type SshFileEntry,
   uploadSshFile,
 } from '../../api/sshFiles.api';
-import type { ManagedHistoryEntry } from '../../api/managedHistory.api';
 import {
-  deleteSshHistoryItem,
-  downloadSshHistoryItem,
-  listSshHistory,
-  restoreSshHistoryItem,
-} from '../../api/managedHistory.api';
+  deleteManagedHistoryItem,
+  downloadManagedHistoryItem,
+  listManagedHistory,
+  restoreManagedHistoryItem,
+  sshManagedTransferScope,
+  type ManagedHistoryEntry,
+} from '../../api/managedTransfer.api';
 import type { TransferItem } from '../../hooks/useSftpTransfers';
 import { extractApiError } from '../../utils/apiError';
 import ManagedHistoryList from '../shared/ManagedHistoryList';
@@ -112,7 +113,7 @@ export default function SftpBrowser({
     setHistoryLoading(true);
     setError('');
     try {
-      const result = await listSshHistory(requestCredentials());
+      const result = await listManagedHistory(sshManagedTransferScope(requestCredentials()));
       setHistoryItems(result);
     } catch (err) {
       setMappedError(extractApiError(err, 'Failed to load upload history'));
@@ -260,10 +261,7 @@ export default function SftpBrowser({
 
   const handleHistoryDownload = async (item: ManagedHistoryEntry) => {
     try {
-      const blob = await downloadSshHistoryItem({
-        ...requestCredentials(),
-        id: item.id,
-      });
+      const blob = await downloadManagedHistoryItem(sshManagedTransferScope(requestCredentials()), item.id);
       triggerBlobDownload(blob, item.fileName);
     } catch (err) {
       setMappedError(extractApiError(err, 'History download failed'));
@@ -301,10 +299,7 @@ export default function SftpBrowser({
 
   const handleHistoryDelete = async (item: ManagedHistoryEntry) => {
     try {
-      await deleteSshHistoryItem({
-        ...requestCredentials(),
-        id: item.id,
-      });
+      await deleteManagedHistoryItem(sshManagedTransferScope(requestCredentials()), item.id);
       await fetchHistory();
     } catch (err) {
       setMappedError(extractApiError(err, 'Failed to delete history item'));
@@ -340,11 +335,7 @@ export default function SftpBrowser({
       return;
     }
     try {
-      await restoreSshHistoryItem({
-        ...requestCredentials(),
-        id: restoreTarget.id,
-        path: normalizedPath,
-      });
+      await restoreManagedHistoryItem(sshManagedTransferScope(requestCredentials()), restoreTarget.id, normalizedPath);
       await fetchEntries(currentPath);
       await fetchHistory();
       setRestoreTarget(null);

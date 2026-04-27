@@ -14,12 +14,18 @@ import {
 import { cn } from '@/lib/utils';
 import Editor, { type OnMount, type Monaco } from '@monaco-editor/react';
 import type * as monacoNs from 'monaco-editor';
-import api from '../../api/client';
 import { ensureLocalMonacoLoader } from '../../lib/monacoLoader';
 import type { CredentialOverride } from '../../store/tabsStore';
 import type { DbSettings } from '../../api/connections.api';
 import type { DbQueryResult, DbSchemaInfo, DbSessionConfig } from '../../api/database.api';
-import { createDbSession, endDbSession, dbSessionHeartbeat, updateDbSessionConfig } from '../../api/database.api';
+import {
+  createDbSession,
+  dbSessionHeartbeat,
+  endDbSession,
+  executeDbQuery,
+  fetchDbSchema,
+  updateDbSessionConfig,
+} from '../../api/database.api';
 import { extractApiError } from '../../utils/apiError';
 import { analyzeQuery, confirmGeneration, type ObjectRequest } from '../../api/aiQuery.api';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
@@ -35,6 +41,7 @@ import DbQueryHistory from './DbQueryHistory';
 import { addSavedQuery, deriveQueryLabel } from './dbQueryHistoryUtils';
 import DbSessionConfigPopover from './DbSessionConfigPopover';
 import { buildLimitedSelectSql, buildMongoCollectionQuery, qualifyDbObjectName } from './dbBrowserHelpers';
+import { classifyQueryType, defaultSessionConfigForProtocol } from './dbWorkspaceBehavior';
 import { format as formatSql } from 'sql-formatter';
 import { createSqlCompletionProvider } from './sqlCompletionProvider';
 import { validateSql } from './sqlValidation';
@@ -69,71 +76,6 @@ function createSubTab(): QuerySubTab {
     result: null,
     executing: false,
   };
-}
-
-function stripLeadingComments(s: string): string {
-  let r = s.trim();
-  for (;;) {
-    if (r.startsWith('--')) {
-      const nl = r.indexOf('\n');
-      r = (nl === -1 ? '' : r.slice(nl + 1)).trimStart();
-    } else if (r.startsWith('/*')) {
-      const end = r.indexOf('*/');
-      r = (end === -1 ? '' : r.slice(end + 2)).trimStart();
-    } else break;
-  }
-  return r;
-}
-
-function classifyQueryType(sql: string): string {
-  const t = stripLeadingComments(sql);
-  if (/^SELECT\b/i.test(t)) return 'SELECT';
-  if (/^INSERT\b/i.test(t)) return 'INSERT';
-  if (/^UPDATE\b/i.test(t)) return 'UPDATE';
-  if (/^DELETE\b/i.test(t)) return 'DELETE';
-  if (/^(CREATE|ALTER|DROP|TRUNCATE)\b/i.test(t)) return 'DDL';
-  if (/^WITH\b/i.test(t)) {
-    if (/\)\s*INSERT\b/i.test(t)) return 'INSERT';
-    if (/\)\s*UPDATE\b/i.test(t)) return 'UPDATE';
-    if (/\)\s*DELETE\b/i.test(t)) return 'DELETE';
-    return 'SELECT';
-  }
-  if (/^(EXPLAIN|DESCRIBE|DESC|SHOW)\b/i.test(t)) return 'SELECT';
-  if (/^(GRANT|REVOKE|SET)\b/i.test(t)) return 'DDL';
-  if (/^MERGE\b/i.test(t)) return 'UPDATE';
-  if (/^(CALL|EXEC|EXECUTE)\b/i.test(t)) return 'EXEC';
-  return 'OTHER';
-}
-
-function defaultSessionConfigForProtocol(protocol: string, databaseName?: string): DbSessionConfig {
-  const normalized = protocol.toLowerCase();
-  const defaults: DbSessionConfig = {};
-
-  switch (normalized) {
-    case 'postgresql':
-      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (databaseName) {
-        defaults.activeDatabase = databaseName;
-        defaults.searchPath = 'public';
-      }
-      return defaults;
-    case 'mysql':
-      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      if (databaseName) {
-        defaults.activeDatabase = databaseName;
-      }
-      return defaults;
-    case 'mssql':
-      if (databaseName) {
-        defaults.activeDatabase = databaseName;
-      }
-      return defaults;
-    case 'oracle':
-      defaults.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-      return defaults;
-    default:
-      return defaults;
-  }
 }
 
 function formatMongoQuery(raw: string): string {
@@ -448,10 +390,8 @@ export default function DbEditor({
     const capturedTabId = tab.id;
     updateTab(capturedTabId, { executing: true, result: null });
     try {
-      const result = await api.post(`/sessions/database/${sessionIdRef.current}/query`, {
-        sql: tab.sql.trim(),
-      });
-      updateTab(capturedTabId, { result: result.data as DbQueryResult, executing: false });
+      const result = await executeDbQuery(sessionIdRef.current, tab.sql.trim());
+      updateTab(capturedTabId, { result, executing: false });
       // Trigger history panel refresh
       setHistoryRefresh((n) => n + 1);
     } catch (err) {
@@ -478,8 +418,8 @@ export default function DbEditor({
     if (!sessionIdRef.current) return;
     setSchemaLoading(true);
     try {
-      const res = await api.get(`/sessions/database/${sessionIdRef.current}/schema`);
-      setSchemaData(res.data as DbSchemaInfo);
+      const schema = await fetchDbSchema(sessionIdRef.current);
+      setSchemaData(schema);
     } catch {
       // Schema fetch is best-effort
     } finally {

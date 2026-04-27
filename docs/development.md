@@ -190,7 +190,7 @@ The React SPA in `client/` follows a layered architecture:
 | Components | `client/src/components/` | 88+ components across 20+ directories |
 | Stores | `client/src/store/` | 17 Zustand stores |
 | Hooks | `client/src/hooks/` | 15 custom hooks |
-| API modules | `client/src/api/` | 40 Axios-based modules |
+| API modules | `client/src/api/` | 41 Axios-based modules |
 
 Key stores and their purposes:
 

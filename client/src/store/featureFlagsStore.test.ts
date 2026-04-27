@@ -8,6 +8,19 @@ vi.mock('../api/auth.api', () => ({
 describe('useFeatureFlagsStore', () => {
   beforeEach(() => {
     useFeatureFlagsStore.setState({
+      enabledCapabilities: [
+        'keychain',
+        'multi_tenancy',
+        'connections',
+        'ip_geolocation',
+        'databases',
+        'recordings',
+        'zero_trust',
+        'agentic_ai',
+        'enterprise_auth',
+        'sharing_approvals',
+        'cli',
+      ],
       databaseProxyEnabled: true,
       connectionsEnabled: true,
       ipGeolocationEnabled: true,
@@ -34,6 +47,7 @@ describe('useFeatureFlagsStore', () => {
     vi.mocked(getPublicConfig).mockResolvedValue({
       selfSignupEnabled: false,
       features: {
+        enabledCapabilities: ['connections', 'zero_trust', 'sharing_approvals'],
         databaseProxyEnabled: false,
         connectionsEnabled: true,
         ipGeolocationEnabled: false,
@@ -57,6 +71,7 @@ describe('useFeatureFlagsStore', () => {
     await useFeatureFlagsStore.getState().fetchFeatureFlags();
 
     expect(useFeatureFlagsStore.getState()).toMatchObject({
+      enabledCapabilities: ['connections', 'zero_trust', 'sharing_approvals'],
       databaseProxyEnabled: false,
       connectionsEnabled: true,
       ipGeolocationEnabled: false,

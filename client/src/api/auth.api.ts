@@ -126,7 +126,21 @@ export async function logoutApi() {
   await api.post('/auth/logout');
 }
 
+export type RuntimeCapability =
+  | 'keychain'
+  | 'multi_tenancy'
+  | 'connections'
+  | 'ip_geolocation'
+  | 'databases'
+  | 'recordings'
+  | 'zero_trust'
+  | 'agentic_ai'
+  | 'enterprise_auth'
+  | 'sharing_approvals'
+  | 'cli';
+
 export interface FeatureFlags {
+  enabledCapabilities: RuntimeCapability[];
   databaseProxyEnabled: boolean;
   connectionsEnabled: boolean;
   ipGeolocationEnabled: boolean;

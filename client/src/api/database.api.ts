@@ -106,6 +106,16 @@ export async function dbSessionHeartbeat(sessionId: string): Promise<{ ok: boole
   return data;
 }
 
+export async function executeDbQuery(sessionId: string, sql: string): Promise<DbQueryResult> {
+  const { data } = await api.post(`/sessions/database/${sessionId}/query`, { sql });
+  return data;
+}
+
+export async function fetchDbSchema(sessionId: string): Promise<DbSchemaInfo> {
+  const { data } = await api.get(`/sessions/database/${sessionId}/schema`);
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Execution plan
 // ---------------------------------------------------------------------------

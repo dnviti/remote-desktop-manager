@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { MsgType, buildFrame, parseFrame, HEADER_SIZE } from './protocol';
+import { MsgType, buildFrame, parseFrame, HEADER_SIZE, MAX_FRAME_PAYLOAD_SIZE, isKnownMsgType } from './protocol';
 
 describe('protocol', () => {
   describe('buildFrame', () => {
@@ -32,6 +32,11 @@ describe('protocol', () => {
       const frame = buildFrame(MsgType.CLOSE, 0x0102);
       expect(frame[2]).toBe(0x01);
       expect(frame[3]).toBe(0x02);
+    });
+
+    it('rejects payloads above the broker frame limit', () => {
+      const payload = Buffer.alloc(MAX_FRAME_PAYLOAD_SIZE + 1);
+      expect(() => buildFrame(MsgType.DATA, 1, payload)).toThrow(RangeError);
     });
   });
 
@@ -66,6 +71,13 @@ describe('protocol', () => {
       expect(parsed!.type).toBe(MsgType.OPEN);
       expect(parsed!.payload.toString()).toBe('127.0.0.1:2222');
     });
+
+    it('returns null for payloads above the broker frame limit', () => {
+      const frame = Buffer.alloc(HEADER_SIZE + MAX_FRAME_PAYLOAD_SIZE + 1);
+      frame[0] = MsgType.DATA;
+      frame.writeUInt16BE(1, 2);
+      expect(parseFrame(frame)).toBeNull();
+    });
   });
 
   describe('MsgType constants', () => {
@@ -75,6 +87,10 @@ describe('protocol', () => {
       expect(MsgType.CLOSE).toBe(3);
       expect(MsgType.PING).toBe(4);
       expect(MsgType.PONG).toBe(5);
+      expect(MsgType.HEARTBEAT).toBe(6);
+      expect(MsgType.CERT_RENEW).toBe(7);
+      expect(isKnownMsgType(MsgType.CERT_RENEW)).toBe(true);
+      expect(isKnownMsgType(255)).toBe(false);
     });
   });
 });

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 )
 
 func (s Service) createVNCSession(ctx context.Context, claims authn.Claims, payload createRequest, ipAddress string, connection desktopConnectionSnapshot, policy desktopPolicySnapshot, route desktopRoute) (createResponse, error) {
@@ -26,7 +26,7 @@ func (s Service) createVNCSession(ctx context.Context, claims authn.Claims, payl
 	if payload.Username != "" && payload.Password != "" {
 		password = payload.Password
 	} else {
-		resolution, err := s.ConnectionResolver.ResolveConnection(ctx, claims.UserID, claims.TenantID, connection.ID, sshsessions.ResolveConnectionOptions{
+		resolution, err := s.ConnectionResolver.ResolveConnection(ctx, claims.UserID, claims.TenantID, connection.ID, connectionaccess.ResolveConnectionOptions{
 			ExpectedType: "VNC",
 		})
 		if err != nil {

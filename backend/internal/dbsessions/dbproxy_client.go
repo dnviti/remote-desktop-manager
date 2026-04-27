@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 )
 
@@ -207,8 +208,12 @@ WHERE i.id = $1
 }
 
 func (s Service) dbProxyHTTPClient() *http.Client {
-	if s.ConnectionResolver.HTTPClient != nil {
-		client := *s.ConnectionResolver.HTTPClient
+	if provider, ok := s.ConnectionResolver.(connectionaccess.HTTPClientProvider); ok {
+		source := provider.HTTPClientForConnectionAccess()
+		if source == nil {
+			return &http.Client{Timeout: dbProxyRequestTimeout}
+		}
+		client := *source
 		if client.Timeout <= 0 {
 			client.Timeout = dbProxyRequestTimeout
 		}

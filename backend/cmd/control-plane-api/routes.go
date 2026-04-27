@@ -2,13 +2,15 @@ package main
 
 import (
 	"net/http"
+
+	"github.com/dnviti/arsenale/backend/internal/runtimefeatures"
 )
 
 func (d *apiDependencies) register(mux *http.ServeMux) {
 	d.registerPublicRoutes(mux)
 	d.registerAuthRoutes(mux)
 	d.registerUserMFARoutes(mux)
-	if d.features.KeychainEnabled {
+	if d.features.HasFeature(runtimefeatures.FeatureKeychain) {
 		d.registerVaultAndSecretsRoutes(mux)
 	}
 	d.registerUserAccountRoutes(mux)

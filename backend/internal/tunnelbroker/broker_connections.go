@@ -48,24 +48,21 @@ func (b *Broker) readLoop(conn *tunnelConnection) {
 		if messageType != websocket.BinaryMessage {
 			continue
 		}
-		if len(payload) < frameHeaderSize {
+		frame, ok := parseFrame(payload)
+		if !ok {
 			continue
 		}
 
-		frameType := msgType(payload[0])
-		streamID := uint16(payload[2])<<8 | uint16(payload[3])
-		body := payload[frameHeaderSize:]
-
-		switch frameType {
+		switch frame.Type {
 		case msgOpen:
-			b.handleOpenAck(conn, streamID)
+			b.handleOpenAck(conn, frame.StreamID)
 		case msgData:
-			b.handleData(conn, streamID, body)
+			b.handleData(conn, frame.StreamID, frame.Payload)
 		case msgClose:
-			b.handleClose(conn, streamID)
+			b.handleClose(conn, frame.StreamID)
 		case msgPing:
-			b.recordHeartbeat(conn, body)
-			_ = b.sendFrame(conn, msgPong, streamID, nil)
+			b.recordHeartbeat(conn, frame.Payload)
+			_ = b.sendFrame(conn, msgPong, frame.StreamID, nil)
 		case msgPong:
 			now := time.Now().UTC()
 			if !conn.lastPingSentAt.IsZero() {
@@ -76,7 +73,7 @@ func (b *Broker) readLoop(conn *tunnelConnection) {
 			conn.lastHeartbeat = now
 			_ = b.config.Store.MarkTunnelHeartbeat(context.Background(), conn.gatewayID, now, conn.heartbeat)
 		case msgHeartbeat:
-			b.recordHeartbeat(conn, body)
+			b.recordHeartbeat(conn, frame.Payload)
 		case msgCertRenew:
 			// The current tunnel agent only receives CERT_RENEW from the broker.
 			// Ignore any peer-sent CERT_RENEW frame.

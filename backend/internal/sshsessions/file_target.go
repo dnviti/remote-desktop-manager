@@ -9,13 +9,6 @@ import (
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 )
 
-type ResolvedFileTransferTarget struct {
-	Connection ConnectionSnapshot
-	AccessType string
-	Target     contracts.TerminalEndpoint
-	Bastion    *contracts.TerminalEndpoint
-}
-
 func (s Service) ResolveFileTransferTarget(ctx context.Context, userID, tenantID, connectionID string, opts ResolveConnectionOptions) (ResolvedFileTransferTarget, error) {
 	access, err := s.loadAccess(ctx, userID, tenantID, strings.TrimSpace(connectionID))
 	if err != nil {

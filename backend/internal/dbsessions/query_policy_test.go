@@ -1,6 +1,11 @@
 package dbsessions
 
-import "testing"
+import (
+	"context"
+	"errors"
+	"net/http"
+	"testing"
+)
 
 func TestClassifyDBQuery(t *testing.T) {
 	tests := []struct {
@@ -65,5 +70,43 @@ func TestValidateWritableQueryAccess(t *testing.T) {
 	}
 	if err := validateWritableQueryAccess(dbQueryTypeUpdate, "OPERATOR", false); err != nil {
 		t.Fatalf("validateWritableQueryAccess() returned error for OPERATOR: %v", err)
+	}
+}
+
+func TestEvaluateOwnedQueryPolicyBlocksConnectionFirewall(t *testing.T) {
+	service := Service{}
+	settings := databaseSettings{
+		FirewallPolicyMode: "override",
+		FirewallRules: []databaseFirewallRuleSettings{
+			{Name: "Blocked probe", Pattern: `blocked_probe`, Action: "BLOCK"},
+		},
+	}
+	runtime := &ownedQueryRuntime{
+		Connection:   ownedConnectionSnapshot{ID: "conn-1"},
+		Settings:     settings,
+		DatabaseName: "app",
+	}
+
+	_, err := service.evaluateOwnedQueryPolicy(context.Background(), ownedQueryPolicyInput{
+		UserID:     "user-1",
+		TenantID:   "tenant-1",
+		TenantRole: "OPERATOR",
+		SessionID:  "session-1",
+		SQLText:    "select 1 as blocked_probe",
+		Runtime:    runtime,
+		Mode:       ownedQueryPolicyExecute,
+	})
+	if err == nil {
+		t.Fatal("evaluateOwnedQueryPolicy() unexpectedly allowed blocked query")
+	}
+	var reqErr *requestError
+	if !errors.As(err, &reqErr) {
+		t.Fatalf("expected requestError, got %T", err)
+	}
+	if reqErr.status != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", reqErr.status, http.StatusForbidden)
+	}
+	if reqErr.message != "Blocked by firewall rule: Blocked probe" {
+		t.Fatalf("message = %q", reqErr.message)
 	}
 }

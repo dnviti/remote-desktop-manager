@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -28,7 +28,7 @@ type Service struct {
 	DriveBasePath      string
 	FileUploadMaxSize  int64
 	UserDriveQuota     int64
-	ConnectionResolver sshsessions.Service
+	ConnectionResolver connectionaccess.FileResolver
 	Store              ObjectStore
 	Scanner            ThreatScanner
 	Logger             *slog.Logger

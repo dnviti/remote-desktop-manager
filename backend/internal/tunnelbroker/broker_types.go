@@ -14,6 +14,7 @@ import (
 
 const (
 	frameHeaderSize         = 4
+	maxFramePayloadSize     = 10 * 1024 * 1024
 	maxStreamID             = 0xffff
 	defaultOpenTimeout      = 10 * time.Second
 	defaultProxyIdleTimeout = 60 * time.Second

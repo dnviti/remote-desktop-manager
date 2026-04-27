@@ -86,6 +86,7 @@ The installer now passes install profile context directly into the runtime.
 
 - `mode`
 - `backend`
+- `enabledCapabilities`
 - `databaseProxyEnabled`
 - `connectionsEnabled`
 - `ipGeolocationEnabled`

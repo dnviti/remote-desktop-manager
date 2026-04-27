@@ -53,4 +53,28 @@ func TestFromEnvDefaultsAndOverrides(t *testing.T) {
 	if !manifest.SharingApprovalsEnabled || !manifest.CLIEnabled {
 		t.Fatal("expected sharing approvals and CLI to be enabled")
 	}
+	if !manifest.HasFeature(FeatureDatabases) || manifest.HasFeature(FeatureConnections) {
+		t.Fatal("expected feature lookup to follow resolved booleans")
+	}
+	wantCapabilities := []Feature{
+		FeatureDatabases,
+		FeatureZeroTrust,
+		FeatureSharingApprovals,
+		FeatureCLI,
+	}
+	if got := manifest.EnabledCapabilities; !sameFeatures(got, wantCapabilities) {
+		t.Fatalf("enabled capabilities mismatch: got %#v want %#v", got, wantCapabilities)
+	}
+}
+
+func sameFeatures(a, b []Feature) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

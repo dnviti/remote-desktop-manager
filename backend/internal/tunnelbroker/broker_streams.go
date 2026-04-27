@@ -198,13 +198,3 @@ func allocateStreamID(conn *tunnelConnection) (uint16, bool) {
 	}
 	return 0, false
 }
-
-func buildFrame(frameType msgType, streamID uint16, payload []byte) []byte {
-	frame := make([]byte, frameHeaderSize+len(payload))
-	frame[0] = byte(frameType)
-	frame[1] = 0
-	frame[2] = byte(streamID >> 8)
-	frame[3] = byte(streamID)
-	copy(frame[frameHeaderSize:], payload)
-	return frame
-}

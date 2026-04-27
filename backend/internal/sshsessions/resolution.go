@@ -7,55 +7,16 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 )
 
-type ResolveError struct {
-	Status  int
-	Message string
-}
-
-func (e *ResolveError) Error() string {
-	return e.Message
-}
-
-type ResolveConnectionOptions struct {
-	ExpectedType     string
-	OverrideUsername string
-	OverridePassword string
-	OverrideDomain   string
-	CredentialMode   string
-}
-
-type ConnectionSnapshot struct {
-	ID                      string
-	Type                    string
-	Host                    string
-	Port                    int
-	TeamID                  *string
-	GatewayID               *string
-	TargetDBHost            *string
-	TargetDBPort            *int
-	DBType                  *string
-	DBSettings              json.RawMessage
-	DLPPolicy               json.RawMessage
-	TransferRetentionPolicy json.RawMessage
-}
-
-type ResolvedConnection struct {
-	Connection  ConnectionSnapshot
-	AccessType  string
-	Credentials ResolvedCredentials
-}
-
-type ResolvedCredentials struct {
-	Username         string
-	Password         string
-	Domain           string
-	PrivateKey       string
-	Passphrase       string
-	CredentialSource string
-}
+type ResolveError = connectionaccess.ResolveError
+type ResolveConnectionOptions = connectionaccess.ResolveConnectionOptions
+type ConnectionSnapshot = connectionaccess.ConnectionSnapshot
+type ResolvedConnection = connectionaccess.ResolvedConnection
+type ResolvedCredentials = connectionaccess.ResolvedCredentials
+type ResolvedFileTransferTarget = connectionaccess.ResolvedFileTransferTarget
 
 func (s Service) ResolveConnection(ctx context.Context, userID, tenantID, connectionID string, opts ResolveConnectionOptions) (ResolvedConnection, error) {
 	access, err := s.loadAccess(ctx, userID, tenantID, strings.TrimSpace(connectionID))
@@ -162,4 +123,8 @@ func snapshotConnectionRecord(record connectionRecord) ConnectionSnapshot {
 		DLPPolicy:               cloneRawJSON(record.DLPPolicy),
 		TransferRetentionPolicy: cloneRawJSON(record.TransferRetentionPolicy),
 	}
+}
+
+func (s Service) HTTPClientForConnectionAccess() *http.Client {
+	return s.HTTPClient
 }

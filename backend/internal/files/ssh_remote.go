@@ -11,7 +11,7 @@ import (
 	"sync"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/internal/sshtransport"
 	"github.com/pkg/sftp"
 )
@@ -72,8 +72,8 @@ func (s Service) resolveSSHFileTarget(
 	ctx context.Context,
 	claims authn.Claims,
 	payload sshCredentialPayload,
-) (sshsessions.ResolvedFileTransferTarget, resolvedFilePolicy, error) {
-	target, policy, err := s.resolveSSHPolicy(ctx, claims, strings.TrimSpace(payload.ConnectionID), sshsessions.ResolveConnectionOptions{
+) (connectionaccess.ResolvedFileTransferTarget, resolvedFilePolicy, error) {
+	target, policy, err := s.resolveSSHPolicy(ctx, claims, strings.TrimSpace(payload.ConnectionID), connectionaccess.ResolveConnectionOptions{
 		ExpectedType:     "SSH",
 		OverrideUsername: strings.TrimSpace(payload.Username),
 		OverridePassword: strings.TrimSpace(payload.Password),
@@ -81,7 +81,7 @@ func (s Service) resolveSSHFileTarget(
 		CredentialMode:   strings.TrimSpace(payload.CredentialMode),
 	})
 	if err != nil {
-		return sshsessions.ResolvedFileTransferTarget{}, resolvedFilePolicy{}, err
+		return connectionaccess.ResolvedFileTransferTarget{}, resolvedFilePolicy{}, err
 	}
 	return target, policy, nil
 }
@@ -90,7 +90,7 @@ func (s Service) withSFTPClient(
 	ctx context.Context,
 	claims authn.Claims,
 	payload sshCredentialPayload,
-	fn func(sshRemoteClient, sshsessions.ResolvedFileTransferTarget, resolvedFilePolicy) error,
+	fn func(sshRemoteClient, connectionaccess.ResolvedFileTransferTarget, resolvedFilePolicy) error,
 ) error {
 	target, policy, err := s.resolveSSHFileTarget(ctx, claims, payload)
 	if err != nil {
@@ -220,7 +220,7 @@ func (s Service) renameSSHPath(ctx context.Context, client sshRemoteClient, scop
 func (s Service) uploadToSSH(
 	ctx context.Context,
 	client sshRemoteClient,
-	target sshsessions.ResolvedFileTransferTarget,
+	target connectionaccess.ResolvedFileTransferTarget,
 	policy resolvedFilePolicy,
 	userID, tenantID, userEmail string,
 	fileName, remotePath string,
@@ -284,7 +284,7 @@ func (s Service) uploadToSSH(
 
 func (s Service) downloadFromSSH(
 	ctx context.Context,
-	target sshsessions.ResolvedFileTransferTarget,
+	target connectionaccess.ResolvedFileTransferTarget,
 	policy resolvedFilePolicy,
 	userID, tenantID, userEmail string,
 	remotePath string,

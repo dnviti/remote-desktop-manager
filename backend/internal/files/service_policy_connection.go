@@ -7,25 +7,25 @@ import (
 	"net/http"
 
 	"github.com/dnviti/arsenale/backend/internal/authn"
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/internal/connections"
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 )
 
 type resolvedTransferRetentionPolicy struct {
-	RetainSuccessfulUploads bool `json:"retainSuccessfulUploads"`
+	RetainSuccessfulUploads bool  `json:"retainSuccessfulUploads"`
 	MaxUploadSizeBytes      int64 `json:"maxUploadSizeBytes"`
 }
 
-func (s Service) resolveRDPPolicy(ctx context.Context, claims authn.Claims, connectionID string) (sshsessions.ResolvedConnection, resolvedFilePolicy, error) {
-	resolved, err := s.ConnectionResolver.ResolveConnection(ctx, claims.UserID, claims.TenantID, connectionID, sshsessions.ResolveConnectionOptions{
+func (s Service) resolveRDPPolicy(ctx context.Context, claims authn.Claims, connectionID string) (connectionaccess.ResolvedConnection, resolvedFilePolicy, error) {
+	resolved, err := s.ConnectionResolver.ResolveConnection(ctx, claims.UserID, claims.TenantID, connectionID, connectionaccess.ResolveConnectionOptions{
 		ExpectedType: "RDP",
 	})
 	if err != nil {
-		return sshsessions.ResolvedConnection{}, resolvedFilePolicy{}, err
+		return connectionaccess.ResolvedConnection{}, resolvedFilePolicy{}, err
 	}
 	policy, err := s.resolvePolicy(ctx, claims.TenantID, resolved.Connection.DLPPolicy)
 	if err != nil {
-		return sshsessions.ResolvedConnection{}, resolvedFilePolicy{}, err
+		return connectionaccess.ResolvedConnection{}, resolvedFilePolicy{}, err
 	}
 	transferPolicy := resolveTransferRetentionPolicy(resolved.Connection.TransferRetentionPolicy)
 	policy.RetainSuccessfulUploads = transferPolicy.RetainSuccessfulUploads
@@ -33,14 +33,14 @@ func (s Service) resolveRDPPolicy(ctx context.Context, claims authn.Claims, conn
 	return resolved, policy, nil
 }
 
-func (s Service) resolveSSHPolicy(ctx context.Context, claims authn.Claims, connectionID string, opts sshsessions.ResolveConnectionOptions) (sshsessions.ResolvedFileTransferTarget, resolvedFilePolicy, error) {
+func (s Service) resolveSSHPolicy(ctx context.Context, claims authn.Claims, connectionID string, opts connectionaccess.ResolveConnectionOptions) (connectionaccess.ResolvedFileTransferTarget, resolvedFilePolicy, error) {
 	target, err := s.ConnectionResolver.ResolveFileTransferTarget(ctx, claims.UserID, claims.TenantID, connectionID, opts)
 	if err != nil {
-		return sshsessions.ResolvedFileTransferTarget{}, resolvedFilePolicy{}, err
+		return connectionaccess.ResolvedFileTransferTarget{}, resolvedFilePolicy{}, err
 	}
 	policy, err := s.resolvePolicy(ctx, claims.TenantID, target.Connection.DLPPolicy)
 	if err != nil {
-		return sshsessions.ResolvedFileTransferTarget{}, resolvedFilePolicy{}, err
+		return connectionaccess.ResolvedFileTransferTarget{}, resolvedFilePolicy{}, err
 	}
 	transferPolicy := resolveTransferRetentionPolicy(target.Connection.TransferRetentionPolicy)
 	policy.RetainSuccessfulUploads = transferPolicy.RetainSuccessfulUploads

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
-	"github.com/dnviti/arsenale/backend/internal/sshsessions"
 	"github.com/dnviti/arsenale/backend/internal/tenantauth"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -65,7 +65,7 @@ type Service struct {
 	Store               sessionLifecycleStore
 	DB                  *pgxpool.Pool
 	TenantAuth          tenantauth.Service
-	ConnectionResolver  sshsessions.Service
+	ConnectionResolver  connectionaccess.Resolver
 	ServerEncryptionKey []byte
 }
 

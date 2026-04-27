@@ -22,13 +22,14 @@ import {
   RefreshCw,
 } from 'lucide-react';
 import { deleteFile, downloadFile, listFiles, uploadFile, type FileInfo } from '../../api/files.api';
-import type { ManagedHistoryEntry } from '../../api/managedHistory.api';
 import {
-  deleteRdpHistoryItem,
-  downloadRdpHistoryItem,
-  listRdpHistory,
-  restoreRdpHistoryItem,
-} from '../../api/managedHistory.api';
+  deleteManagedHistoryItem,
+  downloadManagedHistoryItem,
+  listManagedHistory,
+  rdpManagedTransferScope,
+  restoreManagedHistoryItem,
+  type ManagedHistoryEntry,
+} from '../../api/managedTransfer.api';
 import ManagedHistoryList from '../shared/ManagedHistoryList';
 import {
   formatManagedFileSize,
@@ -83,7 +84,7 @@ export default function FileBrowser({ open, onClose, connectionId, disableDownlo
     setHistoryLoading(true);
     setError('');
     try {
-      const result = await listRdpHistory(connectionId);
+      const result = await listManagedHistory(rdpManagedTransferScope(connectionId));
       setHistoryItems(result);
     } catch (err: unknown) {
       setMappedError(extractApiError(err, 'Failed to load upload history'));
@@ -143,7 +144,7 @@ export default function FileBrowser({ open, onClose, connectionId, disableDownlo
 
   const handleHistoryDownload = async (item: ManagedHistoryEntry) => {
     try {
-      const blob = await downloadRdpHistoryItem(connectionId, item.id);
+      const blob = await downloadManagedHistoryItem(rdpManagedTransferScope(connectionId), item.id);
       triggerBlobDownload(blob, item.fileName);
     } catch (err: unknown) {
       setMappedError(extractApiError(err, 'History download failed'));
@@ -152,7 +153,7 @@ export default function FileBrowser({ open, onClose, connectionId, disableDownlo
 
   const handleHistoryDelete = async (item: ManagedHistoryEntry) => {
     try {
-      await deleteRdpHistoryItem(connectionId, item.id);
+      await deleteManagedHistoryItem(rdpManagedTransferScope(connectionId), item.id);
       await fetchHistory();
     } catch (err: unknown) {
       setMappedError(extractApiError(err, 'Failed to delete history item'));
@@ -172,7 +173,7 @@ export default function FileBrowser({ open, onClose, connectionId, disableDownlo
       return;
     }
     try {
-      const result = await restoreRdpHistoryItem(connectionId, restoreTarget.id, normalizedName);
+      const result = await restoreManagedHistoryItem(rdpManagedTransferScope(connectionId), restoreTarget.id, normalizedName);
       if (result.files) {
         setFiles(result.files);
       } else {

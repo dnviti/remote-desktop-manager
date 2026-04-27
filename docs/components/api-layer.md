@@ -3,7 +3,7 @@
 > Auto-generated on 2026-03-15 by /docs create components.
 > Source of truth is the codebase. Run /docs update components after code changes.
 
-40 API modules in `client/src/api/` provide typed Axios wrappers:
+41 API modules in `client/src/api/` provide typed Axios wrappers:
 
 | Module | Description |
 |--------|-------------|
@@ -25,6 +25,7 @@
 | `importExport.api.ts` | Connection import/export (CSV, JSON, mRemoteNG, RDP) |
 | `ldap.api.ts` | LDAP status, connection test, and sync trigger |
 | `live.api.ts` | SSE subscription helpers for gateways, sessions, audit, and vault streams |
+| `managedTransfer.api.ts` | Protocol-neutral managed transfer history adapter for RDP and SSH sandboxes |
 | `notifications.api.ts` | Notification listing, preferences, read state, and management |
 | `oauth.api.ts` | OAuth providers, linked accounts, vault setup |
 | `passwordReset.api.ts` | Password reset flow |

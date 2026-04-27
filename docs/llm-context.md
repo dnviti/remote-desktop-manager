@@ -94,6 +94,7 @@ That manifest controls:
 
 - which route families are registered in `backend/cmd/control-plane-api/routes*.go`
 - what the SPA exposes after it loads `GET /api/auth/config`
+- the ordered `enabledCapabilities` list used by clients and operators to inspect the active install profile
 - whether connections, GeoIP, DB proxy, keychain, multi-tenancy, recordings, zero trust, AI, enterprise auth, sharing, and CLI surfaces are active
 
 The SPA reads the public config through `client/src/api/auth.api.ts` and stores it in `client/src/store/featureFlagsStore.ts`.
