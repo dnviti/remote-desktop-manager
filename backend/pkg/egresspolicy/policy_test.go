@@ -51,6 +51,20 @@ func TestAuthorizeCIDR(t *testing.T) {
 	}
 }
 
+func TestAuthorizeMixedDestinationRuleMatchesHostOrCIDR(t *testing.T) {
+	policy := mustPolicy(t, `{"rules":[{"protocols":["SSH"],"hosts":["target.internal"],"cidrs":["10.10.0.0/16"],"ports":[22]}]}`)
+
+	hostDecision := Authorize(context.Background(), policy, Request{Protocol: "SSH", Host: "target.internal", Port: 22}, testOptions())
+	if !hostDecision.Allowed {
+		t.Fatalf("expected host allow, got %q", hostDecision.Reason)
+	}
+
+	cidrDecision := Authorize(context.Background(), policy, Request{Protocol: "SSH", Host: "10.10.2.15", Port: 22}, testOptions())
+	if !cidrDecision.Allowed {
+		t.Fatalf("expected CIDR allow, got %q", cidrDecision.Reason)
+	}
+}
+
 func TestAuthorizeMismatchedPortDenies(t *testing.T) {
 	policy := mustPolicy(t, `{"rules":[{"protocols":["SSH"],"cidrs":["10.0.0.0/8"],"ports":[22]}]}`)
 	decision := Authorize(context.Background(), policy, Request{Protocol: "SSH", Host: "10.2.3.4", Port: 2222}, testOptions())

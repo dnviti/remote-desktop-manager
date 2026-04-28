@@ -81,18 +81,22 @@ func Authorize(ctx context.Context, policy Policy, req Request, opts Options) De
 		if !containsString(rule.Protocols, protocol) || !containsPort(rule.Ports, req.Port) {
 			continue
 		}
-		if len(rule.Hosts) > 0 && !ruleMatchesHost(rule, host) {
-			continue
-		}
-		if len(rule.CIDRs) > 0 && !ruleMatchesCIDR(rule, addrs) {
-			continue
-		}
-		if len(rule.Hosts) == 0 && len(rule.CIDRs) == 0 {
+		if !ruleMatchesDestination(rule, host, addrs) {
 			continue
 		}
 		return Decision{Allowed: true, Rule: rule.Description}
 	}
 	return Decision{Reason: fmt.Sprintf("target %s:%d is not allowed by gateway egress policy", host, req.Port)}
+}
+
+func ruleMatchesDestination(rule Rule, host string, addrs []netip.Addr) bool {
+	if len(rule.Hosts) > 0 && ruleMatchesHost(rule, host) {
+		return true
+	}
+	if len(rule.CIDRs) > 0 && ruleMatchesCIDR(rule, addrs) {
+		return true
+	}
+	return false
 }
 
 func resolveTargetAddrs(ctx context.Context, host string, opts Options) ([]netip.Addr, string) {
