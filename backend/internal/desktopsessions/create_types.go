@@ -61,6 +61,7 @@ type gatewaySnapshot struct {
 	DeploymentMode string
 	TunnelEnabled  bool
 	LBStrategy     string
+	EgressPolicy   json.RawMessage
 }
 
 type managedGatewayInstance struct {

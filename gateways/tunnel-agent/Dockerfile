@@ -1,17 +1,21 @@
-# ── Build stage ──────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-alpine AS builder
+# syntax=docker/dockerfile:1.7
 
-WORKDIR /app
+ARG GO_VERSION=1.25.8
 
-COPY package.json ./
-RUN npm install --ignore-scripts
+# Build stage
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_VERSION}-alpine AS builder
+ARG TARGETOS
+ARG TARGETARCH
 
-COPY tsconfig.json ./
-COPY src/ ./src/
+WORKDIR /src
 
-RUN npm run build && npm prune --omit=dev
+COPY go.mod go.sum ./
+RUN go mod download
 
-# ── Runtime stage ─────────────────────────────────────────────────────────────
+COPY *.go ./
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/arsenale-tunnel-agent .
+
+# Runtime stage
 FROM docker.io/library/alpine:3.22
 
 LABEL org.opencontainers.image.title="Arsenale Tunnel Agent"
@@ -22,19 +26,15 @@ LABEL org.opencontainers.image.licenses="BUSL-1.1"
 WORKDIR /app
 
 RUN apk upgrade --no-cache && \
-    apk add --no-cache ca-certificates nodejs
+    apk add --no-cache ca-certificates
 
-COPY --from=builder /app/package.json ./
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/dist ./dist
+COPY --from=builder /out/arsenale-tunnel-agent /usr/local/bin/arsenale-tunnel-agent
 
 # Non-root user
 RUN adduser -D -s /sbin/nologin agent
 USER agent
 
-ENV NODE_ENV=production
-
-# Required env vars (no defaults — absent = dormant mode):
+# Required env vars (no defaults; absent = dormant mode):
 # TUNNEL_SERVER_URL   wss://your-server/tunnel
 # TUNNEL_TOKEN        <hex token>
 # TUNNEL_GATEWAY_ID   <uuid>
@@ -47,6 +47,6 @@ ENV NODE_ENV=production
 # TUNNEL_CLIENT_KEY   <PEM>
 
 HEALTHCHECK --interval=10s --timeout=5s --retries=3 --start-period=5s \
-  CMD node -e "process.exit(0)" || exit 1
+  CMD test -x /usr/local/bin/arsenale-tunnel-agent || exit 1
 
-CMD ["node", "dist/index.js"]
+CMD ["/usr/local/bin/arsenale-tunnel-agent"]

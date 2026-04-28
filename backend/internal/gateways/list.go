@@ -63,6 +63,7 @@ SELECT
 	g."tunnelClientKeyIV",
 	g."tunnelClientKeyTag",
 	g."tunnelClientCertExp",
+	COALESCE(g."egressPolicy", '{"rules":[]}'::jsonb) AS "egressPolicy",
 	COALESCE(total_instances.count, 0) AS "totalInstances",
 	COALESCE(healthy_instances.count, 0) AS "healthyInstances",
 	COALESCE(running_instances.count, 0) AS "runningInstances",
@@ -165,6 +166,7 @@ func scanGateway(row rowScanner) (gatewayRecord, error) {
 	var templateID, lastError sql.NullString
 	var apiPort, lastLatency sql.NullInt32
 	var lastCheckedAt, lastScaleAction, tunnelConnectedAt, tunnelClientCertExp sql.NullTime
+	var egressPolicy []byte
 	var hasSSHKey bool
 	if err := row.Scan(
 		&item.ID,
@@ -218,6 +220,7 @@ func scanGateway(row rowScanner) (gatewayRecord, error) {
 		&tunnelClientKeyIV,
 		&tunnelClientKeyTag,
 		&tunnelClientCertExp,
+		&egressPolicy,
 		&item.TotalInstances,
 		&item.HealthyInstances,
 		&item.RunningInstances,
@@ -250,6 +253,7 @@ func scanGateway(row rowScanner) (gatewayRecord, error) {
 	item.TunnelClientKeyIV = nullStringPtr(tunnelClientKeyIV)
 	item.TunnelClientKeyTag = nullStringPtr(tunnelClientKeyTag)
 	item.TunnelClientCertExp = nullTimePtr(tunnelClientCertExp)
+	item.EgressPolicy = normalizeGatewayEgressPolicyForResponse(egressPolicy)
 	if strings.TrimSpace(item.DeploymentMode) == "" {
 		if item.IsManaged {
 			item.DeploymentMode = "MANAGED_GROUP"
@@ -343,6 +347,7 @@ func gatewayRecordToResponseWithStatus(
 		TunnelConnected:          tunnelConnected,
 		TunnelConnectedAt:        tunnelConnectedAt,
 		TunnelClientCertExp:      item.TunnelClientCertExp,
+		EgressPolicy:             normalizeGatewayEgressPolicyForResponse(item.EgressPolicy),
 		OperationalStatus:        operationalStatus,
 		OperationalReason:        operationalReason,
 	}

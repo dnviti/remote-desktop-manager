@@ -28,9 +28,10 @@ func (s Service) ListRecordings(ctx context.Context, claims authn.Claims, query 
 FROM "SessionRecording" sr
 LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId"
 JOIN "Connection" c ON c.id = sr."connectionId"
+LEFT JOIN "Team" team_scope ON team_scope.id = c."teamId"
 JOIN "User" u ON u.id = sr."userId"
 `
-	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
+	conditions = append(conditions, visibility.clauses(&args, "sr", recordingTenantScopeSQL)...)
 
 	if query.ConnectionID != nil {
 		args = append(args, *query.ConnectionID)
@@ -98,7 +99,7 @@ func (s Service) GetRecording(ctx context.Context, recordingID string, claims au
 	}
 	args := []any{recordingID}
 	conditions := []string{`sr.id = $1`}
-	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
+	conditions = append(conditions, visibility.clauses(&args, "sr", recordingTenantScopeSQL)...)
 	row := s.DB.QueryRow(ctx, `
 SELECT sr.id, sr."sessionId", sr."userId", sr."connectionId", sr.protocol::text, sr."filePath",
        sr."fileSize", sr.duration, sr.width, sr.height, sr.format, sr.status::text,
@@ -107,6 +108,7 @@ SELECT sr.id, sr."sessionId", sr."userId", sr."connectionId", sr.protocol::text,
 FROM "SessionRecording" sr
 LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId"
 JOIN "Connection" c ON c.id = sr."connectionId"
+LEFT JOIN "Team" team_scope ON team_scope.id = c."teamId"
 WHERE `+joinConditions(conditions)+`
 `, args...)
 	return scanRecording(row, false)
@@ -125,12 +127,18 @@ func (s Service) DeleteRecording(ctx context.Context, recordingID string, claims
 	}
 	args := []any{recordingID}
 	conditions := []string{`sr.id = $1`}
-	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
+	conditions = append(conditions, visibility.clauses(&args, "sr", recordingTenantScopeSQL)...)
 	var (
 		filePath sql.NullString
 		format   sql.NullString
 	)
-	err = s.DB.QueryRow(ctx, `SELECT sr."filePath", sr.format FROM "SessionRecording" sr LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId" WHERE `+joinConditions(conditions), args...).Scan(&filePath, &format)
+	err = s.DB.QueryRow(ctx, `
+SELECT sr."filePath", sr.format
+FROM "SessionRecording" sr
+LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId"
+JOIN "Connection" c ON c.id = sr."connectionId"
+LEFT JOIN "Team" team_scope ON team_scope.id = c."teamId"
+WHERE `+joinConditions(conditions), args...).Scan(&filePath, &format)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return false, nil

@@ -37,7 +37,7 @@ func (s Service) ResolveFileTransferTarget(ctx context.Context, userID, tenantID
 		return ResolvedFileTransferTarget{}, mapResolveError(err)
 	}
 
-	bastionMap, _, _, err := s.resolveBastion(ctx, authn.Claims{UserID: userID, TenantID: tenantID}, access)
+	bastionMap, _, _, err := s.resolveBastion(ctx, authn.Claims{UserID: userID, TenantID: tenantID}, access, "")
 	if err != nil {
 		return ResolvedFileTransferTarget{}, mapResolveError(err)
 	}

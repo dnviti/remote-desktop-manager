@@ -135,6 +135,7 @@ type gatewayRecord struct {
 	EncryptedSSHKey   *string
 	SSHKeyIV          *string
 	SSHKeyTag         *string
+	EgressPolicy      json.RawMessage
 }
 
 type resolvedCredentials struct {

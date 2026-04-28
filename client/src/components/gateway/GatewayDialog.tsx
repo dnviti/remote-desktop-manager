@@ -57,6 +57,7 @@ import SessionTimeoutConfig from '../orchestration/SessionTimeoutConfig';
 import { useAsyncAction } from '../../hooks/useAsyncAction';
 import { extractApiError } from '../../utils/apiError';
 import { useFeatureFlagsStore } from '../../store/featureFlagsStore';
+import GatewayEgressPolicyEditor from './GatewayEgressPolicyEditor';
 
 interface GatewayDialogProps {
   open: boolean;
@@ -342,7 +343,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) handleClose(); }}>
-      <DialogContent className="sm:max-w-md max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-h-[88vh] w-[calc(100vw-2rem)] overflow-y-auto sm:max-w-5xl lg:max-w-6xl xl:max-w-7xl">
         <DialogHeader>
           <DialogTitle>{isEditMode ? 'Edit Gateway' : 'New Gateway'}</DialogTitle>
         </DialogHeader>
@@ -442,7 +443,7 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
           )}
 
           {/* Zero-Trust Tunnel */}
-          {isEditMode && zeroTrustEnabled && (
+          {gateway && zeroTrustEnabled && (
             <Accordion type="single" collapsible value={tunnelSectionOpen ? 'tunnel' : ''} onValueChange={(v) => setUiPref('tunnelSectionOpen', v === 'tunnel')}>
               <AccordionItem value="tunnel">
                 <AccordionTrigger>
@@ -455,6 +456,13 @@ export default function GatewayDialog({ open, onClose, gateway }: GatewayDialogP
                 <AccordionContent>
                   <div className="space-y-3">
                     {tunnelError && <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 flex justify-between"><span>{tunnelError}</span><button onClick={() => setTunnelError('')} className="text-xs">dismiss</button></div>}
+
+                    <GatewayEgressPolicyEditor
+                      gatewayId={gateway.id}
+                      policy={gateway.egressPolicy}
+                    />
+
+                    <Separator />
 
                     {!isTunnelEnabled ? (
                       <>

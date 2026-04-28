@@ -22,6 +22,10 @@ func (s Service) CreateGateway(ctx context.Context, claims authn.Claims, input c
 		return gatewayResponse{}, err
 	}
 	normalizedHost := normalizeGatewayHostForMode(deploymentMode, input.Host)
+	egressPolicy, err := prepareGatewayEgressPolicy(input.EgressPolicy)
+	if err != nil {
+		return gatewayResponse{}, err
+	}
 
 	enc, err := s.prepareCredentialFields(ctx, claims.UserID, strings.TrimSpace(input.Type), input.Username, input.Password, input.SSHPrivateKey)
 	if err != nil {
@@ -75,7 +79,7 @@ INSERT INTO "Gateway" (
   "encryptedPassword", "passwordIV", "passwordTag",
   "encryptedSshKey", "sshKeyIV", "sshKeyTag",
   "apiPort", "monitoringEnabled", "monitorIntervalMs", "inactivityTimeoutSeconds",
-  "isManaged", "publishPorts", "lbStrategy", "createdAt", "updatedAt"
+  "isManaged", "publishPorts", "lbStrategy", "egressPolicy", "createdAt", "updatedAt"
 ) VALUES (
   $1, $2, $3::"GatewayType", $4, $5, $6, $7, $8, $9,
   $10::"GatewayDeploymentMode",
@@ -83,7 +87,7 @@ INSERT INTO "Gateway" (
   $14, $15, $16,
   $17, $18, $19,
   $20, $21, $22, $23,
-  $24, $25, $26::"LoadBalancingStrategy", NOW(), NOW()
+  $24, $25, $26::"LoadBalancingStrategy", $27::jsonb, NOW(), NOW()
 )
 `,
 		id,
@@ -112,6 +116,7 @@ INSERT INTO "Gateway" (
 		deploymentModeIsGroup(deploymentMode),
 		boolValue(input.PublishPorts, false),
 		stringValue(input.LBStrategy, "ROUND_ROBIN"),
+		string(egressPolicy),
 	); err != nil {
 		return gatewayResponse{}, fmt.Errorf("insert gateway: %w", err)
 	}
@@ -182,6 +187,10 @@ func (s Service) UpdateGateway(ctx context.Context, claims authn.Claims, gateway
 	updatedInactivity := chooseInt(record.InactivityTimeoutSeconds, input.InactivityTimeoutSeconds)
 	updatedPublishPorts := chooseBool(record.PublishPorts, input.PublishPorts)
 	updatedLB := chooseString(record.LBStrategy, input.LBStrategy)
+	updatedEgressPolicy, err := chooseGatewayEgressPolicy(record.EgressPolicy, input.EgressPolicy)
+	if err != nil {
+		return gatewayResponse{}, err
+	}
 
 	tx, err := s.DB.Begin(ctx)
 	if err != nil {
@@ -227,6 +236,7 @@ UPDATE "Gateway"
        "isManaged" = $21,
        "publishPorts" = $22,
        "lbStrategy" = $23::"LoadBalancingStrategy",
+       "egressPolicy" = $24::jsonb,
        "updatedAt" = NOW()
  WHERE id = $1
 `, record.ID,
@@ -252,6 +262,7 @@ UPDATE "Gateway"
 		deploymentModeIsGroup(deploymentMode),
 		updatedPublishPorts,
 		updatedLB,
+		string(updatedEgressPolicy),
 	); err != nil {
 		return gatewayResponse{}, fmt.Errorf("update gateway: %w", err)
 	}

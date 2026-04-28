@@ -257,6 +257,7 @@ const (
 	AuditActionFILELIST                         AuditAction = "FILE_LIST"
 	AuditActionSESSIONPAUSE                     AuditAction = "SESSION_PAUSE"
 	AuditActionSESSIONRESUME                    AuditAction = "SESSION_RESUME"
+	AuditActionTUNNELEGRESSDENIED               AuditAction = "TUNNEL_EGRESS_DENIED"
 )
 
 func (e *AuditAction) Scan(src interface{}) error {
@@ -1918,6 +1919,7 @@ type Gateway struct {
 	TunnelClientKey          pgtype.Text
 	TunnelClientKeyIV        pgtype.Text
 	TunnelClientKeyTag       pgtype.Text
+	EgressPolicy             []byte
 }
 
 type GatewayTemplate struct {

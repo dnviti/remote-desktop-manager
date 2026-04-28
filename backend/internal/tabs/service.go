@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/authn"
 	"github.com/dnviti/arsenale/backend/internal/connections"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -97,17 +99,18 @@ func (s Service) SyncTabs(ctx context.Context, claims authn.Claims, tabs []persi
 	seenIDs := make(map[string]struct{}, len(capped))
 	activeIndex := -1
 	for index, tab := range capped {
-		if tab.ID == "" || tab.ConnectionID == "" {
+		normalized, ok := normalizeIncomingTab(tab)
+		if !ok {
 			continue
 		}
-		if _, exists := seenIDs[tab.ID]; exists {
+		if _, exists := seenIDs[normalized.ID]; exists {
 			continue
 		}
-		if _, err := s.Connections.GetConnection(ctx, claims.UserID, claims.TenantID, tab.ConnectionID); err == nil {
-			seenIDs[tab.ID] = struct{}{}
+		if _, err := s.Connections.GetConnection(ctx, claims.UserID, claims.TenantID, normalized.ConnectionID); err == nil {
+			seenIDs[normalized.ID] = struct{}{}
 			validated = append(validated, persistedTab{
-				ID:           tab.ID,
-				ConnectionID: tab.ConnectionID,
+				ID:           normalized.ID,
+				ConnectionID: normalized.ConnectionID,
 				SortOrder:    index,
 				IsActive:     false,
 			})
@@ -146,6 +149,18 @@ VALUES ($1, $2, $3, $4, $5)
 		return nil, fmt.Errorf("commit tab sync: %w", err)
 	}
 	return validated, nil
+}
+
+func normalizeIncomingTab(tab persistedTab) (persistedTab, bool) {
+	tab.ID = strings.TrimSpace(tab.ID)
+	tab.ConnectionID = strings.TrimSpace(tab.ConnectionID)
+	if tab.ConnectionID == "" {
+		return persistedTab{}, false
+	}
+	if tab.ID == "" {
+		tab.ID = "tab-" + uuid.NewString()
+	}
+	return tab, true
 }
 
 func (s Service) ClearTabs(ctx context.Context, userID string) error {

@@ -142,7 +142,7 @@ Highest-value public prefixes:
 - `/api/files` — connection-scoped managed transfer sandbox for RDP workspace staging/cleanup plus the generic `/api/files/history` retained-upload surface
 - `/api/files/ssh/*` — SSH sandbox workspace list/mkdir/delete/rename/upload/download, plus `/api/files/ssh/history/*` retained-upload actions, all sandbox-relative
 - `/api/sessions` — SSH, SSH observe grants, RDP, VNC, database, DB tunnel, heartbeat, pause, resume, terminate, active-session visibility fallback, and unified session-console rows with recording summaries
-- `/api/gateways` — gateway CRUD, derived operational status, templates, scaling, tunnel controls, instances
+- `/api/gateways` — gateway CRUD, derived operational status, templates, scaling, tunnel controls, instances, and per-gateway egress policy
 - `/api/db-audit` — query audit logs, firewall rules, masking policies, rate limits
 - `/api/recordings` — recording list, stream, analyze, video export, and audit trail aligned to the same tenant/own session-visibility rules used by `/api/sessions/console`
 - `/api/tenants` — tenant CRUD, users, invite, permissions, IP allowlist, MFA stats
@@ -234,7 +234,7 @@ It still seeds:
 - local `ssh-gateway` and `guacd` gateway records when `connections` is enabled
 - demo databases with a deterministic ERP-style dataset: 60 customers, 72 products, 180 orders, 540 order lines, and 180 invoices per engine
 
-With the default development capabilities, `make dev` includes the demo databases. Tunnel gateway fixtures still require `DEV_ZERO_TRUST=true`.
+With the default development capabilities, `make dev` includes the demo databases. Tunnel gateway fixtures still require `DEV_ZERO_TRUST=true` and are seeded with narrow egress policies for their demo SSH, desktop, and database targets.
 If `multi_tenancy` is disabled, the seeded tenant remains the platform's only organization and the create/switch organization flows stay off.
 
 For code-only iteration, `make dev client`, `make dev gateways`, and `make dev control-plane` reuse the saved dev render artifacts and refresh only those services; installer/profile/cert/secret changes still require a full `make dev`.
@@ -273,7 +273,7 @@ Detailed specs: [security/encryption.md](security/encryption.md), [security/poli
 
 ## 🗃 Database Schema
 
-PostgreSQL 16 with versioned SQL migrations in `backend/migrations/`. Key entity groups: User, Tenant, Team, Connection, Session, VaultSecret, Gateway, AuditLog, AccessPolicy, Checkout, Notification. 100+ audit action types. 7 tenant roles (OWNER through GUEST). Detailed schemas: [database/](database/).
+PostgreSQL 16 with versioned SQL migrations in `backend/migrations/`. Key entity groups: User, Tenant, Team, Connection, Session, VaultSecret, Gateway, AuditLog, AccessPolicy, Checkout, Notification. 100+ audit action types, including `TUNNEL_EGRESS_DENIED` for blocked tunnel targets. 7 tenant roles (OWNER through GUEST). Detailed schemas: [database/](database/).
 
 ## 🌐 WebSocket Protocols
 

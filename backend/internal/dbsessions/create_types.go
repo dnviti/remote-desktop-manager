@@ -1,6 +1,7 @@
 package dbsessions
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/sessions"
@@ -98,6 +99,7 @@ type gatewaySnapshot struct {
 	DeploymentMode string
 	TunnelEnabled  bool
 	LBStrategy     string
+	EgressPolicy   json.RawMessage
 }
 
 type managedGatewayInstance struct {

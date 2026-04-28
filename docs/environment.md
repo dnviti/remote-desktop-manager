@@ -210,6 +210,12 @@ Leave `LDAP_ENABLED=false` to disable. Compatible with FreeIPA, OpenLDAP, 389 Di
 | `SSH_AUTHORIZED_KEYS` | — | Authorized public keys (newline-separated) |
 | `GATEWAY_API_TOKEN` | — | Shared secret for gateway API sidecar |
 
+### Gateway Runtime Egress
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `ARSENALE_EGRESS_POLICY_JSON` | — | Normalized per-gateway allow policy used by managed gateway runtimes. When present, outbound tunnel targets must match protocol, host/CIDR, and port rules before traffic is opened. |
+
 ### SSH Key Rotation
 
 | Variable | Default | Description |

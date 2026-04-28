@@ -40,7 +40,7 @@ The tunnel agent runs alongside the gateway service (guacd or sshd) either as an
 ## Prerequisites
 
 - **Arsenale server** reachable over HTTPS (or HTTP for development) from the remote host.
-- **Docker** on the remote host (recommended), or **Node.js 22+** for bare-metal deployments.
+- **Docker** on the remote host (recommended), or **Go 1.25+** when building a bare-metal agent from source.
 - An **administrator account** on the Arsenale instance to create gateways and generate tunnel tokens.
 
 ## Quick Start
@@ -58,7 +58,7 @@ Get a tunnel-connected gateway running in under 5 minutes:
    ```bash
    docker run -d --restart=unless-stopped \
      -e TUNNEL_TOKEN="<token>" \
-     -e TUNNEL_SERVER_URL="https://arsenale.example.com" \
+    -e TUNNEL_SERVER_URL="wss://arsenale.example.com/api/tunnel/connect" \
      -e TUNNEL_GATEWAY_ID="<uuid>" \
      -e TUNNEL_LOCAL_PORT="4822" \
      arsenale/tunnel-agent:latest
@@ -80,6 +80,7 @@ Get a tunnel-connected gateway running in under 5 minutes:
 4. Expand the **Zero-Trust Tunnel** section and click **Enable Zero-Trust Tunnel**.
 
 When a tunnel is enabled, the **Host** field becomes read-only (labeled "Managed by tunnel") and the **Port** source shows "Tunnel".
+Before using the tunnel for production traffic, configure the gateway egress policy so only expected target hosts, subnets, protocols, and ports can be reached.
 
 ### Enabling Tunnel on an Existing Gateway
 
@@ -105,7 +106,7 @@ Both actions require confirmation and take effect immediately.
 
 ## Deploying the Tunnel Agent
 
-The tunnel agent is a lightweight Node.js process. It can run in three deployment modes.
+The tunnel agent is a lightweight Go binary. It can run in three deployment modes.
 
 ### Docker Run (Single Container)
 
@@ -114,7 +115,7 @@ The simplest approach -- a single standalone container:
 ```bash
 docker run -d --restart=unless-stopped \
   --name arsenale-tunnel \
-  -e TUNNEL_SERVER_URL="https://arsenale.example.com" \
+  -e TUNNEL_SERVER_URL="wss://arsenale.example.com/api/tunnel/connect" \
   -e TUNNEL_TOKEN="<your-token>" \
   -e TUNNEL_GATEWAY_ID="<gateway-uuid>" \
   -e TUNNEL_LOCAL_PORT="4822" \
@@ -127,7 +128,7 @@ The container runs as a non-root user (`agent`) and requires no volumes or capab
 
 ### Docker Compose
 
-For environments where you run guacd or sshd alongside the tunnel agent:
+For environments where you run guacd or sshd alongside the tunnel agent, keep the agent in the same network namespace as the local service or use the embedded gateway images:
 
 ```yaml
 services:
@@ -139,11 +140,11 @@ services:
     image: arsenale/tunnel-agent:latest
     restart: always
     environment:
-      TUNNEL_SERVER_URL: "https://arsenale.example.com"
+      TUNNEL_SERVER_URL: "wss://arsenale.example.com/api/tunnel/connect"
       TUNNEL_TOKEN: "<your-token>"
       TUNNEL_GATEWAY_ID: "<gateway-uuid>"
       TUNNEL_LOCAL_PORT: "4822"
-      TUNNEL_LOCAL_HOST: "guacd"   # service name of the guacd container
+    network_mode: "service:guacd"
     depends_on:
       - guacd
 ```
@@ -158,10 +159,10 @@ services:
       dockerfile: gateways/guacd/Dockerfile
     restart: always
     environment:
-      TUNNEL_SERVER_URL: "https://arsenale.example.com"
+      TUNNEL_SERVER_URL: "wss://arsenale.example.com/api/tunnel/connect"
       TUNNEL_TOKEN: "<your-token>"
       TUNNEL_GATEWAY_ID: "<gateway-uuid>"
-      # TUNNEL_LOCAL_PORT defaults to 4822 via the entrypoint
+      TUNNEL_LOCAL_PORT: "4822"
 ```
 
 The embedded guacd image (`gateways/guacd/Dockerfile`) and SSH gateway image (`gateways/ssh-gateway/Dockerfile`) both include a pre-built copy of the tunnel agent. The entrypoint launches the agent as a background process before starting the main service. If the `TUNNEL_SERVER_URL` variable is not set, the agent remains dormant and the container operates normally.
@@ -173,9 +174,8 @@ For hosts where Docker is not available:
 1. Install the tunnel agent binary or build from source:
 
    ```bash
-   cd tunnel-agent
-   npm install
-   npm run build
+   cd gateways/tunnel-agent
+   go build -trimpath -ldflags="-s -w" -o arsenale-tunnel-agent .
    ```
 
 2. Create a systemd unit file at `/etc/systemd/system/arsenale-tunnel.service`:
@@ -190,11 +190,11 @@ For hosts where Docker is not available:
    Type=simple
    Restart=always
    RestartSec=5
-   Environment=TUNNEL_SERVER_URL=https://arsenale.example.com
+   Environment=TUNNEL_SERVER_URL=wss://arsenale.example.com/api/tunnel/connect
    Environment=TUNNEL_TOKEN=<your-token>
    Environment=TUNNEL_GATEWAY_ID=<gateway-uuid>
    Environment=TUNNEL_LOCAL_PORT=4822
-   ExecStart=/usr/local/bin/node /opt/arsenale-tunnel-agent/dist/index.js
+   ExecStart=/usr/local/bin/arsenale-tunnel-agent
 
    [Install]
    WantedBy=multi-user.target
@@ -287,6 +287,44 @@ Restrict which source IP addresses tunnel agents can connect from. This adds a n
 - Multiple entries are supported.
 - **Empty list** = no restrictions (agents can connect from any IP).
 - Both IPv4 and IPv6 addresses are accepted.
+
+## Per-Gateway Egress Policy
+
+Each gateway has an `egressPolicy` JSON document that controls where tunneled sessions may send traffic after the user has passed normal Arsenale access checks. The default policy is `{"rules":[]}`, which denies all tunneled egress until an administrator adds allow rules.
+
+Rules match the protocol, destination port, and either destination host, resolved IP CIDR, or both. If both `hosts` and `cidrs` are present on the same rule, both must match.
+
+```json
+{
+  "rules": [
+    {
+      "description": "Allow production SSH subnet",
+      "protocols": ["SSH"],
+      "cidrs": ["10.20.30.0/24"],
+      "ports": [22]
+    },
+    {
+      "description": "Allow database hosts",
+      "protocols": ["DATABASE"],
+      "hosts": ["db01.internal.example.com", "*.readonly.internal.example.com"],
+      "ports": [5432, 3306]
+    }
+  ]
+}
+```
+
+Supported protocols are `SSH`, `RDP`, `VNC`, and `DATABASE`. Host patterns must be exact names or leading wildcards such as `*.example.com`; a bare `*` is rejected. CIDRs accept IPv4 and IPv6 ranges.
+
+Administrators can configure this from the widened gateway edit dialog by expanding **Zero-Trust Tunnel** and using the **Egress Allow Rules** datatable. Add and edit actions open a rule popup for protocols, destinations, and ports. The editor starts in default-deny mode, accepts exact hosts, leading wildcard hosts, CIDRs, and individual IPs, and saves bare IP entries as exact-match `/32` or `/128` prefixes. The same policy remains available through the CLI for scripted updates.
+
+The control plane evaluates the policy before opening SSH, RDP, VNC, and database tunnel routes. Managed database proxy gateways also receive the normalized policy as `ARSENALE_EGRESS_POLICY_JSON` and enforce it at query execution time. Denied attempts return `403` and write a `TUNNEL_EGRESS_DENIED` audit event with the protocol, target host, target port, gateway ID, and reason.
+
+CLI examples:
+
+```bash
+arsenale gateway egress show <gateway-id>
+arsenale gateway egress set <gateway-id> --from-file ./gateway-egress-policy.json
+```
 
 ## Access Control (ABAC Policies)
 
@@ -392,6 +430,7 @@ Use this when:
 | High RTT values (>200ms) | Network latency between agent and server | Consider a server instance closer to the remote site, or check for network congestion |
 | `TUNNEL_LOCAL_PORT must be a valid port number` | Port value is outside 1--65535 or not a number | Verify the `TUNNEL_LOCAL_PORT` value is correct (4822 for guacd, 2222 for sshd) |
 | Agent running but sessions fail | `TUNNEL_LOCAL_HOST` points to wrong address | Ensure the target service is reachable from the agent at the configured host and port |
+| Session returns `403` with an egress policy message | The gateway `egressPolicy` does not allow the requested protocol, host/subnet, or port | Add a narrow allow rule for that target and review `TUNNEL_EGRESS_DENIED` audit events |
 | Certificate expiry warning | mTLS client certificate approaching expiration | Rotate the tunnel token to trigger certificate renewal |
 
 ## Environment Variables Reference
@@ -411,11 +450,11 @@ All tunnel agent configuration is read from environment variables. If none of th
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `TUNNEL_LOCAL_HOST` | Hostname or IP of the local service to proxy | `localhost` |
+| `TUNNEL_LOCAL_HOST` | Hostname or IP of the local service to proxy | `127.0.0.1` |
 | `TUNNEL_CA_CERT` | PEM-encoded CA certificate to verify the server's TLS certificate | _(system default)_ |
 | `TUNNEL_CLIENT_CERT` | PEM-encoded client certificate for mutual TLS (mTLS) | _(none)_ |
 | `TUNNEL_CLIENT_KEY` | PEM-encoded client private key for mTLS | _(none)_ |
-| `TUNNEL_AGENT_VERSION` | Version string reported to the server in the `X-Agent-Version` header | _(read from package.json)_ |
+| `TUNNEL_AGENT_VERSION` | Version string reported to the server in the `X-Agent-Version` header | Agent build default |
 | `TUNNEL_PING_INTERVAL_MS` | Interval between WebSocket ping frames (milliseconds) | `15000` (15 seconds) |
 | `TUNNEL_RECONNECT_INITIAL_MS` | Initial backoff delay before reconnecting after a disconnect | `1000` (1 second) |
 | `TUNNEL_RECONNECT_MAX_MS` | Maximum backoff delay cap for reconnection attempts | `60000` (60 seconds) |
@@ -440,6 +479,7 @@ If **some but not all** required variables are set, the agent prints an error li
 
 - **Use HTTPS/WSS in production.** The tunnel agent connects to a `wss://` endpoint. Never use unencrypted `ws://` in production.
 - **Restrict agent source IPs.** Use the CIDR allowlist in tenant tunnel settings to limit which networks can establish tunnel connections.
+- **Set per-gateway egress policies.** Keep `egressPolicy` allow rules scoped to the exact protocols, ports, hostnames, and subnets the gateway must reach.
 - **Use mTLS where possible.** Set `TUNNEL_CLIENT_CERT` and `TUNNEL_CLIENT_KEY` on the agent and configure the server to require client certificates for an additional layer of authentication.
 - **Configure a custom CA certificate** (`TUNNEL_CA_CERT`) if your server uses a private or internal CA rather than a publicly trusted certificate.
 - **Apply ABAC policies** to restrict session access by time window, trusted device, and MFA requirements.

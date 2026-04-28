@@ -14,9 +14,9 @@ else
 fi
 
 # Start zero-trust tunnel agent if configured (auto-activating, dormant if env vars absent)
-if [ -f /opt/tunnel-agent/dist/index.js ]; then
+if command -v arsenale-tunnel-agent >/dev/null 2>&1; then
   echo "Starting tunnel agent (dormant if TUNNEL_SERVER_URL not set)..."
-  node /opt/tunnel-agent/dist/index.js &
+  arsenale-tunnel-agent &
 fi
 
 guacd_bin="$(command -v guacd || true)"

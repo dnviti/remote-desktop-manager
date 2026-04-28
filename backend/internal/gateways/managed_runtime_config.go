@@ -10,6 +10,7 @@ import (
 
 func (s Service) buildManagedGatewayContainerConfig(ctx context.Context, record gatewayRecord, instanceIndex int) ([]managedContainerConfig, error) {
 	env := map[string]string{}
+	env["ARSENALE_EGRESS_POLICY_JSON"] = string(normalizeGatewayEgressPolicyForResponse(record.EgressPolicy))
 
 	switch strings.ToUpper(strings.TrimSpace(record.Type)) {
 	case "MANAGED_SSH":

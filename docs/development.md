@@ -33,7 +33,7 @@ Arsenale is a mixed Go and JavaScript monorepo.
 |------|------|-------|
 | Control and runtime services | `backend/` | Go 1.25 |
 | Web client | `client/` | React 19, Vite 8, Vitest, Tailwind CSS 4, shadcn/ui, MUI 7 |
-| Tunnel agent | `gateways/tunnel-agent/` | TypeScript workspace |
+| Tunnel agent | `gateways/tunnel-agent/` | Go module |
 | Browser extension | `extra-clients/browser-extensions/` | Chrome MV3 workspace |
 | CLI | `tools/arsenale-cli/` | Go |
 | Installer and deploy | `deployment/ansible/`, `deployment/helm/` | Ansible, Helm, Python helpers |
@@ -187,7 +187,7 @@ The React SPA in `client/` follows a layered architecture:
 | Layer | Location | Count |
 |-------|----------|-------|
 | Pages | `client/src/pages/` | 11 pages |
-| Components | `client/src/components/` | 88+ components across 20+ directories |
+| Components | `client/src/components/` | 90+ components across 20+ directories |
 | Stores | `client/src/store/` | 17 Zustand stores |
 | Hooks | `client/src/hooks/` | 15 custom hooks |
 | API modules | `client/src/api/` | 41 Axios-based modules |

@@ -160,13 +160,15 @@ The TunnelBroker enables zero-trust environments where gateway agents cannot exp
 
 The tunnel system uses a binary multiplexing protocol with 4-byte frames (type, flags, streamId uint16) and message types OPEN/DATA/CLOSE/PING/PONG. The `openStream(gatewayId, host, port)` API returns a `net.Duplex`-compatible stream for transparent integration with SSH2 and guacamole-lite.
 
+Each gateway has an `egressPolicy` JSON document with protocol, host/CIDR, and port allow rules. Empty policies deny all tunneled egress. SSH, RDP, VNC, and database session creation enforces the policy before opening tunnel streams, and managed DB proxy runtimes receive `ARSENALE_EGRESS_POLICY_JSON` for runtime enforcement. Denials write `TUNNEL_EGRESS_DENIED` audit events.
+
 Authentication uses a 256-bit token (stored encrypted with AES-256-GCM + SHA-256 hash for constant-time comparison) presented via the `Authorization: Bearer` header. Each gateway has a unique token bound to its ID. Token generation/revocation is available via `POST /gateways/:id/tunnel-token` and `DELETE /gateways/:id/tunnel-token` (OPERATOR role required).
 
-The Gateway model includes tunnel fields: `tunnelEnabled`, encrypted token (ciphertext/IV/tag), `tunnelTokenHash` (unique), connection timestamps, client IP/version, and optional mTLS certificate material (`tunnelCaCert`, `tunnelCaKey`, `tunnelClientCert`, `tunnelClientCertExp`). `ManagedGatewayInstance` includes `tunnelProxyHost`/`tunnelProxyPort` for GUACD tunnel proxying.
+The Gateway model includes tunnel fields: `tunnelEnabled`, encrypted token (ciphertext/IV/tag), `tunnelTokenHash` (unique), connection timestamps, client IP/version, optional mTLS certificate material (`tunnelCaCert`, `tunnelCaKey`, `tunnelClientCert`, `tunnelClientCertExp`), and `egressPolicy`. `ManagedGatewayInstance` includes `tunnelProxyHost`/`tunnelProxyPort` for GUACD tunnel proxying.
 
 The Tenant model includes tunnel configuration fields: `tunnelDefaultEnabled` (new gateways default to tunnel mode), `tunnelAutoTokenRotation` + `tunnelTokenRotationDays` (scheduled token rotation), `tunnelRequireForRemote` (force tunnel for non-LAN connections), `tunnelTokenMaxLifetimeDays` (max token lifetime), and `tunnelAgentAllowedCidrs` (CIDR allowlist for agent source IPs).
 
-Audit actions `TUNNEL_CONNECT`, `TUNNEL_DISCONNECT`, `TUNNEL_TOKEN_GENERATE`, and `TUNNEL_TOKEN_ROTATE` are recorded for all tunnel lifecycle events.
+Audit actions `TUNNEL_CONNECT`, `TUNNEL_DISCONNECT`, `TUNNEL_TOKEN_GENERATE`, `TUNNEL_TOKEN_ROTATE`, and `TUNNEL_EGRESS_DENIED` are recorded for tunnel lifecycle and egress events.
 
 The `GatewayData` API type exposes `operationalStatus`, `operationalReason`, `healthyInstances`, `tunnelEnabled`, `tunnelConnected` (live broker check when available), `tunnelConnectedAt`, and `tunnelClientCertExp`. The client `gateway.api.ts` provides `generateTunnelToken`, `revokeTunnelToken`, `forceDisconnectTunnel`, `getTunnelEvents`, and `getTunnelMetrics` functions. The `gatewayStore` holds a `tunnelStatuses` map updated via `applyTunnelStatusUpdate` and `tunnel:metrics` Socket.IO events.
 
@@ -180,7 +182,7 @@ Additional tunnel UI panels (all collapsible, persisted via `uiPreferencesStore`
 
 ## Tunnel Agent (`gateways/tunnel-agent/`)
 
-The `tunnel-agent` is a lightweight Node.js workspace (`gateways/tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
+The `tunnel-agent` is a lightweight Go module (`gateways/tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway, db-proxy, and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
 
 When tunnel env vars are present, the agent auto-activates and establishes an outbound WSS connection to the TunnelBroker using the same binary multiplexing protocol (OPEN/DATA/CLOSE/PING/PONG, 4-byte header). On receiving an OPEN frame with a `host:port` payload, it opens a local TCP connection and bridges data bidirectionally through DATA frames. The agent sends 15-second PING heartbeats with JSON health metadata (`{ healthy, latencyMs, activeStreams }`) obtained by probing the local service.
 
@@ -188,7 +190,7 @@ Auto-reconnect uses exponential backoff (1 s → 2 s → … → 60 s). Optional
 
 A standalone `gateways/tunnel-agent/Dockerfile` is provided for deploying the agent alongside non-managed (external) gateways. For managed gateways, the `gateways/ssh-gateway/Dockerfile` and `gateways/guacd/Dockerfile` both embed the agent via a multi-stage build (monorepo root context required) and launch it from their entrypoints as a background process.
 
-When `tunnelEnabled=true` on a managed gateway, `managedGateway.service.ts` automatically injects `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`, and `TUNNEL_LOCAL_PORT` into the container environment, and suppresses host-port publishing (`publishPorts=false` behavior) so traffic flows exclusively through the tunnel.
+When `tunnelEnabled=true` on a managed gateway, the Go managed gateway service automatically injects `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`, `TUNNEL_LOCAL_PORT`, and `ARSENALE_EGRESS_POLICY_JSON` into the container environment, and suppresses host-port publishing (`publishPorts=false` behavior) so traffic flows exclusively through the tunnel.
 
 ## Browser Extension (`extra-clients/browser-extensions/`)
 
@@ -271,4 +273,4 @@ In multi-instance deployments, the shared Redis coordination layer lets the API 
 
 ## Technology
 
-Arsenale is built on a Go-first service stack backed by PostgreSQL and Redis, with a React client using Zustand plus a hybrid Material UI and shadcn/ui plus Tailwind CSS layer. The active JavaScript workspaces are `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`; the old `server/` implementation is no longer present. Remote desktop rendering uses guacd and guacamole-common-js, SSH terminals use XTerm.js with the Go terminal broker, and the zero-trust tunnel system uses raw WebSockets with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. ABAC enforcement now lives in the Go access-policy services and is evaluated on the active Go session path.
+Arsenale is built on a Go-first service stack backed by PostgreSQL and Redis, with a React client using Zustand plus a hybrid Material UI and shadcn/ui plus Tailwind CSS layer. The active JavaScript workspaces are `client/` and `extra-clients/browser-extensions/`; the old `server/` implementation is no longer present. Remote desktop rendering uses guacd and guacamole-common-js, SSH terminals use XTerm.js with the Go terminal broker, and the zero-trust tunnel system uses raw WebSockets with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. ABAC enforcement now lives in the Go access-policy services and is evaluated on the active Go session path.

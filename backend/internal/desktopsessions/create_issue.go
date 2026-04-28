@@ -92,7 +92,7 @@ func (s Service) createDesktopSession(ctx context.Context, claims authn.Claims, 
 		return createResponse{}, err
 	}
 
-	route, err := s.resolveDesktopRoute(ctx, claims.TenantID, conn.GatewayID, protocol)
+	route, err := s.resolveDesktopRoute(ctx, claims.TenantID, conn.GatewayID, protocol, conn.Host, conn.Port, claims.UserID, conn.ID, ipAddress)
 	if err != nil {
 		return createResponse{}, err
 	}

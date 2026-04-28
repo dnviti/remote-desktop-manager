@@ -55,10 +55,13 @@ func TestRecordingVisibilityClausesUseTenantScopeWithoutOwnerFilter(t *testing.T
 		},
 	}
 	args := make([]any, 0, 2)
-	clauses := access.clauses(&args, "sr", "sess")
+	clauses := access.clauses(&args, "sr", recordingTenantScopeSQL)
 
 	if len(clauses) != 1 {
 		t.Fatalf("clauses len = %d, want 1", len(clauses))
+	}
+	if clauses[0] != `(COALESCE(sess."tenantId", team_scope."tenantId") = $1 OR (team_scope.id IS NULL AND sr."userId" = $2))` {
+		t.Fatalf("tenant clause = %q", clauses[0])
 	}
 	if access.canDelete() != true {
 		t.Fatal("canDelete() = false, want true")
@@ -76,10 +79,13 @@ func TestRecordingVisibilityClausesUseOwnerFilterForOwnScope(t *testing.T) {
 		},
 	}
 	args := make([]any, 0, 2)
-	clauses := access.clauses(&args, "sr", "sess")
+	clauses := access.clauses(&args, "sr", recordingTenantScopeSQL)
 
 	if len(clauses) != 2 {
 		t.Fatalf("clauses len = %d, want 2", len(clauses))
+	}
+	if clauses[1] != `sr."userId" = $3` {
+		t.Fatalf("owner clause = %q", clauses[1])
 	}
 	if !access.canDelete() {
 		t.Fatal("canDelete() = false, want true")

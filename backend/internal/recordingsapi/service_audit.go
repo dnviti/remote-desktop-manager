@@ -24,8 +24,14 @@ func (s Service) GetAuditTrail(ctx context.Context, recordingID string, claims a
 	var sessionID sql.NullString
 	args := []any{recordingID}
 	conditions := []string{`sr.id = $1`}
-	conditions = append(conditions, visibility.clauses(&args, "sr", "sess")...)
-	err = s.DB.QueryRow(ctx, `SELECT sr."sessionId" FROM "SessionRecording" sr LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId" WHERE `+joinConditions(conditions), args...).Scan(&sessionID)
+	conditions = append(conditions, visibility.clauses(&args, "sr", recordingTenantScopeSQL)...)
+	err = s.DB.QueryRow(ctx, `
+SELECT sr."sessionId"
+FROM "SessionRecording" sr
+LEFT JOIN "ActiveSession" sess ON sess.id = sr."sessionId"
+JOIN "Connection" c ON c.id = sr."connectionId"
+LEFT JOIN "Team" team_scope ON team_scope.id = c."teamId"
+WHERE `+joinConditions(conditions), args...).Scan(&sessionID)
 	if err != nil {
 		return auditTrailResponse{}, err
 	}

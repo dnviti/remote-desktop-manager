@@ -7,11 +7,13 @@ import {
   GatewayData, GatewayInput, GatewayUpdate, SshKeyPairData,
   listGateways, createGateway as createGatewayApi,
   updateGateway as updateGatewayApi, deleteGateway as deleteGatewayApi,
+  updateGatewayEgressPolicy as updateGatewayEgressPolicyApi,
   getSshKeyPair, generateSshKeyPair as generateSshKeyPairApi,
   rotateSshKeyPair as rotateSshKeyPairApi,
   pushKeyToGateway as pushKeyToGatewayApi,
   type RotateKeyPairResponse,
   type GatewayHealthEvent,
+  type GatewayEgressPolicy,
   type ActiveSessionData,
   type ManagedInstanceData,
   type ScalingStatusData,
@@ -78,6 +80,7 @@ interface GatewayState {
   fetchGateways: () => Promise<void>;
   createGateway: (data: GatewayInput) => Promise<GatewayData>;
   updateGateway: (id: string, data: GatewayUpdate) => Promise<void>;
+  updateGatewayEgressPolicy: (id: string, policy: GatewayEgressPolicy) => Promise<void>;
   deleteGateway: (id: string, force?: boolean) => Promise<void>;
   applyHealthUpdate: (event: GatewayHealthEvent) => void;
   applyInstancesUpdate: (gatewayId: string, instances: ManagedInstanceData[]) => void;
@@ -177,6 +180,13 @@ export const useGatewayStore = create<GatewayState>((set) => ({
 
   updateGateway: async (id, data) => {
     const updated = await updateGatewayApi(id, data);
+    set((state) => ({
+      gateways: state.gateways.map((g) => (g.id === id ? { ...g, ...updated } : g)),
+    }));
+  },
+
+  updateGatewayEgressPolicy: async (id, policy) => {
+    const updated = await updateGatewayEgressPolicyApi(id, policy);
     set((state) => ({
       gateways: state.gateways.map((g) => (g.id === id ? { ...g, ...updated } : g)),
     }));

@@ -8,7 +8,7 @@ import (
 func (s Service) GetSessionRecording(ctx context.Context, sessionID string, access sessionRecordingAccess) (sessionRecordingResponse, error) {
 	args := []any{sessionID}
 	conditions := []string{`r."sessionId" = $1`}
-	conditions = append(conditions, access.clauses(&args, "r", "sess")...)
+	conditions = append(conditions, access.clauses(&args, "r", sessionRecordingTenantScopeSQL)...)
 	row := s.DB.QueryRow(ctx, `
 SELECT
 	r.id,
@@ -33,6 +33,7 @@ SELECT
 FROM "SessionRecording" r
 LEFT JOIN "ActiveSession" sess ON sess.id = r."sessionId"
 JOIN "Connection" c ON c.id = r."connectionId"
+LEFT JOIN "Team" team_scope ON team_scope.id = c."teamId"
 WHERE `+joinRecordingAccessConditions(conditions)+`
 ORDER BY r."createdAt" DESC
 LIMIT 1

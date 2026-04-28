@@ -366,7 +366,7 @@ Operational domains under `routes_operations.go` include:
 | `/api/ai/*` | Named AI backend config, per-feature defaults, SQL generation, and optimization |
 | `/api/access-policies` | Access policy CRUD |
 | `/api/keystroke-policies` | Keystroke policy CRUD |
-| `/api/gateways` | Gateway CRUD, tunnel overview, templates, scaling, deploy, and tunnel controls |
+| `/api/gateways` | Gateway CRUD, tunnel overview, templates, scaling, deploy, tunnel controls, and gateway egress policy |
 | `/api/rdgw/*` | RD Gateway config and RDP file generation |
 | `/api/recordings/*` | Recording list, metadata, stream, audit trail, and video export with session-visibility RBAC |
 | `/api/ldap/*` | LDAP status, test, and sync |
@@ -376,13 +376,15 @@ Operational domains under `routes_operations.go` include:
 
 Notable gateway subpaths:
 
-- `GET /api/gateways` now returns derived `operationalStatus`, `operationalReason`, and `healthyInstances` fields alongside the legacy probe fields so clients can render managed and tunnel-backed gateway health consistently.
+- `GET /api/gateways` now returns derived `operationalStatus`, `operationalReason`, `healthyInstances`, and `egressPolicy` fields alongside the legacy probe fields so clients can render managed and tunnel-backed gateway health consistently.
 - `/api/gateways/{id}/deploy`
 - `/api/gateways/{id}/scale`
 - `/api/gateways/{id}/scaling`
 - `/api/gateways/{id}/instances`
 - `/api/gateways/{id}/instances/{instanceId}/restart`
 - `/api/gateways/{id}/instances/{instanceId}/logs`
+- `GET /api/gateways/{id}/egress` returns the normalized gateway egress policy.
+- `PUT /api/gateways/{id}/egress` replaces the gateway egress policy. The body is `{"rules":[...]}`; an empty rule list denies all tunneled egress.
 - `/api/gateways/{id}/tunnel-token`
 - `/api/gateways/{id}/tunnel-disconnect`
 - `/api/gateways/{id}/tunnel-events`

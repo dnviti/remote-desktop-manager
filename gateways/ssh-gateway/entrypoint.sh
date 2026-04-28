@@ -77,10 +77,10 @@ else
 fi
 
 # Start zero-trust tunnel agent if configured (auto-activating, dormant if env vars absent)
-if [ -f /opt/tunnel-agent/dist/index.js ]; then
+if command -v arsenale-tunnel-agent >/dev/null 2>&1; then
   if [ -n "$TUNNEL_SERVER_URL" ] && [ -n "$TUNNEL_TOKEN" ] && [ -n "$TUNNEL_GATEWAY_ID" ]; then
     echo "Starting tunnel agent..."
-    node /opt/tunnel-agent/dist/index.js &
+    arsenale-tunnel-agent &
   else
     echo "Tunnel agent not configured at startup; skipping"
   fi

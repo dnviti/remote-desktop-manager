@@ -5,6 +5,19 @@ import api from './client';
 export type GatewayHealthStatus = 'UNKNOWN' | 'REACHABLE' | 'UNREACHABLE';
 export type GatewayDeploymentMode = 'SINGLE_INSTANCE' | 'MANAGED_GROUP';
 export type GatewayOperationalStatus = 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' | 'UNKNOWN';
+export type GatewayEgressProtocol = 'SSH' | 'RDP' | 'VNC' | 'DATABASE';
+
+export interface GatewayEgressPolicyRule {
+  description?: string;
+  protocols: GatewayEgressProtocol[];
+  hosts?: string[];
+  cidrs?: string[];
+  ports: number[];
+}
+
+export interface GatewayEgressPolicy {
+  rules: GatewayEgressPolicyRule[];
+}
 
 export interface GatewayData {
   id: string;
@@ -46,6 +59,7 @@ export interface GatewayData {
   tunnelConnected: boolean;
   tunnelConnectedAt: string | null;
   tunnelClientCertExp: string | null;
+  egressPolicy?: GatewayEgressPolicy;
   operationalStatus: GatewayOperationalStatus;
   operationalReason: string;
 }
@@ -67,6 +81,7 @@ export interface GatewayInput {
   monitoringEnabled?: boolean;
   monitorIntervalMs?: number;
   inactivityTimeoutSeconds?: number;
+  egressPolicy?: GatewayEgressPolicy;
 }
 
 export interface GatewayUpdate {
@@ -85,6 +100,7 @@ export interface GatewayUpdate {
   monitoringEnabled?: boolean;
   monitorIntervalMs?: number;
   inactivityTimeoutSeconds?: number;
+  egressPolicy?: GatewayEgressPolicy | null;
 }
 
 export interface TestResult {
@@ -122,6 +138,16 @@ export async function createGateway(payload: GatewayInput): Promise<GatewayData>
 
 export async function updateGateway(id: string, payload: GatewayUpdate): Promise<GatewayData> {
   const { data } = await api.put(`/gateways/${id}`, payload);
+  return data;
+}
+
+export async function getGatewayEgressPolicy(id: string): Promise<GatewayEgressPolicy> {
+  const { data } = await api.get(`/gateways/${id}/egress`);
+  return data;
+}
+
+export async function updateGatewayEgressPolicy(id: string, payload: GatewayEgressPolicy): Promise<GatewayData> {
+  const { data } = await api.put(`/gateways/${id}/egress`, payload);
   return data;
 }
 

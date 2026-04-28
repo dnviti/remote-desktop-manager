@@ -122,6 +122,9 @@ func changedGatewayFields(input updatePayload) []string {
 	if input.InactivityTimeoutSeconds.Present {
 		fields = append(fields, "inactivityTimeoutSeconds")
 	}
+	if input.EgressPolicy.Present {
+		fields = append(fields, "egressPolicy")
+	}
 	return fields
 }
 

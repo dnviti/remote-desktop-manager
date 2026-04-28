@@ -42,47 +42,48 @@ type Service struct {
 }
 
 type gatewayResponse struct {
-	ID                       string     `json:"id"`
-	Name                     string     `json:"name"`
-	Type                     string     `json:"type"`
-	Host                     string     `json:"host"`
-	Port                     int        `json:"port"`
-	DeploymentMode           string     `json:"deploymentMode"`
-	Description              *string    `json:"description"`
-	IsDefault                bool       `json:"isDefault"`
-	HasSSHKey                bool       `json:"hasSshKey"`
-	APIPort                  *int       `json:"apiPort"`
-	InactivityTimeoutSeconds int        `json:"inactivityTimeoutSeconds"`
-	TenantID                 string     `json:"tenantId"`
-	CreatedByID              string     `json:"createdById"`
-	CreatedAt                time.Time  `json:"createdAt"`
-	UpdatedAt                time.Time  `json:"updatedAt"`
-	MonitoringEnabled        bool       `json:"monitoringEnabled"`
-	MonitorIntervalMS        int        `json:"monitorIntervalMs"`
-	LastHealthStatus         string     `json:"lastHealthStatus"`
-	LastCheckedAt            *time.Time `json:"lastCheckedAt"`
-	LastLatencyMS            *int       `json:"lastLatencyMs"`
-	LastError                *string    `json:"lastError"`
-	IsManaged                bool       `json:"isManaged"`
-	PublishPorts             bool       `json:"publishPorts"`
-	LBStrategy               string     `json:"lbStrategy"`
-	DesiredReplicas          int        `json:"desiredReplicas"`
-	AutoScale                bool       `json:"autoScale"`
-	MinReplicas              int        `json:"minReplicas"`
-	MaxReplicas              int        `json:"maxReplicas"`
-	SessionsPerInstance      int        `json:"sessionsPerInstance"`
-	ScaleDownCooldownSeconds int        `json:"scaleDownCooldownSeconds"`
-	LastScaleAction          *time.Time `json:"lastScaleAction"`
-	TemplateID               *string    `json:"templateId"`
-	TotalInstances           int        `json:"totalInstances"`
-	HealthyInstances         int        `json:"healthyInstances"`
-	RunningInstances         int        `json:"runningInstances"`
-	TunnelEnabled            bool       `json:"tunnelEnabled"`
-	TunnelConnected          bool       `json:"tunnelConnected"`
-	TunnelConnectedAt        *time.Time `json:"tunnelConnectedAt"`
-	TunnelClientCertExp      *time.Time `json:"tunnelClientCertExp"`
-	OperationalStatus        string     `json:"operationalStatus"`
-	OperationalReason        string     `json:"operationalReason"`
+	ID                       string          `json:"id"`
+	Name                     string          `json:"name"`
+	Type                     string          `json:"type"`
+	Host                     string          `json:"host"`
+	Port                     int             `json:"port"`
+	DeploymentMode           string          `json:"deploymentMode"`
+	Description              *string         `json:"description"`
+	IsDefault                bool            `json:"isDefault"`
+	HasSSHKey                bool            `json:"hasSshKey"`
+	APIPort                  *int            `json:"apiPort"`
+	InactivityTimeoutSeconds int             `json:"inactivityTimeoutSeconds"`
+	TenantID                 string          `json:"tenantId"`
+	CreatedByID              string          `json:"createdById"`
+	CreatedAt                time.Time       `json:"createdAt"`
+	UpdatedAt                time.Time       `json:"updatedAt"`
+	MonitoringEnabled        bool            `json:"monitoringEnabled"`
+	MonitorIntervalMS        int             `json:"monitorIntervalMs"`
+	LastHealthStatus         string          `json:"lastHealthStatus"`
+	LastCheckedAt            *time.Time      `json:"lastCheckedAt"`
+	LastLatencyMS            *int            `json:"lastLatencyMs"`
+	LastError                *string         `json:"lastError"`
+	IsManaged                bool            `json:"isManaged"`
+	PublishPorts             bool            `json:"publishPorts"`
+	LBStrategy               string          `json:"lbStrategy"`
+	DesiredReplicas          int             `json:"desiredReplicas"`
+	AutoScale                bool            `json:"autoScale"`
+	MinReplicas              int             `json:"minReplicas"`
+	MaxReplicas              int             `json:"maxReplicas"`
+	SessionsPerInstance      int             `json:"sessionsPerInstance"`
+	ScaleDownCooldownSeconds int             `json:"scaleDownCooldownSeconds"`
+	LastScaleAction          *time.Time      `json:"lastScaleAction"`
+	TemplateID               *string         `json:"templateId"`
+	TotalInstances           int             `json:"totalInstances"`
+	HealthyInstances         int             `json:"healthyInstances"`
+	RunningInstances         int             `json:"runningInstances"`
+	TunnelEnabled            bool            `json:"tunnelEnabled"`
+	TunnelConnected          bool            `json:"tunnelConnected"`
+	TunnelConnectedAt        *time.Time      `json:"tunnelConnectedAt"`
+	TunnelClientCertExp      *time.Time      `json:"tunnelClientCertExp"`
+	EgressPolicy             json.RawMessage `json:"egressPolicy"`
+	OperationalStatus        string          `json:"operationalStatus"`
+	OperationalReason        string          `json:"operationalReason"`
 	EncryptedTunnelToken     *string
 	TunnelTokenIV            *string
 	TunnelTokenTag           *string
@@ -144,28 +145,30 @@ type gatewayRecord struct {
 	TunnelClientKeyIV        *string
 	TunnelClientKeyTag       *string
 	TunnelClientCertExp      *time.Time
+	EgressPolicy             json.RawMessage
 	TotalInstances           int
 	HealthyInstances         int
 	RunningInstances         int
 }
 
 type createPayload struct {
-	Name                     string  `json:"name"`
-	Type                     string  `json:"type"`
-	Host                     string  `json:"host"`
-	Port                     int     `json:"port"`
-	DeploymentMode           *string `json:"deploymentMode"`
-	Description              *string `json:"description"`
-	IsDefault                *bool   `json:"isDefault"`
-	Username                 *string `json:"username"`
-	Password                 *string `json:"password"`
-	SSHPrivateKey            *string `json:"sshPrivateKey"`
-	APIPort                  *int    `json:"apiPort"`
-	PublishPorts             *bool   `json:"publishPorts"`
-	LBStrategy               *string `json:"lbStrategy"`
-	MonitoringEnabled        *bool   `json:"monitoringEnabled"`
-	MonitorIntervalMS        *int    `json:"monitorIntervalMs"`
-	InactivityTimeoutSeconds *int    `json:"inactivityTimeoutSeconds"`
+	Name                     string          `json:"name"`
+	Type                     string          `json:"type"`
+	Host                     string          `json:"host"`
+	Port                     int             `json:"port"`
+	DeploymentMode           *string         `json:"deploymentMode"`
+	Description              *string         `json:"description"`
+	IsDefault                *bool           `json:"isDefault"`
+	Username                 *string         `json:"username"`
+	Password                 *string         `json:"password"`
+	SSHPrivateKey            *string         `json:"sshPrivateKey"`
+	APIPort                  *int            `json:"apiPort"`
+	PublishPorts             *bool           `json:"publishPorts"`
+	LBStrategy               *string         `json:"lbStrategy"`
+	MonitoringEnabled        *bool           `json:"monitoringEnabled"`
+	MonitorIntervalMS        *int            `json:"monitorIntervalMs"`
+	InactivityTimeoutSeconds *int            `json:"inactivityTimeoutSeconds"`
+	EgressPolicy             json.RawMessage `json:"egressPolicy"`
 }
 
 type optionalString struct {
@@ -225,6 +228,21 @@ func (o *optionalBool) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+type optionalJSON struct {
+	Present bool
+	Value   json.RawMessage
+}
+
+func (o *optionalJSON) UnmarshalJSON(data []byte) error {
+	o.Present = true
+	if string(data) == "null" {
+		o.Value = nil
+		return nil
+	}
+	o.Value = append(o.Value[:0], data...)
+	return nil
+}
+
 type updatePayload struct {
 	Name                     optionalString `json:"name"`
 	Host                     optionalString `json:"host"`
@@ -241,6 +259,7 @@ type updatePayload struct {
 	MonitoringEnabled        optionalBool   `json:"monitoringEnabled"`
 	MonitorIntervalMS        optionalInt    `json:"monitorIntervalMs"`
 	InactivityTimeoutSeconds optionalInt    `json:"inactivityTimeoutSeconds"`
+	EgressPolicy             optionalJSON   `json:"egressPolicy"`
 }
 
 type encryptedField struct {

@@ -56,6 +56,7 @@
 | tunnelCaKeyTag | String? | Optional | Auth tag for CA key encryption |
 | tunnelClientCert | String? | Optional | PEM-encoded client certificate issued to the agent |
 | tunnelClientCertExp | DateTime? | Optional | Client certificate expiry date |
+| egressPolicy | Json | Default: `{"rules":[]}` | Per-gateway tunneled egress allow policy; empty rules deny all tunneled targets |
 | createdAt | DateTime | Auto | |
 | updatedAt | DateTime | Auto | |
 

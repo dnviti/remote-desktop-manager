@@ -275,13 +275,22 @@ func (s *Store) lookupSandboxCleanupMetadata(ctx context.Context, connectionID, 
 	var tenantID, tenantName, connectionName, userEmail string
 	err := s.db.QueryRow(ctx, `
 SELECT
-  COALESCE(c."tenantId", tm."tenantId", ''),
+  COALESCE(tm."tenantId", latest_session."tenantId", ''),
   COALESCE(t.name, ''),
   COALESCE(c.name, ''),
   COALESCE(u.email, '')
 FROM "Connection" c
 LEFT JOIN "Team" tm ON tm.id = c."teamId"
-LEFT JOIN "Tenant" t ON t.id = COALESCE(c."tenantId", tm."tenantId")
+LEFT JOIN LATERAL (
+  SELECT s."tenantId"
+  FROM "ActiveSession" s
+  WHERE s."connectionId" = c.id
+    AND s."userId" = $2
+    AND s."tenantId" IS NOT NULL
+  ORDER BY s."startedAt" DESC
+  LIMIT 1
+) latest_session ON true
+LEFT JOIN "Tenant" t ON t.id = COALESCE(tm."tenantId", latest_session."tenantId")
 LEFT JOIN "User" u ON u.id = $2
 WHERE c.id = $1
 `, connectionID, userID).Scan(&tenantID, &tenantName, &connectionName, &userEmail)
@@ -312,7 +321,12 @@ func (s *Store) countOpenSessionsForScope(ctx context.Context, userID, connectio
 
 func (s *Store) lookupConnectionTenantID(ctx context.Context, connectionID string) (string, error) {
 	var tenantID string
-	if err := s.db.QueryRow(ctx, `SELECT COALESCE("tenantId", '') FROM "Connection" WHERE id = $1`, connectionID).Scan(&tenantID); err != nil {
+	if err := s.db.QueryRow(ctx, `
+SELECT COALESCE(t."tenantId", '')
+FROM "Connection" c
+LEFT JOIN "Team" t ON t.id = c."teamId"
+WHERE c.id = $1
+`, connectionID).Scan(&tenantID); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return "", nil
 		}

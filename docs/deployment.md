@@ -115,14 +115,14 @@ Installer-driven development uses the same capability and routing model as produ
 | `ssh-gateway` | `gateways/ssh-gateway/Dockerfile` | Alpine runtime, SSHD, gRPC key server, tunnel agent |
 | `guacd` | `gateways/guacd/Dockerfile` | Alpine runtime, Guacamole server packages, tunnel agent |
 | `guacenc` | `gateways/guacenc/Dockerfile` | Custom build with `guacenc`, `agg`, and Go wrapper |
-| `tunnel-agent` | `gateways/tunnel-agent/Dockerfile` | Standalone tunnel agent workspace |
+| `tunnel-agent` | `gateways/tunnel-agent/Dockerfile` | Standalone Go tunnel agent |
 | `recording-worker` | `backend/Dockerfile` with `SERVICE=recording-worker` | Recording conversion and retention worker |
 
 Important implementation details:
 
 - `backend/Dockerfile` is service-agnostic: it builds `/usr/local/bin/service` from `backend/cmd/${SERVICE}` and always also builds `/usr/local/bin/migrate`.
 - `client/Dockerfile` serves the built SPA through nginx and exposes `/health`.
-- `gateways/db-proxy/Dockerfile` bundles the Go database middleware plus the JS tunnel agent workspace.
+- `gateways/db-proxy/Dockerfile` bundles the Go database middleware plus the Go tunnel agent binary.
 
 ## 🖧 Runtime Topology In Development
 

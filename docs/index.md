@@ -183,7 +183,7 @@ arsenale/
 │   ├── ssh-gateway/           # SSH bastion + gRPC key management
 │   ├── guacd/                 # RDP/VNC daemon with optional tunnel agent
 │   ├── guacenc/               # Recording conversion sidecar
-│   └── tunnel-agent/          # Zero-trust tunnel client workspace
+│   └── tunnel-agent/          # Go zero-trust tunnel client
 ├── deployment/ansible/        # Installer playbooks, roles, templates, and status tooling
 ├── deployment/helm/           # Helm chart for the Kubernetes backend
 ├── scripts/                   # Migration, verification, security, and acceptance helpers

@@ -51,6 +51,7 @@ func buildDevGatewaySpecs(certDir string, runtime devBootstrapRuntime) []devGate
 				Token:          requiredEnv("DEV_TUNNEL_MANAGED_SSH_TOKEN", "dev-tunnel-managed-ssh-token"),
 				CertDir:        filepath.Join(certDir, "tunnel-managed-ssh"),
 				Description:    "Development managed SSH gateway registered through the zero-trust tunnel",
+				EgressPolicy:   devTunnelManagedSSHEgressPolicy(),
 			},
 			devGatewaySpec{
 				ID:             requiredEnv("DEV_TUNNEL_GUACD_GATEWAY_ID", "22222222-2222-4222-8222-222222222222"),
@@ -64,6 +65,7 @@ func buildDevGatewaySpecs(certDir string, runtime devBootstrapRuntime) []devGate
 				Token:          requiredEnv("DEV_TUNNEL_GUACD_TOKEN", "dev-tunnel-guacd-token"),
 				CertDir:        filepath.Join(certDir, "tunnel-guacd"),
 				Description:    "Development guacd gateway registered through the zero-trust tunnel",
+				EgressPolicy:   devTunnelGuacdEgressPolicy(),
 			},
 		)
 	}
@@ -80,9 +82,22 @@ func buildDevGatewaySpecs(certDir string, runtime devBootstrapRuntime) []devGate
 			Token:          requiredEnv("DEV_TUNNEL_DB_PROXY_TOKEN", "dev-tunnel-db-proxy-token"),
 			CertDir:        filepath.Join(certDir, "tunnel-db-proxy"),
 			Description:    "Development database proxy gateway registered through the zero-trust tunnel",
+			EgressPolicy:   devTunnelDBProxyEgressPolicy(),
 		})
 	}
 	return specs
+}
+
+func devTunnelManagedSSHEgressPolicy() string {
+	return `{"rules":[{"description":"Development SSH fixtures","protocols":["SSH"],"hosts":["terminal-target","dev-debian-target","dev-debian-ssh-target"],"ports":[22,2224]}]}`
+}
+
+func devTunnelGuacdEgressPolicy() string {
+	return `{"rules":[{"description":"Development desktop fixtures","protocols":["RDP"],"hosts":["terminal-target"],"ports":[3389]},{"description":"Development VNC fixtures","protocols":["VNC"],"hosts":["terminal-target"],"ports":[5900]}]}`
+}
+
+func devTunnelDBProxyEgressPolicy() string {
+	return `{"rules":[{"description":"Development database fixtures","protocols":["DATABASE"],"hosts":["dev-demo-postgres","dev-demo-mysql","dev-demo-mongodb","dev-demo-oracle","dev-demo-mssql"],"ports":[5432,3306,27017,1521,1433]}]}`
 }
 
 func buildDevDemoDatabaseSpecs() []devDemoDatabaseSpec {

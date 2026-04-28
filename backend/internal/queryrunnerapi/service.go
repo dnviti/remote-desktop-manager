@@ -1,11 +1,16 @@
 package queryrunnerapi
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"strings"
 
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/queryrunner"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
+	"github.com/dnviti/arsenale/backend/pkg/egresspolicy"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -17,6 +22,10 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 			return
 		}
 
+		if err := enforceRuntimeEgressPolicy(r, req.Target); err != nil {
+			app.ErrorJSON(w, http.StatusForbidden, err.Error())
+			return
+		}
 		if err := queryrunner.ValidateConnectivity(r.Context(), defaultPool, req.Target); err != nil {
 			app.ErrorJSON(w, http.StatusBadRequest, err.Error())
 			return
@@ -32,6 +41,10 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 			return
 		}
 
+		if err := enforceRuntimeEgressPolicy(r, req.Target); err != nil {
+			app.ErrorJSON(w, http.StatusForbidden, err.Error())
+			return
+		}
 		result, err := queryrunner.ExecuteReadOnly(r.Context(), defaultPool, req)
 		if err != nil {
 			app.ErrorJSON(w, http.StatusBadRequest, err.Error())
@@ -48,6 +61,10 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 			return
 		}
 
+		if err := enforceRuntimeEgressPolicy(r, req.Target); err != nil {
+			app.ErrorJSON(w, http.StatusForbidden, err.Error())
+			return
+		}
 		result, err := queryrunner.ExecuteQuery(r.Context(), defaultPool, req)
 		if err != nil {
 			app.ErrorJSON(w, http.StatusBadRequest, err.Error())
@@ -64,6 +81,10 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 			return
 		}
 
+		if err := enforceRuntimeEgressPolicy(r, req.Target); err != nil {
+			app.ErrorJSON(w, http.StatusForbidden, err.Error())
+			return
+		}
 		result, err := queryrunner.FetchSchema(r.Context(), defaultPool, req)
 		if err != nil {
 			app.ErrorJSON(w, http.StatusBadRequest, err.Error())
@@ -80,6 +101,10 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 			return
 		}
 
+		if err := enforceRuntimeEgressPolicy(r, req.Target); err != nil {
+			app.ErrorJSON(w, http.StatusForbidden, err.Error())
+			return
+		}
 		result, err := queryrunner.ExplainQuery(r.Context(), defaultPool, req)
 		if err != nil {
 			app.ErrorJSON(w, http.StatusBadRequest, err.Error())
@@ -96,6 +121,10 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 			return
 		}
 
+		if err := enforceRuntimeEgressPolicy(r, req.DB); err != nil {
+			app.ErrorJSON(w, http.StatusForbidden, err.Error())
+			return
+		}
 		result, err := queryrunner.IntrospectQuery(r.Context(), defaultPool, req)
 		if err != nil {
 			app.ErrorJSON(w, http.StatusBadRequest, err.Error())
@@ -104,4 +133,23 @@ func RegisterRoutes(mux *http.ServeMux, defaultPool *pgxpool.Pool) {
 
 		app.WriteJSON(w, http.StatusOK, result)
 	})
+}
+
+func enforceRuntimeEgressPolicy(r *http.Request, target *contracts.DatabaseTarget) error {
+	raw := strings.TrimSpace(os.Getenv("ARSENALE_EGRESS_POLICY_JSON"))
+	if raw == "" {
+		return nil
+	}
+	if target == nil {
+		return fmt.Errorf("runtime egress denied: target is required")
+	}
+	decision := egresspolicy.AuthorizeRaw(r.Context(), json.RawMessage(raw), egresspolicy.Request{
+		Protocol: egresspolicy.ProtocolDatabase,
+		Host:     target.Host,
+		Port:     target.Port,
+	}, egresspolicy.DefaultOptions())
+	if decision.Allowed {
+		return nil
+	}
+	return fmt.Errorf("runtime egress denied: %s", decision.Reason)
 }

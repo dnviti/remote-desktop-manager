@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/sessions"
+	"github.com/dnviti/arsenale/backend/internal/tunnelegress"
 	"github.com/jackc/pgx/v5"
 )
 
-func (s Service) resolveDesktopRoute(ctx context.Context, tenantID string, explicitGatewayID *string, protocol string) (desktopRoute, error) {
+func (s Service) resolveDesktopRoute(ctx context.Context, tenantID string, explicitGatewayID *string, protocol, targetHost string, targetPort int, userID, connectionID, ipAddress string) (desktopRoute, error) {
 	gateway, err := s.loadRoutingGateway(ctx, tenantID, explicitGatewayID)
 	if err != nil {
 		return desktopRoute{}, err
@@ -68,6 +69,9 @@ func (s Service) resolveDesktopRoute(ctx context.Context, tenantID string, expli
 	}
 
 	if gateway.TunnelEnabled {
+		if err := s.enforceTunnelEgress(ctx, userID, gateway, connectionID, targetHost, targetPort, protocol, ipAddress); err != nil {
+			return desktopRoute{}, err
+		}
 		proxy, err := s.ConnectionResolver.CreateTunnelProxy(ctx, gateway.ID, "127.0.0.1", route.GuacdPort)
 		if err != nil {
 			return desktopRoute{}, err
@@ -96,7 +100,7 @@ func (s Service) loadRoutingGateway(ctx context.Context, tenantID string, explic
 func (s Service) loadGatewayByID(ctx context.Context, gatewayID string) (*gatewaySnapshot, error) {
 	var gateway gatewaySnapshot
 	if err := s.DB.QueryRow(ctx, `
-SELECT id, type::text, host, port, "isManaged", "deploymentMode"::text, "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN')
+SELECT id, type::text, host, port, "isManaged", "deploymentMode"::text, "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN'), COALESCE("egressPolicy", '{"rules":[]}'::jsonb)
 FROM "Gateway"
 WHERE id = $1
 `, gatewayID).Scan(
@@ -108,6 +112,7 @@ WHERE id = $1
 		&gateway.DeploymentMode,
 		&gateway.TunnelEnabled,
 		&gateway.LBStrategy,
+		&gateway.EgressPolicy,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -124,7 +129,7 @@ func (s Service) loadDefaultGateway(ctx context.Context, tenantID string) (*gate
 
 	var gateway gatewaySnapshot
 	if err := s.DB.QueryRow(ctx, `
-SELECT id, type::text, host, port, "isManaged", "deploymentMode"::text, "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN')
+SELECT id, type::text, host, port, "isManaged", "deploymentMode"::text, "tunnelEnabled", COALESCE("lbStrategy"::text, 'ROUND_ROBIN'), COALESCE("egressPolicy", '{"rules":[]}'::jsonb)
 FROM "Gateway"
 WHERE "tenantId" = $1
   AND type = 'GUACD'::"GatewayType"
@@ -139,6 +144,7 @@ LIMIT 1
 		&gateway.DeploymentMode,
 		&gateway.TunnelEnabled,
 		&gateway.LBStrategy,
+		&gateway.EgressPolicy,
 	); err != nil {
 		if errors.Is(err, sql.ErrNoRows) || errors.Is(err, pgx.ErrNoRows) {
 			return nil, nil
@@ -146,6 +152,36 @@ LIMIT 1
 		return nil, fmt.Errorf("load default gateway: %w", err)
 	}
 	return &gateway, nil
+}
+
+func (s Service) enforceTunnelEgress(ctx context.Context, userID string, gateway *gatewaySnapshot, connectionID, targetHost string, targetPort int, protocol, ipAddress string) error {
+	if gateway == nil {
+		return nil
+	}
+	decision := tunnelegress.Authorize(ctx, tunnelegress.Check{
+		Policy:       gateway.EgressPolicy,
+		Protocol:     protocol,
+		TargetHost:   targetHost,
+		TargetPort:   targetPort,
+		UserID:       userID,
+		GatewayID:    gateway.ID,
+		ConnectionID: connectionID,
+		IPAddress:    ipAddress,
+	})
+	if decision.Allowed {
+		return nil
+	}
+	tunnelegress.InsertDeniedAudit(ctx, s.DB, tunnelegress.DeniedAudit{
+		UserID:       userID,
+		GatewayID:    gateway.ID,
+		ConnectionID: connectionID,
+		Protocol:     protocol,
+		TargetHost:   targetHost,
+		TargetPort:   targetPort,
+		Reason:       decision.Reason,
+		IPAddress:    ipAddress,
+	})
+	return &requestError{status: http.StatusForbidden, message: "Tunnel egress denied: " + decision.Reason}
 }
 
 func (s Service) selectManagedInstance(ctx context.Context, gatewayID, strategy string) (*managedGatewayInstance, error) {

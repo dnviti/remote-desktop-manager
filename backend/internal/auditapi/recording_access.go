@@ -16,6 +16,8 @@ type sessionRecordingAccess struct {
 	Visibility *tenantauth.SessionVisibility
 }
 
+const sessionRecordingTenantScopeSQL = `COALESCE(sess."tenantId", team_scope."tenantId")`
+
 func (s Service) resolveSessionRecordingAccess(ctx context.Context, claims authn.Claims) (sessionRecordingAccess, error) {
 	access := sessionRecordingAccess{UserID: claims.UserID}
 	if strings.TrimSpace(claims.TenantID) == "" {
@@ -33,11 +35,18 @@ func (s Service) resolveSessionRecordingAccess(ctx context.Context, claims authn
 	return access, nil
 }
 
-func (a sessionRecordingAccess) clauses(args *[]any, recordingAlias, sessionAlias string) []string {
+func (a sessionRecordingAccess) clauses(args *[]any, recordingAlias, tenantScopeSQL string) []string {
 	conditions := make([]string, 0, 2)
 	if a.TenantID != "" {
+		tenantScopeSQL = strings.TrimSpace(tenantScopeSQL)
+		if tenantScopeSQL == "" {
+			tenantScopeSQL = `sess."tenantId"`
+		}
 		*args = append(*args, a.TenantID)
-		conditions = append(conditions, fmt.Sprintf(`%s."tenantId" = $%d`, sessionAlias, len(*args)))
+		tenantIndex := len(*args)
+		*args = append(*args, a.UserID)
+		userIndex := len(*args)
+		conditions = append(conditions, fmt.Sprintf(`(%s = $%d OR (team_scope.id IS NULL AND %s."userId" = $%d))`, tenantScopeSQL, tenantIndex, recordingAlias, userIndex))
 	}
 	if a.TenantID == "" || (a.Visibility != nil && a.Visibility.RequiresOwnerFilter()) {
 		*args = append(*args, a.UserID)

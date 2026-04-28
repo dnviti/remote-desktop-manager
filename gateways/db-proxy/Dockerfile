@@ -2,20 +2,21 @@
 
 ARG GO_VERSION=1.25.8
 
-# ── Tunnel agent build stage ─────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-alpine AS tunnel-builder
+# Tunnel agent build stage
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_VERSION}-alpine AS tunnel-builder
+ARG TARGETOS
+ARG TARGETARCH
 
-WORKDIR /tunnel-agent
+WORKDIR /src
 
-COPY gateways/tunnel-agent/package.json ./
-RUN npm install --ignore-scripts
+COPY gateways/tunnel-agent/go.mod gateways/tunnel-agent/go.sum ./
+RUN go mod download
 
-COPY gateways/tunnel-agent/tsconfig.json ./
-COPY gateways/tunnel-agent/src/ ./src/
+COPY gateways/tunnel-agent/*.go ./
 
-RUN npm run build && npm prune --omit=dev
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/arsenale-tunnel-agent .
 
-# ── DB proxy service build stage ─────────────────────────────────────────────
+# DB proxy service build stage
 FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_VERSION}-alpine AS proxy-builder
 
 WORKDIR /src/backend
@@ -26,8 +27,8 @@ RUN go mod download
 COPY backend/. ./
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o /out/db-proxy ./cmd/db-proxy
 
-# ── DB proxy runtime ─────────────────────────────────────────────────────────
-FROM docker.io/library/node:22-alpine
+# DB proxy runtime
+FROM docker.io/library/alpine:3.22
 
 LABEL org.opencontainers.image.title="Arsenale DB Proxy"
 LABEL org.opencontainers.image.description="Database proxy middleware with bundled database drivers and zero-trust tunnel support"
@@ -39,9 +40,7 @@ RUN apk add --no-cache ca-certificates && \
 
 COPY --from=proxy-builder /out/db-proxy /usr/local/bin/db-proxy
 
-COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist
-COPY --from=tunnel-builder /tunnel-agent/node_modules /opt/tunnel-agent/node_modules
-COPY --from=tunnel-builder /tunnel-agent/package.json /opt/tunnel-agent/package.json
+COPY --from=tunnel-builder /out/arsenale-tunnel-agent /usr/local/bin/arsenale-tunnel-agent
 
 COPY gateways/db-proxy/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

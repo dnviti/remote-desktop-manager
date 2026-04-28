@@ -162,6 +162,16 @@ func (d *apiDependencies) registerOperationsRoutes(mux *http.ServeMux) {
 			}
 
 			switch rest {
+			case "egress":
+				switch r.Method {
+				case http.MethodGet:
+					d.gatewayService.HandleGetEgressPolicy(w, r, claims)
+				case http.MethodPut:
+					d.gatewayService.HandleUpdateEgressPolicy(w, r, claims)
+				default:
+					w.Header().Set("Allow", "GET, PUT")
+					app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+				}
 			case "test":
 				if r.Method != http.MethodPost {
 					w.Header().Set("Allow", http.MethodPost)

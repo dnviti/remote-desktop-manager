@@ -383,6 +383,11 @@ func init() {
 	gwScalingCmd.AddCommand(gwScalingGetCmd)
 	gwScalingCmd.AddCommand(gwScalingSetCmd)
 
+	// Egress policy
+	gatewayCmd.AddCommand(gwEgressCmd)
+	gwEgressCmd.AddCommand(gwEgressShowCmd)
+	gwEgressCmd.AddCommand(gwEgressSetCmd)
+
 	// Instances
 	gatewayCmd.AddCommand(gwInstancesCmd)
 	gatewayCmd.AddCommand(gwInstanceCmd)
@@ -427,6 +432,9 @@ func init() {
 
 	gwScalingSetCmd.Flags().StringVarP(&gwScalingFromFile, "from-file", "f", "", "JSON/YAML file (- for stdin)")
 	gwScalingSetCmd.MarkFlagRequired("from-file")
+
+	gwEgressSetCmd.Flags().StringVarP(&gwEgressFromFile, "from-file", "f", "", "JSON/YAML file (- for stdin)")
+	gwEgressSetCmd.MarkFlagRequired("from-file")
 
 	gwSSHKeypairDownloadCmd.Flags().StringVar(&gwSSHKeypairDest, "dest", ".", "Destination directory for private key")
 

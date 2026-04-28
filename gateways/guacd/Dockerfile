@@ -7,20 +7,22 @@
 # The tunnel agent is dormant unless TUNNEL_SERVER_URL / TUNNEL_TOKEN /
 # TUNNEL_GATEWAY_ID environment variables are set.
 
-# ── Tunnel agent build stage ─────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM docker.io/library/node:22-alpine AS tunnel-builder
+ARG GO_VERSION=1.25.8
 
-WORKDIR /tunnel-agent
+# Tunnel agent build stage
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:${GO_VERSION}-alpine AS tunnel-builder
+ARG TARGETOS
+ARG TARGETARCH
 
-COPY gateways/tunnel-agent/package.json ./
-RUN npm install --ignore-scripts
+WORKDIR /src
 
-COPY gateways/tunnel-agent/tsconfig.json ./
-COPY gateways/tunnel-agent/src/ ./src/
+COPY gateways/tunnel-agent/go.mod gateways/tunnel-agent/go.sum ./
+RUN go mod download
 
-RUN npm run build && npm prune --omit=dev
+COPY gateways/tunnel-agent/*.go ./
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -trimpath -ldflags="-s -w" -o /out/arsenale-tunnel-agent .
 
-# ── guacd runtime + tunnel agent ─────────────────────────────────────────────
+# guacd runtime + tunnel agent
 FROM docker.io/library/alpine:3.21
 
 USER root
@@ -36,7 +38,6 @@ RUN apk add --no-cache \
     guacamole-server-vnc \
     guacamole-server-ssh \
     guacamole-server-libs \
-    nodejs \
     netcat-openbsd \
     shadow \
     && mkdir -p /home/guacd \
@@ -50,9 +51,7 @@ ENV HOME=/home/guacd
 ENV XDG_CONFIG_HOME=/home/guacd/.config
 
 # Embed pre-built tunnel agent
-COPY --from=tunnel-builder /tunnel-agent/dist /opt/tunnel-agent/dist
-COPY --from=tunnel-builder /tunnel-agent/node_modules /opt/tunnel-agent/node_modules
-COPY --from=tunnel-builder /tunnel-agent/package.json /opt/tunnel-agent/package.json
+COPY --from=tunnel-builder /out/arsenale-tunnel-agent /usr/local/bin/arsenale-tunnel-agent
 
 COPY gateways/guacd/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

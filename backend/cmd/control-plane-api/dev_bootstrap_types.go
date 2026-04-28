@@ -35,6 +35,7 @@ type devGatewaySpec struct {
 	Token          string
 	CertDir        string
 	Description    string
+	EgressPolicy   string
 }
 
 type devDemoDatabaseSpec struct {

@@ -58,7 +58,7 @@ func (s Service) createSession(ctx context.Context, claims authn.Claims, payload
 	}
 
 	usesOverrideCredentials := hasOverrideCredentials(payload.Username, payload.Password)
-	route, err := s.resolveDatabaseRoute(ctx, claims.TenantID, resolution.Connection.GatewayID)
+	route, err := s.resolveDatabaseRoute(ctx, claims.TenantID, resolution.Connection.GatewayID, resolution.Connection.Host, resolution.Connection.Port, claims.UserID, resolution.Connection.ID, ipAddress)
 	if err != nil {
 		return SessionIssueResponse{}, err
 	}

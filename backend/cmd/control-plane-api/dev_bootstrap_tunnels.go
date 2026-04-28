@@ -100,13 +100,13 @@ INSERT INTO "Gateway" (
   "isDefault", "deploymentMode", "isManaged", "publishPorts", "desiredReplicas", "lbStrategy",
   "tunnelEnabled", "encryptedTunnelToken", "tunnelTokenIV", "tunnelTokenTag", "tunnelTokenHash",
   "tunnelClientCert", "tunnelClientCertExp", "tunnelClientKey", "tunnelClientKeyIV", "tunnelClientKeyTag",
-  "monitoringEnabled", "monitorIntervalMs", "inactivityTimeoutSeconds", "updatedAt"
+  "monitoringEnabled", "monitorIntervalMs", "inactivityTimeoutSeconds", "egressPolicy", "updatedAt"
 ) VALUES (
   $1, $2, $3::"GatewayType", $4, $5, $6, $7, $8, $9,
   true, $10::"GatewayDeploymentMode", $11, false, 1, 'ROUND_ROBIN'::"LoadBalancingStrategy",
   $12, $13, $14, $15, $16,
   $17, $18, $19, $20, $21,
-  true, 5000, 3600, NOW()
+  true, 5000, 3600, COALESCE(NULLIF($22, '')::jsonb, '{"rules":[]}'::jsonb), NOW()
 )
 ON CONFLICT (id) DO UPDATE
 SET name = EXCLUDED.name,
@@ -136,11 +136,12 @@ SET name = EXCLUDED.name,
     "monitoringEnabled" = true,
     "monitorIntervalMs" = 5000,
     "inactivityTimeoutSeconds" = 3600,
+    "egressPolicy" = COALESCE(EXCLUDED."egressPolicy", '{"rules":[]}'::jsonb),
     "updatedAt" = NOW()
 `, spec.ID, spec.Name, spec.Type, spec.Host, spec.Port, spec.APIPort, spec.Description, tenantID, userID,
 		spec.DeploymentMode, spec.IsManaged, spec.TunnelEnabled,
 		encryptedTokenCipher, encryptedTokenIV, encryptedTokenTag, tunnelTokenHash,
-		tunnelClientCert, tunnelClientCertExp, tunnelClientKey, tunnelClientKeyIV, tunnelClientKeyTag); err != nil {
+		tunnelClientCert, tunnelClientCertExp, tunnelClientKey, tunnelClientKeyIV, tunnelClientKeyTag, spec.EgressPolicy); err != nil {
 		return fmt.Errorf("upsert gateway %s: %w", spec.ID, err)
 	}
 	return nil

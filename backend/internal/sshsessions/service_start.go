@@ -68,7 +68,7 @@ func (s Service) StartSession(ctx context.Context, claims authn.Claims, payload 
 		return coreResult{}, err
 	}
 
-	bastion, gatewayID, instanceID, err := s.resolveBastion(ctx, claims, access)
+	bastion, gatewayID, instanceID, err := s.resolveBastion(ctx, claims, access, ipAddress)
 	if err != nil {
 		return coreResult{}, err
 	}
