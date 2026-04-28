@@ -11,7 +11,6 @@ import (
 	"net"
 	"net/http"
 	"net/url"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -70,93 +69,20 @@ func (c *dockerSocketClient) deployContainer(ctx context.Context, cfg managedCon
 		return managedContainerInfo{}, err
 	}
 
-	networks := normalizedStrings(cfg.Networks)
-	dnsServers := normalizedStrings(cfg.DNSServers)
-	primaryNetwork := ""
-	if len(networks) > 0 {
-		primaryNetwork = networks[0]
-	}
-
-	exposedPorts := make(map[string]map[string]struct{})
-	portBindings := make(map[string][]map[string]string)
-	containerPorts := make(map[int]int)
-	for _, port := range cfg.Ports {
-		if port.ContainerPort <= 0 {
-			continue
-		}
-		key := fmt.Sprintf("%d/tcp", port.ContainerPort)
-		exposedPorts[key] = map[string]struct{}{}
-		containerPorts[port.ContainerPort] = port.ContainerPort
-		if port.Publish && port.HostPort > 0 {
-			portBindings[key] = []map[string]string{{
-				"HostIp":   "127.0.0.1",
-				"HostPort": strconv.Itoa(port.HostPort),
-			}}
-		}
-	}
-
-	envPairs := make([]string, 0, len(cfg.Env))
-	envKeys := make([]string, 0, len(cfg.Env))
-	for key := range cfg.Env {
-		envKeys = append(envKeys, key)
-	}
-	sort.Strings(envKeys)
-	for _, key := range envKeys {
-		envPairs = append(envPairs, key+"="+cfg.Env[key])
-	}
-
-	restartPolicy := strings.TrimSpace(cfg.RestartPolicy)
-	if restartPolicy == "" {
-		restartPolicy = "always"
-	}
-
-	payload := map[string]any{
-		"Image":  cfg.Image,
-		"Env":    envPairs,
-		"Labels": cfg.Labels,
-		"HostConfig": map[string]any{
-			"PortBindings": portBindings,
-			"RestartPolicy": map[string]string{
-				"Name": restartPolicy,
-			},
-			"Binds": cfg.Binds,
-		},
-	}
-	if cfg.User != "" {
-		payload["User"] = cfg.User
-	}
-	if len(exposedPorts) > 0 {
-		payload["ExposedPorts"] = exposedPorts
-	}
-	if primaryNetwork != "" {
-		payload["HostConfig"].(map[string]any)["NetworkMode"] = primaryNetwork
-	}
-	if len(dnsServers) > 0 {
-		payload["HostConfig"].(map[string]any)["Dns"] = dnsServers
-	}
-	if cfg.Healthcheck != nil {
-		payload["Healthcheck"] = map[string]any{
-			"Test":        cfg.Healthcheck.Test,
-			"Interval":    int64(cfg.Healthcheck.IntervalSec) * int64(time.Second),
-			"Timeout":     int64(cfg.Healthcheck.TimeoutSec) * int64(time.Second),
-			"Retries":     cfg.Healthcheck.Retries,
-			"StartPeriod": int64(cfg.Healthcheck.StartPeriod) * int64(time.Second),
-		}
-	}
-
+	spec := buildDockerCreateSpec(cfg)
 	var created struct {
 		ID string `json:"Id"`
 	}
 	query := url.Values{}
 	query.Set("name", cfg.Name)
-	if err := c.doJSON(ctx, http.MethodPost, "/containers/create?"+query.Encode(), payload, &created, http.StatusCreated); err != nil {
+	if err := c.doJSON(ctx, http.MethodPost, "/containers/create?"+query.Encode(), spec.payload, &created, http.StatusCreated); err != nil {
 		return managedContainerInfo{}, err
 	}
 	if created.ID == "" {
 		return managedContainerInfo{}, errors.New("container create returned an empty id")
 	}
 
-	for _, network := range networks[1:] {
+	for _, network := range spec.secondaryNetworks {
 		connectPayload := map[string]any{
 			"Container": created.ID,
 			"EndpointConfig": map[string]any{
@@ -179,7 +105,7 @@ func (c *dockerSocketClient) deployContainer(ctx context.Context, cfg managedCon
 		return managedContainerInfo{}, err
 	}
 	if len(info.ContainerPorts) == 0 {
-		info.ContainerPorts = containerPorts
+		info.ContainerPorts = spec.containerPorts
 	}
 	return info, nil
 }

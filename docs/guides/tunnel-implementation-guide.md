@@ -641,9 +641,9 @@ The rotation flow is already wired up:
 
 ### SSRF Prevention
 
-**Control-plane side:** `backend/pkg/egresspolicy` normalizes per-gateway allow rules and authorizes tunnel targets by protocol, host pattern, CIDR, and port before opening broker streams. Empty policies deny by default. Denials are audited as `TUNNEL_EGRESS_DENIED`.
+**Control-plane side:** `backend/pkg/egresspolicy` normalizes per-gateway ordered firewall rules and authorizes tunnel targets by protocol, host pattern, CIDR, port, user, and team before opening broker streams. Rules can allow or disallow, disabled rules are ignored, empty user/team scope applies to everyone, and no match denies by default. Denials are audited as `TUNNEL_EGRESS_DENIED`.
 
-**Gateway-runtime side:** managed database proxy gateways receive the normalized policy in `ARSENALE_EGRESS_POLICY_JSON` and enforce the same checks before outbound database operations.
+**Gateway-runtime side:** managed database proxy gateways receive the normalized policy in `ARSENALE_EGRESS_POLICY_JSON` and enforce the same checks before outbound database operations. Scoped policies require signed principal headers from the control plane; the runtime rejects scoped enforcement when `RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY` or the signature is unavailable.
 
 **Agent-side:** the TCP forwarder only allows the exact configured local service address. This layered approach means session bugs, broker misuse, and compromised gateway runtimes each hit a separate guardrail.
 

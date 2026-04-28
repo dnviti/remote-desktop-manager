@@ -10,56 +10,69 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/dnviti/arsenale/backend/internal/connectionaccess"
+	"github.com/dnviti/arsenale/backend/internal/tunnelegress"
 	"github.com/dnviti/arsenale/backend/pkg/contracts"
+	"github.com/dnviti/arsenale/backend/pkg/egresspolicy"
 )
 
 const dbProxyRequestTimeout = 30 * time.Second
+const (
+	runtimePrincipalUserHeader      = "X-Arsenale-Principal-User"
+	runtimePrincipalTeamsHeader     = "X-Arsenale-Principal-Teams"
+	runtimePrincipalSignatureHeader = "X-Arsenale-Principal-Signature"
+)
 
-func (s Service) validateTargetViaDBProxy(ctx context.Context, gatewayID, instanceID string, target *contracts.DatabaseTarget) error {
+type dbProxyPrincipal struct {
+	UserID  string
+	TeamIDs []string
+}
+
+func (s Service) validateTargetViaDBProxy(ctx context.Context, gatewayID, instanceID string, principal dbProxyPrincipal, target *contracts.DatabaseTarget) error {
 	var response contracts.DatabaseConnectivityResponse
 	return s.callDBProxy(ctx, gatewayID, instanceID, "/v1/connectivity:validate", contracts.DatabaseConnectivityRequest{
 		Target: target,
-	}, &response)
+	}, &response, principal)
 }
 
-func (s Service) executeViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.QueryExecutionRequest) (contracts.QueryExecutionResponse, error) {
+func (s Service) executeViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.QueryExecutionRequest, principal dbProxyPrincipal) (contracts.QueryExecutionResponse, error) {
 	var response contracts.QueryExecutionResponse
-	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/query-runs:execute-any", req, &response); err != nil {
+	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/query-runs:execute-any", req, &response, principal); err != nil {
 		return contracts.QueryExecutionResponse{}, err
 	}
 	return response, nil
 }
 
-func (s Service) fetchSchemaViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.SchemaFetchRequest) (contracts.SchemaInfo, error) {
+func (s Service) fetchSchemaViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.SchemaFetchRequest, principal dbProxyPrincipal) (contracts.SchemaInfo, error) {
 	var response contracts.SchemaInfo
-	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/schema:fetch", req, &response); err != nil {
+	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/schema:fetch", req, &response, principal); err != nil {
 		return contracts.SchemaInfo{}, err
 	}
 	return response, nil
 }
 
-func (s Service) explainViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.QueryPlanRequest) (contracts.QueryPlanResponse, error) {
+func (s Service) explainViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.QueryPlanRequest, principal dbProxyPrincipal) (contracts.QueryPlanResponse, error) {
 	var response contracts.QueryPlanResponse
-	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/query-plans:explain", req, &response); err != nil {
+	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/query-plans:explain", req, &response, principal); err != nil {
 		return contracts.QueryPlanResponse{}, err
 	}
 	return response, nil
 }
 
-func (s Service) introspectViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.QueryIntrospectionRequest) (contracts.QueryIntrospectionResponse, error) {
+func (s Service) introspectViaDBProxy(ctx context.Context, gatewayID, instanceID string, req contracts.QueryIntrospectionRequest, principal dbProxyPrincipal) (contracts.QueryIntrospectionResponse, error) {
 	var response contracts.QueryIntrospectionResponse
-	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/introspection:run", req, &response); err != nil {
+	if err := s.callDBProxy(ctx, gatewayID, instanceID, "/v1/introspection:run", req, &response, principal); err != nil {
 		return contracts.QueryIntrospectionResponse{}, err
 	}
 	return response, nil
 }
 
-func (s Service) callDBProxy(ctx context.Context, gatewayID, instanceID, path string, payload any, out any) error {
+func (s Service) callDBProxy(ctx context.Context, gatewayID, instanceID, path string, payload any, out any, principal dbProxyPrincipal) error {
 	baseURL, err := s.dbProxyBaseURL(ctx, gatewayID, instanceID)
 	if err != nil {
 		return err
@@ -83,6 +96,7 @@ func (s Service) callDBProxy(ctx context.Context, gatewayID, instanceID, path st
 		return fmt.Errorf("build db-proxy request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
+	s.applyRuntimePrincipalHeaders(req, principal)
 	req.Close = true
 
 	resp, err := s.dbProxyHTTPClient().Do(req)
@@ -103,6 +117,43 @@ func (s Service) callDBProxy(ctx context.Context, gatewayID, instanceID, path st
 		return fmt.Errorf("decode db-proxy response: %w", err)
 	}
 	return nil
+}
+
+func (s Service) dbProxyPrincipal(ctx context.Context, tenantID, userID string) (dbProxyPrincipal, error) {
+	teamIDs, err := tunnelegress.LoadActiveTeamIDs(ctx, s.DB, tenantID, userID)
+	if err != nil {
+		return dbProxyPrincipal{}, err
+	}
+	return dbProxyPrincipal{UserID: strings.TrimSpace(userID), TeamIDs: teamIDs}, nil
+}
+
+func (s Service) applyRuntimePrincipalHeaders(req *http.Request, principal dbProxyPrincipal) {
+	secret := strings.TrimSpace(s.RuntimePrincipalKey)
+	if secret == "" || strings.TrimSpace(principal.UserID) == "" {
+		return
+	}
+	teamIDs := normalizedPrincipalTeamIDs(principal.TeamIDs)
+	req.Header.Set(runtimePrincipalUserHeader, strings.TrimSpace(principal.UserID))
+	req.Header.Set(runtimePrincipalTeamsHeader, strings.Join(teamIDs, ","))
+	req.Header.Set(runtimePrincipalSignatureHeader, egresspolicy.SignPrincipalContext(secret, principal.UserID, teamIDs))
+}
+
+func normalizedPrincipalTeamIDs(values []string) []string {
+	seen := map[string]struct{}{}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		value = strings.TrimSpace(value)
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		result = append(result, value)
+	}
+	sort.Strings(result)
+	return result
 }
 
 func (s Service) dbProxyBaseURL(ctx context.Context, gatewayID, instanceID string) (string, error) {

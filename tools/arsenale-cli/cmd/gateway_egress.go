@@ -8,6 +8,17 @@ import (
 )
 
 var gwEgressFromFile string
+var gwEgressTestProtocol string
+var gwEgressTestHost string
+var gwEgressTestPort int
+var gwEgressTestUserID string
+
+var gwEgressTestColumns = []Column{
+	{Header: "ALLOWED", Field: "allowed"},
+	{Header: "REASON", Field: "reason"},
+	{Header: "RULE", Field: "ruleIndex"},
+	{Header: "ACTION", Field: "ruleAction"},
+}
 
 var gwEgressCmd = &cobra.Command{
 	Use:   "egress",
@@ -27,6 +38,14 @@ var gwEgressSetCmd = &cobra.Command{
 	Long:  `Set gateway egress policy from a JSON/YAML file: arsenale gateway egress set <id> --from-file policy.yaml`,
 	Args:  cobra.ExactArgs(1),
 	Run:   runGwEgressSet,
+}
+
+var gwEgressTestCmd = &cobra.Command{
+	Use:   "test <id>",
+	Short: "Test a gateway egress policy decision",
+	Long:  `Test the saved gateway egress policy or a local JSON/YAML draft with --from-file.`,
+	Args:  cobra.ExactArgs(1),
+	Run:   runGwEgressTest,
 }
 
 func runGwEgressShow(cmd *cobra.Command, args []string) {
@@ -66,4 +85,42 @@ func runGwEgressSet(cmd *cobra.Command, args []string) {
 	}
 	checkAPIError(status, body)
 	printer().PrintSingle(body, gatewayColumns)
+}
+
+func runGwEgressTest(cmd *cobra.Command, args []string) {
+	cfg := getCfg()
+	if err := ensureAuthenticated(cfg); err != nil {
+		fatal("%v", err)
+	}
+	if gwEgressTestProtocol == "" || gwEgressTestHost == "" || gwEgressTestPort == 0 || gwEgressTestUserID == "" {
+		fatal("--protocol, --host, --port, and --user-id are required")
+	}
+	payload := map[string]any{
+		"protocol": gwEgressTestProtocol,
+		"host":     gwEgressTestHost,
+		"port":     gwEgressTestPort,
+		"userId":   gwEgressTestUserID,
+	}
+	if gwEgressFromFile != "" {
+		data, err := readResourceFromFileOrStdin(gwEgressFromFile)
+		if err != nil {
+			fatal("%v", err)
+		}
+		var policy any
+		if err := json.Unmarshal(data, &policy); err != nil {
+			fatal("parse policy: %v", err)
+		}
+		payload["policy"] = policy
+	}
+	data, err := json.Marshal(payload)
+	if err != nil {
+		fatal("%v", err)
+	}
+
+	body, status, err := apiPost(fmt.Sprintf("/api/gateways/%s/egress/test", args[0]), json.RawMessage(data), cfg)
+	if err != nil {
+		fatal("%v", err)
+	}
+	checkAPIError(status, body)
+	printer().PrintSingle(body, gwEgressTestColumns)
 }

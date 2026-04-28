@@ -1,6 +1,7 @@
 import type {
   GatewayEgressPolicy,
   GatewayEgressPolicyRule,
+  GatewayEgressAction,
   GatewayEgressProtocol,
 } from '../../api/gateway.api';
 import { isValidNetworkEntry } from '../Settings/networkAccessUtils';
@@ -18,10 +19,14 @@ export const GATEWAY_EGRESS_PROTOCOL_OPTIONS: Array<{
 export interface EgressDraftRule {
   id: string;
   description: string;
+  enabled: boolean;
+  action: GatewayEgressAction;
   protocols: GatewayEgressProtocol[];
   hosts: string[];
   cidrs: string[];
   ports: string[];
+  userIds: string[];
+  teamIds: string[];
 }
 
 export interface EgressRuleErrors {
@@ -36,10 +41,14 @@ export function createEmptyEgressDraftRule(id: string): EgressDraftRule {
   return {
     id,
     description: '',
+    enabled: true,
+    action: 'ALLOW',
     protocols: [],
     hosts: [],
     cidrs: [],
     ports: [],
+    userIds: [],
+    teamIds: [],
   };
 }
 
@@ -50,10 +59,14 @@ export function policyToDraftRules(
   return (policy?.rules ?? []).map((rule) => ({
     id: nextId(),
     description: rule.description ?? '',
+    enabled: rule.enabled ?? true,
+    action: rule.action ?? 'ALLOW',
     protocols: rule.protocols ?? [],
     hosts: rule.hosts ?? [],
     cidrs: rule.cidrs ?? [],
     ports: (rule.ports ?? []).map(String),
+    userIds: rule.userIds ?? [],
+    teamIds: rule.teamIds ?? [],
   }));
 }
 
@@ -61,6 +74,8 @@ export function draftRulesToPolicy(rules: EgressDraftRule[]): GatewayEgressPolic
   return {
     rules: rules.map((rule) => {
       const policyRule: GatewayEgressPolicyRule = {
+        enabled: rule.enabled,
+        action: rule.action,
         protocols: uniqueSorted(rule.protocols),
         ports: uniqueSortedNumbers(rule.ports.map((port) => Number.parseInt(port, 10))),
       };
@@ -78,6 +93,12 @@ export function draftRulesToPolicy(rules: EgressDraftRule[]): GatewayEgressPolic
       if (cidrs.length > 0) {
         policyRule.cidrs = cidrs;
       }
+      if (rule.userIds.length > 0) {
+        policyRule.userIds = uniqueSorted(rule.userIds);
+      }
+      if (rule.teamIds.length > 0) {
+        policyRule.teamIds = uniqueSorted(rule.teamIds);
+      }
 
       return policyRule;
     }),
@@ -87,6 +108,9 @@ export function draftRulesToPolicy(rules: EgressDraftRule[]): GatewayEgressPolic
 export function validateEgressDraftRules(rules: EgressDraftRule[]): EgressValidationErrors {
   return rules.reduce<EgressValidationErrors>((result, rule) => {
     const errors: EgressRuleErrors = {};
+    if (!rule.enabled) {
+      return result;
+    }
     if (rule.protocols.length === 0) {
       errors.protocols = 'Select at least one protocol.';
     }

@@ -8,12 +8,17 @@ import (
 )
 
 func (s Service) enforceTunnelEgress(ctx context.Context, userID string, gateway gatewayRecord, connectionID, targetHost string, targetPort int, protocol, ipAddress string) error {
+	teamIDs, err := tunnelegress.LoadActiveTeamIDs(ctx, s.DB, gateway.TenantID, userID)
+	if err != nil {
+		return err
+	}
 	decision := tunnelegress.Authorize(ctx, tunnelegress.Check{
 		Policy:       gateway.EgressPolicy,
 		Protocol:     protocol,
 		TargetHost:   targetHost,
 		TargetPort:   targetPort,
 		UserID:       userID,
+		TeamIDs:      teamIDs,
 		GatewayID:    gateway.ID,
 		ConnectionID: connectionID,
 		IPAddress:    ipAddress,
@@ -29,6 +34,9 @@ func (s Service) enforceTunnelEgress(ctx context.Context, userID string, gateway
 		TargetHost:   targetHost,
 		TargetPort:   targetPort,
 		Reason:       decision.Reason,
+		RuleIndex:    decision.RuleIndex,
+		RuleAction:   decision.RuleAction,
+		Rule:         decision.Rule,
 		IPAddress:    ipAddress,
 	})
 	return &requestError{status: http.StatusForbidden, message: "Tunnel egress denied: " + decision.Reason}

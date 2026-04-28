@@ -213,7 +213,14 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
     };
 
     const preventContextMenu = (e: Event) => e.preventDefault();
+    const preventMiddleClickDefault = (event: MouseEvent) => {
+      if (event.button !== 1) return;
+      event.preventDefault();
+    };
     display.addEventListener('contextmenu', preventContextMenu);
+    display.addEventListener('auxclick', preventMiddleClickDefault);
+    display.addEventListener('mousedown', preventMiddleClickDefault);
+    display.addEventListener('mouseup', preventMiddleClickDefault);
 
     const mouse = new Guacamole.Mouse(display);
     mouse.onEach(['mousedown', 'mouseup', 'mousemove'], (e) => {
@@ -256,6 +263,9 @@ export default function RdpViewer({ connectionId, tabId, isActive = true, enable
 
     innerCleanupRef.current = () => {
       display.removeEventListener('contextmenu', preventContextMenu);
+      display.removeEventListener('auxclick', preventMiddleClickDefault);
+      display.removeEventListener('mousedown', preventMiddleClickDefault);
+      display.removeEventListener('mouseup', preventMiddleClickDefault);
       keyboard.onkeydown = null;
       keyboard.onkeyup = null;
     };

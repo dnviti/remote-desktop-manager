@@ -160,7 +160,7 @@ The TunnelBroker enables zero-trust environments where gateway agents cannot exp
 
 The tunnel system uses a binary multiplexing protocol with 4-byte frames (type, flags, streamId uint16) and message types OPEN/DATA/CLOSE/PING/PONG. The `openStream(gatewayId, host, port)` API returns a `net.Duplex`-compatible stream for transparent integration with SSH2 and guacamole-lite.
 
-Each gateway has an `egressPolicy` JSON document with protocol, host/CIDR, and port allow rules. Empty policies deny all tunneled egress. SSH, RDP, VNC, and database session creation enforces the policy before opening tunnel streams, and managed DB proxy runtimes receive `ARSENALE_EGRESS_POLICY_JSON` for runtime enforcement. Denials write `TUNNEL_EGRESS_DENIED` audit events.
+Each gateway has an `egressPolicy` JSON document with ordered allow and disallow rules for protocol, host/CIDR, port, user, and team scope. Rules are evaluated top to bottom; disabled rules are ignored; empty user/team scope applies to everyone; no match denies. SSH, RDP, VNC, and database session creation enforces the policy before opening tunnel streams, and managed DB proxy runtimes receive `ARSENALE_EGRESS_POLICY_JSON` for runtime enforcement. Scoped DB proxy runtime enforcement also requires a signed principal context from the control plane. Denials write `TUNNEL_EGRESS_DENIED` audit events.
 
 Authentication uses a 256-bit token (stored encrypted with AES-256-GCM + SHA-256 hash for constant-time comparison) presented via the `Authorization: Bearer` header. Each gateway has a unique token bound to its ID. Token generation/revocation is available via `POST /gateways/:id/tunnel-token` and `DELETE /gateways/:id/tunnel-token` (OPERATOR role required).
 

@@ -206,7 +206,8 @@ The SPA starts fail-open with enabled defaults in `client/src/store/featureFlags
 | `GUACENC_USE_TLS` / `GUACENC_TLS_CA` | TLS to `guacenc` |
 | `TERMINAL_BROKER_URL` | Control-plane to terminal broker URL |
 | `GO_TUNNEL_BROKER_URL` | Control-plane to tunnel broker URL |
-| `ARSENALE_EGRESS_POLICY_JSON` | Normalized per-gateway egress allow policy injected into managed gateway runtimes |
+| `ARSENALE_EGRESS_POLICY_JSON` | Normalized per-gateway ordered egress firewall policy injected into managed gateway runtimes |
+| `RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY` / `RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY_FILE` | Control-plane secret used to sign user/team context for scoped DB proxy egress rules |
 | `GATEWAY_GRPC_TLS_CA` | Trust root for SSH gateway gRPC |
 | `GATEWAY_GRPC_TLS_CERT` / `GATEWAY_GRPC_TLS_KEY` | Control-plane mTLS client cert for gateway calls |
 | `ORCHESTRATOR_TYPE` | `podman` or `kubernetes` |

@@ -2,12 +2,10 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Play, Square, Database, Maximize, Minimize, Code, Power, Download,
   Sparkles, GitBranch, History, Save, Plus, X, RefreshCw, SlidersHorizontal,
-  Shield, Send, Loader2,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
@@ -19,21 +17,16 @@ import type { CredentialOverride } from '../../store/tabsStore';
 import type { DbSettings } from '../../api/connections.api';
 import type { DbSchemaInfo, DbSessionConfig } from '../../api/database.api';
 import {
-  createDbSession,
-  dbSessionHeartbeat,
-  endDbSession,
   executeDbQuery,
   fetchDbSchema,
-  updateDbSessionConfig,
 } from '../../api/database.api';
 import { extractApiError } from '../../utils/apiError';
 import { analyzeQuery, confirmGeneration, type ObjectRequest } from '../../api/aiQuery.api';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
-import { useAutoReconnect } from '../../hooks/useAutoReconnect';
 import ReconnectOverlay from '../shared/ReconnectOverlay';
 import { useThemeStore } from '../../store/themeStore';
 import DockedToolbar, { ToolbarAction } from '../shared/DockedToolbar';
-import DbConnectionStatus, { DbConnectionState } from './DbConnectionStatus';
+import DbConnectionStatus from './DbConnectionStatus';
 import DbResultsTable from './DbResultsTable';
 import DbSchemaBrowser from './DbSchemaBrowser';
 import QueryVisualizer from './QueryVisualizer';
@@ -45,7 +38,6 @@ import {
   activeQueryTabIdForTabs,
   classifyQueryType,
   createQuerySubTab,
-  defaultSessionConfigForProtocol,
   hasSessionConfigValues,
   persistableQuerySubTabs,
   restoreQuerySubTabs,
@@ -55,6 +47,8 @@ import {
 import { format as formatSql } from 'sql-formatter';
 import { createSqlCompletionProvider } from './sqlCompletionProvider';
 import { validateSql } from './sqlValidation';
+import { useDatabaseSessionController } from './useDatabaseSessionController';
+import DbAiAssistantPanel, { type DbAiResult, type DbAiStep } from './DbAiAssistantPanel';
 
 ensureLocalMonacoLoader();
 
@@ -86,8 +80,6 @@ export default function DbEditor({
   const completionDisposableRef = useRef<monacoNs.IDisposable | null>(null);
   const formattingDisposableRef = useRef<monacoNs.IDisposable | null>(null);
   const validationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const sessionIdRef = useRef<string | null>(null);
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const splitContainerRef = useRef<HTMLDivElement>(null);
   const editorPaneRef = useRef<HTMLDivElement>(null);
   const resultsPaneRef = useRef<HTMLDivElement>(null);
@@ -106,10 +98,6 @@ export default function DbEditor({
   const initialStoredSubTabs = storedSubTabs ?? legacyStoredSubTabs;
   const initialStoredSessionConfig = storedSessionConfig ?? legacyStoredSessionConfig;
 
-  const [connectionState, setConnectionState] = useState<DbConnectionState>('connecting');
-  const [error, setError] = useState('');
-  const [protocol, setProtocol] = useState(initialProtocol || 'postgresql');
-  const [databaseName, setDatabaseName] = useState<string | undefined>();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [schemaData, setSchemaData] = useState<DbSchemaInfo>({ tables: [] });
   const [schemaLoading, setSchemaLoading] = useState(false);
@@ -120,12 +108,33 @@ export default function DbEditor({
   const [currentSessionConfig, setCurrentSessionConfig] = useState<DbSessionConfig>(
     () => initialStoredSessionConfig ?? {},
   );
+  const {
+    connectionState,
+    error,
+    protocol,
+    databaseName,
+    sessionId,
+    reconnectState,
+    reconnectAttempt,
+    reconnectMaxRetries,
+    triggerReconnect,
+    setDatabaseName,
+    disconnectSession,
+    handleRecoverableSessionError,
+    reportOperationError,
+    retryNow,
+  } = useDatabaseSessionController({
+    connectionId,
+    credentials,
+    currentSessionConfig,
+    initialProtocol,
+    onSessionConfigChange: setCurrentSessionConfig,
+  });
 
   // AI Assistant state (AISQL-2069)
-  type AiStep = 'idle' | 'analyzing' | 'permissions' | 'generating' | 'result' | 'error';
   const [aiPrompt, setAiPrompt] = useState('');
-  const [aiStep, setAiStep] = useState<AiStep>('idle');
-  const [aiResult, setAiResult] = useState<{ sql: string; explanation: string; firewallWarning?: string } | null>(null);
+  const [aiStep, setAiStep] = useState<DbAiStep>('idle');
+  const [aiResult, setAiResult] = useState<DbAiResult | null>(null);
   const [aiError, setAiError] = useState('');
   const [showExplanation, setShowExplanation] = useState(false);
   const [aiObjectRequests, setAiObjectRequests] = useState<ObjectRequest[]>([]);
@@ -146,8 +155,6 @@ export default function DbEditor({
   const themeMode = useThemeStore((s) => s.mode);
 
   const [historyRefresh, setHistoryRefresh] = useState(0);
-  const wasConnectedRef = useRef(false);
-  const mountedRef = useRef(true);
 
   useEffect(() => {
     if (storedSubTabs || !legacyStoredSubTabs) return;
@@ -236,161 +243,46 @@ export default function DbEditor({
     document.addEventListener('mouseup', onMouseUp);
   }, [setPref]);
 
-  // --- Connection helper (used for initial connect + reconnect) ---
-  const connectSession = useCallback(async () => {
-    // Clean up any stale heartbeat / session before (re)connecting
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
-
-    setConnectionState('connecting');
-    setError('');
-
-    const result = await createDbSession({
-      connectionId,
-      ...(credentials && {
-        username: credentials.username,
-        password: credentials.password,
-      }),
-      ...(Object.keys(currentSessionConfig).length > 0 && { sessionConfig: currentSessionConfig }),
-    });
-
-    if (!mountedRef.current) {
-      endDbSession(result.sessionId).catch(() => {});
-      return;
-    }
-
-    sessionIdRef.current = result.sessionId;
-    setProtocol(result.protocol);
-    setDatabaseName(result.databaseName);
-    setConnectionState('connected');
-    wasConnectedRef.current = true;
-
-    // Apply sensible defaults when no stored session config exists
-    if (Object.keys(currentSessionConfig).length === 0) {
-      const defaults = defaultSessionConfigForProtocol(result.protocol, result.databaseName);
-      if (Object.keys(defaults).length > 0) {
-        setCurrentSessionConfig(defaults);
-        // Apply defaults to the live session
-        updateDbSessionConfig(result.sessionId, defaults).catch(() => {});
-      }
-    }
-
-    // Start heartbeat
-    heartbeatRef.current = setInterval(() => {
-      if (sessionIdRef.current) {
-        dbSessionHeartbeat(sessionIdRef.current).catch((err) => {
-          if (err?.response?.status === 410) {
-            // Session expired — try to reconnect
-            if (heartbeatRef.current) {
-              clearInterval(heartbeatRef.current);
-              heartbeatRef.current = null;
-            }
-            sessionIdRef.current = null;
-            if (wasConnectedRef.current) {
-              triggerReconnect();
-            }
-          }
-        });
-      }
-    }, 15_000);
-  }, [connectionId, credentials, currentSessionConfig]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // --- Auto-reconnect hook ---
-  const {
-    reconnectState,
-    attempt: reconnectAttempt,
-    maxRetries: reconnectMaxRetries,
-    triggerReconnect,
-    cancelReconnect,
-    resetReconnect,
-  } = useAutoReconnect(connectSession);
-
-  // Reset reconnect state when connection succeeds
-  useEffect(() => {
-    if (connectionState === 'connected' && reconnectState === 'reconnecting') {
-      resetReconnect();
-    }
-  }, [connectionState, reconnectState, resetReconnect]);
-
-  // Mark failed reconnect as error state
-  useEffect(() => {
-    if (reconnectState === 'failed') {
-      setConnectionState('error');
-      setError('Reconnection failed. Click Retry or close the tab.');
-    }
-  }, [reconnectState]);
-
-  // Initial connection on mount
-  useEffect(() => {
-    mountedRef.current = true;
-    connectSession().catch((err) => {
-      if (!mountedRef.current) return;
-      setConnectionState('error');
-      setError(extractApiError(err, 'Failed to connect to database'));
-    });
-
-    return () => {
-      mountedRef.current = false;
-      if (heartbeatRef.current) {
-        clearInterval(heartbeatRef.current);
-        heartbeatRef.current = null;
-      }
-      if (sessionIdRef.current) {
-        endDbSession(sessionIdRef.current).catch(() => {});
-        sessionIdRef.current = null;
-      }
-      cancelReconnect();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId]);
-
   // Execute query — reads from refs to avoid stale closures in Monaco keybinding
   const handleRunQuery = useCallback(async () => {
     const currentTabs = queryTabsRef.current;
     const currentActiveId = activeQueryTabIdRef.current;
     const tab = currentTabs.find((t) => t.id === currentActiveId);
-    if (!sessionIdRef.current || !tab?.sql.trim() || tab.executing) return;
+    if (!sessionId || !tab?.sql.trim() || tab.executing) return;
     const capturedTabId = tab.id;
     updateTab(capturedTabId, { executing: true, result: null });
     try {
-      const result = await executeDbQuery(sessionIdRef.current, tab.sql.trim());
+      const result = await executeDbQuery(sessionId, tab.sql.trim());
       updateTab(capturedTabId, { result, executing: false });
       // Trigger history panel refresh
       setHistoryRefresh((n) => n + 1);
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status;
-      if ((status === 404 || status === 410) && wasConnectedRef.current) {
-        // Session lost — trigger reconnect
-        sessionIdRef.current = null;
-        if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
-        triggerReconnect();
-      }
+      handleRecoverableSessionError(status);
       updateTab(capturedTabId, {
         result: { columns: [], rows: [], rowCount: 0, durationMs: 0, truncated: false },
         executing: false,
       });
-      setError(extractApiError(err, 'Query execution failed'));
+      reportOperationError(err, 'Query execution failed');
     }
-  }, [updateTab, triggerReconnect]);
+  }, [handleRecoverableSessionError, reportOperationError, sessionId, updateTab]);
 
   // Keep ref in sync so Monaco keybinding always calls the latest handleRunQuery
   handleRunQueryRef.current = handleRunQuery;
 
   // Refresh schema
   const handleRefreshSchema = useCallback(async () => {
-    if (!sessionIdRef.current) return;
+    if (!sessionId) return;
     setSchemaLoading(true);
     try {
-      const schema = await fetchDbSchema(sessionIdRef.current);
+      const schema = await fetchDbSchema(sessionId);
       setSchemaData(schema);
     } catch {
       // Schema fetch is best-effort
     } finally {
       setSchemaLoading(false);
     }
-  }, []);
+  }, [sessionId]);
 
   // Auto-load schema when connected
   useEffect(() => {
@@ -634,20 +526,12 @@ export default function DbEditor({
 
   // Disconnect
   const handleDisconnect = useCallback(async () => {
-    if (sessionIdRef.current) {
-      await endDbSession(sessionIdRef.current).catch(() => {});
-      sessionIdRef.current = null;
-    }
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
-    setConnectionState('disconnected');
-  }, []);
+    await disconnectSession();
+  }, [disconnectSession]);
 
   // AI: Step 1 — analyze prompt and get table permissions
   const handleAiGenerate = useCallback(async () => {
-    if (!sessionIdRef.current || !aiPrompt.trim() || aiStep === 'analyzing' || aiStep === 'generating') return;
+    if (!sessionId || !aiPrompt.trim() || aiStep === 'analyzing' || aiStep === 'generating') return;
     setAiStep('analyzing');
     setAiError('');
     setAiResult(null);
@@ -655,7 +539,7 @@ export default function DbEditor({
     setAiApprovals({});
     setAiConversationId('');
     try {
-      const result = await analyzeQuery(sessionIdRef.current, aiPrompt.trim(), protocol);
+      const result = await analyzeQuery(sessionId, aiPrompt.trim(), protocol);
       setAiConversationId(result.conversationId);
       setAiObjectRequests(result.objectRequests);
       const defaults: Record<number, boolean> = {};
@@ -666,7 +550,7 @@ export default function DbEditor({
       setAiError(extractApiError(err, 'AI query analysis failed'));
       setAiStep('error');
     }
-  }, [aiPrompt, aiStep, protocol]);
+  }, [aiPrompt, aiStep, protocol, sessionId]);
 
   // AI: Step 2 — confirm approved tables and generate SQL
   const handleAiConfirm = useCallback(async () => {
@@ -821,14 +705,7 @@ export default function DbEditor({
               size="icon"
               className="size-7 text-yellow-400"
               title="Reconnect"
-              onClick={() => {
-                resetReconnect();
-                connectSession().catch((err) => {
-                  if (!mountedRef.current) return;
-                  setConnectionState('error');
-                  setError(extractApiError(err, 'Reconnection failed'));
-                });
-              }}
+              onClick={retryNow}
             >
               <RefreshCw className="size-[18px]" />
             </Button>
@@ -915,153 +792,23 @@ export default function DbEditor({
 
       {/* AI Assistant panel */}
       {aiGenerationAvailable && aiPanelOpen && connectionState === 'connected' && (
-        <div className="border-b border-border p-3 bg-primary/[0.04]">
-          <div className="flex items-center gap-2 mb-2">
-            <Sparkles className="size-[18px] text-primary" />
-            <span className="text-sm font-semibold text-primary">
-              AI Assistant
-            </span>
-          </div>
-
-          {/* Prompt input — shown in idle, error, and result steps */}
-          {(aiStep === 'idle' || aiStep === 'error' || aiStep === 'result') && (
-            <div className="flex gap-2 items-start">
-              <textarea
-                value={aiPrompt}
-                onChange={(e) => setAiPrompt(e.target.value)}
-                placeholder="Describe the query you need in plain English..."
-                className="flex-1 min-h-[40px] max-h-[80px] rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50 resize-none"
-                rows={1}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    handleAiGenerate();
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                onClick={handleAiGenerate}
-                disabled={!aiPrompt.trim()}
-                className="min-w-[90px] h-10"
-              >
-                Generate
-              </Button>
-            </div>
-          )}
-
-          {/* Loading: analyzing or generating */}
-          {(aiStep === 'analyzing' || aiStep === 'generating') && (
-            <div className="flex items-center gap-3 py-4 justify-center">
-              <Loader2 className="size-5 animate-spin" />
-              <span className="text-sm text-muted-foreground">
-                {aiStep === 'analyzing' ? 'Analyzing which tables are needed...' : 'Generating SQL query...'}
-              </span>
-            </div>
-          )}
-
-          {/* Permissions step — table approval cards */}
-          {aiStep === 'permissions' && (
-            <div className="mt-1">
-              <h4 className="text-sm font-semibold mb-1 flex items-center gap-1">
-                <Shield className="size-4 text-yellow-400" />
-                Tables needed ({Object.values(aiApprovals).filter(Boolean).length}/{aiObjectRequests.length} approved)
-              </h4>
-              <p className="text-sm text-muted-foreground mb-3">
-                The AI identified these tables for your query. Approve which ones it can read:
-              </p>
-
-              <div className="flex flex-col gap-2 mb-4">
-                {aiObjectRequests.map((req, i) => (
-                  <div
-                    key={i}
-                    className={cn(
-                      'rounded-lg border border-border p-3',
-                      aiApprovals[i] && 'bg-accent/50',
-                    )}
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Badge variant="outline" className="h-5">
-                            {req.schema}
-                          </Badge>
-                          <span className="text-sm font-semibold">{req.name}</span>
-                        </div>
-                        <span className="text-xs text-muted-foreground">{req.reason}</span>
-                      </div>
-                      <div className="flex items-center gap-2 ml-4">
-                        <span className="text-xs text-muted-foreground">
-                          {aiApprovals[i] ? 'Allow' : 'Deny'}
-                        </span>
-                        <Switch
-                          checked={aiApprovals[i] ?? false}
-                          onCheckedChange={(checked) => setAiApprovals((prev) => ({ ...prev, [i]: checked }))}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="flex gap-2">
-                <Button
-                  size="sm"
-                  onClick={handleAiConfirm}
-                  disabled={Object.values(aiApprovals).filter(Boolean).length === 0}
-                >
-                  <Send className="size-4" />
-                  Generate with approved ({Object.values(aiApprovals).filter(Boolean).length})
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleAiCancel}>Cancel</Button>
-              </div>
-            </div>
-          )}
-
-          {/* Error display */}
-          {aiStep === 'error' && aiError && (
-            <div className="mt-2 rounded border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-400 flex items-center justify-between">
-              <span>{aiError}</span>
-              <button onClick={() => { setAiError(''); setAiStep('idle'); }} className="text-red-400 hover:text-red-300 ml-2 text-xs">dismiss</button>
-            </div>
-          )}
-
-          {/* Result display */}
-          {aiStep === 'result' && aiResult && (
-            <div className="mt-3">
-              <div className="p-2 bg-background rounded border border-border font-mono text-[0.8125rem] whitespace-pre-wrap break-words max-h-[150px] overflow-auto">
-                {aiResult.sql}
-              </div>
-
-              {aiResult.firewallWarning && (
-                <div className="mt-2 rounded border border-yellow-500/30 bg-yellow-500/10 px-3 py-2 text-sm text-yellow-400">
-                  {aiResult.firewallWarning}
-                </div>
-              )}
-
-              <div className="flex gap-2 mt-2">
-                <Button variant="outline" size="sm" onClick={handleAiInsert}>
-                  Insert into editor
-                </Button>
-                {aiResult.explanation && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowExplanation((v) => !v)}
-                  >
-                    {showExplanation ? 'Hide explanation' : 'Explain'}
-                  </Button>
-                )}
-              </div>
-
-              {showExplanation && aiResult.explanation && (
-                <p className="text-sm text-muted-foreground mt-2 pl-2 border-l-2 border-primary">
-                  {aiResult.explanation}
-                </p>
-              )}
-            </div>
-          )}
-        </div>
+        <DbAiAssistantPanel
+          prompt={aiPrompt}
+          step={aiStep}
+          result={aiResult}
+          error={aiError}
+          objectRequests={aiObjectRequests}
+          approvals={aiApprovals}
+          showExplanation={showExplanation}
+          onPromptChange={setAiPrompt}
+          onGenerate={handleAiGenerate}
+          onConfirm={handleAiConfirm}
+          onCancel={handleAiCancel}
+          onDismissError={() => { setAiError(''); setAiStep('idle'); }}
+          onToggleApproval={(index, checked) => setAiApprovals((prev) => ({ ...prev, [index]: checked }))}
+          onInsert={handleAiInsert}
+          onToggleExplanation={() => setShowExplanation((value) => !value)}
+        />
       )}
 
       {/* Main content area */}
@@ -1166,7 +913,7 @@ export default function DbEditor({
         <DbQueryHistory
           open={historyOpen}
           onClose={() => setPref('dbQueryHistoryOpen', false)}
-          sessionId={sessionIdRef.current}
+          sessionId={sessionId}
           connectionId={connectionId}
           onSelectQuery={(sql) => updateTab(activeQueryTabId, { sql })}
           refreshTrigger={historyRefresh}
@@ -1183,7 +930,7 @@ export default function DbEditor({
         rowsAffected={activeTab.result?.rowCount ?? null}
         tablesAccessed={[]}
         blocked={false}
-        sessionId={sessionIdRef.current ?? undefined}
+        sessionId={sessionId ?? undefined}
         dbProtocol={protocol}
         aiQueryOptimizerEnabled={dbSettings?.aiQueryOptimizerEnabled !== false}
         onApplySql={(optimizedSql) => {
@@ -1198,7 +945,7 @@ export default function DbEditor({
         anchorEl={configAnchorEl}
         onClose={() => setConfigAnchorEl(null)}
         protocol={protocol}
-        sessionId={sessionIdRef.current}
+        sessionId={sessionId}
         currentConfig={currentSessionConfig}
         onConfigApplied={(config, activeDb) => {
           setCurrentSessionConfig(config);

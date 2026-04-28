@@ -290,21 +290,26 @@ Restrict which source IP addresses tunnel agents can connect from. This adds a n
 
 ## Per-Gateway Egress Policy
 
-Each gateway has an `egressPolicy` JSON document that controls where tunneled sessions may send traffic after the user has passed normal Arsenale access checks. The default policy is `{"rules":[]}`, which denies all tunneled egress until an administrator adds allow rules.
+Each gateway has an `egressPolicy` JSON document that controls where tunneled sessions may send traffic after the user has passed normal Arsenale access checks. The default policy is `{"rules":[]}`, which denies all tunneled egress until an administrator adds rules.
 
-Rules match the protocol, destination port, and either destination host, resolved IP CIDR, or both. If both `hosts` and `cidrs` are present on the same rule, both must match.
+Rules are evaluated top to bottom like firewall rules. The first enabled rule that matches the protocol, destination port, destination host or resolved IP CIDR, and optional user/team scope wins. `action` may be `ALLOW` or `DISALLOW`; omitted `action` defaults to `ALLOW` for older policies. Disabled rules are saved as drafts and ignored. If `userIds` and `teamIds` are both empty, the rule applies to everyone. If no rule matches, traffic is denied.
 
 ```json
 {
   "rules": [
     {
       "description": "Allow production SSH subnet",
+      "enabled": true,
+      "action": "ALLOW",
       "protocols": ["SSH"],
       "cidrs": ["10.20.30.0/24"],
       "ports": [22]
     },
     {
-      "description": "Allow database hosts",
+      "description": "Block one contractor team from database hosts",
+      "enabled": true,
+      "action": "DISALLOW",
+      "teamIds": ["9fe7fd1b-6da2-45d9-aa2a-8a2bb43b05e0"],
       "protocols": ["DATABASE"],
       "hosts": ["db01.internal.example.com", "*.readonly.internal.example.com"],
       "ports": [5432, 3306]
@@ -315,15 +320,16 @@ Rules match the protocol, destination port, and either destination host, resolve
 
 Supported protocols are `SSH`, `RDP`, `VNC`, and `DATABASE`. Host patterns must be exact names or leading wildcards such as `*.example.com`; a bare `*` is rejected. CIDRs accept IPv4 and IPv6 ranges.
 
-Administrators can configure this from the widened gateway edit dialog by expanding **Zero-Trust Tunnel** and using the **Egress Allow Rules** datatable. Add and edit actions open a rule popup for protocols, destinations, and ports. The editor starts in default-deny mode, accepts exact hosts, leading wildcard hosts, CIDRs, and individual IPs, and saves bare IP entries as exact-match `/32` or `/128` prefixes. The same policy remains available through the CLI for scripted updates.
+Administrators can configure this from the widened gateway edit dialog by expanding **Zero-Trust Tunnel** and using the **Egress Firewall Rules** datatable. Add and edit actions open the rule side panel for action, enabled state, user/team scope, protocols, destinations, and ports. The editor starts in default-deny mode, accepts exact hosts, leading wildcard hosts, CIDRs, and individual IPs, and saves bare IP entries as exact-match `/32` or `/128` prefixes. The same policy remains available through the CLI for scripted updates.
 
-The control plane evaluates the policy before opening SSH, RDP, VNC, and database tunnel routes. Managed database proxy gateways also receive the normalized policy as `ARSENALE_EGRESS_POLICY_JSON` and enforce it at query execution time. Denied attempts return `403` and write a `TUNNEL_EGRESS_DENIED` audit event with the protocol, target host, target port, gateway ID, and reason.
+The control plane evaluates the policy before opening SSH, RDP, VNC, and database tunnel routes. Managed database proxy gateways also receive the normalized policy as `ARSENALE_EGRESS_POLICY_JSON` and enforce it at query execution time. When a DB proxy policy contains user or team scope, the control plane signs the runtime principal context with `RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY`; runtimes deny scoped policies if that key or signature is missing. Denied attempts return `403` and write a `TUNNEL_EGRESS_DENIED` audit event with the protocol, target host, target port, gateway ID, matched rule metadata, and reason.
 
 CLI examples:
 
 ```bash
 arsenale gateway egress show <gateway-id>
 arsenale gateway egress set <gateway-id> --from-file ./gateway-egress-policy.json
+arsenale gateway egress test <gateway-id> --protocol DATABASE --host db01.internal.example.com --port 5432 --user-id <user-id>
 ```
 
 ## Access Control (ABAC Policies)
@@ -430,7 +436,7 @@ Use this when:
 | High RTT values (>200ms) | Network latency between agent and server | Consider a server instance closer to the remote site, or check for network congestion |
 | `TUNNEL_LOCAL_PORT must be a valid port number` | Port value is outside 1--65535 or not a number | Verify the `TUNNEL_LOCAL_PORT` value is correct (4822 for guacd, 2222 for sshd) |
 | Agent running but sessions fail | `TUNNEL_LOCAL_HOST` points to wrong address | Ensure the target service is reachable from the agent at the configured host and port |
-| Session returns `403` with an egress policy message | The gateway `egressPolicy` does not allow the requested protocol, host/subnet, or port | Add a narrow allow rule for that target and review `TUNNEL_EGRESS_DENIED` audit events |
+| Session returns `403` with an egress policy message | The gateway `egressPolicy` has no matching allow rule or a matching disallow rule for the requested protocol, host/subnet, port, user, or team | Review rule order and add or adjust a narrow allow rule for that target, then inspect `TUNNEL_EGRESS_DENIED` audit events |
 | Certificate expiry warning | mTLS client certificate approaching expiration | Rotate the tunnel token to trigger certificate renewal |
 
 ## Environment Variables Reference
@@ -479,7 +485,7 @@ If **some but not all** required variables are set, the agent prints an error li
 
 - **Use HTTPS/WSS in production.** The tunnel agent connects to a `wss://` endpoint. Never use unencrypted `ws://` in production.
 - **Restrict agent source IPs.** Use the CIDR allowlist in tenant tunnel settings to limit which networks can establish tunnel connections.
-- **Set per-gateway egress policies.** Keep `egressPolicy` allow rules scoped to the exact protocols, ports, hostnames, and subnets the gateway must reach.
+- **Set per-gateway egress policies.** Keep `egressPolicy` rules scoped to the exact protocols, ports, hostnames, subnets, users, and teams the gateway must reach.
 - **Use mTLS where possible.** Set `TUNNEL_CLIENT_CERT` and `TUNNEL_CLIENT_KEY` on the agent and configure the server to require client certificates for an additional layer of authentication.
 - **Configure a custom CA certificate** (`TUNNEL_CA_CERT`) if your server uses a private or internal CA rather than a publicly trusted certificate.
 - **Apply ABAC policies** to restrict session access by time window, trusted device, and MFA requirements.

@@ -2,10 +2,15 @@ package egresspolicy
 
 import (
 	"bytes"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -13,6 +18,9 @@ const (
 	ProtocolRDP      = "RDP"
 	ProtocolVNC      = "VNC"
 	ProtocolDatabase = "DATABASE"
+
+	ActionAllow    = "ALLOW"
+	ActionDisallow = "DISALLOW"
 )
 
 type Policy struct {
@@ -20,11 +28,16 @@ type Policy struct {
 }
 
 type Rule struct {
+	raw         json.RawMessage
 	Description string   `json:"description,omitempty"`
+	Enabled     *bool    `json:"enabled,omitempty"`
+	Action      string   `json:"action,omitempty"`
 	Protocols   []string `json:"protocols"`
 	Hosts       []string `json:"hosts,omitempty"`
 	CIDRs       []string `json:"cidrs,omitempty"`
 	Ports       []int    `json:"ports"`
+	UserIDs     []string `json:"userIds,omitempty"`
+	TeamIDs     []string `json:"teamIds,omitempty"`
 }
 
 func Empty() Policy {
@@ -33,6 +46,34 @@ func Empty() Policy {
 
 func EmptyJSON() json.RawMessage {
 	return json.RawMessage(`{"rules":[]}`)
+}
+
+func (r Rule) MarshalJSON() ([]byte, error) {
+	if len(r.raw) > 0 {
+		return r.raw, nil
+	}
+	type ruleJSON struct {
+		Description string   `json:"description,omitempty"`
+		Enabled     bool     `json:"enabled"`
+		Action      string   `json:"action"`
+		Protocols   []string `json:"protocols,omitempty"`
+		Hosts       []string `json:"hosts,omitempty"`
+		CIDRs       []string `json:"cidrs,omitempty"`
+		Ports       []int    `json:"ports,omitempty"`
+		UserIDs     []string `json:"userIds,omitempty"`
+		TeamIDs     []string `json:"teamIds,omitempty"`
+	}
+	return json.Marshal(ruleJSON{
+		Description: r.Description,
+		Enabled:     ruleEnabled(r),
+		Action:      normalizedAction(r.Action),
+		Protocols:   r.Protocols,
+		Hosts:       r.Hosts,
+		CIDRs:       r.CIDRs,
+		Ports:       r.Ports,
+		UserIDs:     r.UserIDs,
+		TeamIDs:     r.TeamIDs,
+	})
 }
 
 func NormalizeRaw(raw json.RawMessage) (json.RawMessage, Policy, error) {
@@ -45,13 +86,24 @@ func NormalizeRaw(raw json.RawMessage) (json.RawMessage, Policy, error) {
 	decoder := json.NewDecoder(bytes.NewReader(trimmed))
 	decoder.DisallowUnknownFields()
 
-	var policy Policy
-	if err := decoder.Decode(&policy); err != nil {
+	var rawPolicy struct {
+		Rules []json.RawMessage `json:"rules"`
+	}
+	if err := decoder.Decode(&rawPolicy); err != nil {
 		return nil, Policy{}, fmt.Errorf("parse egressPolicy: %w", err)
 	}
 	var trailing any
 	if err := decoder.Decode(&trailing); err == nil {
 		return nil, Policy{}, fmt.Errorf("parse egressPolicy: trailing JSON value")
+	}
+
+	policy := Policy{Rules: make([]Rule, 0, len(rawPolicy.Rules))}
+	for i, rawRule := range rawPolicy.Rules {
+		rule, err := normalizeRawRule(i, rawRule)
+		if err != nil {
+			return nil, Policy{}, err
+		}
+		policy.Rules = append(policy.Rules, rule)
 	}
 
 	normalized, err := Normalize(policy)
@@ -71,11 +123,41 @@ func Normalize(policy Policy) (Policy, error) {
 	}
 	for i := range policy.Rules {
 		rule := &policy.Rules[i]
+		if len(rule.raw) > 0 {
+			continue
+		}
+		if rule.Enabled == nil {
+			enabled := true
+			rule.Enabled = &enabled
+		}
+		rule.Action = normalizedAction(rule.Action)
 		rule.Description = strings.TrimSpace(rule.Description)
 		rule.Protocols = normalizeProtocols(rule.Protocols)
 		rule.Hosts = normalizeHosts(rule.Hosts)
 		rule.CIDRs = normalizeStrings(rule.CIDRs)
 		rule.Ports = normalizePorts(rule.Ports)
+		rule.UserIDs = normalizeStrings(rule.UserIDs)
+		rule.TeamIDs = normalizeStrings(rule.TeamIDs)
+
+		if !*rule.Enabled {
+			continue
+		}
+
+		switch rule.Action {
+		case ActionAllow, ActionDisallow:
+		default:
+			return Policy{}, fmt.Errorf("egressPolicy.rules[%d].action must be ALLOW or DISALLOW", i)
+		}
+		for _, userID := range rule.UserIDs {
+			if _, err := uuid.Parse(userID); err != nil {
+				return Policy{}, fmt.Errorf("egressPolicy.rules[%d].userIds contains invalid UUID %q", i, userID)
+			}
+		}
+		for _, teamID := range rule.TeamIDs {
+			if _, err := uuid.Parse(teamID); err != nil {
+				return Policy{}, fmt.Errorf("egressPolicy.rules[%d].teamIds contains invalid UUID %q", i, teamID)
+			}
+		}
 
 		if len(rule.Protocols) == 0 {
 			return Policy{}, fmt.Errorf("egressPolicy.rules[%d].protocols must include at least one protocol", i)
@@ -108,6 +190,82 @@ func Normalize(policy Policy) (Policy, error) {
 		}
 	}
 	return policy, nil
+}
+
+func normalizeRawRule(index int, raw json.RawMessage) (Rule, error) {
+	var object map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &object); err != nil || object == nil {
+		return Rule{}, fmt.Errorf("egressPolicy.rules[%d] must be an object", index)
+	}
+
+	enabled := true
+	if rawEnabled, ok := object["enabled"]; ok {
+		if err := json.Unmarshal(rawEnabled, &enabled); err != nil {
+			return Rule{}, fmt.Errorf("egressPolicy.rules[%d].enabled must be a boolean", index)
+		}
+	}
+	if !enabled {
+		var draft map[string]any
+		if err := json.Unmarshal(raw, &draft); err != nil || draft == nil {
+			return Rule{}, fmt.Errorf("egressPolicy.rules[%d] must be an object", index)
+		}
+		draft["enabled"] = false
+		normalized, err := json.Marshal(draft)
+		if err != nil {
+			return Rule{}, fmt.Errorf("encode disabled egressPolicy.rules[%d]: %w", index, err)
+		}
+		return Rule{raw: normalized}, nil
+	}
+
+	type typedRule struct {
+		Description string   `json:"description,omitempty"`
+		Enabled     *bool    `json:"enabled,omitempty"`
+		Action      string   `json:"action,omitempty"`
+		Protocols   []string `json:"protocols"`
+		Hosts       []string `json:"hosts,omitempty"`
+		CIDRs       []string `json:"cidrs,omitempty"`
+		Ports       []int    `json:"ports"`
+		UserIDs     []string `json:"userIds,omitempty"`
+		TeamIDs     []string `json:"teamIds,omitempty"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(bytes.TrimSpace(raw)))
+	decoder.DisallowUnknownFields()
+	var typed typedRule
+	if err := decoder.Decode(&typed); err != nil {
+		return Rule{}, fmt.Errorf("parse egressPolicy.rules[%d]: %w", index, err)
+	}
+	if typed.Enabled == nil {
+		typed.Enabled = &enabled
+	}
+	return Rule{
+		Description: typed.Description,
+		Enabled:     typed.Enabled,
+		Action:      typed.Action,
+		Protocols:   typed.Protocols,
+		Hosts:       typed.Hosts,
+		CIDRs:       typed.CIDRs,
+		Ports:       typed.Ports,
+		UserIDs:     typed.UserIDs,
+		TeamIDs:     typed.TeamIDs,
+	}, nil
+}
+
+func ruleEnabled(rule Rule) bool {
+	if len(rule.raw) > 0 {
+		return false
+	}
+	if rule.Enabled == nil {
+		return true
+	}
+	return *rule.Enabled
+}
+
+func normalizedAction(action string) string {
+	action = strings.ToUpper(strings.TrimSpace(action))
+	if action == "" {
+		return ActionAllow
+	}
+	return action
 }
 
 func normalizeProtocols(values []string) []string {
@@ -165,4 +323,44 @@ func validProtocol(protocol string) bool {
 	default:
 		return false
 	}
+}
+
+func SignPrincipalContext(secret, userID string, teamIDs []string) string {
+	mac := hmac.New(sha256.New, []byte(strings.TrimSpace(secret)))
+	mac.Write([]byte(strings.TrimSpace(userID)))
+	mac.Write([]byte{0})
+	for _, teamID := range normalizeStrings(teamIDs) {
+		mac.Write([]byte(teamID))
+		mac.Write([]byte{0})
+	}
+	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func VerifyPrincipalContextSignature(secret, userID string, teamIDs []string, signature string) bool {
+	expected := SignPrincipalContext(secret, userID, teamIDs)
+	provided, err := hex.DecodeString(strings.TrimSpace(signature))
+	if err != nil {
+		return false
+	}
+	expectedBytes, err := hex.DecodeString(expected)
+	if err != nil {
+		return false
+	}
+	return hmac.Equal(provided, expectedBytes)
+}
+
+func RequiresPrincipalRaw(raw json.RawMessage) bool {
+	_, policy, err := NormalizeRaw(raw)
+	if err != nil {
+		return false
+	}
+	for _, rule := range policy.Rules {
+		if !ruleEnabled(rule) {
+			continue
+		}
+		if len(rule.UserIDs) > 0 || len(rule.TeamIDs) > 0 {
+			return true
+		}
+	}
+	return false
 }

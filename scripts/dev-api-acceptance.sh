@@ -769,9 +769,20 @@ login_json_for_password() {
 login_json_for_credentials() {
   local email="$1"
   local password="$2"
-  curl --silent --show-error --fail \
-    --cacert "${ca_cert}" \
-    -H 'content-type: application/json' \
+  local user_agent="${3:-}"
+  local curl_args=(
+    --silent
+    --show-error
+    --fail
+    --cacert "${ca_cert}"
+    -H 'content-type: application/json'
+  )
+
+  if [[ -n "${user_agent}" ]]; then
+    curl_args+=(-H "User-Agent: ${user_agent}")
+  fi
+
+  curl "${curl_args[@]}" \
     -d "{\"email\":\"${email}\",\"password\":\"${password}\"}" \
     "${api_base}/auth/login"
 }
@@ -895,9 +906,16 @@ ensure_access_token
 [[ -n "${access_token}" && "${access_token}" != "null" ]]
 [[ -n "${tenant_id}" && "${tenant_id}" != "null" ]]
 
-echo '2.0 CLI health/whoami smoke'
-arsenale_cli_seed_auth "${server_url}" "${access_token}" "${tenant_id}"
-arsenale_cli_smoke_core "${repo_root}" "${cli_bin}" "${server_url}"
+echo '2.0 CLI inventory smoke'
+arsenale_cli_ensure_built "${repo_root}" "${cli_bin}"
+cli_user_agent="$(arsenale_cli_user_agent "${cli_bin}")"
+cli_login_json="$(login_json_for_credentials "${admin_email}" "${admin_password}" "${cli_user_agent}")"
+cli_access_token="$(printf '%s' "${cli_login_json}" | jq -r '.accessToken')"
+cli_tenant_id="$(printf '%s' "${cli_login_json}" | jq -r '.user.tenantId')"
+[[ -n "${cli_access_token}" && "${cli_access_token}" != "null" ]]
+[[ -n "${cli_tenant_id}" && "${cli_tenant_id}" != "null" ]]
+arsenale_cli_seed_auth "${server_url}" "${cli_access_token}" "${cli_tenant_id}"
+arsenale_cli_smoke_inventory "${repo_root}" "${cli_bin}" "${server_url}"
 
 echo '2.1 /api/user/profile'
 profile_json="$(curl --silent --show-error --fail \

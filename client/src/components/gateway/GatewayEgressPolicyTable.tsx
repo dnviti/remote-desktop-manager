@@ -1,6 +1,7 @@
-import { Pencil, Trash2 } from 'lucide-react';
+import { ArrowDown, ArrowUp, Pencil, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import {
   Table,
   TableBody,
@@ -21,6 +22,7 @@ interface GatewayEgressPolicyTableProps {
   validationErrors: EgressValidationErrors;
   onEditRule: (ruleId: string) => void;
   onRemoveRule: (ruleId: string) => void;
+  onMoveRule: (ruleId: string, direction: -1 | 1) => void;
 }
 
 const PROTOCOL_LABELS = new Map(
@@ -91,14 +93,17 @@ export default function GatewayEgressPolicyTable({
   validationErrors,
   onEditRule,
   onRemoveRule,
+  onMoveRule,
 }: GatewayEgressPolicyTableProps) {
   return (
     <div className="rounded-md border">
-      <Table className="min-w-[820px]">
+      <Table className="min-w-[1080px]">
         <TableHeader>
           <TableRow>
             <TableHead className="w-16">Rule</TableHead>
-            <TableHead className="min-w-[180px]">Description</TableHead>
+            <TableHead className="min-w-[180px]">Rule</TableHead>
+            <TableHead className="min-w-[120px]">Action</TableHead>
+            <TableHead className="min-w-[160px]">Scope</TableHead>
             <TableHead className="min-w-[150px]">Protocols</TableHead>
             <TableHead className="min-w-[220px]">Destinations</TableHead>
             <TableHead className="min-w-[140px]">Ports</TableHead>
@@ -109,8 +114,8 @@ export default function GatewayEgressPolicyTable({
         <TableBody>
           {rules.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={7} className="h-20 text-center text-muted-foreground">
-                No allow rules configured.
+              <TableCell colSpan={9} className="h-20 text-center text-muted-foreground">
+                No firewall rules configured.
               </TableCell>
             </TableRow>
           ) : (
@@ -125,7 +130,7 @@ export default function GatewayEgressPolicyTable({
                 <TableRow
                   key={rule.id}
                   data-state={editingRuleId === rule.id ? 'selected' : undefined}
-                  className="cursor-pointer"
+                  className={cn('cursor-pointer', !rule.enabled && 'opacity-65')}
                   onClick={() => onEditRule(rule.id)}
                 >
                   <TableCell className="font-medium">#{index + 1}</TableCell>
@@ -135,7 +140,24 @@ export default function GatewayEgressPolicyTable({
                       {!rule.description.trim() && (
                         <span className="text-xs text-muted-foreground">No description</span>
                       )}
+                      {!rule.enabled && (
+                        <Badge variant="secondary" className="w-fit">Disabled</Badge>
+                      )}
                     </div>
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={rule.action === 'DISALLOW' ? 'destructive' : 'outline'}>
+                      {rule.action === 'DISALLOW' ? 'Disallow' : 'Allow'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="whitespace-normal">
+                    <SummaryBadges
+                      values={[
+                        ...rule.userIds.map((value) => `User ${value.slice(0, 8)}`),
+                        ...rule.teamIds.map((value) => `Team ${value.slice(0, 8)}`),
+                      ]}
+                      emptyLabel="Everyone"
+                    />
                   </TableCell>
                   <TableCell className="whitespace-normal">
                     <SummaryBadges values={protocolLabels} emptyLabel="No protocols" />
@@ -148,7 +170,7 @@ export default function GatewayEgressPolicyTable({
                   </TableCell>
                   <TableCell>
                     <Badge variant={errorCount > 0 ? 'destructive' : 'outline'}>
-                      {errorCount > 0 ? 'Needs info' : 'Ready'}
+                      {!rule.enabled ? 'Draft' : errorCount > 0 ? 'Needs info' : 'Ready'}
                     </Badge>
                   </TableCell>
                   <TableCell>
@@ -157,7 +179,33 @@ export default function GatewayEgressPolicyTable({
                         type="button"
                         variant="ghost"
                         size="icon-sm"
-                        aria-label={`Edit allow rule ${index + 1}`}
+                        aria-label={`Move rule ${index + 1} up`}
+                        disabled={index === 0}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onMoveRule(rule.id, -1);
+                        }}
+                      >
+                        <ArrowUp />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Move rule ${index + 1} down`}
+                        disabled={index === rules.length - 1}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onMoveRule(rule.id, 1);
+                        }}
+                      >
+                        <ArrowDown />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={`Edit rule ${index + 1}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           onEditRule(rule.id);
@@ -170,7 +218,7 @@ export default function GatewayEgressPolicyTable({
                         variant="ghost"
                         size="icon-sm"
                         className="text-muted-foreground hover:text-destructive"
-                        aria-label={`Remove allow rule ${index + 1}`}
+                        aria-label={`Remove rule ${index + 1}`}
                         onClick={(event) => {
                           event.stopPropagation();
                           onRemoveRule(rule.id);

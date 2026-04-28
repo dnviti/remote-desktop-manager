@@ -42,6 +42,7 @@ interface TabsState {
   recentTick: number;
   openTab: (connection: ConnectionData, credentials?: CredentialOverride) => void;
   closeTab: (tabId: string) => void;
+  moveTab: (tabId: string, targetIndex: number) => void;
   setActiveTab: (tabId: string) => void;
   setRdpIdentity: (tabId: string, username?: string, domain?: string) => void;
   restoreTabs: (connections: ConnectionData[]) => Promise<void>;
@@ -133,6 +134,21 @@ export const useTabsStore = create<TabsState>((set, get) => ({
       })),
       activeTabId: newActiveId,
       persistedActiveTabId: nextPersistedActiveTabId,
+    });
+    scheduleSyncToServer();
+  },
+
+  moveTab: (tabId, targetIndex) => {
+    set((state) => {
+      const currentIndex = state.tabs.findIndex((tab) => tab.id === tabId);
+      if (currentIndex < 0) return state;
+      const clampedTarget = Math.max(0, Math.min(targetIndex, state.tabs.length - 1));
+      if (currentIndex === clampedTarget) return state;
+      const nextTabs = [...state.tabs];
+      const [moved] = nextTabs.splice(currentIndex, 1);
+      if (!moved) return state;
+      nextTabs.splice(clampedTarget, 0, moved);
+      return { tabs: nextTabs };
     });
     scheduleSyncToServer();
   },

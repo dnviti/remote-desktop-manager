@@ -13,6 +13,7 @@ type Check struct {
 	TargetHost   string
 	TargetPort   int
 	UserID       string
+	TeamIDs      []string
 	GatewayID    string
 	ConnectionID string
 	IPAddress    string
@@ -23,5 +24,7 @@ func Authorize(ctx context.Context, check Check) egresspolicy.Decision {
 		Protocol: check.Protocol,
 		Host:     check.TargetHost,
 		Port:     check.TargetPort,
+		UserID:   check.UserID,
+		TeamIDs:  check.TeamIDs,
 	}, egresspolicy.DefaultOptions())
 }

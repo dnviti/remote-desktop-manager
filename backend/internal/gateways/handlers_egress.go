@@ -36,3 +36,20 @@ func (s Service) HandleUpdateEgressPolicy(w http.ResponseWriter, r *http.Request
 	}
 	app.WriteJSON(w, http.StatusOK, result)
 }
+
+func (s Service) HandleTestEgressPolicy(w http.ResponseWriter, r *http.Request, claims authn.Claims) {
+	if !requireGatewayManager(w, claims) {
+		return
+	}
+	var payload egressPolicyTestPayload
+	if err := app.ReadJSON(r, &payload); err != nil {
+		app.ErrorJSON(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := s.TestGatewayEgressPolicy(r.Context(), claims, r.PathValue("id"), payload)
+	if err != nil {
+		s.writeError(w, err)
+		return
+	}
+	app.WriteJSON(w, http.StatusOK, result)
+}

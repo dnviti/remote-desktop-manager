@@ -214,7 +214,8 @@ Leave `LDAP_ENABLED=false` to disable. Compatible with FreeIPA, OpenLDAP, 389 Di
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ARSENALE_EGRESS_POLICY_JSON` | — | Normalized per-gateway allow policy used by managed gateway runtimes. When present, outbound tunnel targets must match protocol, host/CIDR, and port rules before traffic is opened. |
+| `ARSENALE_EGRESS_POLICY_JSON` | — | Normalized per-gateway ordered egress firewall policy used by managed gateway runtimes. When present, outbound tunnel targets must match protocol, host/CIDR, port, and optional user/team scope before traffic is opened. |
+| `RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY` / `RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY_FILE` | — | Shared secret used by the control plane to sign runtime user/team context for scoped DB proxy egress rules. Managed DB proxy deployments with scoped rules fail closed if no key is configured. |
 
 ### SSH Key Rotation
 

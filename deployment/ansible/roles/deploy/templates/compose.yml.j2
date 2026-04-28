@@ -248,6 +248,9 @@ services:
       - jwt_secret
       - shared_files_s3_secret_access_key
       - server_encryption_key
+{% if (vault_runtime_egress_principal_signing_key | default('') | length) > 0 %}
+      - runtime_egress_principal_signing_key
+{% endif %}
     environment:
       PORT: "8080"
       ARSENALE_VERSION: "{{ arsenale_image_tag }}"
@@ -300,6 +303,9 @@ services:
       ASCIICAST_CONVERTER_URL: "https://guacenc:3003"
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       SERVER_ENCRYPTION_KEY_FILE: /run/secrets/server_encryption_key
+{% if (vault_runtime_egress_principal_signing_key | default('') | length) > 0 %}
+      RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY_FILE: /run/secrets/runtime_egress_principal_signing_key
+{% endif %}
     ports:
       - "{{ arsenale_service_bind_host | default('0.0.0.0') }}:{{ arsenale_control_plane_api_port | default(18080) }}:8080"
     depends_on:
@@ -551,6 +557,9 @@ services:
       - jwt_secret
       - shared_files_s3_secret_access_key
       - server_encryption_key
+{% if (vault_runtime_egress_principal_signing_key | default('') | length) > 0 %}
+      - runtime_egress_principal_signing_key
+{% endif %}
     environment:
       PORT: "8080"
       ARSENALE_VERSION: "{{ arsenale_image_tag }}"
@@ -654,6 +663,9 @@ services:
       ASCIICAST_CONVERTER_URL: "https://guacenc:3003"
       JWT_SECRET_FILE: /run/secrets/jwt_secret
       SERVER_ENCRYPTION_KEY_FILE: /run/secrets/server_encryption_key
+{% if (vault_runtime_egress_principal_signing_key | default('') | length) > 0 %}
+      RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY_FILE: /run/secrets/runtime_egress_principal_signing_key
+{% endif %}
       GATEWAY_GRPC_TLS_CA: /certs/ca.pem
       GATEWAY_GRPC_CLIENT_CA: /certs/ssh-gateway/client-ca.pem
       GATEWAY_GRPC_TLS_CERT: /certs/ssh-gateway/client-cert.pem
@@ -1627,6 +1639,10 @@ secrets:
     external: true
   shared_files_s3_secret_access_key:
     external: true
+{% if (vault_runtime_egress_principal_signing_key | default('') | length) > 0 %}
+  runtime_egress_principal_signing_key:
+    external: true
+{% endif %}
   smtp_pass:
     external: true
   sendgrid_api_key:

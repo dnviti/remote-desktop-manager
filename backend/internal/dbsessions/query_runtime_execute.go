@@ -26,16 +26,16 @@ func (s Service) executeOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		return contracts.QueryExecutionResponse{}, err
 	}
 
-	result, err := s.executeViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryExecutionRequest{
-		SQL:     sqlText,
-		MaxRows: queryMaxRows(),
-		Target:  runtime.Target,
-	})
+	proxy, err := s.ownedQueryProxyClient(ctx, userID, tenantID, runtime)
+	if err != nil {
+		return contracts.QueryExecutionResponse{}, err
+	}
+	result, err := proxy.execute(sqlText)
 	if err != nil {
 		return contracts.QueryExecutionResponse{}, classifyQueryOperationError(err)
 	}
 
-	executionPlan := s.captureStoredExecutionPlan(ctx, runtime, sqlText)
+	executionPlan := proxy.captureStoredExecutionPlan(sqlText)
 
 	policies := s.loadMaskingPoliciesWithSettings(ctx, tenantID, runtime.Settings)
 	maskedColumns := findMaskedColumns(policies, result.Columns, tenantRole, runtime.DatabaseName, policy.Analysis.PrimaryTable)
@@ -66,7 +66,11 @@ func (s Service) fetchOwnedSchema(ctx context.Context, userID, tenantID, session
 	if err != nil {
 		return contracts.SchemaInfo{}, err
 	}
-	result, err := s.fetchSchemaViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.SchemaFetchRequest{Target: runtime.Target})
+	proxy, err := s.ownedQueryProxyClient(ctx, userID, tenantID, runtime)
+	if err != nil {
+		return contracts.SchemaInfo{}, err
+	}
+	result, err := proxy.fetchSchema()
 	if err != nil {
 		return contracts.SchemaInfo{}, classifyQueryOperationError(err)
 	}
@@ -93,10 +97,11 @@ func (s Service) explainOwnedQuery(ctx context.Context, userID, tenantID, tenant
 		return contracts.QueryPlanResponse{}, err
 	}
 
-	result, err := s.explainViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryPlanRequest{
-		SQL:    sqlText,
-		Target: runtime.Target,
-	})
+	proxy, err := s.ownedQueryProxyClient(ctx, userID, tenantID, runtime)
+	if err != nil {
+		return contracts.QueryPlanResponse{}, err
+	}
+	result, err := proxy.explain(sqlText)
 	if err != nil {
 		return contracts.QueryPlanResponse{}, classifyQueryOperationError(err)
 	}
@@ -110,11 +115,11 @@ func (s Service) introspectOwnedQuery(ctx context.Context, userID, tenantID, ses
 		return contracts.QueryIntrospectionResponse{}, err
 	}
 
-	result, err := s.introspectViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryIntrospectionRequest{
-		Type:   introspectionType,
-		Target: target,
-		DB:     runtime.Target,
-	})
+	proxy, err := s.ownedQueryProxyClient(ctx, userID, tenantID, runtime)
+	if err != nil {
+		return contracts.QueryIntrospectionResponse{}, err
+	}
+	result, err := proxy.introspect(introspectionType, target)
 	if err != nil {
 		return contracts.QueryIntrospectionResponse{}, classifyQueryOperationError(err)
 	}
@@ -128,9 +133,11 @@ func (s Service) FetchOwnedSchemaTables(ctx context.Context, userID, tenantID, s
 		return nil, "", err
 	}
 
-	result, err := s.fetchSchemaViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.SchemaFetchRequest{
-		Target: runtime.Target,
-	})
+	proxy, err := s.ownedQueryProxyClient(ctx, userID, tenantID, runtime)
+	if err != nil {
+		return nil, "", err
+	}
+	result, err := proxy.fetchSchema()
 	if err != nil {
 		return nil, runtime.Protocol, classifyQueryOperationError(err)
 	}

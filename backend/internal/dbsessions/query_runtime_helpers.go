@@ -1,7 +1,6 @@
 package dbsessions
 
 import (
-	"context"
 	"errors"
 	"net/http"
 	"os"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/dnviti/arsenale/backend/internal/app"
 	"github.com/dnviti/arsenale/backend/internal/sessions"
-	"github.com/dnviti/arsenale/backend/pkg/contracts"
 )
 
 func validateWritableQueryAccess(queryType dbQueryType, tenantRole string, explainOnly bool) error {
@@ -36,24 +34,6 @@ func supportsStoredExecutionPlan(protocol string) bool {
 	default:
 		return false
 	}
-}
-
-func (s Service) captureStoredExecutionPlan(ctx context.Context, runtime *ownedQueryRuntime, sqlText string) any {
-	if runtime == nil || !runtime.PersistExecutionPlan {
-		return nil
-	}
-	if !supportsStoredExecutionPlan(runtime.Protocol) {
-		return contracts.QueryPlanResponse{Supported: false}
-	}
-
-	plan, err := s.explainViaDBProxy(ctx, runtime.GatewayID, runtime.InstanceID, contracts.QueryPlanRequest{
-		SQL:    sqlText,
-		Target: runtime.Target,
-	})
-	if err != nil {
-		return nil
-	}
-	return plan
 }
 
 func classifyQueryOperationError(err error) error {

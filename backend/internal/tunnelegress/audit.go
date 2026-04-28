@@ -17,6 +17,9 @@ type DeniedAudit struct {
 	TargetHost   string
 	TargetPort   int
 	Reason       string
+	RuleIndex    int
+	RuleAction   string
+	Rule         string
 	IPAddress    string
 }
 
@@ -25,14 +28,20 @@ func InsertDeniedAudit(ctx context.Context, db *pgxpool.Pool, event DeniedAudit)
 		return
 	}
 
-	details, err := json.Marshal(map[string]any{
+	detail := map[string]any{
 		"gatewayId":    strings.TrimSpace(event.GatewayID),
 		"connectionId": strings.TrimSpace(event.ConnectionID),
 		"protocol":     strings.ToUpper(strings.TrimSpace(event.Protocol)),
 		"targetHost":   strings.TrimSpace(event.TargetHost),
 		"targetPort":   event.TargetPort,
 		"reason":       strings.TrimSpace(event.Reason),
-	})
+	}
+	if event.RuleIndex > 0 {
+		detail["ruleIndex"] = event.RuleIndex
+		detail["ruleAction"] = strings.ToUpper(strings.TrimSpace(event.RuleAction))
+		detail["ruleDescription"] = strings.TrimSpace(event.Rule)
+	}
+	details, err := json.Marshal(detail)
 	if err != nil {
 		return
 	}

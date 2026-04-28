@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"os"
 	"strings"
+
+	"github.com/dnviti/arsenale/backend/pkg/egresspolicy"
 )
 
 func (s Service) buildManagedGatewayContainerConfig(ctx context.Context, record gatewayRecord, instanceIndex int) ([]managedContainerConfig, error) {
@@ -38,6 +40,12 @@ func (s Service) buildManagedGatewayContainerConfig(ctx context.Context, record 
 		}
 	case "DB_PROXY":
 		env["DB_LISTEN_PORT"] = "5432"
+		if egresspolicy.RequiresPrincipalRaw(record.EgressPolicy) {
+			if strings.TrimSpace(s.RuntimePrincipalKey) == "" {
+				return nil, &requestError{status: http.StatusInternalServerError, message: "Runtime egress principal signing key is required for scoped gateway egress rules"}
+			}
+			env["RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY"] = strings.TrimSpace(s.RuntimePrincipalKey)
+		}
 	default:
 		return nil, &requestError{status: http.StatusBadRequest, message: "Only MANAGED_SSH, GUACD, and DB_PROXY gateways can be deployed as managed containers"}
 	}

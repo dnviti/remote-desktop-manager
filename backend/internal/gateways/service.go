@@ -39,6 +39,7 @@ type Service struct {
 	GuacdImage            string
 	DBProxyImage          string
 	RecordingPath         string
+	RuntimePrincipalKey   string
 }
 
 type gatewayResponse struct {

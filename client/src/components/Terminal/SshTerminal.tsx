@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
-import { useTabsStore } from '../../store/tabsStore';
 import { useTerminalSettingsStore } from '../../store/terminalSettingsStore';
 import type { CredentialOverride } from '../../store/tabsStore';
 import { useUiPreferencesStore } from '../../store/uiPreferencesStore';
@@ -27,6 +26,7 @@ import {
   type StartSshSessionInput,
   type StartSshSessionResponse,
 } from '../../api/sessions.api';
+import { closeConnectionSurface } from '../../utils/closeConnectionSurface';
 import '@xterm/xterm/css/xterm.css';
 
 interface SshTerminalProps {
@@ -406,7 +406,7 @@ export default function SshTerminal({ connectionId, tabId, isActive = true, cred
   }, [isTransportConnected, sendTerminalMessage]);
 
   const handleDisconnect = useCallback(() => {
-    useTabsStore.getState().closeTab(tabId);
+    closeConnectionSurface(tabId);
   }, [tabId]);
 
   useEffect(() => {

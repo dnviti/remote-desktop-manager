@@ -142,7 +142,7 @@ Highest-value public prefixes:
 - `/api/files` — connection-scoped managed transfer sandbox for RDP workspace staging/cleanup plus the generic `/api/files/history` retained-upload surface
 - `/api/files/ssh/*` — SSH sandbox workspace list/mkdir/delete/rename/upload/download, plus `/api/files/ssh/history/*` retained-upload actions, all sandbox-relative
 - `/api/sessions` — SSH, SSH observe grants, RDP, VNC, database, DB tunnel, heartbeat, pause, resume, terminate, active-session visibility fallback, and unified session-console rows with recording summaries
-- `/api/gateways` — gateway CRUD, derived operational status, templates, scaling, tunnel controls, instances, and per-gateway egress policy
+- `/api/gateways` — gateway CRUD, derived operational status, templates, scaling, tunnel controls, instances, and per-gateway ordered egress firewall policy
 - `/api/db-audit` — query audit logs, firewall rules, masking policies, rate limits
 - `/api/recordings` — recording list, stream, analyze, video export, and audit trail aligned to the same tenant/own session-visibility rules used by `/api/sessions/console`
 - `/api/tenants` — tenant CRUD, users, invite, permissions, IP allowlist, MFA stats
@@ -153,7 +153,7 @@ Highest-value public prefixes:
 - `/api/access-policies` — access policy CRUD
 - `/api/keystroke-policies` — keystroke policy CRUD
 - `/api/checkouts` — approval-style credential checkout flow
-- `/api/teams` — team CRUD and membership management
+- `/api/teams` — team CRUD and membership management; `scope=tenant` returns all tenant teams for tenant managers
 - `/api/tabs` — UI tab state sync with tab-instance ids for restoreable same-connection duplicates
 
 ## 🗄 Database Execution Model

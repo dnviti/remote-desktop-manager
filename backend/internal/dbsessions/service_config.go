@@ -1,6 +1,9 @@
 package dbsessions
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -28,7 +31,17 @@ func (s Service) applyOwnedSessionConfig(w http.ResponseWriter, r *http.Request,
 		if state.Record.InstanceID != nil {
 			instanceID = strings.TrimSpace(*state.Record.InstanceID)
 		}
-		if err := s.validateTargetViaDBProxy(r.Context(), gatewayID, instanceID, target); err != nil {
+		tenantID, err := s.loadSessionTenantID(r.Context(), state.Record.ID)
+		if err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		principal, err := s.dbProxyPrincipal(r.Context(), tenantID, userID)
+		if err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		if err := s.validateTargetViaDBProxy(r.Context(), gatewayID, instanceID, principal, target); err != nil {
 			app.ErrorJSON(w, classifyConnectivityStatus(err), err.Error())
 			return
 		}
@@ -62,6 +75,17 @@ func (s Service) applyOwnedSessionConfig(w http.ResponseWriter, r *http.Request,
 		"activeDatabase": activeDatabase,
 		"sessionConfig":  metadata["sessionConfig"],
 	})
+}
+
+func (s Service) loadSessionTenantID(ctx context.Context, sessionID string) (string, error) {
+	var tenantID sql.NullString
+	if err := s.DB.QueryRow(ctx, `SELECT "tenantId" FROM "ActiveSession" WHERE id = $1`, sessionID).Scan(&tenantID); err != nil {
+		return "", fmt.Errorf("load database session tenant: %w", err)
+	}
+	if tenantID.Valid {
+		return tenantID.String, nil
+	}
+	return "", nil
 }
 
 func (s Service) writeOwnedConfig(w http.ResponseWriter, r *http.Request, userID string) {

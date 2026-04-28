@@ -180,7 +180,7 @@ Tunnel agents (gateway-side daemons) authenticate to the broker WebSocket endpoi
 - **Constant-time comparison**: Prevents timing side-channel attacks on token validation.
 - **Defense in depth**: Dual verification (hash lookup + decryption check) ensures integrity even if one layer is compromised.
 - **Tenant-level controls**: `tunnelAgentAllowedCidrs` restricts which source IPs can establish tunnels. `tunnelTokenMaxLifetimeDays` enforces token expiry.
-- **Gateway egress controls**: each gateway has an `egressPolicy` allowlist for tunneled protocol, host/CIDR, and port targets. Empty policies deny by default, and denied attempts are audited as `TUNNEL_EGRESS_DENIED`.
+- **Gateway egress controls**: each gateway has an ordered `egressPolicy` firewall for tunneled protocol, host/CIDR, port, user, and team targets. Rules can allow or disallow, disabled rules are ignored, empty user/team scope means everyone, and no match denies by default. Denied attempts are audited as `TUNNEL_EGRESS_DENIED`.
 
 Source: `backend/internal/tunnelbroker`, `backend/internal/gateways/tunnels_service.go`, `backend/internal/gateways/tunnels_crypto.go`, `backend/pkg/egresspolicy`
 

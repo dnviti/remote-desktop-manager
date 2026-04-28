@@ -22,6 +22,16 @@ func TestPrepareGatewayEgressPolicyRejectsInvalidCIDR(t *testing.T) {
 	}
 }
 
+func TestPrepareGatewayEgressPolicyAcceptsDisabledDraftRule(t *testing.T) {
+	raw, err := prepareGatewayEgressPolicy(json.RawMessage(`{"rules":[{"enabled":false,"hosts":["*"],"ports":[]}]}`))
+	if err != nil {
+		t.Fatalf("prepareGatewayEgressPolicy returned error: %v", err)
+	}
+	if string(raw) != `{"rules":[{"enabled":false,"hosts":["*"],"ports":[]}]}` {
+		t.Fatalf("unexpected draft policy %s", raw)
+	}
+}
+
 func TestChangedGatewayFieldsIncludesEgressPolicy(t *testing.T) {
 	var input updatePayload
 	if err := input.EgressPolicy.UnmarshalJSON([]byte(`{"rules":[]}`)); err != nil {

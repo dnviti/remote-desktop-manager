@@ -11,6 +11,7 @@
       - { name: guacenc_auth_token, value: "{{ vault_guacenc_auth_token }}" }
       - { name: shared_files_s3_secret_access_key, value: "{{ (arsenale_dev_shared_files_s3_secret_access_key if ((_is_dev | default(false) | bool) and ((vault_shared_files_s3_secret_access_key | default('')) | length == 0)) else vault_shared_files_s3_secret_access_key) }}" }
       # Optional secrets (only create if non-empty)
+      - { name: runtime_egress_principal_signing_key, value: "{{ vault_runtime_egress_principal_signing_key | default('') }}" }
       - { name: smtp_pass, value: "{{ vault_smtp_pass }}" }
       - { name: sendgrid_api_key, value: "{{ vault_sendgrid_api_key }}" }
       - { name: ses_secret_access_key, value: "{{ vault_ses_secret_access_key }}" }

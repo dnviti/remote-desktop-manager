@@ -15,12 +15,17 @@ type Request struct {
 	Protocol string
 	Host     string
 	Port     int
+	UserID   string
+	TeamIDs  []string
 }
 
 type Decision struct {
-	Allowed bool
-	Reason  string
-	Rule    string
+	Allowed     bool
+	Reason      string
+	Rule        string
+	RuleIndex   int
+	RuleAction  string
+	DefaultDeny bool
 }
 
 type Resolver interface {
@@ -64,7 +69,7 @@ func Authorize(ctx context.Context, policy Policy, req Request, opts Options) De
 		return Decision{Reason: "target port must be between 1 and 65535"}
 	}
 	if len(policy.Rules) == 0 {
-		return Decision{Reason: "gateway egress policy has no allow rules"}
+		return Decision{Reason: "gateway egress policy has no matching rule", DefaultDeny: true}
 	}
 
 	addrs, reason := resolveTargetAddrs(ctx, host, opts)
@@ -77,16 +82,60 @@ func Authorize(ctx context.Context, policy Policy, req Request, opts Options) De
 		}
 	}
 
-	for _, rule := range policy.Rules {
+	for index, rule := range policy.Rules {
+		if !ruleEnabled(rule) {
+			continue
+		}
+		action := normalizedAction(rule.Action)
+		if action != ActionAllow && action != ActionDisallow {
+			continue
+		}
+		if !ruleMatchesPrincipal(rule, strings.TrimSpace(req.UserID), req.TeamIDs) {
+			continue
+		}
 		if !containsString(rule.Protocols, protocol) || !containsPort(rule.Ports, req.Port) {
 			continue
 		}
 		if !ruleMatchesDestination(rule, host, addrs) {
 			continue
 		}
-		return Decision{Allowed: true, Rule: rule.Description}
+		decision := Decision{
+			Allowed:    action == ActionAllow,
+			Rule:       rule.Description,
+			RuleIndex:  index + 1,
+			RuleAction: action,
+		}
+		if !decision.Allowed {
+			decision.Reason = "blocked by gateway egress policy rule"
+		}
+		return decision
 	}
-	return Decision{Reason: fmt.Sprintf("target %s:%d is not allowed by gateway egress policy", host, req.Port)}
+	return Decision{Reason: fmt.Sprintf("target %s:%d is not allowed by gateway egress policy", host, req.Port), DefaultDeny: true}
+}
+
+func ruleMatchesPrincipal(rule Rule, userID string, teamIDs []string) bool {
+	if len(rule.UserIDs) == 0 && len(rule.TeamIDs) == 0 {
+		return true
+	}
+	if userID != "" && containsString(rule.UserIDs, userID) {
+		return true
+	}
+	if len(rule.TeamIDs) == 0 || len(teamIDs) == 0 {
+		return false
+	}
+	teamSet := make(map[string]struct{}, len(teamIDs))
+	for _, teamID := range teamIDs {
+		teamID = strings.TrimSpace(teamID)
+		if teamID != "" {
+			teamSet[teamID] = struct{}{}
+		}
+	}
+	for _, teamID := range rule.TeamIDs {
+		if _, ok := teamSet[strings.TrimSpace(teamID)]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func ruleMatchesDestination(rule Rule, host string, addrs []netip.Addr) bool {

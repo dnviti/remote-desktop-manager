@@ -13,7 +13,7 @@ import * as Guacamole from '@glokon/guacamole-common-js';
 import type { ToolbarAction } from '../components/shared/DockedToolbar';
 import type { ResolvedDlpPolicy } from '../api/connections.api';
 import { KEYSYMS } from '../constants/keysyms';
-import { useTabsStore } from '../store/tabsStore';
+import { closeConnectionSurface } from '../utils/closeConnectionSurface';
 
 interface UseGuacToolbarActionsOptions {
   protocol: 'RDP' | 'VNC';
@@ -94,7 +94,7 @@ export function useGuacToolbarActions({
   }, [clientRef]);
 
   const handleDisconnect = useCallback(() => {
-    useTabsStore.getState().closeTab(tabId);
+    closeConnectionSurface(tabId);
   }, [tabId]);
 
   const driveHiddenByDlp = dlpPolicy?.disableDownload && dlpPolicy?.disableUpload;

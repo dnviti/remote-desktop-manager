@@ -171,18 +171,18 @@ func (s Service) HandleSSHUpload(w http.ResponseWriter, r *http.Request, claims 
 	}
 
 	err = s.withSFTPClient(r.Context(), claims, payload, func(client sshRemoteClient, target sshsessions.ResolvedFileTransferTarget, policy resolvedFilePolicy) error {
-		maxConnectionUploadBytes := effectiveUploadLimit(policy.FileUploadMax, maxUploadBytes)
-		if int64(len(data)) > maxConnectionUploadBytes {
-			return &requestError{status: http.StatusRequestEntityTooLarge, message: uploadTooLargeMessage(maxConnectionUploadBytes)}
+		uploadLimits := s.managedUploadLimits(policy)
+		if err := uploadLimits.validatePayloadSize(int64(len(data))); err != nil {
+			return err
 		}
-		if quota := s.effectiveQuota(tenantFilePolicy{UserDriveQuota: policy.UserDriveQuota}); quota > 0 {
+		if uploadLimits.enforcesQuota() {
 			// Quota is enforced against staged objects for this connection scope.
 			usage, err := s.currentStageUsage(r.Context(), stagePrefix("ssh", claims.TenantID, claims.UserID, target.Connection.ID))
 			if err != nil {
 				return err
 			}
-			if usage+int64(len(data)) > quota {
-				return &requestError{status: http.StatusRequestEntityTooLarge, message: quotaExceededMessage(usage, quota)}
+			if err := uploadLimits.validateQuota(usage, int64(len(data))); err != nil {
+				return err
 			}
 		}
 		transfer, err := s.uploadToSSH(r.Context(), client, target, policy, claims.UserID, claims.TenantID, claims.Email, fileName, remotePath, data)

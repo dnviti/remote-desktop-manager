@@ -6,13 +6,18 @@ export type GatewayHealthStatus = 'UNKNOWN' | 'REACHABLE' | 'UNREACHABLE';
 export type GatewayDeploymentMode = 'SINGLE_INSTANCE' | 'MANAGED_GROUP';
 export type GatewayOperationalStatus = 'HEALTHY' | 'DEGRADED' | 'UNHEALTHY' | 'UNKNOWN';
 export type GatewayEgressProtocol = 'SSH' | 'RDP' | 'VNC' | 'DATABASE';
+export type GatewayEgressAction = 'ALLOW' | 'DISALLOW';
 
 export interface GatewayEgressPolicyRule {
   description?: string;
+  enabled?: boolean;
+  action?: GatewayEgressAction;
   protocols: GatewayEgressProtocol[];
   hosts?: string[];
   cidrs?: string[];
   ports: number[];
+  userIds?: string[];
+  teamIds?: string[];
 }
 
 export interface GatewayEgressPolicy {
@@ -148,6 +153,31 @@ export async function getGatewayEgressPolicy(id: string): Promise<GatewayEgressP
 
 export async function updateGatewayEgressPolicy(id: string, payload: GatewayEgressPolicy): Promise<GatewayData> {
   const { data } = await api.put(`/gateways/${id}/egress`, payload);
+  return data;
+}
+
+export interface GatewayEgressPolicyTestInput {
+  protocol: GatewayEgressProtocol;
+  host: string;
+  port: number;
+  userId: string;
+  policy?: GatewayEgressPolicy;
+}
+
+export interface GatewayEgressPolicyTestResult {
+  allowed: boolean;
+  reason: string;
+  ruleIndex?: number;
+  ruleAction?: GatewayEgressAction;
+  rule?: string;
+  defaultDeny: boolean;
+}
+
+export async function testGatewayEgressPolicy(
+  id: string,
+  payload: GatewayEgressPolicyTestInput,
+): Promise<GatewayEgressPolicyTestResult> {
+  const { data } = await api.post(`/gateways/${id}/egress/test`, payload);
   return data;
 }
 

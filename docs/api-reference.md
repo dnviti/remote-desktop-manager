@@ -203,6 +203,8 @@ Recovery endpoints stay under `/api/auth/*`:
 
 `/api/connections/*` and `/api/folders/*` require at least one connection-capable feature. `/api/vault-folders`, `/api/files`, `/api/files/ssh/*`, and `/api/vault-providers/*` additionally require `keychainEnabled`.
 
+`GET /api/teams` returns the teams visible to the current member. `GET /api/teams?scope=tenant` is available to tenant managers and returns every team in the tenant for policy editors that need tenant-wide team selectors.
+
 `/api/files` now requires `connectionId` on every request. `GET` and `DELETE` take it as a query parameter. `POST` takes it as a multipart form field. The RDP shared-drive view is staged through the object store and then materialized into the Guacamole drive cache. SSH file browsing uses the `/api/files/ssh/*` REST surface instead of terminal WebSocket file-transfer events, and the CLI and UI only accept sandbox-relative paths inside `workspace/current/`. Retained uploads are exposed through the generic `/api/files/history` routes for the CLI and RDP surfaces, while the SSH browser uses the protocol-specific `/api/files/ssh/history/*` handlers for the same retained-upload namespace. SSH session responses keep the legacy browser flag false while `fileBrowserSupported: true` so the client can hide outdated affordances.
 
 ## 🔒 Vault, Secrets, And Tenant Vault
@@ -384,7 +386,8 @@ Notable gateway subpaths:
 - `/api/gateways/{id}/instances/{instanceId}/restart`
 - `/api/gateways/{id}/instances/{instanceId}/logs`
 - `GET /api/gateways/{id}/egress` returns the normalized gateway egress policy.
-- `PUT /api/gateways/{id}/egress` replaces the gateway egress policy. The body is `{"rules":[...]}`; an empty rule list denies all tunneled egress.
+- `PUT /api/gateways/{id}/egress` replaces the gateway egress policy. The body is `{"rules":[...]}`; an empty rule list denies all tunneled egress. Rules are evaluated in order like firewall rules. Each enabled rule supports `action` (`ALLOW` or `DISALLOW`, default `ALLOW`), `enabled` (default `true`), `protocols`, `hosts`, `cidrs`, `ports`, `userIds`, and `teamIds`. Empty `userIds` and `teamIds` means the rule applies to everyone.
+- `POST /api/gateways/{id}/egress/test` evaluates a saved or draft egress policy for `{protocol, host, port, userId, policy?}`. The response includes `allowed`, `reason`, `ruleIndex`, `ruleAction`, `rule`, and `defaultDeny`.
 - `/api/gateways/{id}/tunnel-token`
 - `/api/gateways/{id}/tunnel-disconnect`
 - `/api/gateways/{id}/tunnel-events`

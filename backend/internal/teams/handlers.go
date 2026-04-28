@@ -33,12 +33,34 @@ func (s Service) HandleList(w http.ResponseWriter, r *http.Request, claims authn
 		app.ErrorJSON(w, err.status, err.message)
 		return
 	}
+	if strings.EqualFold(strings.TrimSpace(r.URL.Query().Get("scope")), "tenant") {
+		if !canManageTenantTeams(claims.TenantRole) {
+			app.ErrorJSON(w, http.StatusForbidden, "Insufficient permissions")
+			return
+		}
+		result, err := s.ListTenantTeams(r.Context(), claims.TenantID)
+		if err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		app.WriteJSON(w, http.StatusOK, result)
+		return
+	}
 	result, err := s.ListUserTeams(r.Context(), claims.UserID, claims.TenantID)
 	if err != nil {
 		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
 		return
 	}
 	app.WriteJSON(w, http.StatusOK, result)
+}
+
+func canManageTenantTeams(role string) bool {
+	switch strings.ToUpper(strings.TrimSpace(role)) {
+	case "OWNER", "ADMIN", "OPERATOR":
+		return true
+	default:
+		return false
+	}
 }
 
 func (s Service) HandleGet(w http.ResponseWriter, r *http.Request, claims authn.Claims) {

@@ -163,6 +163,52 @@ describe('useTabsStore', () => {
     ]);
   });
 
+  it('moves tabs and persists the new order', async () => {
+    useAuthStore.setState({
+      accessToken: 'token',
+      csrfToken: 'csrf',
+      user: {
+        id: 'user-1',
+        email: 'user@example.com',
+        username: 'user',
+        avatarData: null,
+      },
+      isAuthenticated: true,
+    });
+    useTabsStore.getState().openTab(makeConnection('conn-1'));
+    useTabsStore.getState().openTab(makeConnection('conn-2'));
+    useTabsStore.getState().openTab(makeConnection('conn-3'));
+    vi.clearAllMocks();
+
+    const [first, second, third] = useTabsStore.getState().tabs.map((tab) => tab.id);
+    useTabsStore.getState().moveTab(third as string, 0);
+
+    expect(useTabsStore.getState().tabs.map((tab) => tab.id)).toEqual([third, first, second]);
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    expect(syncPersistedTabs).toHaveBeenCalledWith([
+      {
+        id: third,
+        connectionId: 'conn-3',
+        sortOrder: 0,
+        isActive: true,
+      },
+      {
+        id: first,
+        connectionId: 'conn-1',
+        sortOrder: 1,
+        isActive: false,
+      },
+      {
+        id: second,
+        connectionId: 'conn-2',
+        sortOrder: 2,
+        isActive: false,
+      },
+    ]);
+  });
+
   it('restores persisted tab instances in order and keeps same-connection duplicates separate', async () => {
     const persisted: PersistedTab[] = [
       { id: 'tab-missing', connectionId: 'missing', sortOrder: 0, isActive: false },

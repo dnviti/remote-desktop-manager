@@ -21,6 +21,19 @@ arsenale_cli_run() {
   "${cli_bin}" --server "${server_url}" "$@"
 }
 
+arsenale_cli_user_agent() {
+  local cli_bin="$1"
+  local version
+
+  version="$("${cli_bin}" version | awk '{print $2}')"
+  version="${version#v}"
+  if [[ -z "${version}" ]]; then
+    version="0.0.0"
+  fi
+
+  printf 'arsenale-cli/%s' "${version}"
+}
+
 arsenale_cli_seed_auth() {
   local server_url="$1"
   local access_token="$2"
@@ -50,4 +63,15 @@ arsenale_cli_smoke_core() {
   arsenale_cli_ensure_built "${repo_root}" "${cli_bin}"
   arsenale_cli_run "${cli_bin}" "${server_url}" health >/dev/null
   arsenale_cli_run "${cli_bin}" "${server_url}" whoami >/dev/null
+}
+
+arsenale_cli_smoke_inventory() {
+  local repo_root="$1"
+  local cli_bin="$2"
+  local server_url="$3"
+
+  arsenale_cli_smoke_core "${repo_root}" "${cli_bin}" "${server_url}"
+  arsenale_cli_run "${cli_bin}" "${server_url}" connection list -o json >/dev/null
+  arsenale_cli_run "${cli_bin}" "${server_url}" gateway list -o json >/dev/null
+  arsenale_cli_run "${cli_bin}" "${server_url}" session list -o json >/dev/null
 }

@@ -155,6 +155,15 @@ func (d *apiDependencies) registerOperationsRoutes(mux *http.ServeMux) {
 				}
 				return
 			}
+			if rest == "egress/test" {
+				if r.Method != http.MethodPost {
+					w.Header().Set("Allow", http.MethodPost)
+					app.ErrorJSON(w, http.StatusMethodNotAllowed, "method not allowed")
+					return
+				}
+				d.gatewayService.HandleTestEgressPolicy(w, r, claims)
+				return
+			}
 
 			if strings.Contains(rest, "/") {
 				app.ErrorJSON(w, http.StatusNotFound, "not found")

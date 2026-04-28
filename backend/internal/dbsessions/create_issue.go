@@ -101,7 +101,11 @@ func (s Service) issueSession(ctx context.Context, req SessionIssueRequest, vali
 	}
 
 	if validateTarget {
-		if err := s.validateTargetViaDBProxy(ctx, req.GatewayID, req.InstanceID, req.Target); err != nil {
+		principal, err := s.dbProxyPrincipal(ctx, req.TenantID, req.UserID)
+		if err != nil {
+			return SessionIssueResponse{}, err
+		}
+		if err := s.validateTargetViaDBProxy(ctx, req.GatewayID, req.InstanceID, principal, req.Target); err != nil {
 			return SessionIssueResponse{}, &requestError{status: classifyConnectivityStatus(err), message: err.Error()}
 		}
 	}

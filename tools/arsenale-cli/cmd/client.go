@@ -20,33 +20,62 @@ var httpClient = &http.Client{
 	Timeout: 90 * time.Second,
 }
 
-// apiRequest makes an authenticated API request with automatic 401 retry.
-func apiRequest(method, path string, body interface{}, cfg *CLIConfig) ([]byte, int, error) {
-	respBody, status, err := doRequest(method, path, body, cfg)
+type tokenRefresher func(*CLIConfig) error
+
+type APIClient struct {
+	Config  *CLIConfig
+	Refresh tokenRefresher
+}
+
+func newAPIClient(cfg *CLIConfig) APIClient {
+	return APIClient{
+		Config:  cfg,
+		Refresh: refreshAccessToken,
+	}
+}
+
+func (c APIClient) Request(method, path string, body interface{}) ([]byte, int, error) {
+	respBody, status, err := c.Do(method, path, body)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Auto-retry on 401 with token refresh
-	if status == 401 && cfg.RefreshToken != "" {
-		if refreshErr := refreshAccessToken(cfg); refreshErr == nil {
-			return doRequest(method, path, body, cfg)
+	if status == 401 && c.Config.RefreshToken != "" && c.Refresh != nil {
+		if refreshErr := c.Refresh(c.Config); refreshErr == nil {
+			return c.Do(method, path, body)
 		}
 	}
 
 	return respBody, status, nil
 }
 
-// apiRequestWithParams makes a request with URL query parameters.
-func apiRequestWithParams(method, path string, params url.Values, body interface{}, cfg *CLIConfig) ([]byte, int, error) {
+func (c APIClient) RequestWithParams(method, path string, params url.Values, body interface{}) ([]byte, int, error) {
 	if len(params) > 0 {
 		path = path + "?" + params.Encode()
 	}
-	return apiRequest(method, path, body, cfg)
+	return c.Request(method, path, body)
+}
+
+func (c APIClient) Do(method, path string, body interface{}) ([]byte, int, error) {
+	return doRequestWithConfig(method, path, body, c.Config)
+}
+
+// apiRequest makes an authenticated API request with automatic 401 retry.
+func apiRequest(method, path string, body interface{}, cfg *CLIConfig) ([]byte, int, error) {
+	return newAPIClient(cfg).Request(method, path, body)
+}
+
+// apiRequestWithParams makes a request with URL query parameters.
+func apiRequestWithParams(method, path string, params url.Values, body interface{}, cfg *CLIConfig) ([]byte, int, error) {
+	return newAPIClient(cfg).RequestWithParams(method, path, params, body)
 }
 
 // doRequest performs the actual HTTP request without retry logic.
 func doRequest(method, path string, body interface{}, cfg *CLIConfig) ([]byte, int, error) {
+	return newAPIClient(cfg).Do(method, path, body)
+}
+
+func doRequestWithConfig(method, path string, body interface{}, cfg *CLIConfig) ([]byte, int, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		switch v := body.(type) {

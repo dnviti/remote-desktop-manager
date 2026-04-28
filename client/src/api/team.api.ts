@@ -29,8 +29,8 @@ export async function createTeam(
   return data;
 }
 
-export async function listTeams(): Promise<TeamData[]> {
-  const { data } = await api.get('/teams');
+export async function listTeams(scope?: 'tenant'): Promise<TeamData[]> {
+  const { data } = await api.get('/teams', { params: scope ? { scope } : undefined });
   return data;
 }
 

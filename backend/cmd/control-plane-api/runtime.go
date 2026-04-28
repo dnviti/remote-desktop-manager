@@ -85,6 +85,11 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 		return nil, err
 	}
 	serverEncryptionKey := secrets.ServerEncryptionKey
+	runtimePrincipalKey, err := loadOptionalSecret("RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY", "RUNTIME_EGRESS_PRINCIPAL_SIGNING_KEY_FILE")
+	if err != nil {
+		closeRuntimeResources(closeFns)
+		return nil, err
+	}
 
 	gatewayRuntime := loadGatewayRuntimeConfig()
 	store := orchestration.NewStore(db)
@@ -154,6 +159,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			TenantAuth:          tenantAuthService,
 			ConnectionResolver:  sshSessionService,
 			ServerEncryptionKey: serverEncryptionKey,
+			RuntimePrincipalKey: strings.TrimSpace(runtimePrincipalKey),
 		},
 		sessionStore: sessionStore,
 		setupService: setup.Service{
@@ -232,6 +238,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 			GuacdImage:            getenv("ORCHESTRATOR_GUACD_IMAGE", "localhost/arsenale_guacd:latest"),
 			DBProxyImage:          getenv("ORCHESTRATOR_DB_PROXY_IMAGE", "ghcr.io/dnviti/arsenale/db-proxy:stable"),
 			RecordingPath:         getenv("RECORDING_PATH", "/recordings"),
+			RuntimePrincipalKey:   strings.TrimSpace(runtimePrincipalKey),
 		},
 		features: featureManifest,
 		notificationService: notifications.Service{
@@ -350,6 +357,7 @@ func newAPIRuntime(ctx context.Context) (*apiRuntime, error) {
 				TenantAuth:          tenantAuthService,
 				ConnectionResolver:  sshSessionService,
 				ServerEncryptionKey: serverEncryptionKey,
+				RuntimePrincipalKey: strings.TrimSpace(runtimePrincipalKey),
 			},
 			ServerEncryptionKey: serverEncryptionKey,
 			AIState:             modelgatewayapi.NewAIState(),

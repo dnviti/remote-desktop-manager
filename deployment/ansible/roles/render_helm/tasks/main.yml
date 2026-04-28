@@ -72,7 +72,8 @@
           'github_client_secret': vault_github_client_secret,
           'oidc_client_secret': vault_oidc_client_secret,
           'ldap_bind_password': vault_ldap_bind_password,
-          'ai_api_key': vault_ai_api_key
+          'ai_api_key': vault_ai_api_key,
+          'runtime_egress_principal_signing_key': vault_runtime_egress_principal_signing_key | default('')
         } | to_nice_json
       }}
   no_log: true

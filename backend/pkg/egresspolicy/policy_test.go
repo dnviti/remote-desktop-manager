@@ -73,6 +73,58 @@ func TestAuthorizeMismatchedPortDenies(t *testing.T) {
 	}
 }
 
+func TestAuthorizeFirstMatchingActionWins(t *testing.T) {
+	policy := mustPolicy(t, `{"rules":[
+		{"description":"block prod","action":"DISALLOW","protocols":["SSH"],"hosts":["target.internal"],"ports":[22]},
+		{"description":"allow prod","action":"ALLOW","protocols":["SSH"],"hosts":["target.internal"],"ports":[22]}
+	]}`)
+	decision := Authorize(context.Background(), policy, Request{Protocol: "SSH", Host: "target.internal", Port: 22}, testOptions())
+	if decision.Allowed {
+		t.Fatal("expected first disallow rule to block egress")
+	}
+	if decision.RuleIndex != 1 || decision.RuleAction != ActionDisallow || decision.Rule != "block prod" {
+		t.Fatalf("unexpected decision metadata %#v", decision)
+	}
+}
+
+func TestAuthorizeScopedRules(t *testing.T) {
+	policy := mustPolicy(t, `{"rules":[
+		{"description":"team database","action":"ALLOW","teamIds":["22222222-2222-4222-8222-222222222222"],"protocols":["DATABASE"],"cidrs":["10.10.0.0/16"],"ports":[5432]},
+		{"description":"user ssh","action":"ALLOW","userIds":["11111111-1111-4111-8111-111111111111"],"protocols":["SSH"],"hosts":["target.internal"],"ports":[22]}
+	]}`)
+
+	teamDecision := Authorize(context.Background(), policy, Request{
+		Protocol: "DATABASE",
+		Host:     "10.10.2.15",
+		Port:     5432,
+		UserID:   "33333333-3333-4333-8333-333333333333",
+		TeamIDs:  []string{"22222222-2222-4222-8222-222222222222"},
+	}, testOptions())
+	if !teamDecision.Allowed || teamDecision.RuleIndex != 1 {
+		t.Fatalf("expected team scoped allow, got %#v", teamDecision)
+	}
+
+	userDecision := Authorize(context.Background(), policy, Request{
+		Protocol: "SSH",
+		Host:     "target.internal",
+		Port:     22,
+		UserID:   "11111111-1111-4111-8111-111111111111",
+	}, testOptions())
+	if !userDecision.Allowed || userDecision.RuleIndex != 2 {
+		t.Fatalf("expected user scoped allow, got %#v", userDecision)
+	}
+
+	denied := Authorize(context.Background(), policy, Request{
+		Protocol: "SSH",
+		Host:     "target.internal",
+		Port:     22,
+		UserID:   "33333333-3333-4333-8333-333333333333",
+	}, testOptions())
+	if denied.Allowed || !denied.DefaultDeny {
+		t.Fatalf("expected unmatched scoped rule to default deny, got %#v", denied)
+	}
+}
+
 func TestAuthorizeForbiddenAddressDenies(t *testing.T) {
 	policy := mustPolicy(t, `{"rules":[{"protocols":["SSH"],"hosts":["target.internal"],"ports":[22]}]}`)
 	opts := testOptions()
@@ -89,6 +141,28 @@ func TestNormalizeRejectsInvalidPolicy(t *testing.T) {
 	}
 	if _, _, err := NormalizeRaw(json.RawMessage(`{"rules":[{"protocols":["SSH"],"cidrs":["bad"],"ports":[22]}]}`)); err == nil {
 		t.Fatal("expected CIDR rejection")
+	}
+}
+
+func TestNormalizeDisabledRuleCanBeIncomplete(t *testing.T) {
+	raw, policy, err := NormalizeRaw(json.RawMessage(`{"rules":[{"enabled":false,"hosts":["*"],"notes":"draft"}]}`))
+	if err != nil {
+		t.Fatalf("NormalizeRaw() error: %v", err)
+	}
+	if len(policy.Rules) != 1 || ruleEnabled(policy.Rules[0]) {
+		t.Fatalf("expected one disabled rule, got %#v", policy.Rules)
+	}
+	if string(raw) != `{"rules":[{"enabled":false,"hosts":["*"],"notes":"draft"}]}` {
+		t.Fatalf("unexpected normalized disabled rule %s", raw)
+	}
+}
+
+func TestRequiresPrincipalRawDetectsScopedEnabledRules(t *testing.T) {
+	if !RequiresPrincipalRaw(json.RawMessage(`{"rules":[{"userIds":["11111111-1111-4111-8111-111111111111"],"protocols":["SSH"],"hosts":["target.internal"],"ports":[22]}]}`)) {
+		t.Fatal("expected scoped enabled rule to require principal context")
+	}
+	if RequiresPrincipalRaw(json.RawMessage(`{"rules":[{"enabled":false,"userIds":["not-a-uuid"]}]}`)) {
+		t.Fatal("disabled draft rule should not require principal context")
 	}
 }
 

@@ -15,6 +15,7 @@
         generated_encryption_key: "{{ lookup('community.general.random_string', length=64, override_special='', override_all='0123456789abcdef') }}"
         generated_postgres_password: "{{ lookup('community.general.random_string', length=32, override_special='', override_all='abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789') }}"
         generated_guacenc_token: "{{ lookup('community.general.random_string', length=64, override_special='', override_all='0123456789abcdef') }}"
+        generated_runtime_egress_principal_signing_key: "{{ lookup('community.general.random_string', length=64, override_special='', override_all='0123456789abcdef') }}"
 
     - name: Write vault.yml with generated secrets
       copy:
@@ -31,6 +32,7 @@
           vault_server_encryption_key: "{{ generated_encryption_key }}"
           vault_postgres_password: "{{ generated_postgres_password }}"
           vault_guacenc_auth_token: "{{ generated_guacenc_token }}"
+          vault_runtime_egress_principal_signing_key: "{{ generated_runtime_egress_principal_signing_key }}"
 
           # Constructed from components
           vault_database_url: "postgresql://{% raw %}{{ arsenale_db_user }}{% endraw %}:{{ generated_postgres_password }}@postgres:5432/{% raw %}{{ arsenale_db_name }}{% endraw %}?sslmode=verify-full"

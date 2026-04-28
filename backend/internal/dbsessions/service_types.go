@@ -67,6 +67,7 @@ type Service struct {
 	TenantAuth          tenantauth.Service
 	ConnectionResolver  connectionaccess.Resolver
 	ServerEncryptionKey []byte
+	RuntimePrincipalKey string
 }
 
 type QueryHistoryEntry struct {

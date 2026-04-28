@@ -170,11 +170,11 @@ func (s Service) HandleUpload(w http.ResponseWriter, r *http.Request, claims aut
 		app.ErrorJSON(w, http.StatusConflict, "Shared drive is disabled for this connection")
 		return
 	}
-	maxUploadBytes = effectiveUploadLimit(policy.FileUploadMax, maxUploadBytes)
+	uploadLimits := s.managedUploadLimits(policy)
 
 	safeName := sanitizeUploadName(header.Filename)
-	if header.Size > maxUploadBytes {
-		app.ErrorJSON(w, http.StatusRequestEntityTooLarge, uploadTooLargeMessage(maxUploadBytes))
+	if err := uploadLimits.validatePayloadSize(header.Size); err != nil {
+		s.writeRequestError(w, err)
 		return
 	}
 	if err := s.ensureReady(r.Context()); err != nil {
@@ -193,24 +193,26 @@ func (s Service) HandleUpload(w http.ResponseWriter, r *http.Request, claims aut
 		return
 	}
 
-	data, err := io.ReadAll(io.LimitReader(src, maxUploadBytes+1))
+	data, err := io.ReadAll(io.LimitReader(src, uploadLimits.maxPayloadBytes+1))
 	if err != nil {
 		app.ErrorJSON(w, http.StatusBadRequest, "Invalid file upload")
 		return
 	}
-	if int64(len(data)) > maxUploadBytes {
-		app.ErrorJSON(w, http.StatusRequestEntityTooLarge, uploadTooLargeMessage(maxUploadBytes))
+	if err := uploadLimits.validatePayloadSize(int64(len(data))); err != nil {
+		s.writeRequestError(w, err)
 		return
 	}
 
-	currentUsage, err := s.currentStageUsage(r.Context(), workspacePrefix)
-	if err != nil {
-		app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
-		return
-	}
-	if quota := s.effectiveQuota(tenantFilePolicy{UserDriveQuota: policy.UserDriveQuota}); quota > 0 && currentUsage+int64(len(data)) > quota {
-		app.ErrorJSON(w, http.StatusRequestEntityTooLarge, quotaExceededMessage(currentUsage, quota))
-		return
+	if uploadLimits.enforcesQuota() {
+		currentUsage, err := s.currentStageUsage(r.Context(), workspacePrefix)
+		if err != nil {
+			app.ErrorJSON(w, http.StatusServiceUnavailable, err.Error())
+			return
+		}
+		if err := uploadLimits.validateQuota(currentUsage, int64(len(data))); err != nil {
+			s.writeRequestError(w, err)
+			return
+		}
 	}
 
 	transfer, err := s.uploadManagedRDPFile(
