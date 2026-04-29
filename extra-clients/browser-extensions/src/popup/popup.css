@@ -824,6 +824,13 @@
 }
 
 .secret-list-info {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
 /* ── Connection List ─── */
 
 .tab-panel-flush {
@@ -992,7 +999,7 @@
   gap: 1px;
 }
 
-.secret-list-name {
+.secret-list-name,
 .conn-item-name {
   font-size: 13px;
   font-weight: 500;
@@ -1002,7 +1009,7 @@
   white-space: nowrap;
 }
 
-.secret-list-meta {
+.secret-list-meta,
 .conn-item-host {
   font-size: 11px;
   color: var(--text-muted);
@@ -1129,6 +1136,8 @@
   background: rgba(0, 229, 160, 0.08);
   color: var(--accent-dim);
   border-radius: 20px;
+}
+
 .conn-fav-btn,
 .conn-info-btn {
   flex-shrink: 0;

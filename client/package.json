@@ -1,6 +1,6 @@
 {
   "name": "client",
-  "version": "1.7.1",
+  "version": "2.0.0",
   "description": "React 19 + Vite frontend for Arsenale",
   "license": "BUSL-1.1",
   "private": true,
@@ -63,7 +63,7 @@
     "@zxcvbn-ts/core": "3.0.4",
     "@zxcvbn-ts/language-common": "3.0.4",
     "@zxcvbn-ts/language-en": "3.0.2",
-    "axios": "1.15.0",
+    "axios": "1.15.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "2.1.1",
     "cmdk": "^1.1.1",
@@ -92,13 +92,13 @@
     "@types/node": "25.5.0",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
-    "@vitejs/plugin-react": "6.0.1",
+    "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.1",
     "eslint-plugin-react-hooks": "7.0.1",
     "eslint-plugin-react-refresh": "0.5.2",
     "jsdom": "29.0.1",
     "typescript": "5.9.3",
-    "vite": "^8.0.8",
+    "vite": "^7.3.2",
     "vite-plugin-pwa": "1.2.0",
     "vitest": "4.1.1"
   }

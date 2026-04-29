@@ -1,6 +1,6 @@
 {
   "name": "browser-extensions",
-  "version": "1.7.1",
+  "version": "2.0.0",
   "description": "Arsenale browser extension — Chrome Manifest V3 with multi-account management",
   "license": "BUSL-1.1",
   "private": true,
@@ -27,10 +27,10 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "@types/webextension-polyfill": "0.12.5",
-    "@vitejs/plugin-react": "6.0.1",
+    "@vitejs/plugin-react": "5.2.0",
     "@vitest/coverage-v8": "4.1.1",
     "typescript": "5.9.3",
-    "vite": "^8.0.8",
+    "vite": "^7.3.2",
     "vitest": "4.1.1"
   }
 }

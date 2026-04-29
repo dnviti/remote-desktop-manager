@@ -1,6 +1,6 @@
 {
   "name": "arsenale",
-  "version": "1.7.1",
+  "version": "2.0.0",
   "description": "Web-based remote desktop manager for SSH and RDP connections with encrypted vault, team sharing, and multi-tenant support",
   "author": "Daniele Viti <daniele@dnviti.dev>",
   "license": "BUSL-1.1",
@@ -57,10 +57,10 @@
     "verify": "npm run backend:generate && npm run go:test && npm run typecheck && npm run lint && npm run sast && npm run test -w client && npm run test -w browser-extensions && npm run build"
   },
   "overrides": {
-    "hono": "4.12.8",
-    "@hono/node-server": "1.19.11",
-    "axios": "1.15.0",
-    "basic-ftp": "5.2.2",
+    "hono": "4.12.15",
+    "@hono/node-server": "1.19.13",
+    "axios": "1.15.2",
+    "basic-ftp": "5.3.1",
     "lodash": "4.18.1",
     "follow-redirects": "1.16.0",
     "tar-fs": ">=2.1.4",
@@ -68,8 +68,9 @@
       "tar-fs": "1.16.6"
     },
     "tar-stream": ">=2.2.0",
-    "serialize-javascript": ">=7.0.3",
-    "dompurify": "$dompurify"
+    "serialize-javascript": ">=7.0.5",
+    "dompurify": "$dompurify",
+    "postcss": "8.5.12"
   },
   "devDependencies": {
     "@types/selenium-webdriver": "^4.35.5",
@@ -81,10 +82,10 @@
     "puppeteer": "^24.40.0",
     "selenium-webdriver": "^4.41.0",
     "typescript-eslint": "8.57.2",
-    "vite": "^8.0.8",
+    "vite": "^7.3.2",
     "wait-on": "9.0.4"
   },
   "dependencies": {
-    "dompurify": "3.3.3"
+    "dompurify": "3.4.1"
   }
 }
