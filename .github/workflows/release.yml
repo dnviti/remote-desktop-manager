@@ -117,6 +117,7 @@ jobs:
   # ── Create GitHub Release ──────────────────────────────────────
   release:
     name: Create GitHub Release
+    if: ${{ !contains(github.ref_name, '-staging') }}
     needs: [build-cli, checksums]
     runs-on: ubuntu-latest
     timeout-minutes: 5
