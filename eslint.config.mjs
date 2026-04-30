@@ -24,7 +24,7 @@ export default tseslint.config(
   // ── Base TypeScript rules (all workspaces) ────────────────────
   ...tseslint.configs.strict,
   {
-    files: ["client/src/**/*.{ts,tsx}", "gateways/tunnel-agent/src/**/*.ts", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
+    files: ["client/src/**/*.{ts,tsx}", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
     languageOptions: {
       parserOptions: {
         projectService: true,
@@ -43,7 +43,7 @@ export default tseslint.config(
 
   // ── Security rules (all workspaces) ───────────────────────────
   {
-    files: ["client/src/**/*.{ts,tsx}", "gateways/tunnel-agent/src/**/*.ts", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
+    files: ["client/src/**/*.{ts,tsx}", "extra-clients/browser-extensions/src/**/*.{ts,tsx}"],
     plugins: { security },
     rules: {
       ...security.configs.recommended.rules,

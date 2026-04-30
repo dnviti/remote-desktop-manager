@@ -87,6 +87,21 @@ func TestParseFrameInvalidType(t *testing.T) {
 	}
 }
 
+func TestParseFrameAnyAllowsUnknownTypes(t *testing.T) {
+	buf := BuildFrame(MsgPing, 99, []byte("payload"))
+	buf[0] = 255
+	frame, remaining, err := ParseFrameAny(buf)
+	if err != nil {
+		t.Fatalf("ParseFrameAny returned error: %v", err)
+	}
+	if remaining != nil {
+		t.Fatalf("remaining = %d bytes, want nil", len(remaining))
+	}
+	if frame.Type != 255 || frame.StreamID != 99 || string(frame.Payload) != "payload" {
+		t.Fatalf("unexpected frame: %#v", frame)
+	}
+}
+
 func TestBuildFrameHeaderLayout(t *testing.T) {
 	// Verify exact byte layout: [type, flags=0, streamID-hi, streamID-lo, payload...]
 	frame := BuildFrame(MsgData, 0x0102, []byte{0xAB})

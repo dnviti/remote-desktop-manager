@@ -40,7 +40,7 @@ The tunnel agent runs alongside the gateway service (guacd or sshd) either as an
 ## Prerequisites
 
 - **Arsenale server** reachable over HTTPS (or HTTP for development) from the remote host.
-- **Docker** on the remote host (recommended), or **Node.js 22+** for bare-metal deployments.
+- **Docker** on the remote host (recommended), or a built **tunnel-agent** binary for bare-metal deployments.
 - An **administrator account** on the Arsenale instance to create gateways and generate tunnel tokens.
 
 ## Quick Start
@@ -114,7 +114,7 @@ Both actions require confirmation and take effect immediately.
 
 ## Deploying the Tunnel Agent
 
-The tunnel agent is a lightweight Node.js process. It can run in three deployment modes.
+The tunnel agent is a lightweight Go binary. It can run in three deployment modes.
 
 ### Docker Compose
 
@@ -136,9 +136,8 @@ For hosts where Docker is not available:
 1. Install the tunnel agent binary or build from source:
 
    ```bash
-   cd tunnel-agent
-   npm install
-   npm run build
+   cd /path/to/arsenale
+   go build -o /usr/local/bin/tunnel-agent ./gateways/tunnel-agent
    ```
 
 2. Generate the tunnel bundle into the runtime directory:
@@ -163,7 +162,7 @@ For hosts where Docker is not available:
    RestartSec=5
    WorkingDirectory=/opt/arsenale-tunnel-agent
    EnvironmentFile=/opt/arsenale-tunnel-agent/tunnel.env
-   ExecStart=/usr/local/bin/node /opt/arsenale-tunnel-agent/dist/index.js
+   ExecStart=/usr/local/bin/tunnel-agent
 
    [Install]
    WantedBy=multi-user.target
@@ -402,7 +401,7 @@ All tunnel agent configuration is read from environment variables. If none of th
 | `TUNNEL_CA_CERT_FILE` | Path to a PEM-encoded CA certificate when not using `TUNNEL_CA_CERT` inline | _(system default)_ |
 | `TUNNEL_CLIENT_CERT` | Inline PEM client certificate when not using `TUNNEL_CLIENT_CERT_FILE` | _(none)_ |
 | `TUNNEL_CLIENT_KEY` | Inline PEM client private key when not using `TUNNEL_CLIENT_KEY_FILE` | _(none)_ |
-| `TUNNEL_AGENT_VERSION` | Version string reported to the server in the `X-Agent-Version` header | _(read from package.json)_ |
+| `TUNNEL_AGENT_VERSION` | Version string reported to the server in the `X-Agent-Version` header | _(compiled binary version)_ |
 | `TUNNEL_PING_INTERVAL_MS` | Interval between WebSocket ping frames (milliseconds) | `15000` (15 seconds) |
 | `TUNNEL_RECONNECT_INITIAL_MS` | Initial backoff delay before reconnecting after a disconnect | `1000` (1 second) |
 | `TUNNEL_RECONNECT_MAX_MS` | Maximum backoff delay cap for reconnection attempts | `60000` (60 seconds) |

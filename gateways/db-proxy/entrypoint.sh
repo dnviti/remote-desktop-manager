@@ -26,7 +26,7 @@ db_proxy_pid=$!
 
 if [ -n "$TUNNEL_SERVER_URL" ] && [ -n "$TUNNEL_TOKEN" ]; then
   echo "[db-proxy] Starting tunnel agent..."
-  node /opt/tunnel-agent/dist/index.js &
+  /usr/local/bin/tunnel-agent &
   tunnel_pid=$!
 fi
 

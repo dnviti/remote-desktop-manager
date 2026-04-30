@@ -7,7 +7,7 @@ on:
         description: 'Workspace to verify'
         required: true
         type: choice
-        options: [client, gateways/tunnel-agent, extra-clients/browser-extensions]
+        options: [client, extra-clients/browser-extensions]
   workflow_call:
     inputs:
       workspace:

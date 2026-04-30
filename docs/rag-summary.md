@@ -158,7 +158,7 @@ Gateway templates provide reusable configurations for quick deployment of new ga
 
 The TunnelBroker enables zero-trust environments where gateway agents cannot expose inbound ports (similar to Cloudflare Tunnel, but self-hosted). Gateway agents establish outbound-only WSS connections to the Arsenale server at `/api/tunnel/connect`, and the server proxies TCP streams back through those connections.
 
-The tunnel system uses a binary multiplexing protocol with 4-byte frames (type, flags, streamId uint16) and message types OPEN/DATA/CLOSE/PING/PONG. The `openStream(gatewayId, host, port)` API returns a `net.Duplex`-compatible stream for transparent integration with SSH2 and guacamole-lite.
+The tunnel system uses a binary multiplexing protocol with 4-byte frames (type, flags, streamId uint16) and message types OPEN/DATA/CLOSE/PING/PONG. The Go broker's `openStream(gatewayID, host, port, timeout)` API returns an `io.ReadWriteCloser`-style stream for transparent TCP proxying.
 
 Authentication uses a 256-bit token (stored encrypted with AES-256-GCM + SHA-256 hash for constant-time comparison) plus a gateway client certificate with a SPIFFE URI SAN. Each gateway has a unique token bound to its ID. Token generation/revocation is available via `POST /gateways/:id/tunnel-token` and `DELETE /gateways/:id/tunnel-token` (OPERATOR role required). The token response returns the one-time deployment bundle: token, gateway identity, local proxy host/port, client certificate, client key, and certificate expiry.
 
@@ -180,13 +180,13 @@ Additional tunnel UI panels (all collapsible, persisted via `uiPreferencesStore`
 
 ## Tunnel Agent (`gateways/tunnel-agent/`)
 
-The `tunnel-agent` is a lightweight Node.js workspace (`gateways/tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway and custom guacd). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
+The `tunnel-agent` is a lightweight Go module (`gateways/tunnel-agent/`) that is embedded into every managed gateway container image (ssh-gateway, guacd, and db-proxy). It is dormant by default — if `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, and `TUNNEL_GATEWAY_ID` are absent, the process exits cleanly and the gateway starts normally.
 
 When tunnel env vars are present, the agent auto-activates and establishes an outbound WSS connection to the TunnelBroker using the same binary multiplexing protocol (OPEN/DATA/CLOSE/PING/PONG, 4-byte header). On receiving an OPEN frame with a `host:port` payload, it opens a local TCP connection and bridges data bidirectionally through DATA frames. The agent sends 15-second PING heartbeats with JSON health metadata (`{ healthy, latencyMs, activeStreams }`) obtained by probing the local service.
 
 Auto-reconnect uses exponential backoff (1 s → 2 s → … → 60 s). Gateway authentication uses the bearer token plus client certificate material supplied through `TUNNEL_CLIENT_CERT_FILE`/`TUNNEL_CLIENT_KEY_FILE` or the inline PEM equivalents; `TUNNEL_CA_CERT` or `TUNNEL_CA_CERT_FILE` can pin a private server CA. Tunnel runtimes accept an Arsenale HTTP(S) base URL, a bare host, or an explicit WebSocket broker URL and normalize base URLs to `/api/tunnel/connect`.
 
-A standalone `gateways/tunnel-agent/Dockerfile` is provided for deploying the agent alongside non-managed (external) gateways. For managed gateways, the `gateways/ssh-gateway/Dockerfile` and `gateways/guacd/Dockerfile` both embed the agent via a multi-stage build (monorepo root context required) and launch it from their entrypoints as a background process.
+A standalone `gateways/tunnel-agent/Dockerfile` is provided for deploying the agent alongside non-managed (external) gateways. For managed gateways, the `gateways/ssh-gateway/Dockerfile`, `gateways/guacd/Dockerfile`, and `gateways/db-proxy/Dockerfile` embed the same Go binary via multi-stage builds (monorepo root context required) and launch it from their entrypoints as a background process.
 
 When `tunnelEnabled=true` on a managed gateway, `managedGateway.service.ts` automatically injects `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, `TUNNEL_GATEWAY_ID`, and `TUNNEL_LOCAL_PORT` into the container environment, and suppresses host-port publishing (`publishPorts=false` behavior) so traffic flows exclusively through the tunnel.
 
@@ -271,4 +271,4 @@ In multi-instance deployments, the shared Redis coordination layer lets the API 
 
 ## Technology
 
-Arsenale is built on a Go-first service stack backed by PostgreSQL and Redis, with a React client using Zustand plus a hybrid Material UI and shadcn/ui plus Tailwind CSS layer. The active JavaScript workspaces are `client/`, `gateways/tunnel-agent/`, and `extra-clients/browser-extensions/`; the old `server/` implementation is no longer present. Remote desktop rendering uses guacd and guacamole-common-js, SSH terminals use XTerm.js with the Go terminal broker, and the zero-trust tunnel system uses raw WebSockets with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. ABAC enforcement now lives in the Go access-policy services and is evaluated on the active Go session path.
+Arsenale is built on a Go-first service stack backed by PostgreSQL and Redis, with a React client using Zustand plus a hybrid Material UI and shadcn/ui plus Tailwind CSS layer. The active JavaScript workspaces are `client/` and `extra-clients/browser-extensions/`; the old `server/` implementation is no longer present. Remote desktop rendering uses guacd and guacamole-common-js, SSH terminals use XTerm.js with the Go terminal broker, and the zero-trust tunnel system uses raw WebSockets with a custom binary multiplexing protocol for proxying TCP streams through outbound-only gateway agent connections. ABAC enforcement now lives in the Go access-policy services and is evaluated on the active Go session path.

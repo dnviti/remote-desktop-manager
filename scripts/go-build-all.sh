@@ -37,6 +37,7 @@ for cmd_dir in "$REPO_ROOT"/backend/cmd/*; do
 done
 
 run_module "gateway-core build" "gateways/gateway-core" go build ./...
+build_binary "tunnel-agent build" "gateways/tunnel-agent" "tunnel-agent" "."
 run_module "db-proxy package build" "gateways/db-proxy" env GOWORK=off go build ./...
 build_binary "guacenc build" "gateways/guacenc" "guacenc" "."
 build_binary "rdgw build" "gateways/rdgw" "rdgw" "."

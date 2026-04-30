@@ -84,7 +84,7 @@ jobs:
             trivy-category: trivy-rdgw
           - name: tunnel-agent
             dockerfile: ./gateways/tunnel-agent/Dockerfile
-            context: ./gateways/tunnel-agent
+            context: .
             trivy-category: trivy-tunnel-agent
 
     concurrency:

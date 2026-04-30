@@ -34,7 +34,7 @@ For detailed Ansible deployment documentation (all modes, backends, roles, capab
 
 | Requirement | Recommended Version | Why it is needed |
 |-------------|---------------------|------------------|
-| Node.js | `22.x` | Root workspaces, frontend build, tunnel-agent workspace |
+| Node.js | `22.x` | Root workspaces, frontend build, browser extension build |
 | npm | `10.x` or newer | Workspace install and scripts |
 | Go | `1.25.x` | Local backend and CLI builds when not using container-only flow |
 | Podman | Recent | Required for installer-aware development deploys |

@@ -1,6 +1,10 @@
 package auth
 
-import "testing"
+import (
+	"net/url"
+	"strings"
+	"testing"
+)
 
 func TestBuildAuthHeaders(t *testing.T) {
 	tests := []struct {
@@ -63,5 +67,24 @@ func TestBuildAuthHeadersBearerPrefix(t *testing.T) {
 	auth := h.Get("Authorization")
 	if len(auth) < 7 || auth[:7] != "Bearer " {
 		t.Errorf("Authorization header should start with 'Bearer ', got %q", auth)
+	}
+}
+
+func TestBuildAuthHeadersWithClientCert(t *testing.T) {
+	cert := "-----BEGIN CERTIFICATE-----\nclient+cert==\n-----END CERTIFICATE-----"
+	h := BuildAuthHeadersWithClientCert("tok", "gw", "v1", cert)
+	encoded := h.Get("X-Client-Cert")
+	if encoded == "" {
+		t.Fatal("expected X-Client-Cert header")
+	}
+	decoded, err := url.QueryUnescape(encoded)
+	if err != nil {
+		t.Fatalf("decode X-Client-Cert: %v", err)
+	}
+	if decoded != cert {
+		t.Fatalf("decoded cert = %q, want %q", decoded, cert)
+	}
+	if strings.Contains(encoded, "+") {
+		t.Fatalf("expected encodeURIComponent-style spaces, got %q", encoded)
 	}
 }

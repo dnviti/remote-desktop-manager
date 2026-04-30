@@ -2,7 +2,7 @@ name: "Arsenale CodeQL Config"
 
 # These exclusions document known false positives in the JavaScript/TypeScript
 # workspaces. The live application edge now runs in Go; JS/TS scanning covers
-# the client, tunnel agent, browser extension, and archived reference code.
+# the client, browser extension, and archived reference code.
 query-filters:
   - exclude:
       id: js/missing-token-validation

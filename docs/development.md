@@ -33,7 +33,7 @@ Arsenale is a mixed Go and JavaScript monorepo.
 |------|------|-------|
 | Control and runtime services | `backend/` | Go 1.25 |
 | Web client | `client/` | React 19, Vite 8, Vitest, Tailwind CSS 4, shadcn/ui, MUI 7 |
-| Tunnel agent | `gateways/tunnel-agent/` | TypeScript workspace |
+| Tunnel agent | `gateways/tunnel-agent/` | Go module |
 | Browser extension | `extra-clients/browser-extensions/` | Chrome MV3 workspace |
 | CLI | `tools/arsenale-cli/` | Go |
 | Installer and deploy | `deployment/ansible/`, `deployment/helm/` | Ansible, Helm, Python helpers |

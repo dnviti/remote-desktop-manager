@@ -17,7 +17,7 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:
-      test: ["CMD", "node", "-e", "process.exit(0)"]
+      test: ["CMD", "/usr/local/bin/tunnel-agent", "--healthcheck"]
       interval: 10s
       timeout: 5s
       retries: 3

@@ -176,7 +176,7 @@ arsenale/
 │
 ├── gateways/                      # Gateway containers and tunnel agent
 │   ├── ssh-gateway/              # Optional SSH gateway container
-│   ├── tunnel-agent/             # Zero-trust tunnel agent (workspace)
+│   ├── tunnel-agent/             # Zero-trust tunnel agent (Go module)
 │   ├── guacd/                    # Custom guacd with embedded tunnel agent
 │   └── guacenc/                  # Recording-to-video conversion sidecar
 ├── Makefile                       # Ansible deployment UX (make dev/deploy/etc.)

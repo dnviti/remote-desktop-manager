@@ -77,10 +77,10 @@ else
 fi
 
 # Start zero-trust tunnel agent if configured (auto-activating, dormant if env vars absent)
-if [ -f /opt/tunnel-agent/dist/index.js ]; then
+if [ -x /usr/local/bin/tunnel-agent ]; then
   if [ -n "$TUNNEL_SERVER_URL" ] && [ -n "$TUNNEL_TOKEN" ] && [ -n "$TUNNEL_GATEWAY_ID" ]; then
     echo "Starting tunnel agent..."
-    node /opt/tunnel-agent/dist/index.js &
+    /usr/local/bin/tunnel-agent &
   else
     echo "Tunnel agent not configured at startup; skipping"
   fi

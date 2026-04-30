@@ -6,5 +6,6 @@ use (
 	./gateways/guacenc
 	./gateways/rdgw
 	./gateways/ssh-gateway/grpc-server
+	./gateways/tunnel-agent
 	./tools/arsenale-cli
 )

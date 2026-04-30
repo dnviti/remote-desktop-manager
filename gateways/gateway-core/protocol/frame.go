@@ -39,15 +39,25 @@ func BuildFrame(msgType byte, streamID uint16, payload []byte) []byte {
 // frame). The remaining return value is kept for forward compatibility but will
 // be nil on successful parses.
 func ParseFrame(buf []byte) (*Frame, []byte, error) {
+	f, remaining, err := ParseFrameAny(buf)
+	if err != nil {
+		return nil, remaining, err
+	}
+	if f.Type < MsgOpen || f.Type > MsgSessionResume {
+		return nil, buf, fmt.Errorf("%w: %d", ErrInvalidMsgType, f.Type)
+	}
+	return f, remaining, nil
+}
+
+// ParseFrameAny decodes a binary frame without validating the message type.
+// Agents use this to log and ignore unknown peer-sent frame types while still
+// enforcing framing and payload-size limits.
+func ParseFrameAny(buf []byte) (*Frame, []byte, error) {
 	if len(buf) < HeaderSize {
 		return nil, buf, ErrFrameTooShort
 	}
 
 	msgType := buf[0]
-	if msgType < MsgOpen || msgType > MsgSessionResume {
-		return nil, buf, fmt.Errorf("%w: %d", ErrInvalidMsgType, msgType)
-	}
-
 	f := &Frame{
 		Type:     msgType,
 		Flags:    buf[1],

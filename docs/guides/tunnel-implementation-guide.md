@@ -2,7 +2,7 @@
 
 > Auto-generated on 2026-03-15 by `/docs create guides`.
 
-> Runtime note: the public tunnel path now terminates in the Go control plane and tunnel broker. `server/src` references below are historical implementation notes retained for protocol context.
+> Runtime note: the public tunnel path now terminates in the Go control plane, Go tunnel broker, and Go tunnel agent. Any remaining `server/src` references are historical implementation notes retained for protocol context.
 
 This guide is for backend/fullstack developers who need to understand, extend, or debug the zero-trust tunnel and Attribute-Based Access Control (ABAC) systems in Arsenale. It covers the binary frame protocol, server-side broker, agent-side forwarder, session integration for SSH/RDP/VNC, the ABAC policy evaluation engine, health monitoring, certificate rotation, and security hardening.
 
@@ -41,18 +41,18 @@ The tunnel system connects remote gateway agents to the Arsenale server over a s
 ### Data Flow for a Tunneled Session
 
 1. **Agent connects** -- The `TunnelAgent` on the remote network opens a WSS connection to `/api/tunnel/connect` with a `Bearer` token, `X-Gateway-Id`, and client certificate header.
-2. **Server authenticates** -- `tunnel.handler.ts` extracts headers, calls `authenticateTunnelRequest()`, completes the WebSocket upgrade, and calls `registerTunnel()`.
-3. **Session request** -- A user opens an SSH/RDP/VNC session. The session controller (or SSH socket handler) detects `gateway.tunnelEnabled` and calls `openStream()` (SSH) or `createTcpProxy()` (RDP/VNC).
+2. **Server authenticates** -- `backend/internal/tunnelbroker` extracts headers, authenticates the tunnel request, completes the WebSocket upgrade, and registers the connection.
+3. **Session request** -- A user opens an SSH/RDP/VNC session. The session path detects `gateway.tunnelEnabled` and calls `openStream()` or `createTCPProxy()`.
 4. **OPEN frame** -- The broker sends an OPEN frame with `host:port` payload through the WebSocket.
-5. **Agent forwards** -- The agent's `handleOpenFrame()` opens a local TCP connection to `localhost:port`, then sends back an OPEN ack.
-6. **Bidirectional data** -- DATA frames flow in both directions, tagged with the `streamId`. The broker wraps data into a `Duplex` stream that SSH2/guacamole consume transparently.
+5. **Agent forwards** -- The agent's `Forwarder.HandleOpen()` opens a local TCP connection to `localhost:port`, then sends back an OPEN ack.
+6. **Bidirectional data** -- DATA frames flow in both directions, tagged with the `streamId`. The broker wraps data into a Go stream that proxy code can pipe transparently.
 7. **Teardown** -- Either side sends a CLOSE frame to end the stream. When the WebSocket itself drops, all streams are destroyed.
 
 ---
 
 ## Binary Frame Protocol
 
-The wire protocol is identical on both server (`server/src/services/tunnel.service.ts`) and agent (`gateways/tunnel-agent/src/protocol.ts`). Every WebSocket message is a binary frame with the following layout:
+The wire protocol is shared by the Go broker (`backend/internal/tunnelbroker`) and Go agent (`gateways/tunnel-agent/`) through `gateways/gateway-core/protocol`. Every WebSocket message is a binary frame with the following layout:
 
 ### Header Format
 
@@ -80,35 +80,32 @@ Total header size: **4 bytes** (constant `HEADER_SIZE`).
 | `HEARTBEAT`  | 6     | Agent -> Broker  | Optional JSON health metadata                 |
 | `CERT_RENEW` | 7     | Broker -> Agent  | JSON `{ clientCert: "<PEM>" }`                |
 
-Defined in both `tunnel.service.ts` and `gateways/tunnel-agent/src/protocol.ts`:
+Defined in `gateways/gateway-core/protocol/types.go`:
 
-```typescript
-// server/src/services/tunnel.service.ts (lines 32-40)
-export const MsgType = {
-  OPEN:      1,
-  DATA:      2,
-  CLOSE:     3,
-  PING:      4,
-  PONG:      5,
-  HEARTBEAT: 6,
-  CERT_RENEW: 7,
-} as const;
+```go
+const (
+	MsgOpen      byte = 1
+	MsgData      byte = 2
+	MsgClose     byte = 3
+	MsgPing      byte = 4
+	MsgPong      byte = 5
+	MsgHeartbeat byte = 6
+	MsgCertRenew byte = 7
+)
 ```
 
 ### Frame Construction
 
 Both sides use an identical `buildFrame` function:
 
-```typescript
-// gateways/tunnel-agent/src/protocol.ts (lines 27-35)
-export function buildFrame(type: MsgTypeValue, streamId: number, payload?: Buffer): Buffer {
-  const body = payload ?? Buffer.alloc(0);
-  const frame = Buffer.allocUnsafe(HEADER_SIZE + body.length);
-  frame[0] = type;
-  frame[1] = 0; // flags
-  frame.writeUInt16BE(streamId, 2);
-  body.copy(frame, HEADER_SIZE);
-  return frame;
+```go
+func BuildFrame(msgType byte, streamID uint16, payload []byte) []byte {
+	frame := make([]byte, HeaderSize+len(payload))
+	frame[0] = msgType
+	frame[1] = 0
+	binary.BigEndian.PutUint16(frame[2:4], streamID)
+	copy(frame[HeaderSize:], payload)
+	return frame
 }
 ```
 
@@ -140,35 +137,28 @@ Frames shorter than `HEADER_SIZE` (4 bytes) are silently dropped with a warning 
 
 ## Server-Side: TunnelBroker
 
-**File:** `server/src/services/tunnel.service.ts`
+**File:** `backend/internal/tunnelbroker/`
 
 The TunnelBroker is a singleton module that manages all tunnel connections via a global in-memory registry.
 
 ### Connection Registry
 
-```typescript
-// tunnel.service.ts (line 96)
-const registry = new Map<string, TunnelConnection>();
+```go
+type Broker struct {
+	registry map[string]*tunnelConnection
+}
 ```
 
 Each entry is a `TunnelConnection`:
 
-```typescript
-// tunnel.service.ts (lines 68-89)
-export interface TunnelConnection {
-  gatewayId: string;
-  ws: WebSocket;
-  connectedAt: Date;
-  clientVersion?: string;
-  clientIp?: string;
-  streams: Map<number, Duplex>;         // active multiplexed streams
-  pendingOpens: Map<number, PendingOpen>; // awaiting OPEN ack
-  nextStreamId: number;
-  lastHeartbeat?: Date;
-  pingPongLatency?: number;              // RTT from last PING/PONG exchange
-  lastPingSentAt?: number;
-  bytesTransferred: number;
-  heartbeatMetadata?: HeartbeatMetadata;
+```go
+type tunnelConnection struct {
+	gatewayID     string
+	ws            *websocket.Conn
+	streams       map[uint16]*streamConn
+	pendingOpens  map[uint16]*pendingOpen
+	nextStreamID  uint16
+	lastHeartbeat time.Time
 }
 ```
 
@@ -225,18 +215,12 @@ Attached immediately after registration (`tunnel.service.ts`, line 174). Handles
 - **Dispatch** -- routes to `handleOpenAck`, `handleData`, `handleClose`, `handlePing`, `handlePong`, or `handleHeartbeat`.
 - **WebSocket lifecycle** -- `close` and `error` events trigger `deregisterTunnel()`.
 
-### Stream Multiplexing (`openStream` -> `Duplex`)
+### Stream Multiplexing (`openStream` -> `streamConn`)
 
-`openStream()` is the primary API used by session code. It returns a standard Node.js `Duplex` stream:
+`openStream()` is the primary broker API used by session code. It returns a Go `streamConn` backed by `io.Pipe`:
 
-```typescript
-// tunnel.service.ts (lines 250-293)
-export function openStream(
-  gatewayId: string,
-  host: string,
-  port: number,
-  timeoutMs = 10_000,
-): Promise<Duplex>
+```go
+func (b *Broker) openStream(gatewayID, host string, port int, timeout time.Duration) (*streamConn, error)
 ```
 
 **How it works:**
@@ -244,24 +228,16 @@ export function openStream(
 1. Allocates a unique `streamId` (wraparound with collision detection).
 2. Sends an OPEN frame with `"host:port"` as the UTF-8 payload.
 3. Waits for the agent to respond with an OPEN ack frame (same `streamId`).
-4. Creates a `Duplex` stream where:
-   - **Readable side** -- push-driven by `handleData()` when DATA frames arrive.
-   - **Writable side** -- wraps each `write()` in a DATA frame and sends it over the WebSocket.
-   - **Destroy** -- sends a CLOSE frame and removes from the registry.
+4. Creates a `streamConn` where reads are push-driven by incoming DATA frames, writes send DATA frames to the agent, and close sends a CLOSE frame before removing the stream from the registry.
 
-The returned `Duplex` is API-compatible with `net.Socket`, so SSH2's `sock` option and guacamole's pipe-based I/O work transparently.
+The returned `streamConn` implements `io.ReadWriteCloser`, so broker code can pipe local sockets and tunnel streams bidirectionally.
 
-### TCP Proxy (`createTcpProxy`)
+### TCP Proxy (`createTCPProxy`)
 
-For RDP and VNC, guacamole-lite needs a `host:port` to connect to. Since `openStream()` returns a `Duplex` (not a TCP address), `createTcpProxy()` bridges the gap:
+For RDP and VNC, guacd needs a `host:port` to connect to. Since `openStream()` returns a stream (not a TCP address), `createTCPProxy()` bridges the gap:
 
-```typescript
-// tunnel.service.ts (lines 638-680)
-export function createTcpProxy(
-  gatewayId: string,
-  targetHost: string,
-  targetPort: number,
-): Promise<{ server: net.Server; localPort: number }>
+```go
+func (b *Broker) createTCPProxy(req contracts.TunnelProxyRequest) (contracts.TunnelProxyResponse, error)
 ```
 
 It creates a one-shot `net.Server` on `127.0.0.1:0` (ephemeral port). When the single guacd connection arrives, it:
@@ -303,15 +279,16 @@ DB writes are best-effort (`.catch(() => {})`) to avoid blocking the frame handl
 ## Agent-Side: TunnelAgent
 
 **Files:**
-- `gateways/tunnel-agent/src/tunnel.ts` -- main `TunnelAgent` class
-- `gateways/tunnel-agent/src/tcpForwarder.ts` -- local TCP connection management
-- `gateways/tunnel-agent/src/protocol.ts` -- binary frame encoding/decoding
-- `gateways/tunnel-agent/src/config.ts` -- environment-based configuration
-- `gateways/tunnel-agent/src/auth.ts` -- WebSocket auth headers and mTLS options
+- `gateways/tunnel-agent/main.go` -- entrypoint, healthcheck flag, signal handling
+- `gateways/tunnel-agent/agent.go` -- WebSocket lifecycle, heartbeat, frame dispatch, cert renewal
+- `gateways/tunnel-agent/forwarder.go` -- local TCP connection management
+- `gateways/tunnel-agent/config.go` -- environment-based configuration
+- `gateways/gateway-core/protocol/` -- binary frame encoding/decoding
+- `gateways/gateway-core/auth/` -- WebSocket auth headers and TLS helpers
 
 ### Configuration & Dormant Mode
 
-Configuration is entirely environment-driven (`gateways/tunnel-agent/src/config.ts`):
+Configuration is entirely environment-driven (`gateways/tunnel-agent/config.go`):
 
 | Variable                     | Required | Default     | Description                              |
 |------------------------------|----------|-------------|------------------------------------------|
@@ -330,20 +307,20 @@ Configuration is entirely environment-driven (`gateways/tunnel-agent/src/config.
 | `TUNNEL_RECONNECT_INITIAL_MS`| No      | `1000`      | Initial reconnect backoff                |
 | `TUNNEL_RECONNECT_MAX_MS`   | No       | `60000`     | Maximum reconnect backoff                |
 
-`loadConfig()` validates the four core runtime variables. `TUNNEL_SERVER_URL` accepts an Arsenale HTTP(S) base URL, a host without a scheme, or an explicit WebSocket broker URL. HTTP(S) values are normalized to WS(S) and get `/api/tunnel/connect` appended; explicit `ws://` and `wss://` URLs keep their provided path.
+`LoadConfigFromEnv()` validates the four core runtime variables. `TUNNEL_SERVER_URL` accepts an Arsenale HTTP(S) base URL, a host without a scheme, or an explicit WebSocket broker URL. HTTP(S) values are normalized to WS(S) and get `/api/tunnel/connect` appended; explicit `ws://` and `wss://` URLs keep their provided path.
 
 The broker authentication path additionally requires client certificate material, either via the `_FILE` variables used by compose installs or the inline PEM variables used by managed runtime injection. Inline PEM values take precedence over matching `_FILE` values.
 
-**Dormant mode:** If none of `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, or `TUNNEL_GATEWAY_ID` are set, `loadConfig()` returns `null` and the agent exits cleanly. This allows the same Docker image to be deployed with or without tunnel functionality. However, if some but not all required vars are set, the agent exits with an error code -- partial configuration is treated as a misconfiguration.
+**Dormant mode:** If none of `TUNNEL_SERVER_URL`, `TUNNEL_TOKEN`, or `TUNNEL_GATEWAY_ID` are set, `LoadConfigFromEnv()` reports dormant mode and the agent exits cleanly. This allows the same Docker image to be deployed with or without tunnel functionality. However, if some but not all required vars are set, the agent exits with an error code -- partial configuration is treated as a misconfiguration.
 
 ### Connection Lifecycle & Reconnection
 
-The `TunnelAgent` class (`gateways/tunnel-agent/src/tunnel.ts`) manages a single WebSocket connection with automatic reconnection:
+The Go `Agent` (`gateways/tunnel-agent/agent.go`) manages a single WebSocket connection with automatic reconnection:
 
 ```
-start() -> connect() -> [open] -> startPing()
-                     -> [close] -> destroyAllSockets() -> scheduleReconnect() -> connect()
-                     -> [error] -> (close fires next) -> ...
+Run() -> connect() -> runConnection() -> pingLoop()
+                  -> [read error / close] -> DestroyAll() -> waitReconnect() -> connect()
+                  -> [context cancel] -> close websocket -> DestroyAll()
 ```
 
 Reconnection uses **exponential backoff**:
@@ -352,43 +329,44 @@ Reconnection uses **exponential backoff**:
 - Capped at `reconnectMaxMs` (default 60s)
 - Reset to initial on successful connection
 
-Graceful shutdown: `SIGTERM` and `SIGINT` set `stopped = true`, close the WebSocket with code 1001, destroy all active sockets, and exit after a 500ms flush delay.
+Graceful shutdown: `SIGTERM` and `SIGINT` cancel the agent context, close the WebSocket with code 1001, destroy all active sockets, and return from `Run()`.
 
-### TCP Forwarder (`handleOpenFrame` -> local TCP)
+### TCP Forwarder (`Forwarder.HandleOpen` -> local TCP)
 
-When the broker sends an OPEN frame, the agent's `handleOpenFrame()` (`gateways/tunnel-agent/src/tcpForwarder.ts`):
+When the broker sends an OPEN frame, `Forwarder.HandleOpen()` (`gateways/tunnel-agent/forwarder.go`):
 
 1. Parses `"host:port"` from the payload.
 2. Validates the port is 1-65535.
 3. **Checks the host against an allowlist** (see SSRF prevention below).
-4. Opens a `net.connect()` to the local service.
-5. On `connect` event: stores the socket, sends OPEN ack back to broker.
-6. On `data` event: wraps in DATA frame and sends to broker.
-7. On `close`/`error`: cleans up and sends CLOSE frame.
+4. Opens a TCP connection to the local service.
+5. Stores the socket and sends an OPEN ack back to broker.
+6. Copies local bytes into DATA frames back to broker.
+7. On EOF/error: cleans up and sends a CLOSE frame.
 
-Active sockets are tracked in a module-level `Map<number, net.Socket>`:
+Active sockets are tracked in a mutex-protected `map[uint16]net.Conn`.
 
-```typescript
-// tcpForwarder.ts (line 21)
-const activeSockets = new Map<number, net.Socket>();
+```go
+type Forwarder struct {
+	mu      sync.Mutex
+	sockets map[uint16]net.Conn
+}
 ```
 
 ### Health Probing (`probeLocalService`)
 
 Every `pingIntervalMs` (default 15s), the agent probes the local service by attempting a TCP connection:
 
-```typescript
-// tunnel.ts (lines 224-252)
-private probeLocalService(): Promise<HealthStatus> {
-  return new Promise<HealthStatus>((resolve) => {
-    const socket = net.connect(
-      this.cfg.localServicePort,
-      this.cfg.localServiceHost,
-    );
-    socket.once('connect', () => done(true));
-    socket.once('error', () => done(false));
-    const timer = setTimeout(() => done(false), 2_000);  // 2s timeout
-  });
+```go
+func (a *Agent) probeLocalService() healthStatus {
+	start := time.Now()
+	addr := net.JoinHostPort(a.cfg.LocalServiceHost, fmt.Sprintf("%d", a.cfg.LocalServicePort))
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return healthStatus{Healthy: false, LatencyMs: latency, ActiveStreams: a.forwarder.ActiveStreamCount()}
+	}
+	_ = conn.Close()
+	return healthStatus{Healthy: true, LatencyMs: latency, ActiveStreams: a.forwarder.ActiveStreamCount()}
 }
 ```
 
@@ -402,13 +380,9 @@ The result is encoded as JSON in the PING frame payload:
 
 The TCP forwarder enforces a strict allowlist for target hosts:
 
-```typescript
-// tcpForwarder.ts (lines 50-56)
-const ALLOWED_HOSTS = ['localhost', '127.0.0.1', '::1'];
-if (!ALLOWED_HOSTS.includes(host)) {
-  warn(`OPEN frame for stream ${streamId} rejected: non-localhost host "${host}" is not allowed`);
-  ws.send(buildFrame(MsgType.CLOSE, streamId));
-  return;
+```go
+func isAllowedLocalHost(host string) bool {
+	return host == "localhost" || host == "127.0.0.1" || host == "::1"
 }
 ```
 
@@ -418,14 +392,14 @@ This prevents SSRF attacks where a compromised broker could instruct the agent t
 
 ## Session Integration
 
-### SSH: Socket.IO -> openStream -> Duplex -> SSH2 Client
+### SSH: openStream -> Tunnel Stream -> SSH Client
 
 **File:** `server/src/socket/ssh.handler.ts`
 
 When an SSH session targets a tunnel-enabled gateway, the handler:
 
 1. Checks `gateway.tunnelEnabled` and `isTunnelConnected(gateway.id)`.
-2. Calls `openStream(gateway.id, bastionHost, bastionPort)` to get a `Duplex` stream.
+2. Calls `openStream(gateway.id, bastionHost, bastionPort)` to get a tunnel stream.
 3. Passes the stream as the `sock` parameter to SSH2's `client.connect()`:
 
 ```typescript
@@ -466,13 +440,13 @@ if (params.sock) {
 }
 ```
 
-This is the key design insight: by exposing tunnel streams as standard Node.js `Duplex` objects, existing SSH2 and bastion-hop code works without modification.
+This is the key design insight: by exposing tunnel streams as `io.ReadWriteCloser`-style objects, broker code can adapt existing SSH and TCP proxy paths without exposing the gateway on the public network.
 
-### RDP/VNC: createTcpProxy -> local net.Server -> guacamole
+### RDP/VNC: createTCPProxy -> local TCP listener -> guacd
 
 **File:** `server/src/controllers/session.controller.ts`
 
-For RDP and VNC, guacamole-lite connects to a `host:port` via TCP, so the tunnel integration uses `createTcpProxy()` to create a local proxy:
+For RDP and VNC, guacd connects to a `host:port` via TCP, so the tunnel integration uses `createTCPProxy()` to create a local proxy:
 
 ```typescript
 // session.controller.ts (lines 92-101, RDP path; 324-333, VNC path)
@@ -482,7 +456,7 @@ if (gateway.tunnelEnabled) {
   }
   const targetHost = guacdHost ?? gateway.host;
   const targetPort = guacdPort ?? gateway.port;
-  const { server: _proxyServer, localPort } = await createTcpProxy(gateway.id, targetHost, targetPort);
+  const { server: _proxyServer, localPort } = await createTCPProxy(gateway.id, targetHost, targetPort);
   guacdHost = '127.0.0.1';
   guacdPort = localPort;
 }
@@ -667,7 +641,7 @@ The CA cert and CA key parameters are prefixed with `_` (unused). This function 
 ### Future: X.509 Cert Generation
 
 To implement proper cert rotation:
-1. Use `node-forge` or Node.js 19+ `crypto.X509Certificate.generate()` to create a CSR.
+1. Use Go's `crypto/x509` package to create or sign the client certificate material.
 2. Sign the CSR with the gateway's CA key (stored encrypted in `tunnelCaKey`).
 3. Set the `Subject` and `SubjectAlternativeName` appropriately.
 4. The `validityDays` is currently set to 90 days.
@@ -724,29 +698,24 @@ The raw tunnel token is never written to the audit log.
 
 ### Adding a New Message Type
 
-1. **Define the constant** in both `server/src/services/tunnel.service.ts` and `gateways/tunnel-agent/src/protocol.ts`:
-   ```typescript
-   export const MsgType = {
-     // ... existing types
-     MY_NEW_TYPE: 8,
-   } as const;
+1. **Define the constant** in `gateways/gateway-core/protocol/types.go`:
+   ```go
+   const MsgMyNewType byte = 16
    ```
 
-2. **Add a handler on the server** in `attachFrameHandler()` (`tunnel.service.ts`, line 309):
-   ```typescript
-   case MsgType.MY_NEW_TYPE:
-     handleMyNewType(conn, streamId, payload);
-     break;
+2. **Add a handler on the broker** in `Broker.readLoop()` (`backend/internal/tunnelbroker/broker_connections.go`):
+   ```go
+   case msgMyNewType:
+    b.handleMyNewType(conn, streamID, body)
    ```
 
-3. **Add a handler on the agent** in `TunnelAgent.handleMessage()` (`tunnel.ts`, line 167):
-   ```typescript
-   case MsgType.MY_NEW_TYPE:
-     // handle or delegate
-     break;
+3. **Add a handler on the agent** in `Agent.handleFrame()` (`gateways/tunnel-agent/agent.go`):
+   ```go
+   case protocol.MsgMyNewType:
+    // handle or delegate
    ```
 
-4. **Build frames** with `buildFrame(MsgType.MY_NEW_TYPE, streamId, payloadBuffer)`.
+4. **Build frames** with `protocol.BuildFrame(protocol.MsgMyNewType, streamID, payload)`.
 
 5. **Use `streamId = 0`** for control-plane messages (like PING/PONG/HEARTBEAT/CERT_RENEW). Use non-zero `streamId` for messages tied to a specific stream.
 
@@ -763,13 +732,13 @@ To support a new protocol beyond SSH/RDP/VNC:
      // For stream-based protocols (like SSH):
      const sock = await openStream(gateway.id, host, port);
      // For TCP-address-based protocols (like guacd):
-     const { localPort } = await createTcpProxy(gateway.id, host, port);
+     const { localPort } = await createTCPProxy(gateway.id, host, port);
    }
    ```
 
 2. **Choose the integration pattern:**
-   - **`openStream()`** for protocols where you control the client library and can pass a `Duplex` stream (like SSH2's `sock` option).
-   - **`createTcpProxy()`** for protocols that require a TCP `host:port` address (like guacd).
+   - **`openStream()`** for protocols where broker code can consume an `io.ReadWriteCloser`.
+   - **`createTCPProxy()`** for protocols that require a TCP `host:port` address (like guacd).
 
 3. **Agent-side:** No changes needed -- the agent doesn't care what protocol runs over the TCP stream. It just forwards bytes between `localhost:port` and the tunnel.
 
@@ -777,35 +746,9 @@ To support a new protocol beyond SSH/RDP/VNC:
 
 To complete the cert rotation stub:
 
-1. **Install `node-forge`** or use Node.js 19+ built-in X.509 APIs.
-
-2. **Replace `generateClientCert()`** in `tunnel.service.ts` (line 825):
-   ```typescript
-   function generateClientCert(
-     caCertPem: string,
-     caKeyPem: string,
-     validityDays: number,
-   ): { cert: string; expiry: Date } {
-     // 1. Generate RSA key pair for the client
-     // 2. Create X.509 certificate with:
-     //    - Subject: CN=<gatewayId>
-     //    - Issuer: from caCertPem
-     //    - Validity: now + validityDays
-     //    - Key Usage: Digital Signature, Key Encipherment
-     //    - Extended Key Usage: TLS Client Authentication
-     // 3. Sign with caKeyPem
-     // 4. Return PEM-encoded cert and expiry date
-   }
-   ```
-
-3. **Implement agent-side cert hot-reload** in `tunnel.ts`, `MsgType.CERT_RENEW` handler:
-   ```typescript
-   case MsgType.CERT_RENEW:
-     // Parse JSON payload for { clientCert: "<PEM>" }
-     // Write new cert to disk or update TLS context
-     // Reconnect with new cert
-     break;
-   ```
+1. Keep certificate generation and encrypted key storage in the Go control plane/tunnel broker.
+2. Send a `CERT_RENEW` frame with JSON `{ "clientCert": "<PEM>", "clientKey": "<PEM>" }`.
+3. The Go agent's `MsgCertRenew` handler updates in-memory cert material and reconnects with WebSocket close code `1012`.
 
 4. **Test the rotation scheduler** by setting `CERT_ROTATION_THRESHOLD_DAYS` to a higher value or creating a gateway with an `tunnelClientCertExp` date in the near future.
 
@@ -815,14 +758,14 @@ To complete the cert rotation stub:
 
 | Component              | File                                                  |
 |------------------------|-------------------------------------------------------|
-| TunnelBroker           | `server/src/services/tunnel.service.ts`               |
-| WSS Upgrade Handler    | `server/src/socket/tunnel.handler.ts`                 |
+| TunnelBroker           | `backend/internal/tunnelbroker/`                      |
+| WSS Upgrade Handler    | `backend/internal/tunnelbroker/broker_handlers.go`    |
 | ABAC Evaluation / CRUD | `backend/internal/accesspolicies/service.go`          |
 | Session Controller     | `server/src/controllers/session.controller.ts`        |
 | SSH Service            | `server/src/services/ssh.service.ts`                  |
 | Gateway Monitor        | `server/src/services/gatewayMonitor.service.ts`       |
-| Agent Protocol         | `gateways/tunnel-agent/src/protocol.ts`                        |
-| Agent TCP Forwarder    | `gateways/tunnel-agent/src/tcpForwarder.ts`                    |
-| Agent Main Class       | `gateways/tunnel-agent/src/tunnel.ts`                          |
-| Agent Config           | `gateways/tunnel-agent/src/config.ts`                          |
-| Agent Auth             | `gateways/tunnel-agent/src/auth.ts`                            |
+| Agent Protocol         | `gateways/gateway-core/protocol/`                    |
+| Agent TCP Forwarder    | `gateways/tunnel-agent/forwarder.go`                 |
+| Agent Runtime          | `gateways/tunnel-agent/agent.go`                     |
+| Agent Config           | `gateways/tunnel-agent/config.go`                    |
+| Agent Auth             | `gateways/gateway-core/auth/`                        |
