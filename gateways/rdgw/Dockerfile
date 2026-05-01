@@ -1,5 +1,5 @@
 # ── Build stage ──────────────────────────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.23-alpine AS builder
+FROM --platform=$BUILDPLATFORM docker.io/library/golang:1.25-alpine AS builder
 
 WORKDIR /app
 
