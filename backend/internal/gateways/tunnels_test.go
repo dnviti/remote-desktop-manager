@@ -62,7 +62,7 @@ func TestTunnelMetricsFromStatus(t *testing.T) {
 		Connected:         true,
 		ConnectedAt:       "2026-03-31T01:02:03Z",
 		LastHeartbeatAt:   "2026-03-31T01:03:04Z",
-		ClientVersion:     "2.0.0",
+		ClientVersion:     "1.8.0",
 		ClientIP:          "10.0.0.9",
 		ActiveStreams:     5,
 		BytesTransferred:  4096,
@@ -94,7 +94,7 @@ func TestTunnelMetricsFromStatus(t *testing.T) {
 	if result.BytesTransferred == nil || *result.BytesTransferred != 4096 {
 		t.Fatalf("unexpected bytes transferred: %#v", result.BytesTransferred)
 	}
-	if result.ClientVersion == nil || *result.ClientVersion != "2.0.0" {
+	if result.ClientVersion == nil || *result.ClientVersion != "1.8.0" {
 		t.Fatalf("unexpected client version: %#v", result.ClientVersion)
 	}
 	if result.ClientIP == nil || *result.ClientIP != "10.0.0.9" {

@@ -3,7 +3,7 @@ package main
 import "github.com/dnviti/arsenale/tools/arsenale-cli/cmd"
 
 // defaultVersion is used when not overridden by -ldflags at build time.
-const defaultVersion = "2.0.0"
+const defaultVersion = "1.8.0"
 
 func main() {
 	// cmd.Version can be set via: -ldflags "-X .../cmd.Version=x.y.z"

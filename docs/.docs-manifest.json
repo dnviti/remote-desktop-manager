@@ -1,6 +1,6 @@
 {
   "version": "1.0",
-  "generated_at": "2026-04-28T19:10:03Z",
+  "generated_at": "2026-04-30T23:59:29Z",
   "visual_richness": "tiny",
   "sections": [
     {
@@ -9,7 +9,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "a4a292d74a438e452b0e9e3619fa23b1c94d7f37a2b6a7b463ba5840b61ad3db"
+          "hash": "3fed0360b014571bc59e7575622276fbe581d9ed12f385123e21e8d4cb7bb01e"
         },
         {
           "path": "AGENT.md",
@@ -17,11 +17,11 @@
         },
         {
           "path": "package.json",
-          "hash": "6e1d04c8a5a815e71ca1ea7922babb45ac430f961254177dee0dfb0a1c597ac7"
+          "hash": "388179387e03c9f1c1282e8d40d4f5dfa700673f2c229ecee10427670f07220a"
         },
         {
           "path": "client/package.json",
-          "hash": "73595592136ad34b0276556c3ec3294e9f1f3e189bab4382b05b716d059e9045"
+          "hash": "04d0f78d5e962006dba735fb99b9023cbb3b6b081a7413fa92872ffa42ea1830"
         },
         {
           "path": "backend/go.mod",
@@ -155,7 +155,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "a4a292d74a438e452b0e9e3619fa23b1c94d7f37a2b6a7b463ba5840b61ad3db"
+          "hash": "3fed0360b014571bc59e7575622276fbe581d9ed12f385123e21e8d4cb7bb01e"
         },
         {
           "path": "AGENT.md",
@@ -163,11 +163,11 @@
         },
         {
           "path": "package.json",
-          "hash": "6e1d04c8a5a815e71ca1ea7922babb45ac430f961254177dee0dfb0a1c597ac7"
+          "hash": "388179387e03c9f1c1282e8d40d4f5dfa700673f2c229ecee10427670f07220a"
         },
         {
           "path": "client/package.json",
-          "hash": "73595592136ad34b0276556c3ec3294e9f1f3e189bab4382b05b716d059e9045"
+          "hash": "04d0f78d5e962006dba735fb99b9023cbb3b6b081a7413fa92872ffa42ea1830"
         },
         {
           "path": "Makefile",
@@ -379,11 +379,11 @@
         },
         {
           "path": "package.json",
-          "hash": "6e1d04c8a5a815e71ca1ea7922babb45ac430f961254177dee0dfb0a1c597ac7"
+          "hash": "388179387e03c9f1c1282e8d40d4f5dfa700673f2c229ecee10427670f07220a"
         },
         {
           "path": "client/package.json",
-          "hash": "73595592136ad34b0276556c3ec3294e9f1f3e189bab4382b05b716d059e9045"
+          "hash": "04d0f78d5e962006dba735fb99b9023cbb3b6b081a7413fa92872ffa42ea1830"
         },
         {
           "path": "eslint.config.mjs",
@@ -493,7 +493,7 @@
       "source_files": [
         {
           "path": "README.md",
-          "hash": "a4a292d74a438e452b0e9e3619fa23b1c94d7f37a2b6a7b463ba5840b61ad3db"
+          "hash": "3fed0360b014571bc59e7575622276fbe581d9ed12f385123e21e8d4cb7bb01e"
         },
         {
           "path": "AGENT.md",
@@ -501,7 +501,7 @@
         },
         {
           "path": "package.json",
-          "hash": "6e1d04c8a5a815e71ca1ea7922babb45ac430f961254177dee0dfb0a1c597ac7"
+          "hash": "388179387e03c9f1c1282e8d40d4f5dfa700673f2c229ecee10427670f07220a"
         },
         {
           "path": "backend/internal/catalog/catalog.go",
