@@ -244,6 +244,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isUnsafeObjectKey(key: string) {
+  return key === '__proto__' || key === 'prototype' || key === 'constructor';
+}
+
 function isResponsiveRecord(value: Record<string, unknown>) {
   const keys = Object.keys(value);
   return keys.length > 0 && keys.every((key) => BREAKPOINT_KEYS.has(key));
@@ -270,6 +274,10 @@ function isSelectorKey(key: string) {
 
 function mergeResolvedStyles(target: ResolvedSxRecord, source: Record<string, unknown>, theme: AppTheme) {
   for (const [rawKey, rawValue] of Object.entries(source)) {
+    if (isUnsafeObjectKey(rawKey)) {
+      continue;
+    }
+
     const computedValue = typeof rawValue === 'function' ? (rawValue as SxCallback)(theme) : rawValue;
     if (computedValue == null) {
       continue;
@@ -295,6 +303,9 @@ function mergeResolvedStyles(target: ResolvedSxRecord, source: Record<string, un
     }
 
     const property = SX_ALIASES[rawKey] ?? rawKey;
+    if (isUnsafeObjectKey(property)) {
+      continue;
+    }
     target[property] = resolveScalarValue(property, computedValue, theme);
   }
 

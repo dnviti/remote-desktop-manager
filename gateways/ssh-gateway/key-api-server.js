@@ -35,7 +35,7 @@ if (certPath && keyPath) {
     tlsOpts.ca = fs.readFileSync(caPath);
   }
   server = https.createServer(tlsOpts, handler);
-  console.log(`Key API: HTTPS mode (cert=${certPath})`);
+  console.log('Key API: HTTPS mode');
 } else {
   const http = require('http');
   server = http.createServer(handler);

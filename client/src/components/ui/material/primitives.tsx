@@ -287,7 +287,7 @@ function Chip({
         size === 'small' && 'px-2 py-0.5',
         variant === 'outlined' ? 'bg-transparent' : tone,
         variant === 'outlined' && color === 'default' && 'border-border text-foreground',
-        variant === 'outlined' && color !== 'default' && tone.replace('bg-', 'bg-').replace('/10', '/0'),
+        variant === 'outlined' && color !== 'default' && tone.replace('/10', '/0').replace('/15', '/0'),
         !clickable && !onClick && 'cursor-default',
         sxClassName,
         className,
